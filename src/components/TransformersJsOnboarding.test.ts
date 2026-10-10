@@ -279,7 +279,8 @@ describe('Transformers.js Onboarding Integration', () => {
     case 'fresh': break;
     case 'unspecified': case 'high':
       mockSettings.value.titleGeneration = {
-        endpoint: 'same_scope', model: { id: 'previous-title-model' },
+        endpoint: 'same_scope',
+        model: { id: 'previous-title-model' },
         lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: preference === 'high' ? 'high' : undefined } },
       };
       break;
@@ -316,7 +317,9 @@ describe('Transformers.js Onboarding Integration', () => {
         endpoint: { type: 'transformers_js' },
         defaultModelId: 'downloaded-model',
         titleGeneration: originalTitle === 'disabled' ? 'disabled' : {
-          endpoint: 'same_scope', model: 'same_scope', lmParameters: originalTitle.lmParameters,
+          endpoint: 'same_scope',
+          model: 'same_scope',
+          lmParameters: originalTitle.lmParameters,
         },
       }),
       modelRefresh: 'await',
@@ -355,6 +358,7 @@ describe('Transformers.js Onboarding Integration', () => {
     // Should have automatically called loadDownloadedModel (logic is inside TransformersJsManager)
     expect(transformersJsService.loadDownloadedModel).toHaveBeenCalledWith({ modelId: 'new-download-model' });
   });
+
   it('opens the standalone feature explanation without scans, model loads or enabling start', async () => {
     vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', true);
     const wrapper = mountModal({ global: { stubs: { TransformersJsManager: false } } });
@@ -381,5 +385,4 @@ describe('Transformers.js Onboarding Integration', () => {
       wrapper.unmount(); vi.unstubAllGlobals();
     }
   });
-
 });

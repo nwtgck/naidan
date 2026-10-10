@@ -57,5 +57,4 @@ git show -s --format='%s' "$prefix"`,
     expect(stderr.text).toBe('');
     expect(stdout.text).toBe('two\n');
   });
-
 });

@@ -235,8 +235,10 @@ function toggleGroupFilter({ groupId }: { groupId: string }) {
 
 // Performance Optimization: Cache DateTimeFormat to avoid expensive re-initialization during list rendering.
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short', day: 'numeric',
-  hour: '2-digit', minute: '2-digit',
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
 });
 
 function formatTime({ timestamp }: { timestamp: number }) {

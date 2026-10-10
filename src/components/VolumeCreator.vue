@@ -311,12 +311,15 @@ async function createVolume({ type }: { type: 'opfs' | 'host' }) {
 function onDocDragEnter() {
   dragCounter.value++;
 }
+
 function onDocDragLeave() {
   dragCounter.value = Math.max(0, dragCounter.value - 1);
 }
+
 function onDocDragOver({ event }: { event: DragEvent }) {
   event.preventDefault();
 }
+
 function onDocDrop({ event }: { event: DragEvent }) {
   event.preventDefault();
   dragCounter.value = 0;

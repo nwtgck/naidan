@@ -10,14 +10,26 @@ import type { ModelSupportInvestigationCheckpoint, ModelSupportInvestigationPlan
 import * as nativeEvidence from '@/features/transformers-js/model-support-investigation/logic/production-provider-native-evidence';
 
 const mocks = vi.hoisted(() => ({
-  release: Symbol('release'), planning: vi.fn(), candidate: vi.fn(), template: vi.fn(),
-  captureClient: vi.fn(), unrecordedClient: vi.fn(), acceptance: vi.fn(), legacyProduction: vi.fn(),
+  release: Symbol('release'),
+  planning: vi.fn(),
+  candidate: vi.fn(),
+  template: vi.fn(),
+  captureClient: vi.fn(),
+  unrecordedClient: vi.fn(),
+  acceptance: vi.fn(),
+  legacyProduction: vi.fn(),
   workers: [] as Array<{ terminate: ReturnType<typeof vi.fn> }>,
 }));
-vi.mock('comlink', () => ({ releaseProxy: mocks.release, proxy: (value: unknown) => value, wrap: () => ({
-  runPartialInvestigation: mocks.planning, runCandidateAttempt: mocks.candidate,
-  inspectDownloadedTemplateBehavior: mocks.template, [mocks.release]: async () => undefined,
-}) }));
+vi.mock('comlink', () => ({
+  releaseProxy: mocks.release,
+  proxy: (value: unknown) => value,
+  wrap: () => ({
+    runPartialInvestigation: mocks.planning,
+    runCandidateAttempt: mocks.candidate,
+    inspectDownloadedTemplateBehavior: mocks.template,
+    [mocks.release]: async () => undefined,
+  }),
+}));
 vi.mock('@/features/transformers-js/worker/client-hosted', () => ({
   createTransformersJsGenerationCaptureClient: mocks.captureClient,
   createTransformersJsWorkerClient: mocks.unrecordedClient,
@@ -41,6 +53,7 @@ beforeEach(() => {
   }));
   vi.stubGlobal('Worker', class {
     terminate = vi.fn();
+
     constructor() {
       mocks.workers.push(this);
     }
@@ -146,14 +159,25 @@ describe('exclusive hosted Provider investigation routing', () => {
       take.mockImplementation(async () => {
         const context = capture.getCaptureLifetime().issuedCalls[0];
         if (context === undefined) throw new Error('Expected a host-issued first request');
-        return { status: 'captured', capture: {
-          schemaVersion: 1, runId: input.runId, workerEpoch: input.workerEpoch, byteOrder: 'little-endian',
-          limits: input.limits,
-          calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled',
-            invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
-          events: [{ kind: 'native-call', identity: { ...context, nativeInvocationOrdinal: 1 }, phase: 'entering' }],
-          incompleteReasons: [], unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-        } };
+        return {
+          status: 'captured',
+          capture: {
+            schemaVersion: 1,
+            runId: input.runId,
+            workerEpoch: input.workerEpoch,
+            byteOrder: 'little-endian',
+            limits: input.limits,
+            calls: [{
+              context,
+              loadIdentity: { status: 'not-observed', reason: 'no-completed-load' },
+              outcome: 'fulfilled',
+              invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }],
+            }],
+            events: [{ kind: 'native-call', identity: { ...context, nativeInvocationOrdinal: 1 }, phase: 'entering' }],
+            incompleteReasons: [],
+            unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+          },
+        };
       });
       return capture;
     });
@@ -165,8 +189,12 @@ describe('exclusive hosted Provider investigation routing', () => {
     expect(result.productionProviderInvestigation?.requests.every(request => request.outcome === 'fulfilled')).toBe(true);
     expect(result.productionProviderInvestigation?.nativeEvidenceStatus).toBe('available');
     expect(checkpoints.at(-1)?.nativeEvidence?.summary).toMatchObject({
-      recording: 'partial', capturedCallCount: 1, enteredNativeInvocationCount: 1,
-      issuedNotObservedCallCount: 12, incompleteInvocationCount: 1, unobservedLoadCount: 1,
+      recording: 'partial',
+      capturedCallCount: 1,
+      enteredNativeInvocationCount: 1,
+      issuedNotObservedCallCount: 12,
+      incompleteInvocationCount: 1,
+      unobservedLoadCount: 1,
     });
     expect(result.status).toBe('failed');
     expect(result.currentOperation).toContain('native recording=partial');

@@ -362,6 +362,7 @@ graph TD; A-->B;
       expect(copyBtn.classes()).toContain('rounded-md');
     });
   });
+
   describe('Code Block Toolbar', () => {
     it('renders the code block toolbar with language label and copy button', () => {
       const message = createMessage(`\
@@ -652,7 +653,7 @@ describe('MessageItem States', () => {
     replies: { items: [] },
     parts: [...(content !== undefined ? [{ type: 'text' as const, text: content, completeness: 'complete' as const }] : [])],
     createdAt: Date.now(),
-    interruption: error !== undefined ? {type:'error' as const,message:error} : undefined,
+    interruption: error !== undefined ? { type: 'error' as const, message: error } : undefined,
   } as AssistantMessageNode);
 
   it('displays loading indicator when waiting for response', async () => {

@@ -8,15 +8,26 @@ import { prepareLlamaCppRequest } from './message-projection';
 const id = toMessageId({ raw: 'message' });
 const callId = toToolCallId({ raw: 'call' });
 const binaryObjectId = toBinaryObjectId({ raw: 'binary' });
+
 const text = ({ value }: { value: string }) => ({ type: 'text' as const, text: value, completeness: 'complete' as const });
+
 const reasoning = ({ value }: { value: string }) => ({ type: 'reasoning' as const, text: value, completeness: 'complete' as const });
+
 const call = () => ({ type: 'tool_call' as const, toolCall: { id: callId, type: 'function' as const, function: { name: 'calculator', arguments: ' { "value": 1.0 } ' } } });
+
 const image = ({ status }: { status: 'persisted' | 'missing' | 'memory' }): Extract<Extract<ChatMessage, { role: 'user' }>['parts'][number], { type: 'attachment' }> => ({
-  type: 'attachment', attachment: {
-    id: toAttachmentId({ raw: 'image' }), binaryObjectId, originalName: 'image.png', mimeType: 'image/png', size: 3, uploadedAt: 1,
+  type: 'attachment',
+  attachment: {
+    id: toAttachmentId({ raw: 'image' }),
+    binaryObjectId,
+    originalName: 'image.png',
+    mimeType: 'image/png',
+    size: 3,
+    uploadedAt: 1,
     ...(status === 'memory' ? { status, blob: new Blob(['png'], { type: 'image/png' }) } : { status }),
   },
 });
+
 function request({ messages }: { messages: ChatMessage[] }): Parameters<LmProvider['chat']>[0] {
   return { messages, model: 'user/test', parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: undefined };
 }
@@ -38,7 +49,7 @@ describe('parts to llama.cpp input', () => {
   });
 
   it('joins text-only content only at this native input boundary without deduplication', async () => {
-    const prepared = await prepareLlamaCppRequest(request({ messages: [{ id, role: 'user', parts: [text({ value: 'A' }), { ...text({ value: 'A' }), }] }] }));
+    const prepared = await prepareLlamaCppRequest(request({ messages: [{ id, role: 'user', parts: [text({ value: 'A' }), { ...text({ value: 'A' }) }] }] }));
     expect(prepared.messages).toEqual([{ role: 'user', content: 'AA' }]);
   });
 
@@ -92,13 +103,22 @@ describe('parts to llama.cpp input', () => {
 
   it('matches each tool result to its call and keeps error and binary content', async () => {
     const raw = '\uFEFF  🙂\r\n';
-    const prepared = await prepareLlamaCppRequest({ ...request({ messages: [
-      { id, role: 'assistant', parts: [call()] },
-      { id, role: 'tool', parts: [
-        { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } } },
-        { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'other', message: { type: 'text', text: '失敗' } } } },
-      ] },
-    ] }), readBinaryObject: async () => new Blob([raw]) });
+    const prepared = await prepareLlamaCppRequest({
+      ...request({
+        messages: [
+          { id, role: 'assistant', parts: [call()] },
+          {
+            id,
+            role: 'tool',
+            parts: [
+              { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryObjectId } } },
+              { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'other', message: { type: 'text', text: '失敗' } } } },
+            ],
+          },
+        ],
+      }),
+      readBinaryObject: async () => new Blob([raw]),
+    });
     expect(prepared.messages.slice(1)).toEqual([{ role: 'tool', tool_call_id: 'call', name: 'calculator', content: raw }, { role: 'tool', tool_call_id: 'call', name: 'calculator', content: 'Error [other]: 失敗' }]);
   });
 
@@ -110,8 +130,12 @@ describe('parts to llama.cpp input', () => {
 
   it('checks cancellation after an asynchronous image read', async () => {
     const controller = new AbortController();
-    await expect(prepareLlamaCppRequest({ ...request({ messages: [{ id, role: 'user', parts: [image({ status: 'persisted' })] }] }), signal: controller.signal, readBinaryObject: async () => {
-      controller.abort(); return new Blob();
-    } })).rejects.toThrow();
+    await expect(prepareLlamaCppRequest({
+      ...request({ messages: [{ id, role: 'user', parts: [image({ status: 'persisted' })] }] }),
+      signal: controller.signal,
+      readBinaryObject: async () => {
+        controller.abort(); return new Blob();
+      },
+    })).rejects.toThrow();
   });
 });

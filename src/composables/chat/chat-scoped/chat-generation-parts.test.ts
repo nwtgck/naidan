@@ -16,29 +16,45 @@ const state = vi.hoisted(() => ({
   current: { value: null as Chat | null },
   provider: undefined as LmProvider | undefined,
   tools: [] as Tool[],
-  changed: vi.fn(), save: vi.fn(), metadata: vi.fn(), notify: vi.fn(), title: vi.fn(),
-  setError: vi.fn(), clearOutput: vi.fn(), drafts: vi.fn(),
+  changed: vi.fn(),
+  save: vi.fn(),
+  metadata: vi.fn(),
+  notify: vi.fn(),
+  title: vi.fn(),
+  setError: vi.fn(),
+  clearOutput: vi.fn(),
+  drafts: vi.fn(),
   autoTitle: false,
 }));
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
-  availableModels: { value: ['m'] }, currentChatGroupRef: { value: null },
-  currentChatRef: state.current, rootItems: { value: [] },
+  availableModels: { value: ['m'] },
+  currentChatGroupRef: { value: null },
+  currentChatRef: state.current,
+  rootItems: { value: [] },
   getLiveChat: ({ chat }: { chat: Chat }) => chat,
   getLiveChatById: () => state.current.value,
-  registerLiveInstance: vi.fn(), loadData: vi.fn(), ensureChatTmpDirectory: vi.fn(),
-  triggerCurrentChat: state.changed, updateChatContent: state.save, updateChatMeta: state.metadata,
+  registerLiveInstance: vi.fn(),
+  loadData: vi.fn(),
+  ensureChatTmpDirectory: vi.fn(),
+  triggerCurrentChat: state.changed,
+  updateChatContent: state.save,
+  updateChatMeta: state.metadata,
   isProcessing: ({ chatId }: { chatId: ChatId }) => state.active.has(chatId),
   chatRuntimeStore: {
     activeGenerations: state.active,
     getActiveGeneration: ({ chatId }: { chatId: ChatId }) => state.active.get(chatId),
     setActiveGeneration: ({ chatId, generation }: { chatId: ChatId, generation: { controller: AbortController, chat: Chat } }) => state.active.set(chatId, generation),
     deleteActiveGeneration: ({ chatId }: { chatId: ChatId }) => state.active.delete(chatId),
-    startTask: vi.fn(), finishTask: vi.fn(),
+    startTask: vi.fn(),
+    finishTask: vi.fn(),
   },
   chatVolatileState: {
     setToolCallDrafts: state.drafts,
-    clearVolatileAssistantError: vi.fn(), setVolatileAssistantError: state.setError,
-    setVolatileToolOutput: vi.fn(), appendVolatileToolOutput: vi.fn(), deleteVolatileToolOutput: state.clearOutput,
+    clearVolatileAssistantError: vi.fn(),
+    setVolatileAssistantError: state.setError,
+    setVolatileToolOutput: vi.fn(),
+    appendVolatileToolOutput: vi.fn(),
+    deleteVolatileToolOutput: state.clearOutput,
   },
 }));
 vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: async () => state.provider }));
@@ -71,6 +87,7 @@ function createChat(): { chat: Chat, assistant: AssistantMessageNode } {
   state.current.value = chat;
   return { chat, assistant: node };
 }
+
 const run = ({ chat, assistant }: { chat: Chat, assistant: AssistantMessageNode }) => generateResponseForAssistant({ chat, assistantId: assistant.id, lmParameters: undefined, onReady: undefined });
 
 describe('chat generation flow with message parts', () => {
@@ -79,6 +96,7 @@ describe('chat generation flow with message parts', () => {
     vi.clearAllMocks(); state.active.clear(); state.autoTitle = false; state.tools = [];
     state.save.mockResolvedValue(undefined); state.metadata.mockResolvedValue(undefined); state.title.mockResolvedValue(undefined);
   });
+
   it('shows draft updates without history persistence and clears them after cancellation', async () => {
     const fixture = createChat();
     const visible = Promise.withResolvers<void>();
@@ -86,14 +104,20 @@ describe('chat generation flow with message parts', () => {
     state.drafts.mockImplementation(({ drafts }) => {
       if (drafts.length !== 0) visible.resolve();
     });
-    state.provider = { listModels: async () => ['m'], chat: ({ messages, signal }) => {
-      expect(messages.map(message => message.role)).toEqual(['user']);
-      return createChatGenerationStream({ signal, run: async ({ writer }) => {
-        await writer.callDraft({ key: 0, name: 'shell', arguments: { offset: 0, text: '{"script":"' } });
-        await release.promise;
-        return { type: 'interrupted', reason: 'aborted' };
-      } });
-    } };
+    state.provider = {
+      listModels: async () => ['m'],
+      chat: ({ messages, signal }) => {
+        expect(messages.map(message => message.role)).toEqual(['user']);
+        return createChatGenerationStream({
+          signal,
+          run: async ({ writer }) => {
+            await writer.callDraft({ key: 0, name: 'shell', arguments: { offset: 0, text: '{"script":"' } });
+            await release.promise;
+            return { type: 'interrupted', reason: 'aborted' };
+          },
+        });
+      },
+    };
     const pending = run(fixture);
     await visible.promise;
     expect(fixture.assistant.parts).toEqual([]);
@@ -108,54 +132,75 @@ describe('chat generation flow with message parts', () => {
     expect(fixture.assistant.interruption).toEqual({ type: 'cancelled' });
     state.drafts.mockReset();
   });
+
   it.each([true, false])('preserves the chat debug preference through tool rounds (%s)', async enabled => {
     const fixture = createChat(); fixture.chat.debugEnabled = enabled;
     const preferences: Array<'on' | 'off' | undefined> = [];
     state.tools = [{ name: 'f', description: '', parametersSchema: z.object({}), execute: async () => ({ status: 'success', content: 'done' }) }];
     const { toToolCallId } = await import('@/01-models/ids');
-    state.provider = { listModels: async () => ['m'], chat: ({ debug, signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-      preferences.push(debug);
-      if (preferences.length === 1) {
-        await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'debug-call' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
-        return { type: 'finished', next: 'tool_results' };
-      }
-      await writer.text({ type: 'text', text: 'answer' });
-      return { type: 'finished', next: 'user' };
-    } }) };
+    state.provider = {
+      listModels: async () => ['m'],
+      chat: ({ debug, signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          preferences.push(debug);
+          if (preferences.length === 1) {
+            await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'debug-call' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
+            return { type: 'finished', next: 'tool_results' };
+          }
+          await writer.text({ type: 'text', text: 'answer' });
+          return { type: 'finished', next: 'user' };
+        },
+      }),
+    };
     await run(fixture);
     expect(preferences).toEqual([enabled ? 'on' : 'off', enabled ? 'on' : 'off']);
   });
+
   it('consumes structured reasoning and literal tags into the reserved new assistant', async () => {
     const fixture = createChat();
-    state.provider = { listModels: async () => ['m'], chat: vi.fn<LmProvider['chat']>(({ messages, signal }) => {
-      expect(messages.map(m => m.role)).toEqual(['user']);
-      return createChatGenerationStream({ signal, run: async ({ writer }) => {
-        await writer.text({ type: 'reasoning', text: '  理由\n' });
-        await writer.text({ type: 'text', text: '<think>literal</think>answer' });
-        return { type: 'finished', next: 'user' };
-      } });
-    }) };
+    state.provider = {
+      listModels: async () => ['m'],
+      chat: vi.fn<LmProvider['chat']>(({ messages, signal }) => {
+        expect(messages.map(m => m.role)).toEqual(['user']);
+        return createChatGenerationStream({
+          signal,
+          run: async ({ writer }) => {
+            await writer.text({ type: 'reasoning', text: '  理由\n' });
+            await writer.text({ type: 'text', text: '<think>literal</think>answer' });
+            return { type: 'finished', next: 'user' };
+          },
+        });
+      }),
+    };
     await run(fixture);
     expect(fixture.assistant.parts).toMatchObject([{ type: 'reasoning', text: '  理由\n', completeness: 'complete' }, { type: 'text', text: '<think>literal</think>answer', completeness: 'complete' }]);
     expect(state.save).toHaveBeenCalled(); expect(state.active.size).toBe(0); expect(fixture.assistant.interruption).toBeUndefined();
     expect(toRaw(fixture.chat.root.items[0]!.replies.items[0]!)).toBe(toRaw(fixture.assistant));
   });
+
   it('executes calls through the shared runner and creates a new assistant after its tool node', async () => {
     const fixture = createChat(); const observed: readonly string[][] = []; const inputs = [...observed];
     const execute = vi.fn(async ({ args }: { args: unknown }) => ({ status: 'success' as const, content: JSON.stringify(args) }));
     state.tools = [{ name: 'f', description: 'f', parametersSchema: z.object({ n: z.number().default(1) }), execute }];
     let rounds = 0;
-    state.provider = { listModels: async () => ['m'], chat: ({ messages, signal }) => {
-      inputs.push(messages.map(m => m.role));
-      return createChatGenerationStream({ signal, run: async ({ writer }) => {
-        if (rounds++ === 0) {
-          const { toToolCallId } = await import('@/01-models/ids');
-          await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {} ' } } });
-          return { type: 'finished', next: 'tool_results' };
-        }
-        await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
-      } });
-    } };
+    state.provider = {
+      listModels: async () => ['m'],
+      chat: ({ messages, signal }) => {
+        inputs.push(messages.map(m => m.role));
+        return createChatGenerationStream({
+          signal,
+          run: async ({ writer }) => {
+            if (rounds++ === 0) {
+              const { toToolCallId } = await import('@/01-models/ids');
+              await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {} ' } } });
+              return { type: 'finished', next: 'tool_results' };
+            }
+            await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+          },
+        });
+      },
+    };
     await run(fixture);
     expect(inputs).toEqual([['user'], ['user', 'assistant', 'tool']]); expect(execute).toHaveBeenCalledOnce();
     const tool = fixture.assistant.replies.items[0]!; expect(tool.role).toBe('tool');
@@ -164,33 +209,54 @@ describe('chat generation flow with message parts', () => {
     expect(answer.id).not.toBe(fixture.assistant.id); expect(fixture.chat.currentLeafId).toBe(answer.id);
     expect(fixture.assistant.parts[0]).toMatchObject({ toolCall: { function: { arguments: ' {} ' } } });
   });
+
   it('records cancellation and does not close an open literal tag or append Aborted', async () => {
     const fixture = createChat();
-    state.provider = { listModels: async () => ['m'], chat: ({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-      await writer.text({ type: 'text', text: '<think>途中' });
+    state.provider = {
+      listModels: async () => ['m'],
+      chat: ({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: '<think>途中' });
       state.active.get(fixture.chat.id)!.controller.abort();
       return { type: 'interrupted', reason: 'aborted' };
-    } }) };
+        },
+      }),
+    };
     await run(fixture);
     expect(fixture.assistant.parts[0]).toMatchObject({ text: '<think>途中', completeness: 'partial' });
     expect(fixture.assistant.interruption).toEqual({ type: 'cancelled' }); expect(state.active.size).toBe(0);
   });
+
   it('retains received content and records the model failure without changing the text', async () => {
     const fixture = createChat();
-    state.provider = { listModels: async () => ['m'], chat: ({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-      await writer.text({ type: 'text', text: 'prefix' }); throw new Error('通信失敗');
-    } }) };
+    state.provider = {
+      listModels: async () => ['m'],
+      chat: ({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'prefix' }); throw new Error('通信失敗');
+        },
+      }),
+    };
     await run(fixture);
     expect(getMessageText({ message: fixture.assistant })).toBe('prefix'); expect(fixture.assistant.interruption).toEqual({ type: 'error', message: '通信失敗' });
     expect(state.setError).toHaveBeenCalledWith({ chatId: fixture.chat.id, messageId: fixture.assistant.id, error: '通信失敗' });
   });
+
   it('does not reclassify a successful answer as a model error when automatic title fails', async () => {
     const fixture = createChat(); state.autoTitle = true; state.title.mockRejectedValue(new Error('title failed'));
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      state.provider = { listModels: async () => ['m'], chat: ({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-        await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
-      } }) };
+      state.provider = {
+        listModels: async () => ['m'],
+        chat: ({ signal }) => createChatGenerationStream({
+          signal,
+          run: async ({ writer }) => {
+            await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+          },
+        }),
+      };
       await run(fixture);
       expect(fixture.assistant.interruption).toBeUndefined(); expect(fixture.assistant.parts[0]).toMatchObject({ text: 'answer', completeness: 'complete' });
       expect(state.active.size).toBe(0);
@@ -206,6 +272,7 @@ describe('chat generation ownership and failure boundaries', () => {
     vi.clearAllMocks(); state.active.clear(); state.tools = []; state.autoTitle = false;
     state.save.mockResolvedValue(undefined); state.metadata.mockResolvedValue(undefined); state.title.mockResolvedValue(undefined);
   });
+
   it('does not open an existing partial assistant as a new generation', async () => {
     const fixture = createChat(); fixture.assistant.parts = [{ type: 'text', text: 'old', completeness: 'partial' }];
     fixture.assistant.interruption = { type: 'cancelled' };
@@ -213,14 +280,21 @@ describe('chat generation ownership and failure boundaries', () => {
     await expect(run(fixture)).rejects.toThrow(/cannot be resumed/);
     expect(JSON.stringify(fixture.assistant)).toBe(before); expect(state.active.size).toBe(0);
   });
+
   it('keeps a successful answer in memory and skips reload metadata when persistence fails', async () => {
     const fixture = createChat(); const failure = new Error('disk unavailable');
     state.save.mockResolvedValueOnce(undefined).mockRejectedValue(failure);
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      state.provider = { listModels: async () => ['m'], chat: ({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-        await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
-      } }) };
+      state.provider = {
+        listModels: async () => ['m'],
+        chat: ({ signal }) => createChatGenerationStream({
+          signal,
+          run: async ({ writer }) => {
+            await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+          },
+        }),
+      };
       await run(fixture);
       expect(fixture.assistant.parts[0]).toMatchObject({ text: 'answer', completeness: 'complete' });
       expect(fixture.assistant.interruption).toBeUndefined(); expect(state.metadata).not.toHaveBeenCalled();
@@ -228,17 +302,27 @@ describe('chat generation ownership and failure boundaries', () => {
       consoleError.mockRestore();
     }
   });
+
   it('keeps an observed tool success when stop is requested inside tool execution', async () => {
     const fixture = createChat();
     const dispose = vi.fn();
-    state.tools = [{ name: 'f', description: '', parametersSchema: z.object({}), execute: async () => {
+    state.tools = [{
+      name: 'f',
+      description: '',
+      parametersSchema: z.object({}),
+      execute: async () => {
       state.active.get(fixture.chat.id)!.controller.abort(); return { status: 'success', content: 'observed success' };
-    }, dispose }];
+      },
+      dispose,
+    }];
     const { toToolCallId } = await import('@/01-models/ids');
-    const chat = vi.fn<LmProvider['chat']>(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-      await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
-      return { type: 'finished', next: 'tool_results' };
-    } }));
+    const chat = vi.fn<LmProvider['chat']>(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
+        return { type: 'finished', next: 'tool_results' };
+      },
+    }));
     state.provider = { listModels: async () => ['m'], chat };
     await run(fixture);
     const tool = fixture.assistant.replies.items[0]!;
@@ -246,7 +330,6 @@ describe('chat generation ownership and failure boundaries', () => {
     expect(chat).toHaveBeenCalledOnce(); expect(tool.replies.items).toEqual([]); expect(dispose).toHaveBeenCalledOnce();
   });
 });
-
 
 function createToolRetryFixture({ results }: { results: ToolExecutionResult[] }): {
   chat: Chat;
@@ -259,15 +342,23 @@ function createToolRetryFixture({ results }: { results: ToolExecutionResult[] })
     toolCall: { id: result.toolCallId, type: 'function', function: { name: 'calculator', arguments: `{"value":${index}}` } },
   }));
   const stopped: AssistantMessageNode = {
-    id: toMessageId({ raw: 'stopped-answer' }), role: 'assistant', createdAt: 0,
+    id: toMessageId({ raw: 'stopped-answer' }),
+    role: 'assistant',
+    createdAt: 0,
     parts: [{ type: 'text', text: '<think>stopped answer', completeness: 'partial' }],
-    modelId: 'm', lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.25 },
-    interruption: { type: 'cancelled' }, replies: { items: [] },
+    modelId: 'm',
+    lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.25 },
+    interruption: { type: 'cancelled' },
+    replies: { items: [] },
   };
   fixture.assistant.replies.items.push({
-    id: toMessageId({ raw: 'tool-results' }), role: 'tool', createdAt: 3,
+    id: toMessageId({ raw: 'tool-results' }),
+    role: 'tool',
+    createdAt: 3,
     parts: results.map((result) => ({ type: 'tool_result', result })),
-    modelId: undefined, lmParameters: undefined, replies: { items: [stopped] },
+    modelId: undefined,
+    lmParameters: undefined,
+    replies: { items: [stopped] },
   });
   const tool = fixture.assistant.replies.items[0]!;
   if (tool.role !== 'tool') throw new Error('Expected tool fixture');
@@ -295,19 +386,22 @@ describe('regeneration after tool results', () => {
     let round = 0;
     const chat = vi.fn<LmProvider['chat']>(({ signal }) => {
       const iteration = round++;
-      return createChatGenerationStream({ signal, run: async ({ writer }) => {
-        if (iteration === 0) {
-          await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'calculation' }), type: 'function', function: { name: 'calculator', arguments: ' {} ' } } });
-          return { type: 'finished', next: 'tool_results' };
-        }
-        if (iteration === 1) {
-          await writer.text({ type: 'reasoning', text: '  結果を確認する。\n' });
-          await writer.text({ type: 'text', text: '<think>literal answer prefix' });
-          throw new Error('Answer failed after the tool completed');
-        }
-        await writer.text({ type: 'text', text: '  Fresh answer\n' });
-        return { type: 'finished', next: 'user' };
-      } });
+      return createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          if (iteration === 0) {
+            await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'calculation' }), type: 'function', function: { name: 'calculator', arguments: ' {} ' } } });
+            return { type: 'finished', next: 'tool_results' };
+          }
+          if (iteration === 1) {
+            await writer.text({ type: 'reasoning', text: '  結果を確認する。\n' });
+            await writer.text({ type: 'text', text: '<think>literal answer prefix' });
+            throw new Error('Answer failed after the tool completed');
+          }
+          await writer.text({ type: 'text', text: '  Fresh answer\n' });
+          return { type: 'finished', next: 'user' };
+        },
+      });
     });
     state.provider = { listModels: async () => ['m'], chat };
     await run(fixture);
@@ -361,10 +455,13 @@ describe('regeneration after tool results', () => {
     const previousResults = JSON.stringify(fixture.tool.parts);
     const execute = vi.fn<Tool['execute']>();
     state.tools = [{ name: 'calculator', description: 'calculate', parametersSchema: z.object({}), execute }];
-    const chat = vi.fn<LmProvider['chat']>(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-      await writer.text({ type: 'text', text: 'A completely new answer' });
-      return { type: 'finished', next: 'user' };
-    } }));
+    const chat = vi.fn<LmProvider['chat']>(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'A completely new answer' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     state.provider = { listModels: async () => ['m'], chat };
     await regenerateMessageForChat({ chatId: fixture.chat.id, failedMessageId: fixture.stopped.id });
     await vi.waitUntil(() => !state.active.has(fixture.chat.id));
@@ -386,10 +483,16 @@ describe('regeneration after tool results', () => {
   it('keeps both interrupted answers when a retry itself fails', async () => {
     const fixture = createToolRetryFixture({ results: [{ toolCallId: toToolCallId({ raw: 'call' }), status: 'success', content: { type: 'text', text: 'done' } }] });
     const before = JSON.stringify(fixture.stopped);
-    state.provider = { listModels: async () => ['m'], chat: ({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-      await writer.text({ type: 'text', text: 'Another incomplete answer' });
-      throw new Error('Retry failed');
-    } }) };
+    state.provider = {
+      listModels: async () => ['m'],
+      chat: ({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'Another incomplete answer' });
+          throw new Error('Retry failed');
+        },
+      }),
+    };
     await regenerateMessageForChat({ chatId: fixture.chat.id, failedMessageId: fixture.stopped.id });
     await vi.waitUntil(() => !state.active.has(fixture.chat.id));
     expect(fixture.tool.replies.items).toHaveLength(2);

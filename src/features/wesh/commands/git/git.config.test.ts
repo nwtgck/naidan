@@ -655,5 +655,4 @@ git config --get -- user.name`,
     expect(result.stderr.text).toBe('');
     expect(result.stdout.text).toBe('Local\n');
   });
-
 });

@@ -94,12 +94,15 @@ describe('wesh rg', () => {
   });
 
   it('supports context lines and line numbers', async () => {
-    await writeFile({ path: 'sample.txt', data: `\
+    await writeFile({
+      path: 'sample.txt',
+      data: `\
 zero
 target
 two
 three
-` });
+`,
+    });
     const result = await execute({ script: 'rg -n -C1 target sample.txt' });
     expect(result.stdout).toBe(`\
 1-zero
@@ -110,7 +113,9 @@ three
   });
 
   it('separates disjoint context groups across and within files', async () => {
-    await writeFile({ path: 'a.txt', data: `\
+    await writeFile({
+      path: 'a.txt',
+      data: `\
 a
 target
 c
@@ -119,12 +124,16 @@ e
 f
 target
 h
-` });
-    await writeFile({ path: 'b.txt', data: `\
+`,
+    });
+    await writeFile({
+      path: 'b.txt',
+      data: `\
 x
 target
 z
-` });
+`,
+    });
 
     const result = await execute({ script: 'rg -n -C1 target a.txt b.txt' });
 
@@ -164,19 +173,25 @@ b.txt-3-z
   });
 
   it('searches explicit stdin with -', async () => {
-    const result = await execute({ script: 'rg -n target -', stdin: `\
+    const result = await execute({
+      script: 'rg -n target -',
+      stdin: `\
 no
 target
-` });
+`,
+    });
     expect(result.stdout).toBe('2:target\n');
     expect(result.result.exitCode).toBe(0);
   });
 
   it('does not report matches when max-count is zero', async () => {
-    await writeFile({ path: 'sample.txt', data: `\
+    await writeFile({
+      path: 'sample.txt',
+      data: `\
 target
 target
-` });
+`,
+    });
 
     const result = await execute({ script: 'rg -m 0 target sample.txt' });
 
@@ -225,9 +240,12 @@ file.txt
   });
 
   it('reports malformed ignore globs without aborting the search', async () => {
-    await writeFile({ path: '.ignore', data: `[
+    await writeFile({
+      path: '.ignore',
+      data: `[
 ignored.txt
-` });
+`,
+    });
     await writeFile({ path: 'ignored.txt', data: 'target\n' });
     await writeFile({ path: 'kept.txt', data: 'target\n' });
 
@@ -497,10 +515,13 @@ src/d.md:target
   });
 
   it('reports 1-based UTF-8 byte columns in normal and only-matching output', async () => {
-    await writeFile({ path: 'columns.txt', data: `\
+    await writeFile({
+      path: 'columns.txt',
+      data: `\
 zero target one target
 αβ target γ
-` });
+`,
+    });
 
     const normal = await execute({ script: 'rg --column target columns.txt' });
     const only = await execute({ script: 'rg --column -o target columns.txt' });
@@ -532,10 +553,13 @@ zero target one target
   });
 
   it('reports 0-based byte offsets for lines and only-matching results', async () => {
-    await writeFile({ path: 'offsets.txt', data: `\
+    await writeFile({
+      path: 'offsets.txt',
+      data: `\
 zero target one target
 αβ target γ
-` });
+`,
+    });
 
     const lines = await execute({ script: 'rg -b target offsets.txt' });
     const only = await execute({ script: 'rg -b -o target offsets.txt' });
@@ -564,10 +588,13 @@ zero target one target
   });
 
   it('keeps column output independent from explicit line-number suppression', async () => {
-    await writeFile({ path: 'columns.txt', data: `\
+    await writeFile({
+      path: 'columns.txt',
+      data: `\
 zero target
 none
-` });
+`,
+    });
 
     const noLine = await execute({ script: 'rg -N --column target columns.txt' });
     const disabled = await execute({ script: 'rg --column --no-column target columns.txt' });

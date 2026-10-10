@@ -19,7 +19,8 @@ vi.mock('../00-storage/service', () => ({
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatMeta: vi.fn(),
+    loadChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } }))),
     loadChatContent: vi.fn().mockResolvedValue(null),
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
@@ -64,6 +65,7 @@ const mockChat = vi.fn<LmProvider['chat']>().mockImplementation(({ model, signal
 vi.mock('../features/lm/openai', () => {
   class MockOpenAI {
     constructor() {}
+
     chat = mockChat;
     listModels = vi.fn().mockResolvedValue(['gpt-3.5-turbo', 'gpt-4']);
   }

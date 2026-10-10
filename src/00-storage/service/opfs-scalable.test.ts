@@ -8,13 +8,16 @@ import type { ChatId, MessageId } from '@/01-models/ids';
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {
   kind = 'file' as const;
+
   constructor(public name: string, private content: string = '') {}
+
   async getFile() {
     // Return an object that looks like a File/Blob with a text() method
     return {
       text: async () => this.content,
     };
   }
+
   async createWritable() {
     return {
       write: async (data: string) => {
@@ -192,12 +195,14 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     }));
     await groupWriter.close();
 
-    await provider.saveHierarchy({ hierarchy: {
-      items: [
-        { type: 'chat', id: chatId },
-        { type: 'chat_group', id: groupId, chat_ids: [] },
-      ],
-    } });
+    await provider.saveHierarchy({
+      hierarchy: {
+        items: [
+          { type: 'chat', id: chatId },
+          { type: 'chat_group', id: groupId, chat_ids: [] },
+        ],
+      },
+    });
 
     const snapshot = await provider.dump();
 

@@ -3,14 +3,20 @@ import { productionLoadReceiptSchema } from '@/features/transformers-js/runtime/
 import { createProductionLoadReceiptSlot } from './load-receipt';
 
 const owner = { runId: 'run-one', workerEpoch: 1 };
+
 function receipt() {
   return productionLoadReceiptSchema.parse({
-    format: 'production-offline-load-receipt-v1', modelId: 'fixture/model',
+    format: 'production-offline-load-receipt-v1',
+    modelId: 'fixture/model',
     loaderRevisionOption: { status: 'provided', value: 'a'.repeat(40) },
-    autoClass: 'AutoModelForCausalLM', processor: 'tokenizer', candidate: { device: 'wasm', dtype: 'q4' },
+    autoClass: 'AutoModelForCausalLM',
+    processor: 'tokenizer',
+    candidate: { device: 'wasm', dtype: 'q4' },
     plannedRequiredPaths: ['onnx/model.onnx'],
     cacheLookup: { source: 'read-only-opfs-scoped-match', revision: 'a'.repeat(40), hitPaths: ['onnx/model.onnx'] },
-    completion: 'model-session-and-tokenizer-processor-ready', resourceHealth: 'healthy-after-close', accessBoundary: 'production-offline-read-only',
+    completion: 'model-session-and-tokenizer-processor-ready',
+    resourceHealth: 'healthy-after-close',
+    accessBoundary: 'production-offline-read-only',
     limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
   });
 }

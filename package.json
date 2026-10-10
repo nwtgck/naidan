@@ -1,7 +1,7 @@
 {
   "name": "naidan",
   "private": true,
-  "version": "0.51.0",
+  "version": "0.52.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +13,9 @@
     "test": "vitest",
     "test:pwa": "vitest run --config vitest.pwa.config.ts",
     "test:only-failed": "vitest --reporter=./src/FailedOnlyReporter.ts --run",
+    "strings:catalogs": "tsx scripts/generate-string-catalogs.ts",
+    "strings:catalogs:check": "tsx scripts/generate-string-catalogs.ts --check",
+    "strings:catalogs:test": "npm run test:only-failed -- --config build/boundary-strings/vitest.catalogs.config.ts",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p pwa/tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix"
@@ -26,7 +29,7 @@
     "he": "^1.2.0",
     "highlight.js": "^11.11.1",
     "katex": "^0.17.0",
-    "llama-cpp-browser-core": "github:nwtgck/browser-inference-core#379e14ecb217a3856437afdecb9c363213d620b3",
+    "llama-cpp-browser-core": "github:nwtgck/browser-inference-core#c5f2d9ae01d4d3dacd16aa80f9fc2e9c5b90c0f2",
     "lucide-vue-next": "^0.562.0",
     "marked": "^18.0.5",
     "marked-highlight": "^2.2.4",

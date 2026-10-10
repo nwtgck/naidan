@@ -67,7 +67,8 @@ export function createEvidenceArchiveStream({ files }: {
     compressionCodec: createWebZipCompressionCodec(),
   });
   const stream = createAbortableByteStream({
-    stream: output.stream, signal: abort.signal,
+    stream: output.stream,
+    signal: abort.signal,
     onCancel: () => abort.abort(new DOMException('Evidence export cancelled', 'AbortError')),
   });
   const produce = async (): Promise<void> => {
@@ -77,7 +78,8 @@ export function createEvidenceArchiveStream({ files }: {
         await writer.addFile({
           name: path,
           stream: createAbortableByteStream({ stream: content.stream(), signal: abort.signal, onCancel: undefined }),
-          compression: 'deflate', modifiedAt: new Date(1980, 0, 1),
+          compression: 'deflate',
+          modifiedAt: new Date(1980, 0, 1),
         });
       }
       abort.signal.throwIfAborted();
@@ -109,7 +111,8 @@ export async function openEvidenceArchive({ blob }: { blob: Blob }): Promise<{
   reader: EvidenceArchiveReader; close(): Promise<void>;
 }> {
   const zip = new StreamingZipReader({
-    source: createBlobZipSource({ blob }), compressionCodec: createWebZipCompressionCodec(),
+    source: createBlobZipSource({ blob }),
+    compressionCodec: createWebZipCompressionCodec(),
   });
   let closed = false;
   try {

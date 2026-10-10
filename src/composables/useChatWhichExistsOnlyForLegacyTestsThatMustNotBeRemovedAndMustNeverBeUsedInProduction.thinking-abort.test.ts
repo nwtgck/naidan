@@ -74,19 +74,26 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('keeps the unfinished literal thinking text on abort without synthesizing a closing tag', async () => {
     const { sendMessage, abortChat, streaming } = chatStore;
     const chat = reactive<Chat>({
-      id: toChatId({ raw: 'abort-thinking-test' }), title: 'Abort Thinking', root: { items: [] },
-      createdAt: 1, updatedAt: 1, debugEnabled: false,
+      id: toChatId({ raw: 'abort-thinking-test' }),
+      title: 'Abort Thinking',
+      root: { items: [] },
+      createdAt: 1,
+      updatedAt: 1,
+      debugEnabled: false,
     });
     __testOnlySetCurrentChat({ chat });
     const started = Promise.withResolvers<void>();
     const stopped = Promise.withResolvers<void>();
-    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer, signal }) => {
-      signal.addEventListener('abort', () => stopped.resolve(), { once: true });
-      await writer.text({ type: 'text', text: '<think>I am thinking...' });
-      started.resolve();
-      await stopped.promise;
-      return { type: 'interrupted', reason: 'aborted' };
-    } }));
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer, signal }) => {
+        signal.addEventListener('abort', () => stopped.resolve(), { once: true });
+        await writer.text({ type: 'text', text: '<think>I am thinking...' });
+        started.resolve();
+        await stopped.promise;
+        return { type: 'interrupted', reason: 'aborted' };
+      },
+    }));
     try {
       await sendMessage({ content: 'Hello' });
       await started.promise;

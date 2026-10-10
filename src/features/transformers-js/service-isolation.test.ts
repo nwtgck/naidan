@@ -41,6 +41,7 @@ function createClientFixture() {
 }
 
 const owners: Array<{ dispose(): Promise<void> }> = [];
+
 async function createOwner({ createWorkerClient }: { createWorkerClient: () => TransformersJsWorkerClient }) {
   const { createTransformersJsService } = await import('./index-hosted');
   const owner = createTransformersJsService({ createWorkerClient });
@@ -132,7 +133,9 @@ describe('Transformers.js service instance ownership', () => {
       expect(await downloading).toMatchObject({ name: 'AbortError' });
       await nextLoad;
       expect(client.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith({
-        modelId: 'fixture/next', revisionSelection: { kind: 'discover-cached' }, progressCallback: expect.any(Function),
+        modelId: 'fixture/next',
+        revisionSelection: { kind: 'discover-cached' },
+        progressCallback: expect.any(Function),
       });
       expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/next', loadingModelId: undefined });
       expect(download.reuse).not.toHaveBeenCalled();
@@ -165,10 +168,13 @@ describe('Transformers.js service instance ownership', () => {
       return { normalizedModelId: 'fixture/download', requestedRevision: 'main', resolvedRevision: revision };
     });
     download.reuse.mockResolvedValue({
-      reused: true, loadRevision: revision,
+      reused: true,
+      loadRevision: revision,
       acceptance: {
-        status: 'accepted', selectedRevision: { revision, loaderRevisionOption: revision, source: 'current-resolved-revision' },
-        attempts: [], error: undefined,
+        status: 'accepted',
+        selectedRevision: { revision, loaderRevisionOption: revision, source: 'current-resolved-revision' },
+        attempts: [],
+        error: undefined,
       },
     });
     const operations: Promise<unknown>[] = [];
@@ -191,7 +197,9 @@ describe('Transformers.js service instance ownership', () => {
       expect(download.prepare).not.toHaveBeenCalled();
       await owner.service.loadDownloadedModel({ modelId: 'fixture/download' });
       expect(client.loadDownloadedModel).toHaveBeenLastCalledWith({
-        modelId: 'fixture/download', revisionSelection: { kind: 'discover-cached' }, progressCallback: expect.any(Function),
+        modelId: 'fixture/download',
+        revisionSelection: { kind: 'discover-cached' },
+        progressCallback: expect.any(Function),
       });
     } finally {
       releaseGeneration.resolve(); releaseDownload.resolve(); await Promise.allSettled(operations);
@@ -282,10 +290,13 @@ describe('Transformers.js service instance ownership', () => {
     const revision = 'a'.repeat(40);
     download.resolve.mockResolvedValue({ normalizedModelId: 'fixture/same', requestedRevision: 'main', resolvedRevision: revision });
     download.reuse.mockResolvedValue({
-      reused: true, loadRevision: revision,
+      reused: true,
+      loadRevision: revision,
       acceptance: {
-        status: 'accepted', selectedRevision: { revision, loaderRevisionOption: revision, source: 'current-resolved-revision' },
-        attempts: [], error: undefined,
+        status: 'accepted',
+        selectedRevision: { revision, loaderRevisionOption: revision, source: 'current-resolved-revision' },
+        attempts: [],
+        error: undefined,
       },
     });
     const firstClient = createClientFixture();
@@ -322,11 +333,13 @@ describe('Transformers.js service instance ownership', () => {
   it('preserves an accepted main hint as pinned undefined exactly once', async () => {
     download.resolve.mockResolvedValue({ normalizedModelId: 'fixture/main', requestedRevision: 'main', resolvedRevision: 'a'.repeat(40) });
     download.reuse.mockResolvedValue({
-      reused: true, loadRevision: undefined,
+      reused: true,
+      loadRevision: undefined,
       acceptance: {
         status: 'accepted',
         selectedRevision: { revision: 'main', loaderRevisionOption: undefined, source: 'legacy-main' },
-        attempts: [], error: undefined,
+        attempts: [],
+        error: undefined,
       },
     });
     const client = createClientFixture();

@@ -19,21 +19,25 @@ const projector = 'mmproj-Muse-Glimmer-30B-Q4_K_M.gguf';
 const local: LocalModel = { id: `hf.co/${muse.repository}:${encodeURIComponent(main)}`, name: `hf.co/${muse.repository}:KQuant-17GB-Q4_K_M`, size: 128, importedAt: 1 };
 const revision = 'a'.repeat(40);
 const wrappers: VueWrapper[] = [];
+
 function render({ models }: { models: LocalModel[] }): VueWrapper {
   const wrapper = mount(LlamaCppBrowserModelSuggestions, { props: { models, disabled: false, defaultModel: { endpoint: { type: 'llama_cpp_browser' }, modelId: undefined }, defaultActionDisabled: false } });
   wrappers.push(wrapper); return wrapper;
 }
+
 beforeEach(async () => {
   vi.resetAllMocks(); queueTest.reset(); metadataTest.reset();
   vi.mocked(installedSelection).mockResolvedValue(undefined);
   vi.mocked(discoverRepository).mockResolvedValue({ repository: muse.repository, revision, ...groupModelFiles({ files: [main, projector, 'dflash-Q4_K_M.gguf'].map(path => ({ path, size: 128 })) }) });
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(async () => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
   for (const job of getDownloadQueue().jobs.value) getDownloadQueue().cancel({ id: job.id });
   await flushPromises(); vi.useRealTimers();
 });
+
 describe('offline-first suggested model UI', () => {
   it('does not contact repositories on mount, expansion, filtering, details or multimodal toggles', async () => {
     const wrapper = render({ models: [] }); await flushPromises();
@@ -51,6 +55,7 @@ describe('offline-first suggested model UI', () => {
     expect(discoverRepository).not.toHaveBeenCalled(); expect(downloadRepository).not.toHaveBeenCalled();
     expect(wrapper.get('[data-testid="llama-suggestions-find-more"]').attributes('href')).toBe('https://huggingface.co/models?library=gguf');
   });
+
   it('starts open for new and returning users without letting local updates override manual folding', async () => {
     const wrapper = render({ models: [] });
     const toggle = wrapper.get('[data-testid="llama-suggestions-toggle"]');
@@ -72,6 +77,7 @@ describe('offline-first suggested model UI', () => {
     expect(content.attributes('inert')).toBeUndefined();
     expect(discoverRepository).not.toHaveBeenCalled();
   });
+
   it('keeps details next to options, uniquely labelled, initially inert and separate from the repository action', async () => {
     const wrapper = render({ models: [] }); await flushPromises();
     const toggles = wrapper.findAll('[data-testid="llama-suggestion-details-toggle"]');
@@ -100,6 +106,7 @@ describe('offline-first suggested model UI', () => {
     expect(discoverRepository).not.toHaveBeenCalled();
     expect(downloadRepository).not.toHaveBeenCalled();
   });
+
   it.each([
     { locale: 'en', title: 'Model catalog', more: 'Browse more models', contents: 'Download contents', check: 'Check contents' },
     { locale: 'ja', title: 'モデルカタログ', more: 'ほかのモデルを探す', contents: 'ダウンロード内容', check: '内容を確認' },
@@ -123,6 +130,7 @@ describe('offline-first suggested model UI', () => {
     expect(toolbar.get('[data-testid="llama-suggestion-check"]').text()).toBe(check);
     expect(discoverRepository).not.toHaveBeenCalled();
   });
+
   it('shows a pinned file plan only after explicit inspection and recalculates multimodal locally', async () => {
     const wrapper = render({ models: [] }); await flushPromises();
     const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
@@ -147,6 +155,7 @@ describe('offline-first suggested model UI', () => {
     expect(discoverRepository).toHaveBeenCalledOnce();
     expect(vi.mocked(downloadRepository).mock.calls[0]?.[0].selection.files.map(file => file.path)).toEqual([main, projector]);
   });
+
   it('downloads with one click, defaults to text-only, keeps other rows queueable and cancels waiting work', async () => {
     const gate = Promise.withResolvers<void>();
     vi.mocked(downloadRepository).mockImplementationOnce(async ({ signal, onProgress }) => {
@@ -167,6 +176,7 @@ describe('offline-first suggested model UI', () => {
     gate.resolve(); await flushPromises();
     expect(downloadRepository).toHaveBeenCalledOnce();
   });
+
   it('keeps the active request alive across unmount and remount without re-inspecting', async () => {
     const gate = Promise.withResolvers<void>(); let signal: AbortSignal | undefined;
     vi.mocked(downloadRepository).mockImplementationOnce(async request => {
@@ -181,6 +191,7 @@ describe('offline-first suggested model UI', () => {
     expect(discoverRepository).toHaveBeenCalledOnce();
     gate.resolve(); await flushPromises();
   });
+
   it('uses exact local quantization state and changes the action instead of re-downloading', async () => {
     const wrapper = render({ models: [local] }); await flushPromises();
     const row = wrapper.get('[data-testid="llama-suggestion-muse-glimmer-30b"]');
@@ -196,12 +207,12 @@ describe('offline-first suggested model UI', () => {
   });
 });
 
-
 describe('the original catalog reused for audio', () => {
   function audioCatalog(): VueWrapper {
     const view = mount(LlamaCppBrowserModelSuggestions, { props: { models: [], disabled: false, defaultModel: undefined, defaultActionDisabled: false, suggestions: audioModelCatalog, selectionAction: 'select', memoryFilter: 'hide' } });
     wrappers.push(view); return view;
   }
+
   it('uses the existing disclosure and never fetches on mount, folding, details or quantization changes', async () => {
     const view = audioCatalog(); await flushPromises();
     expect(view.findAll('[data-testid="llama-suggestion-heading"]')).toHaveLength(2);
@@ -214,6 +225,7 @@ describe('the original catalog reused for audio', () => {
     expect(view.findAll('[role="switch"]')).toHaveLength(0);
     expect(view.findAll('[data-testid="llama-suggestion-companion-required"]')).toHaveLength(2);
   });
+
   it('selects a locally installed audio model without changing the chat default or contacting its repository', async () => {
     const hint = audioModelCatalog[0]!.quantizationHints[0];
     const saved: LocalModel = { id: `hf.co/${hint.repository}:Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf`, name: 'Saved voice', size: 128, importedAt: 1 };
@@ -228,6 +240,7 @@ describe('the original catalog reused for audio', () => {
     expect(view.emitted('selectDefault')).toBeUndefined();
     expect(discoverRepository).not.toHaveBeenCalled(); expect(downloadRepository).not.toHaveBeenCalled();
   });
+
   it('resolves the main model and required companion only after a user download action', async () => {
     const quant = audioModelCatalog[0]!.quantizationHints[0];
     vi.mocked(discoverRepository).mockResolvedValue({ repository: quant.repository, revision, ...groupModelFiles({ files: ['Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-Q8_0.gguf'].map(path => ({ path, size: 128 })) }) });
@@ -236,6 +249,7 @@ describe('the original catalog reused for audio', () => {
     await vi.waitFor(() => expect(downloadRepository).toHaveBeenCalledOnce());
     expect(vi.mocked(downloadRepository).mock.calls[0]![0].selection.files.map(file => file.path)).toEqual(['Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-Q8_0.gguf']);
   });
+
   it('does not start a main-only download if the required companion cannot be found', async () => {
     const quant = audioModelCatalog[0]!.quantizationHints[0];
     vi.mocked(discoverRepository).mockResolvedValue({ repository: quant.repository, revision, ...groupModelFiles({ files: [{ path: 'Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', size: 128 }] }) });

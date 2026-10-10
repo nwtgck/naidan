@@ -81,10 +81,13 @@ describe('wesh shuf', () => {
   it('prints help and rejects invalid options', async () => {
     const help = await execute({ script: 'shuf --help' });
     const invalid = await execute({ script: 'shuf -x' });
-    const extra = await execute({ script: 'shuf - -', stdinText: `\
+    const extra = await execute({
+      script: 'shuf - -',
+      stdinText: `\
 one
 two
-` });
+`,
+    });
 
     expect(help.stdout.text).toContain('Randomly shuffle lines');
     expect(help.stdout.text).toContain('usage: shuf [OPTION]... [FILE]');
@@ -314,7 +317,6 @@ blue
     expect(result.exitCode).toBe(1);
   });
 
-
   it('accepts only leading C-locale whitespace in head counts', async () => {
     for (const whitespace of [' ', '\t', '\n', '\v', '\f', '\r']) {
       const execution = await execute({
@@ -336,7 +338,6 @@ blue
       expect(execution.result.exitCode).toBe(1);
     }
   });
-
 
   it('accepts explicit positive signs and arbitrarily large head counts', async () => {
     for (const operand of ['+1', '18446744073709551616']) {
@@ -383,5 +384,4 @@ blue
     expect(invalidFirst.result.exitCode).not.toBe(0);
     expect(invalidFirst.stderr.text).not.toBe('');
   });
-
 });

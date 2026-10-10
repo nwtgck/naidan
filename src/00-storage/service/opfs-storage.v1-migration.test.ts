@@ -10,10 +10,13 @@ import { OPFSStorageProvider } from './opfs-storage';
 // --- Exhaustive Mocks for OPFS ---
 class MockFileSystemFileHandle {
   kind = 'file' as const;
+
   constructor(public name: string, private blob: Blob = new Blob()) {}
+
   async getFile() {
     return this.blob;
   }
+
   createWritable() {
     return Promise.resolve({
       write: async (data: any) => {
@@ -306,15 +309,22 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     await cw.write(JSON.stringify({
       root: {
         items: [{
-          id: MSG_ID_1, role: 'user', content: 'C1',
+          id: MSG_ID_1,
+          role: 'user',
+          content: 'C1',
           attachments: [{ id: VALID_UUID_1, originalName: 'img1.png', status: 'persisted', mimeType: 'image/png', size: 2, uploadedAt: 0 }],
           timestamp: 100,
           replies: {
             items: [{
-              id: MSG_ID_2, role: 'assistant', content: 'R1', timestamp: 110,
+              id: MSG_ID_2,
+              role: 'assistant',
+              content: 'R1',
+              timestamp: 110,
               replies: {
                 items: [{
-                  id: MSG_ID_3, role: 'user', content: 'Deep',
+                  id: MSG_ID_3,
+                  role: 'user',
+                  content: 'Deep',
                   attachments: [{ id: VALID_UUID_2, originalName: 'img2.png', status: 'persisted', mimeType: 'image/png', size: 2, uploadedAt: 0 }],
                   timestamp: 120,
                   replies: { items: [] },
@@ -498,7 +508,6 @@ describe('OPFSStorageProvider - Migration Logic', () => {
           parts: [
             { type: 'text', text: 'txt' },
             {
-
               type: 'attachment',
               attachment: {
                 id: VALID_UUID_1,
@@ -618,5 +627,4 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     expect(await (await unknown.getFile()).text()).toBe('KEEP');
     expect(dir.entries.has('migration-state.json')).toBe(false);
   });
-
 });

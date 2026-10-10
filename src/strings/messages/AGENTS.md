@@ -11,6 +11,14 @@ and properties accessed after `lazyStrings.` or `ensureStrings.` must match exac
 Every message directory must be registered in every locale catalog. Application
 code must not import locale catalogs or message implementation modules directly.
 
+## Catalog maintenance
+
+`npm run strings:catalogs` can regenerate all locale catalogs after adding,
+renaming, or removing message directories. `npm run strings:catalogs:check`
+compares without writing. Wording-only edits do not change catalogs. Supported
+locales come from `src/01-models/ui-locale.ts`; provide each locale's file before
+generation. See `scripts/README.md` for the workflow and validation boundary.
+
 ## Scope ownership
 
 Choose the smallest stable unit that would be removed together. If removing a

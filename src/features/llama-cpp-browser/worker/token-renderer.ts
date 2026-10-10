@@ -17,8 +17,17 @@ export function createTokenRenderer({ core, vocab, cacheMode }: {
 }) {
   const decoder = new TextDecoder();
   const entries = new Map<number, { bytes: Uint8Array, endOfGeneration: boolean }>();
-  const counters = { cacheHits: 0, cacheMisses: 0, eogCalls: 0, pieceCalls: 0,
-    evictions: 0, oversizedPieces: 0, peakEntries: 0, peakCachedBytes: 0, allocationFallbacks: 0 };
+  const counters = {
+    cacheHits: 0,
+    cacheMisses: 0,
+    eogCalls: 0,
+    pieceCalls: 0,
+    evictions: 0,
+    oversizedPieces: 0,
+    peakEntries: 0,
+    peakCachedBytes: 0,
+    allocationFallbacks: 0,
+  };
   let cachedBytes = 0;
   let cacheState: 'active' | 'allocation-failed' = 'active';
   let scratch: bigint | undefined;
@@ -134,6 +143,7 @@ export function createTokenRenderer({ core, vocab, cacheMode }: {
     },
   };
 }
+
 export const TEST_ONLY = {
   maximumEntries,
   maximumCachedBytes,

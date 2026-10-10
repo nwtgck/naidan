@@ -15,29 +15,45 @@ import { assertStructuredReplayInputCompatibility, validateStructuredPartsContra
 const digest = z.string().regex(/^[a-f0-9]{64}$/u);
 const token = z.string().regex(/^(?:0|[1-9][0-9]*)$/u).max(20);
 const tensorSchema = z.object({
-  dtype: z.enum(['int64', 'float32']), dims: z.array(z.number().int().nonnegative()).max(8),
-  byteLength: z.number().int().nonnegative().max(16 * 1024 * 1024), sha256: digest,
+  dtype: z.enum(['int64', 'float32']),
+  dims: z.array(z.number().int().nonnegative()).max(8),
+  byteLength: z.number().int().nonnegative().max(16 * 1024 * 1024),
+  sha256: digest,
 }).strict();
-const inputSchema = z.object({ name: z.string(), value: z.discriminatedUnion('kind', [
-  tensorSchema.extend({ kind: z.literal('tensor') }),
-  z.object({ kind: z.literal('scalar'), value: z.array(z.number()) }).strict(),
-  z.object({ kind: z.literal('image-sizes'), value: z.array(z.tuple([z.number(), z.number()])) }).strict(),
-]) }).strict();
+const inputSchema = z.object({
+  name: z.string(),
+  value: z.discriminatedUnion('kind', [
+    tensorSchema.extend({ kind: z.literal('tensor') }),
+    z.object({ kind: z.literal('scalar'), value: z.array(z.number()) }).strict(),
+    z.object({ kind: z.literal('image-sizes'), value: z.array(z.tuple([z.number(), z.number()])) }).strict(),
+  ]),
+}).strict();
 const property = z.object({ status: z.literal('value'), value: z.union([z.number(), z.boolean()]) }).strict();
 const settingsSchema = z.object({
   requested: z.object({ maxCompletionTokens: property, temperature: property, topP: property }).strict(),
   kwargs: z.object({
     keys: z.object({ status: z.literal('complete'), totalCount: z.number().int(), values: z.array(z.string()), incompleteReasons: z.tuple([]) }).strict(),
-    maxNewTokens: property, temperature: property, topP: property, doSample: property, returnDictInGenerate: property,
+    maxNewTokens: property,
+    temperature: property,
+    topP: property,
+    doSample: property,
+    returnDictInGenerate: property,
   }).strict(),
-  budget: z.object({ source: z.literal('explicit'), pastTokenCount: z.number().int().nonnegative(),
-    maxNewTokens: z.number().int().positive(), contextLimit: z.number().int().positive(),
-    promptTokenCount: z.number().int().positive(), usedContextTokenCount: z.number().int().positive(),
+  budget: z.object({
+    source: z.literal('explicit'),
+    pastTokenCount: z.number().int().nonnegative(),
+    maxNewTokens: z.number().int().positive(),
+    contextLimit: z.number().int().positive(),
+    promptTokenCount: z.number().int().positive(),
+    usedContextTokenCount: z.number().int().positive(),
   }).strict(),
 }).strict();
 export const capturedInvocationSchema = z.object({
-  scenario: captureScenarioSchema, callOrdinal: z.number().int().positive(),
-  preInputs: z.array(inputSchema), inputs: z.array(inputSchema), settings: settingsSchema,
+  scenario: captureScenarioSchema,
+  callOrdinal: z.number().int().positive(),
+  preInputs: z.array(inputSchema),
+  inputs: z.array(inputSchema),
+  settings: settingsSchema,
   stream: z.array(z.discriminatedUnion('operation', [
     z.object({ operation: z.literal('put'), groups: z.array(z.array(token).max(65536)).max(8) }).strict(),
     z.object({ operation: z.literal('end') }).strict(),
@@ -47,8 +63,10 @@ export const capturedInvocationSchema = z.object({
 }).strict();
 const invocationSchema = capturedInvocationSchema;
 export const capturedFullEvidenceSchema = z.object({
-  format: z.literal('captured-production-full-replay-v1'), modelId: z.string(),
-  metadataRevision: z.string().regex(/^[a-f0-9]{40}$/u), observedCacheRevision: z.string(),
+  format: z.literal('captured-production-full-replay-v1'),
+  modelId: z.string(),
+  metadataRevision: z.string().regex(/^[a-f0-9]{40}$/u),
+  observedCacheRevision: z.string(),
   loadReceipt: productionLoadReceiptSchema,
   localMetadataPaths: z.array(z.string()),
   sourceDigests: z.object({ native: digest, provider: digest, inventory: digest }).strict(),
@@ -68,11 +86,13 @@ type Invocation = z.infer<typeof invocationSchema>;
 function hash({ bytes }: { bytes: Uint8Array }): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
+
 function exact({ label, actual, expected }: { label: string; actual: unknown; expected: unknown }) {
   if (!isDeepStrictEqual(actual, expected)) throw new Error(`Captured Full causal mismatch: ${label}`);
 }
 
 const controlKeys = new Set(['past_key_values', 'max_new_tokens', 'temperature', 'top_p', 'do_sample', 'streamer', 'stopping_criteria', 'return_dict_in_generate']);
+
 function verifyInvocationEvidence({ invocation }: { invocation: Invocation }) {
   const keys = invocation.settings.kwargs.keys.values;
   for (const names of [keys, invocation.inputs.map(input => input.name), invocation.preInputs.map(input => input.name)]) {
@@ -135,21 +155,17 @@ export type OwnedReplayCacheControl = {
 };
 
 /** Zero-cache inference boundary; existing callers cannot silently acquire KV. */
-export function replayCapturedFullInvocation({ ...args }: InvocationReplayArguments): CapturedReplayResult {
+export function replayCapturedFullInvocation({ ...args }: { invocation: InvocationReplayArguments['invocation'], options: InvocationReplayArguments['options'], runtime: InvocationReplayArguments['runtime'], modelConfig: InvocationReplayArguments['modelConfig'], parameters: InvocationReplayArguments['parameters'] }): CapturedReplayResult {
   return replayCapturedInvocation({ ...args, cacheControl: undefined });
 }
 
 /** Explicit full-prefix, synthetic-cache boundary for recorded continuation. */
-export function replayCapturedFullInvocationWithOwnedCache({ cacheControl, ...args }: InvocationReplayArguments & {
-  cacheControl: OwnedReplayCacheControl;
-}): CapturedReplayResult {
+export function replayCapturedFullInvocationWithOwnedCache({ cacheControl, ...args }: { cacheControl: OwnedReplayCacheControl, invocation: InvocationReplayArguments['invocation'], options: InvocationReplayArguments['options'], runtime: InvocationReplayArguments['runtime'], modelConfig: InvocationReplayArguments['modelConfig'], parameters: InvocationReplayArguments['parameters'] }): CapturedReplayResult {
   return replayCapturedInvocation({ ...args, cacheControl });
 }
 
 /** Native inference replacement only; no output is released before all gates. */
-function replayCapturedInvocation({ invocation, options, runtime, modelConfig, parameters, cacheControl }: InvocationReplayArguments & {
-  cacheControl: OwnedReplayCacheControl | undefined;
-}): CapturedReplayResult {
+function replayCapturedInvocation({ invocation, options, runtime, modelConfig, parameters, cacheControl }: { invocation: InvocationReplayArguments['invocation'], options: InvocationReplayArguments['options'], runtime: InvocationReplayArguments['runtime'], modelConfig: InvocationReplayArguments['modelConfig'], parameters: InvocationReplayArguments['parameters'], cacheControl: OwnedReplayCacheControl | undefined }): CapturedReplayResult {
   const checked = invocationSchema.parse(invocation);
   verifyInvocationEvidence({ invocation: checked });
   const label = `${checked.scenario}/call-${checked.callOrdinal}`;
@@ -168,8 +184,11 @@ function replayCapturedInvocation({ invocation, options, runtime, modelConfig, p
     default: { const exhaustive: never = input.value; throw new Error(String(exhaustive)); }
     }
   }
-  exact({ label: `${label}/sampling`, actual: [options.max_new_tokens, options.temperature, options.top_p, options.do_sample, options.return_dict_in_generate],
-    expected: [checked.settings.kwargs.maxNewTokens.value, checked.settings.kwargs.temperature.value, checked.settings.kwargs.topP.value, checked.settings.kwargs.doSample.value, checked.settings.kwargs.returnDictInGenerate.value] });
+  exact({
+    label: `${label}/sampling`,
+    actual: [options.max_new_tokens, options.temperature, options.top_p, options.do_sample, options.return_dict_in_generate],
+    expected: [checked.settings.kwargs.maxNewTokens.value, checked.settings.kwargs.temperature.value, checked.settings.kwargs.topP.value, checked.settings.kwargs.doSample.value, checked.settings.kwargs.returnDictInGenerate.value],
+  });
   let pastTokenCount = 0;
   if (cacheControl === undefined) {
     exact({ label: `${label}/past-token-count`, actual: checked.settings.budget.pastTokenCount, expected: 0 });
@@ -187,19 +206,34 @@ function replayCapturedInvocation({ invocation, options, runtime, modelConfig, p
     exact({ label: `${label}/recorded past-token-count`, actual: checked.settings.budget.pastTokenCount, expected: pastTokenCount });
   }
   const requested = z.object({ maxCompletionTokens: z.number().int().positive(), temperature: z.number(), topP: z.number() }).parse(parameters);
-  exact({ label: `${label}/requested parameters`, actual: checked.settings.requested, expected: {
-    maxCompletionTokens: { status: 'value', value: requested.maxCompletionTokens }, temperature: { status: 'value', value: requested.temperature }, topP: { status: 'value', value: requested.topP },
-  } });
+  exact({
+    label: `${label}/requested parameters`,
+    actual: checked.settings.requested,
+    expected: {
+      maxCompletionTokens: { status: 'value', value: requested.maxCompletionTokens },
+      temperature: { status: 'value', value: requested.temperature },
+      topP: { status: 'value', value: requested.topP },
+    },
+  });
   const config = z.object({ is_encoder_decoder: z.boolean().optional(), max_position_embeddings: z.number().int().positive().optional(), text_config: z.object({ max_position_embeddings: z.number().int().positive().optional() }).optional() }).parse(modelConfig);
   if (config.is_encoder_decoder === true) throw new Error('Encoder-decoder replay requires an explicit budget lane');
   const contextLimit = config.max_position_embeddings ?? config.text_config?.max_position_embeddings;
   if (contextLimit === undefined || !(options.input_ids instanceof runtime.Tensor)) throw new Error('Missing actual replay context');
   const promptTokenCount = options.input_ids.dims.at(-1)!;
-  exact({ label: `${label}/independent budget`, actual: checked.settings.budget, expected: {
-    // Actual full input already contains the previous sequence. Adding cache
-    // length again would double-count context; it is not a suffix-only input.
-    source: 'explicit', pastTokenCount, maxNewTokens: Math.min(requested.maxCompletionTokens, contextLimit - promptTokenCount), contextLimit, promptTokenCount, usedContextTokenCount: promptTokenCount,
-  } });
+  exact({
+    label: `${label}/independent budget`,
+    actual: checked.settings.budget,
+    expected: {
+      // Actual full input already contains the previous sequence. Adding cache
+      // length again would double-count context; it is not a suffix-only input.
+      source: 'explicit',
+      pastTokenCount,
+      maxNewTokens: Math.min(requested.maxCompletionTokens, contextLimit - promptTokenCount),
+      contextLimit,
+      promptTokenCount,
+      usedContextTokenCount: promptTokenCount,
+    },
+  });
   exact({ label: `${label}/sampling derivation`, actual: [options.max_new_tokens, options.temperature, options.top_p, options.do_sample], expected: [checked.settings.budget.maxNewTokens, requested.temperature, requested.topP, requested.temperature > 0] });
   const first = checked.stream[0];
   if (first === undefined) throw new Error('Missing prompt stream');
@@ -222,6 +256,7 @@ function replayCapturedInvocation({ invocation, options, runtime, modelConfig, p
 function jsonProjection({ value }: { value: unknown }) {
   return JSON.parse(JSON.stringify(value, (_key, child: unknown) => child === undefined ? null : child)) as unknown;
 }
+
 function providerEvents({ events }: { events: readonly ProductionProviderTraceEvent[] }) {
   const ids = new Map<string, string>();
   return events.map(event => {
@@ -293,7 +328,7 @@ type ReplayOutputGap = {
   scenario: z.infer<typeof captureScenarioSchema>;
   requestInput: unknown;
   expectedEventsBeforeGap: readonly unknown[];
-  verifyInput: ({ options, runtime, model, tokenizer }: Parameters<ProviderReplayGenerate>[0]) => void;
+  verifyInput: ({ options, runtime, model, tokenizer }: { options: Parameters<ProviderReplayGenerate>[0]['options'], runtime: Parameters<ProviderReplayGenerate>[0]['runtime'], model: Parameters<ProviderReplayGenerate>[0]['model'], tokenizer: Parameters<ProviderReplayGenerate>[0]['tokenizer'] }) => void;
 };
 
 /** Reviewed current public contracts are not mutations of historical capture. */
@@ -387,8 +422,12 @@ function validateReviewedProviderContract({ evidence, reviewedPublicContract, or
     }
     preNativeRejections.add(rejection.scenario);
   }
-  return { correctedEvents, correctedFinalizedStreams, preNativeRejections,
-    gaps: [...originalGaps, ...invalidated].sort((left, right) => left.callOrdinal - right.callOrdinal) };
+  return {
+    correctedEvents,
+    correctedFinalizedStreams,
+    preNativeRejections,
+    gaps: [...originalGaps, ...invalidated].sort((left, right) => left.callOrdinal - right.callOrdinal),
+  };
 }
 
 function verifyFinalizedCorrectionsUsed({ expected, used }: { expected: readonly number[]; used: readonly number[] }) {
@@ -412,7 +451,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
   evidence: unknown; artifactPaths: readonly string[];
   imagePlatform: Parameters<typeof createProviderReplayTestRuntime>[0]['imagePlatform'];
   unavailableOutputs: readonly ReplayOutputGap[];
-  completeResult: (({ options, runtime, model, tokenizer, callOrdinal, result }: Parameters<ProviderReplayGenerate>[0] & { callOrdinal: number; result: ReturnType<typeof replayCapturedFullInvocation> }) => Awaited<ReturnType<ProviderReplayGenerate>>) | undefined;
+  completeResult: (({ options, runtime, model, tokenizer, callOrdinal, result }: { options: Parameters<ProviderReplayGenerate>[0]['options'], runtime: Parameters<ProviderReplayGenerate>[0]['runtime'], model: Parameters<ProviderReplayGenerate>[0]['model'], tokenizer: Parameters<ProviderReplayGenerate>[0]['tokenizer'], callOrdinal: number, result: ReturnType<typeof replayCapturedFullInvocation> }) => Awaited<ReturnType<ProviderReplayGenerate>>) | undefined;
   expectedLoadReceipt: z.infer<typeof productionLoadReceiptSchema> | undefined;
   reviewedPublicContract: ReviewedProviderReplayContract | undefined;
 }) {
@@ -443,7 +482,11 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
   const verifiedGaps: number[] = [];
   const gapFailures: string[] = [];
   const harness = await createProviderReplayTestRuntime({
-    modelId: evidence.modelId, expectedRevision: evidence.metadataRevision, cacheRevision: evidence.observedCacheRevision, metadataCache: evidence.localMetadataPaths, imagePlatform,
+    modelId: evidence.modelId,
+    expectedRevision: evidence.metadataRevision,
+    cacheRevision: evidence.observedCacheRevision,
+    metadataCache: evidence.localMetadataPaths,
+    imagePlatform,
     artifacts: artifactPaths.map(path => ({ path, bytes: createSyntheticModelBody({ modelId: evidence.modelId, revision: evidence.metadataRevision, path }) })),
     generate: async ({ options, runtime, model, tokenizer }) => {
       const args = { options, runtime, model, tokenizer };
@@ -489,8 +532,12 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       if (singleTextParts !== undefined) {
         expect(projectSingleTextReplayInput({ input: comparableInput, precedingEvents: precedingSettledEvents }), `${invocation.scenario}/request before stream release`).toEqual(recorded.input);
       } else if (structuredParts !== undefined) {
-        assertStructuredReplayInputCompatibility({ input: comparableInput, recordedInput: recorded.input, precedingEvents: precedingSettledEvents,
-          expectedLegacyAssistant: structuredParts.legacyInputProjections?.find(item => item.scenario === invocation.scenario)?.assistant });
+        assertStructuredReplayInputCompatibility({
+          input: comparableInput,
+          recordedInput: recorded.input,
+          precedingEvents: precedingSettledEvents,
+          expectedLegacyAssistant: structuredParts.legacyInputProjections?.find(item => item.scenario === invocation.scenario)?.assistant,
+        });
       } else {
         expect(comparableInput, `${invocation.scenario}/request before stream release`).toEqual(recorded.input);
       }
@@ -517,13 +564,27 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
   const { createTransformersJsGenerationCaptureClient } = await import('@/features/transformers-js/worker/client');
   const takes: Array<ReturnType<typeof vi.fn<() => Promise<unknown>>>> = [];
   const owner = createProductionProviderGenerationCaptureOwner({
-    runId: 'captured-full-replay', modelId: evidence.modelId, plan: 'full-v2',
-    traceLimits: { maximumEvents: 1024, maximumCharacters: 65536 }, maximumWorkerEpochs: 8,
+    runId: 'captured-full-replay',
+    modelId: evidence.modelId,
+    plan: 'full-v2',
+    traceLimits: { maximumEvents: 1024, maximumCharacters: 65536 },
+    maximumWorkerEpochs: 8,
     createCaptureClient: ({ runId, workerEpoch, getActiveRequest }) => {
-      const capture = createTransformersJsGenerationCaptureClient({ runId, workerEpoch, getActiveRequest,
-        limits: { maxCalls: 32, maxInvocationsPerCall: 8, maxEvents: 4096, maxTextBytes: 262144,
-          maxTensorBytes: 16777216, maxTotalTensorBytes: 67108864, maxTokensPerStreamEvent: 65536,
-          maxTotalStreamTokens: 262144, maxTotalStreamTokenBytes: 8388608 },
+      const capture = createTransformersJsGenerationCaptureClient({
+        runId,
+        workerEpoch,
+        getActiveRequest,
+        limits: {
+          maxCalls: 32,
+          maxInvocationsPerCall: 8,
+          maxEvents: 4096,
+          maxTextBytes: 262144,
+          maxTensorBytes: 16777216,
+          maxTotalTensorBytes: 67108864,
+          maxTokensPerStreamEvent: 65536,
+          maxTotalStreamTokens: 262144,
+          maxTotalStreamTokenBytes: 8388608,
+        },
       });
       const take = vi.fn(capture.takeGenerationCapture); takes.push(take);
       return { ...capture, takeGenerationCapture: take };
@@ -570,7 +631,9 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
           expect(comparableInput, `${request.scenario}/unchanged rejected input`).toEqual(recorded.input);
         } else {
           assertStructuredReplayInputCompatibility({
-            input: comparableInput, recordedInput: recorded.input, precedingEvents,
+            input: comparableInput,
+            recordedInput: recorded.input,
+            precedingEvents,
             expectedLegacyAssistant: structuredParts.legacyInputProjections?.find(item => item.scenario === request.scenario)?.assistant,
           });
         }
@@ -623,8 +686,12 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
       if (singleTextParts !== undefined) {
         expect(projectSingleTextReplayInput({ input: comparableInput, precedingEvents }), `${request.scenario}/Provider input`).toEqual(recorded.input);
       } else if (structuredParts !== undefined) {
-        assertStructuredReplayInputCompatibility({ input: comparableInput, recordedInput: recorded.input, precedingEvents,
-          expectedLegacyAssistant: structuredParts.legacyInputProjections?.find(item => item.scenario === request.scenario)?.assistant });
+        assertStructuredReplayInputCompatibility({
+          input: comparableInput,
+          recordedInput: recorded.input,
+          precedingEvents,
+          expectedLegacyAssistant: structuredParts.legacyInputProjections?.find(item => item.scenario === request.scenario)?.assistant,
+        });
       } else {
         expect(comparableInput, `${request.scenario}/Provider input`).toEqual(recorded.input);
       }
@@ -637,8 +704,12 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
         expect(invocations, 'single-text request has exactly one native invocation').toHaveLength(1);
         const invocation = invocations[0]!;
         const events = capture.events.filter(event => event.identity.generationCallId === captureOrdinals.get(invocation.callOrdinal));
-        verifySingleTextPartsObservation({ recordedEvents: recorded.events, invocation, contract: singleTextParts,
-          observedEvents: request.trace.settled!.events, finalized: readCapturedFinalized({ events, label: request.scenario }),
+        verifySingleTextPartsObservation({
+          recordedEvents: recorded.events,
+          invocation,
+          contract: singleTextParts,
+          observedEvents: request.trace.settled!.events,
+          finalized: readCapturedFinalized({ events, label: request.scenario }),
         });
         precedingEvents = request.trace.settled!.events;
       } else {
@@ -671,9 +742,13 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
     const availablePaths = new Set([...evidence.localMetadataPaths, ...artifactPaths]);
     const expectedReceipt = expectedLoadReceipt ?? evidence.loadReceipt;
     expect(expectedReceipt.plannedRequiredPaths.every(path => availablePaths.has(path))).toBe(true);
-    expect(load.outcome.receipt, `actual bounded Load receipt: ${JSON.stringify(load.outcome.receipt)}`).toEqual({ ...expectedReceipt, cacheLookup: {
-      ...expectedReceipt.cacheLookup, hitPaths: expectedReceipt.cacheLookup.hitPaths.filter(path => availablePaths.has(path)),
-    } });
+    expect(load.outcome.receipt, `actual bounded Load receipt: ${JSON.stringify(load.outcome.receipt)}`).toEqual({
+      ...expectedReceipt,
+      cacheLookup: {
+        ...expectedReceipt.cacheLookup,
+        hitPaths: expectedReceipt.cacheLookup.hitPaths.filter(path => availablePaths.has(path)),
+      },
+    });
     expect(capture.incompleteReasons).toEqual([]);
     expect(capture.calls).toHaveLength(expectedCallCount + preNativeRejections.size);
     for (const gap of unavailableOutputs) {

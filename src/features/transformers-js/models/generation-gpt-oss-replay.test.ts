@@ -5,6 +5,7 @@ import type { PreTrainedModel, PreTrainedTokenizer, TextStreamer } from '@huggin
 import { archiveFor, installRawReplay, start } from '@/features/transformers-js/replay-models/support/model-runtime-input-harness';
 
 installRawReplay({ evidence: undefined });
+
 afterEach(() => {
   vi.doUnmock('@huggingface/transformers');
 });
@@ -18,7 +19,9 @@ describe('GPT-OSS Production generation replay', () => {
     vi.doMock('@huggingface/transformers', () => harness.runtime);
     const { selectGenerationStrategy } = await import('@/features/transformers-js/generation-strategies');
     const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(modelId, {
-      revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined,
+      revision: archive.summary.revision,
+      local_files_only: true,
+      progress_callback: () => undefined,
     }) as unknown as PreTrainedTokenizer;
     // Only generated token IDs from MSI's fixed synthetic prompt are replayed.
     // No user conversation, weights, GPU result, or private ZIP is needed in CI.
@@ -42,15 +45,24 @@ describe('GPT-OSS Production generation replay', () => {
       model: { config: { model_type: 'gpt_oss' }, generate } as unknown as PreTrainedModel,
       tokenizer,
       messages: [{ role: 'user', content: 'Template probe user message.' }],
-      onChunk: ({ chunk }) => chunks.push(chunk), onRawChunk: () => {}, onToolCalls: () => {},
-      params: undefined, tools: undefined,
+      onChunk: ({ chunk }) => chunks.push(chunk),
+      onRawChunk: () => {},
+      onToolCalls: () => {},
+      params: undefined,
+      tools: undefined,
       runtimeState: {
-        activeModelId: modelId, gemma4Processor: null, qwen3_5Processor: null,
-        gptOssPastKeyValues: undefined, qwen3_5ConversationState: undefined,
-        generationStateOwner: {}, qwen3_5SequenceCache: undefined,
+        activeModelId: modelId,
+        gemma4Processor: null,
+        qwen3_5Processor: null,
+        gptOssPastKeyValues: undefined,
+        qwen3_5ConversationState: undefined,
+        generationStateOwner: {},
+        qwen3_5SequenceCache: undefined,
       },
       stoppingCriteria: { reset: () => {}, interrupt: () => {} },
-      debugLog: () => {}, observationSink: undefined, generationCapture: undefined,
+      debugLog: () => {},
+      observationSink: undefined,
+      generationCapture: undefined,
     });
     expect(chunks.join('')).toBe('<think>The user says "Template probe user message." This seems like a');
     expect(generate).toHaveBeenCalledOnce();

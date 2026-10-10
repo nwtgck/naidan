@@ -1,3 +1,6 @@
+// Generated from src/strings/messages/ and src/01-models/ui-locale.ts.
+// Run `npm run strings:catalogs` to regenerate; `npm run strings:catalogs:check` to compare.
+
 // SHARED__ keys intentionally couple every call site to one product-wide copy decision.
 // Do not use this scope for deduplication or unclear ownership; follow messages/AGENTS.md.
 import { SHARED__all_chats } from '@/strings/messages/SHARED__all_chats/es';
@@ -20,355 +23,6 @@ import { SHARED__unsupported_experimental_endpoint } from '@/strings/messages/SH
 import { SHARED__uses_a_language_model_provided_and_managed_by_the_browser } from '@/strings/messages/SHARED__uses_a_language_model_provided_and_managed_by_the_browser/es';
 import { SHARED__visibility } from '@/strings/messages/SHARED__visibility/es';
 import { SHARED__writable_tmp_is_available_with_opfs_storage } from '@/strings/messages/SHARED__writable_tmp_is_available_with_opfs_storage/es';
-import { imageGeneration__session_deletion_pending } from '@/strings/messages/imageGeneration__session_deletion_pending/es';
-import { imageGeneration__session_unavailable } from '@/strings/messages/imageGeneration__session_unavailable/es';
-import { imageGeneration__finish_session_work_before_deleting } from '@/strings/messages/imageGeneration__finish_session_work_before_deleting/es';
-import { imageGeneration__show_connected_chat } from '@/strings/messages/imageGeneration__show_connected_chat/es';
-import { imageGeneration__delete_session } from '@/strings/messages/imageGeneration__delete_session/es';
-import { imageGeneration__view_translation } from '@/strings/messages/imageGeneration__view_translation/es';
-import { imageGeneration__translation_priority } from '@/strings/messages/imageGeneration__translation_priority/es';
-import { imageGeneration__translation_profile } from '@/strings/messages/imageGeneration__translation_profile/es';
-import { imageGeneration__translation_inherit } from '@/strings/messages/imageGeneration__translation_inherit/es';
-import { imageGeneration__translation_endpoint } from '@/strings/messages/imageGeneration__translation_endpoint/es';
-import { imageGeneration__translation_model } from '@/strings/messages/imageGeneration__translation_model/es';
-import { imageGeneration__translation_headers } from '@/strings/messages/imageGeneration__translation_headers/es';
-import { imageGeneration__translation_header_name } from '@/strings/messages/imageGeneration__translation_header_name/es';
-import { imageGeneration__translation_header_value } from '@/strings/messages/imageGeneration__translation_header_value/es';
-import { imageGeneration__translation_add_header } from '@/strings/messages/imageGeneration__translation_add_header/es';
-import { imageGeneration__translation_remove_header } from '@/strings/messages/imageGeneration__translation_remove_header/es';
-import { imageGeneration__translation_effective } from '@/strings/messages/imageGeneration__translation_effective/es';
-import { imageGeneration__translation_save_settings } from '@/strings/messages/imageGeneration__translation_save_settings/es';
-import { imageGeneration__translation_reset } from '@/strings/messages/imageGeneration__translation_reset/es';
-import { imageGeneration__translation_settings_not_saved } from '@/strings/messages/imageGeneration__translation_settings_not_saved/es';
-import { imageGeneration__translation_read_only } from '@/strings/messages/imageGeneration__translation_read_only/es';
-import { imageGeneration__translation_source_text } from '@/strings/messages/imageGeneration__translation_source_text/es';
-import { imageGeneration__translation_language } from '@/strings/messages/imageGeneration__translation_language/es';
-import { imageGeneration__translation_start } from '@/strings/messages/imageGeneration__translation_start/es';
-import { imageGeneration__translation_running } from '@/strings/messages/imageGeneration__translation_running/es';
-import { imageGeneration__translation_result } from '@/strings/messages/imageGeneration__translation_result/es';
-import { imageGeneration__translation_copy } from '@/strings/messages/imageGeneration__translation_copy/es';
-import { imageGeneration__translation_choose_model } from '@/strings/messages/imageGeneration__translation_choose_model/es';
-import { imageGeneration__translation_session_settings } from '@/strings/messages/imageGeneration__translation_session_settings/es';
-import { imageGeneration__translation_default_settings } from '@/strings/messages/imageGeneration__translation_default_settings/es';
-import { imageGeneration__translation_defaults_help } from '@/strings/messages/imageGeneration__translation_defaults_help/es';
-import { imageGeneration__translation_close } from '@/strings/messages/imageGeneration__translation_close/es';
-import { imageGeneration__translation_cancelled } from '@/strings/messages/imageGeneration__translation_cancelled/es';
-import { imageGeneration__delete_session_notice } from '@/strings/messages/imageGeneration__delete_session_notice/es';
-import { imageGeneration__add_tag } from '@/strings/messages/imageGeneration__add_tag/es';
-import { imageGeneration__manage_tags } from '@/strings/messages/imageGeneration__manage_tags/es';
-import { imageGeneration__notice_dismiss } from '@/strings/messages/imageGeneration__notice_dismiss/es';
-import { imageGeneration__notice_body } from '@/strings/messages/imageGeneration__notice_body/es';
-import { imageGeneration__notice_title } from '@/strings/messages/imageGeneration__notice_title/es';
-import { imageGeneration__copy_failed } from '@/strings/messages/imageGeneration__copy_failed/es';
-import { imageGeneration__copy_negative_prompt } from '@/strings/messages/imageGeneration__copy_negative_prompt/es';
-import { imageGeneration__float_chat } from '@/strings/messages/imageGeneration__float_chat/es';
-import { imageGeneration__dock_chat } from '@/strings/messages/imageGeneration__dock_chat/es';
-import { imageGeneration__chat_help } from '@/strings/messages/imageGeneration__chat_help/es';
-import { ImageInputControls__reading_clipboard } from '@/strings/messages/ImageInputControls__reading_clipboard/es';
-import { ImageInputControls__clipboard_no_image } from '@/strings/messages/ImageInputControls__clipboard_no_image/es';
-import { ImageInputControls__clipboard_failed } from '@/strings/messages/ImageInputControls__clipboard_failed/es';
-import { ImageInputControls__clipboard_unavailable } from '@/strings/messages/ImageInputControls__clipboard_unavailable/es';
-import { ImageInputControls__paste_help } from '@/strings/messages/ImageInputControls__paste_help/es';
-import { ImageInputControls__paste_image } from '@/strings/messages/ImageInputControls__paste_image/es';
-import { ImageGenerationViewer__details } from '@/strings/messages/ImageGenerationViewer__details/es';
-import { imageGeneration__action_applied } from '@/strings/messages/imageGeneration__action_applied/es';
-import { imageGeneration__generation_session } from '@/strings/messages/imageGeneration__generation_session/es';
-import { imageGeneration__choose_chat_help } from '@/strings/messages/imageGeneration__choose_chat_help/es';
-import { imageGeneration__close_chat } from '@/strings/messages/imageGeneration__close_chat/es';
-import { imageGeneration__open_assistant_chat } from '@/strings/messages/imageGeneration__open_assistant_chat/es';
-import { imageGeneration__export_cancelled } from '@/strings/messages/imageGeneration__export_cancelled/es';
-import { imageGeneration__next_unavailable } from '@/strings/messages/imageGeneration__next_unavailable/es';
-import { imageGeneration__saving_required } from '@/strings/messages/imageGeneration__saving_required/es';
-import { imageGeneration__more_execution } from '@/strings/messages/imageGeneration__more_execution/es';
-import { imageGeneration__interrupted } from '@/strings/messages/imageGeneration__interrupted/es';
-import { imageGeneration__failed } from '@/strings/messages/imageGeneration__failed/es';
-import { imageGeneration__cancelled } from '@/strings/messages/imageGeneration__cancelled/es';
-import { imageGeneration__completed } from '@/strings/messages/imageGeneration__completed/es';
-import { imageGeneration__running } from '@/strings/messages/imageGeneration__running/es';
-import { imageGeneration__queued } from '@/strings/messages/imageGeneration__queued/es';
-import { imageGeneration__run_status } from '@/strings/messages/imageGeneration__run_status/es';
-import { imageGeneration__next_image } from '@/strings/messages/imageGeneration__next_image/es';
-import { imageGeneration__previous_image } from '@/strings/messages/imageGeneration__previous_image/es';
-import { imageGeneration__compare_notice } from '@/strings/messages/imageGeneration__compare_notice/es';
-import { imageGeneration__compare_equal } from '@/strings/messages/imageGeneration__compare_equal/es';
-import { imageGeneration__run_empty } from '@/strings/messages/imageGeneration__run_empty/es';
-import { imageGeneration__loading } from '@/strings/messages/imageGeneration__loading/es';
-import { imageGeneration__editor } from '@/strings/messages/imageGeneration__editor/es';
-import { imageGeneration__review } from '@/strings/messages/imageGeneration__review/es';
-import { imageGeneration__name } from '@/strings/messages/imageGeneration__name/es';
-import { imageGeneration__new_session } from '@/strings/messages/imageGeneration__new_session/es';
-import { imageGeneration__sessions } from '@/strings/messages/imageGeneration__sessions/es';
-import { imageGeneration__back_to_chats } from '@/strings/messages/imageGeneration__back_to_chats/es';
-import { imageGeneration__rename_session } from '@/strings/messages/imageGeneration__rename_session/es';
-import { imageGeneration__no_sessions } from '@/strings/messages/imageGeneration__no_sessions/es';
-import { imageGeneration__empty_gallery } from '@/strings/messages/imageGeneration__empty_gallery/es';
-import { imageGeneration__storage_required } from '@/strings/messages/imageGeneration__storage_required/es';
-import { imageGeneration__images } from '@/strings/messages/imageGeneration__images/es';
-import { imageGeneration__runs } from '@/strings/messages/imageGeneration__runs/es';
-import { imageGeneration__gallery } from '@/strings/messages/imageGeneration__gallery/es';
-import { imageGeneration__compare } from '@/strings/messages/imageGeneration__compare/es';
-import { imageGeneration__favorite } from '@/strings/messages/imageGeneration__favorite/es';
-import { imageGeneration__tags } from '@/strings/messages/imageGeneration__tags/es';
-import { imageGeneration__new_tag } from '@/strings/messages/imageGeneration__new_tag/es';
-import { imageGeneration__rename_tag } from '@/strings/messages/imageGeneration__rename_tag/es';
-import { imageGeneration__tag_rules } from '@/strings/messages/imageGeneration__tag_rules/es';
-import { imageGeneration__all_tags } from '@/strings/messages/imageGeneration__all_tags/es';
-import { imageGeneration__search_images } from '@/strings/messages/imageGeneration__search_images/es';
-import { imageGeneration__load_more } from '@/strings/messages/imageGeneration__load_more/es';
-import { imageGeneration__inspect } from '@/strings/messages/imageGeneration__inspect/es';
-import { imageGeneration__select_compare } from '@/strings/messages/imageGeneration__select_compare/es';
-import { imageGeneration__compare_help } from '@/strings/messages/imageGeneration__compare_help/es';
-import { imageGeneration__reuse_settings } from '@/strings/messages/imageGeneration__reuse_settings/es';
-import { imageGeneration__reuse_prompt } from '@/strings/messages/imageGeneration__reuse_prompt/es';
-import { imageGeneration__initial_image } from '@/strings/messages/imageGeneration__initial_image/es';
-import { imageGeneration__reference_image } from '@/strings/messages/imageGeneration__reference_image/es';
-import { imageGeneration__close_details } from '@/strings/messages/imageGeneration__close_details/es';
-import { imageGeneration__execution } from '@/strings/messages/imageGeneration__execution/es';
-import { imageGeneration__save_retry } from '@/strings/messages/imageGeneration__save_retry/es';
-import { imageGeneration__pending_save } from '@/strings/messages/imageGeneration__pending_save/es';
-import { imageGeneration__draft_saved } from '@/strings/messages/imageGeneration__draft_saved/es';
-import { imageGeneration__draft_dirty } from '@/strings/messages/imageGeneration__draft_dirty/es';
-import { imageGeneration__draft_saving } from '@/strings/messages/imageGeneration__draft_saving/es';
-import { imageGeneration__draft_failed } from '@/strings/messages/imageGeneration__draft_failed/es';
-import { imageGeneration__viewing_other } from '@/strings/messages/imageGeneration__viewing_other/es';
-import { imageGeneration__create_chat_in_group } from '@/strings/messages/imageGeneration__create_chat_in_group/es';
-import { imageGeneration__delete_images_notice } from '@/strings/messages/imageGeneration__delete_images_notice/es';
-import { imageGeneration__batch_failed } from '@/strings/messages/imageGeneration__batch_failed/es';
-import { imageGeneration__selected_images } from '@/strings/messages/imageGeneration__selected_images/es';
-import { imageGeneration__archive } from '@/strings/messages/imageGeneration__archive/es';
-import { imageGeneration__restore } from '@/strings/messages/imageGeneration__restore/es';
-import { imageGeneration__active_images } from '@/strings/messages/imageGeneration__active_images/es';
-import { imageGeneration__archived_images } from '@/strings/messages/imageGeneration__archived_images/es';
-import { imageGeneration__all_images } from '@/strings/messages/imageGeneration__all_images/es';
-import { imageGeneration__archive_run } from '@/strings/messages/imageGeneration__archive_run/es';
-import { imageGeneration__restore_run } from '@/strings/messages/imageGeneration__restore_run/es';
-import { imageGeneration__delete_images } from '@/strings/messages/imageGeneration__delete_images/es';
-import { imageGeneration__select_image } from '@/strings/messages/imageGeneration__select_image/es';
-import { imageGeneration__select_loaded } from '@/strings/messages/imageGeneration__select_loaded/es';
-import { imageGeneration__pending_deletions } from '@/strings/messages/imageGeneration__pending_deletions/es';
-import { imageGeneration__retry_deletions } from '@/strings/messages/imageGeneration__retry_deletions/es';
-import { imageGeneration__unfavorite } from '@/strings/messages/imageGeneration__unfavorite/es';
-import { imageGeneration__search_chats } from '@/strings/messages/imageGeneration__search_chats/es';
-import { imageGeneration__create_and_connect_chat } from '@/strings/messages/imageGeneration__create_and_connect_chat/es';
-import { imageGeneration__change_chat } from '@/strings/messages/imageGeneration__change_chat/es';
-import { imageGeneration__copy_prompt } from '@/strings/messages/imageGeneration__copy_prompt/es';
-import { imageGeneration__copy_settings } from '@/strings/messages/imageGeneration__copy_settings/es';
-import { imageGeneration__copied } from '@/strings/messages/imageGeneration__copied/es';
-import { imageGeneration__preview_empty } from '@/strings/messages/imageGeneration__preview_empty/es';
-import { imageGeneration__newest_first } from '@/strings/messages/imageGeneration__newest_first/es';
-import { imageGeneration__archive_help } from '@/strings/messages/imageGeneration__archive_help/es';
-import { imageGeneration__remove_tag } from '@/strings/messages/imageGeneration__remove_tag/es';
-import { imageGeneration__assistant } from '@/strings/messages/imageGeneration__assistant/es';
-import { imageGeneration__attach_chat } from '@/strings/messages/imageGeneration__attach_chat/es';
-import { imageGeneration__no_chat } from '@/strings/messages/imageGeneration__no_chat/es';
-import { imageGeneration__open_chat } from '@/strings/messages/imageGeneration__open_chat/es';
-import { imageGeneration__detach } from '@/strings/messages/imageGeneration__detach/es';
-import { imageGeneration__assistant_help } from '@/strings/messages/imageGeneration__assistant_help/es';
-import { imageGeneration__assistant_privacy } from '@/strings/messages/imageGeneration__assistant_privacy/es';
-import { imageGeneration__prompt_edit } from '@/strings/messages/imageGeneration__prompt_edit/es';
-import { imageGeneration__before } from '@/strings/messages/imageGeneration__before/es';
-import { imageGeneration__after } from '@/strings/messages/imageGeneration__after/es';
-import { imageGeneration__leave_warning } from '@/strings/messages/imageGeneration__leave_warning/es';
-import { imageGeneration__export_session } from '@/strings/messages/imageGeneration__export_session/es';
-import { imageGeneration__exporting } from '@/strings/messages/imageGeneration__exporting/es';
-import { imageGeneration__interrupted_help } from '@/strings/messages/imageGeneration__interrupted_help/es';
-import { imageGeneration__clear_selection } from '@/strings/messages/imageGeneration__clear_selection/es';
-import { imageGeneration__refresh } from '@/strings/messages/imageGeneration__refresh/es';
-import { imageGeneration__rename } from '@/strings/messages/imageGeneration__rename/es';
-import { imageGeneration__apply_tag } from '@/strings/messages/imageGeneration__apply_tag/es';
-import { imageGeneration__count_help } from '@/strings/messages/imageGeneration__count_help/es';
-import { imageGeneration__actual_seed } from '@/strings/messages/imageGeneration__actual_seed/es';
-import { imageGeneration__parameters } from '@/strings/messages/imageGeneration__parameters/es';
-import { imageGeneration__lineage } from '@/strings/messages/imageGeneration__lineage/es';
-import { imageGeneration__no_chat_choices } from '@/strings/messages/imageGeneration__no_chat_choices/es';
-import { imageGeneration__export_notice } from '@/strings/messages/imageGeneration__export_notice/es';
-import { imageGeneration__capture_for_assistant } from '@/strings/messages/imageGeneration__capture_for_assistant/es';
-import { ChatPaneHeader__model_and_chat_settings } from '@/strings/messages/ChatPaneHeader__model_and_chat_settings/es';
-import { LlamaCppBrowserDownloadSources__copy_failed } from '@/strings/messages/LlamaCppBrowserDownloadSources__copy_failed/es';
-import { LlamaCppBrowserDownloadSources__url_copied } from '@/strings/messages/LlamaCppBrowserDownloadSources__url_copied/es';
-import { LlamaCppBrowserDownloadSources__copy_url } from '@/strings/messages/LlamaCppBrowserDownloadSources__copy_url/es';
-import { LlamaCppBrowserDownloadSources__current_file } from '@/strings/messages/LlamaCppBrowserDownloadSources__current_file/es';
-import { LlamaCppBrowserDownloadSources__revision } from '@/strings/messages/LlamaCppBrowserDownloadSources__revision/es';
-import { LlamaCppBrowserDownloadSources__request_urls_help } from '@/strings/messages/LlamaCppBrowserDownloadSources__request_urls_help/es';
-import { LlamaCppBrowserDownloadSources__files_and_sources } from '@/strings/messages/LlamaCppBrowserDownloadSources__files_and_sources/es';
-import { LlamaCppBrowserModelLaunch__initializing_runtime_and_context } from '@/strings/messages/LlamaCppBrowserModelLaunch__initializing_runtime_and_context/es';
-import { LlamaCppBrowserModelLaunch__loading_model_weights } from '@/strings/messages/LlamaCppBrowserModelLaunch__loading_model_weights/es';
-import { LlamaCppBrowserModelLaunch__loading_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__loading_model/es';
-import { LlamaCppBrowserModelLaunch__restoring_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__restoring_model/es';
-import { LlamaCppBrowserModelLaunch__checking_local_files } from '@/strings/messages/LlamaCppBrowserModelLaunch__checking_local_files/es';
-import { LlamaCppBrowserModelLaunch__opening_chat } from '@/strings/messages/LlamaCppBrowserModelLaunch__opening_chat/es';
-import { LlamaCppBrowserModelLaunchPrivacy__tools_and_other_connections } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__tools_and_other_connections/es';
-import { LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded/es';
-import { LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server/es';
-import { LlamaCppBrowserModelLaunchPrivacy__runs_on_your_device } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__runs_on_your_device/es';
-import { LlamaCppBrowserModelLaunch__prepare_on_send } from '@/strings/messages/LlamaCppBrowserModelLaunch__prepare_on_send/es';
-import { LlamaCppBrowserModelLaunch__runs_privately_in_your_browser } from '@/strings/messages/LlamaCppBrowserModelLaunch__runs_privately_in_your_browser/es';
-import { LlamaCppBrowserModelLaunch__checking_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__checking_model/es';
-import { LlamaCppBrowserModelLaunch__model_link_could_not_be_opened } from '@/strings/messages/LlamaCppBrowserModelLaunch__model_link_could_not_be_opened/es';
-import { LlamaCppBrowserModelLaunch__variant_not_found } from '@/strings/messages/LlamaCppBrowserModelLaunch__variant_not_found/es';
-import { LlamaCppBrowserModelLaunch__companion_needs_selection } from '@/strings/messages/LlamaCppBrowserModelLaunch__companion_needs_selection/es';
-import { LlamaCppBrowserModelLaunch__start_with_this_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__start_with_this_model/es';
-import { LlamaCppBrowserModelLaunch__quantization } from '@/strings/messages/LlamaCppBrowserModelLaunch__quantization/es';
-import { LlamaCppBrowserModelLaunch__refresh_choices } from '@/strings/messages/LlamaCppBrowserModelLaunch__refresh_choices/es';
-import { LlamaCppBrowserModelLaunch__retry } from '@/strings/messages/LlamaCppBrowserModelLaunch__retry/es';
-import { LlamaCppBrowserModelLaunch__ready_when_you_are } from '@/strings/messages/LlamaCppBrowserModelLaunch__ready_when_you_are/es';
-import { LlamaCppBrowserModelLaunch__no_installation_or_environment_setup } from '@/strings/messages/LlamaCppBrowserModelLaunch__no_installation_or_environment_setup/es';
-import { LlamaCppBrowserModelLaunch__use_selected_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__use_selected_model/es';
-import { LlamaCppBrowserModelLaunch__could_not_prepare_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__could_not_prepare_model/es';
-import { LlamaCppBrowserModelLaunch__global_defaults_not_saved } from '@/strings/messages/LlamaCppBrowserModelLaunch__global_defaults_not_saved/es';
-import { LlamaCppBrowserModelLaunch__chat_settings_changed } from '@/strings/messages/LlamaCppBrowserModelLaunch__chat_settings_changed/es';
-import { LlamaCppBrowserModelLaunch__unavailable_here } from '@/strings/messages/LlamaCppBrowserModelLaunch__unavailable_here/es';
-import { LlamaCppBrowserModelLaunch__model_not_ready } from '@/strings/messages/LlamaCppBrowserModelLaunch__model_not_ready/es';
-import { ImageEngineState__engine_busy_until_idle } from '@/strings/messages/ImageEngineState__engine_busy_until_idle/es';
-import { ImageEngineState__runtime_buffer_reports_may_be_missing } from '@/strings/messages/ImageEngineState__runtime_buffer_reports_may_be_missing/es';
-import { ImageEngineState__engine_state } from '@/strings/messages/ImageEngineState__engine_state/es';
-import { ImageEngineState__refresh_state } from '@/strings/messages/ImageEngineState__refresh_state/es';
-import { ImageEngineState__refreshing } from '@/strings/messages/ImageEngineState__refreshing/es';
-import { ImageEngineState__unknown_model } from '@/strings/messages/ImageEngineState__unknown_model/es';
-import { ImageEngineState__unavailable } from '@/strings/messages/ImageEngineState__unavailable/es';
-import { ImageEngineState__released } from '@/strings/messages/ImageEngineState__released/es';
-import { ImageEngineState__no_model_loaded } from '@/strings/messages/ImageEngineState__no_model_loaded/es';
-import { ImageEngineState__not_observed_yet } from '@/strings/messages/ImageEngineState__not_observed_yet/es';
-import { ImageEngineState__could_not_read_state } from '@/strings/messages/ImageEngineState__could_not_read_state/es';
-import { ImageEngineState__runtime_and_model } from '@/strings/messages/ImageEngineState__runtime_and_model/es';
-import { ImageEngineState__memory_observations } from '@/strings/messages/ImageEngineState__memory_observations/es';
-import { ImageEngineState__memory_values_are_not_total_gpu_memory } from '@/strings/messages/ImageEngineState__memory_values_are_not_total_gpu_memory/es';
-import { ImageEngineState__some_counters_saturated } from '@/strings/messages/ImageEngineState__some_counters_saturated/es';
-import { ImageEngineState__observed_at } from '@/strings/messages/ImageEngineState__observed_at/es';
-import { ImageEngineState__busy_during_generation } from '@/strings/messages/ImageEngineState__busy_during_generation/es';
-import { ImageEngineState__detail_label } from '@/strings/messages/ImageEngineState__detail_label/es';
-import { ImageEngineState__memory_label } from '@/strings/messages/ImageEngineState__memory_label/es';
-import { ImageModelPicker__choose_a_model } from '@/strings/messages/ImageModelPicker__choose_a_model/es';
-import { ImageModelPicker__search_choices } from '@/strings/messages/ImageModelPicker__search_choices/es';
-import { ImageGenerationResults__images_kept_on_screen } from '@/strings/messages/ImageGenerationResults__images_kept_on_screen/es';
-import { ImageGenerationResults__display_settings } from '@/strings/messages/ImageGenerationResults__display_settings/es';
-import { ImageGenerationEditor__custom_size } from '@/strings/messages/ImageGenerationEditor__custom_size/es';
-import { ImageDownloadMenu__downloaded_copy_only } from '@/strings/messages/ImageDownloadMenu__downloaded_copy_only/es';
-import { ImageDownloadMenu__include_generation_settings } from '@/strings/messages/ImageDownloadMenu__include_generation_settings/es';
-import { ImageDownloadMenu__image_format } from '@/strings/messages/ImageDownloadMenu__image_format/es';
-import { ImageDownloadMenu__download_options } from '@/strings/messages/ImageDownloadMenu__download_options/es';
-import { ImageDownloadMenu__download } from '@/strings/messages/ImageDownloadMenu__download/es';
-import { stableDiffusionCppBrowser__preview_mode_locked } from '@/strings/messages/stableDiffusionCppBrowser__preview_mode_locked/es';
-import { stableDiffusionCppBrowser__preset_unknown } from '@/strings/messages/stableDiffusionCppBrowser__preset_unknown/es';
-import { stableDiffusionCppBrowser__qwen_preset_policy } from '@/strings/messages/stableDiffusionCppBrowser__qwen_preset_policy/es';
-import { stableDiffusionCppBrowser__preset_policy } from '@/strings/messages/stableDiffusionCppBrowser__preset_policy/es';
-import { stableDiffusionCppBrowser__preset_sources } from '@/strings/messages/stableDiffusionCppBrowser__preset_sources/es';
-import { stableDiffusionCppBrowser__cancel_wait_help } from '@/strings/messages/stableDiffusionCppBrowser__cancel_wait_help/es';
-import { stableDiffusionCppBrowser__stopping_retained } from '@/strings/messages/stableDiffusionCppBrowser__stopping_retained/es';
-import { stableDiffusionCppBrowser__force_stop } from '@/strings/messages/stableDiffusionCppBrowser__force_stop/es';
-import { stableDiffusionCppBrowser__listing_repositories } from '@/strings/messages/stableDiffusionCppBrowser__listing_repositories/es';
-import { stableDiffusionCppBrowser__apply_recommended_settings } from '@/strings/messages/stableDiffusionCppBrowser__apply_recommended_settings/es';
-import { stableDiffusionCppBrowser__generation_time } from '@/strings/messages/stableDiffusionCppBrowser__generation_time/es';
-import { stableDiffusionCppBrowser__preview_after_step } from '@/strings/messages/stableDiffusionCppBrowser__preview_after_step/es';
-import { stableDiffusionCppBrowser__preview_start_step } from '@/strings/messages/stableDiffusionCppBrowser__preview_start_step/es';
-import { stableDiffusionCppBrowser__recommended_preview_summary } from '@/strings/messages/stableDiffusionCppBrowser__recommended_preview_summary/es';
-import { stableDiffusionCppBrowser__recommended_settings } from '@/strings/messages/stableDiffusionCppBrowser__recommended_settings/es';
-import { stableDiffusionCppBrowser__gallery_budget } from '@/strings/messages/stableDiffusionCppBrowser__gallery_budget/es';
-import { stableDiffusionCppBrowser__uniform_image_warning } from '@/strings/messages/stableDiffusionCppBrowser__uniform_image_warning/es';
-import { stableDiffusionCppBrowser__qwen_vae_help } from '@/strings/messages/stableDiffusionCppBrowser__qwen_vae_help/es';
-import { stableDiffusionCppBrowser__qwen_vae_bounded } from '@/strings/messages/stableDiffusionCppBrowser__qwen_vae_bounded/es';
-import { stableDiffusionCppBrowser__preview_empty } from '@/strings/messages/stableDiffusionCppBrowser__preview_empty/es';
-import { stableDiffusionCppBrowser__preview_help } from '@/strings/messages/stableDiffusionCppBrowser__preview_help/es';
-import { stableDiffusionCppBrowser__clear_results } from '@/strings/messages/stableDiffusionCppBrowser__clear_results/es';
-import { stableDiffusionCppBrowser__clear_previews } from '@/strings/messages/stableDiffusionCppBrowser__clear_previews/es';
-import { stableDiffusionCppBrowser__result_limit } from '@/strings/messages/stableDiffusionCppBrowser__result_limit/es';
-import { stableDiffusionCppBrowser__preview_limit } from '@/strings/messages/stableDiffusionCppBrowser__preview_limit/es';
-import { stableDiffusionCppBrowser__keep_previews } from '@/strings/messages/stableDiffusionCppBrowser__keep_previews/es';
-import { stableDiffusionCppBrowser__preview_original } from '@/strings/messages/stableDiffusionCppBrowser__preview_original/es';
-import { stableDiffusionCppBrowser__preview_max_edge } from '@/strings/messages/stableDiffusionCppBrowser__preview_max_edge/es';
-import { stableDiffusionCppBrowser__preview_interval } from '@/strings/messages/stableDiffusionCppBrowser__preview_interval/es';
-import { stableDiffusionCppBrowser__preview_vae } from '@/strings/messages/stableDiffusionCppBrowser__preview_vae/es';
-import { stableDiffusionCppBrowser__preview_projection } from '@/strings/messages/stableDiffusionCppBrowser__preview_projection/es';
-import { stableDiffusionCppBrowser__preview_mode } from '@/strings/messages/stableDiffusionCppBrowser__preview_mode/es';
-import { stableDiffusionCppBrowser__preview_enabled } from '@/strings/messages/stableDiffusionCppBrowser__preview_enabled/es';
-import { stableDiffusionCppBrowser__preview_title } from '@/strings/messages/stableDiffusionCppBrowser__preview_title/es';
-import { stableDiffusionCppBrowser__release_model } from '@/strings/messages/stableDiffusionCppBrowser__release_model/es';
-import { stableDiffusionCppBrowser__model_resident } from '@/strings/messages/stableDiffusionCppBrowser__model_resident/es';
-import { stableDiffusionCppBrowser__keep_model_loaded } from '@/strings/messages/stableDiffusionCppBrowser__keep_model_loaded/es';
-import { stableDiffusionCppBrowser__file_count } from '@/strings/messages/stableDiffusionCppBrowser__file_count/es';
-import { stableDiffusionCppBrowser__files_available } from '@/strings/messages/stableDiffusionCppBrowser__files_available/es';
-import { stableDiffusionCppBrowser__selected } from '@/strings/messages/stableDiffusionCppBrowser__selected/es';
-import { stableDiffusionCppBrowser__downloaded_but_incomplete } from '@/strings/messages/stableDiffusionCppBrowser__downloaded_but_incomplete/es';
-import { stableDiffusionCppBrowser__import_models } from '@/strings/messages/stableDiffusionCppBrowser__import_models/es';
-import { stableDiffusionCppBrowser__debug_help } from '@/strings/messages/stableDiffusionCppBrowser__debug_help/es';
-import { stableDiffusionCppBrowser__logs_copy_failed } from '@/strings/messages/stableDiffusionCppBrowser__logs_copy_failed/es';
-import { stableDiffusionCppBrowser__logs_copied } from '@/strings/messages/stableDiffusionCppBrowser__logs_copied/es';
-import { stableDiffusionCppBrowser__show_logs } from '@/strings/messages/stableDiffusionCppBrowser__show_logs/es';
-import { stableDiffusionCppBrowser__save_logs } from '@/strings/messages/stableDiffusionCppBrowser__save_logs/es';
-import { stableDiffusionCppBrowser__copy_logs } from '@/strings/messages/stableDiffusionCppBrowser__copy_logs/es';
-import { stableDiffusionCppBrowser__debug_mode } from '@/strings/messages/stableDiffusionCppBrowser__debug_mode/es';
-import { stableDiffusionCppBrowser__download_failed } from '@/strings/messages/stableDiffusionCppBrowser__download_failed/es';
-import { stableDiffusionCppBrowser__download_cancelled } from '@/strings/messages/stableDiffusionCppBrowser__download_cancelled/es';
-import { stableDiffusionCppBrowser__download_complete } from '@/strings/messages/stableDiffusionCppBrowser__download_complete/es';
-import { stableDiffusionCppBrowser__downloading_selected } from '@/strings/messages/stableDiffusionCppBrowser__downloading_selected/es';
-import { stableDiffusionCppBrowser__select_saved_recipe } from '@/strings/messages/stableDiffusionCppBrowser__select_saved_recipe/es';
-import { stableDiffusionCppBrowser__download_and_select } from '@/strings/messages/stableDiffusionCppBrowser__download_and_select/es';
-import { stableDiffusionCppBrowser__runtime_settings } from '@/strings/messages/stableDiffusionCppBrowser__runtime_settings/es';
-import { stableDiffusionCppBrowser__selected_model } from '@/strings/messages/stableDiffusionCppBrowser__selected_model/es';
-import { stableDiffusionCppBrowser__add_models } from '@/strings/messages/stableDiffusionCppBrowser__add_models/es';
-import { audioGeneration__preview_result } from '@/strings/messages/audioGeneration__preview_result/es';
-import { audioGeneration__preview_help } from '@/strings/messages/audioGeneration__preview_help/es';
-import { audioGeneration__preview_pending } from '@/strings/messages/audioGeneration__preview_pending/es';
-import { audioGeneration__capture_preview } from '@/strings/messages/audioGeneration__capture_preview/es';
-import { audioGeneration__captured_steps } from '@/strings/messages/audioGeneration__captured_steps/es';
-import { llamaCppBrowserDownloads__required_companion_included } from '@/strings/messages/llamaCppBrowserDownloads__required_companion_included/es';
-import { llamaCppBrowserDownloads__use_this_model } from '@/strings/messages/llamaCppBrowserDownloads__use_this_model/es';
-import { audioGeneration__invalid_top_p } from '@/strings/messages/audioGeneration__invalid_top_p/es';
-import { audioGeneration__number_range } from '@/strings/messages/audioGeneration__number_range/es';
-import { audioGeneration__integer_range } from '@/strings/messages/audioGeneration__integer_range/es';
-import { audioGeneration__invalid_text } from '@/strings/messages/audioGeneration__invalid_text/es';
-import { audioGeneration__context_help } from '@/strings/messages/audioGeneration__context_help/es';
-import { LlamaCppBrowserModelRecovery__manage_models } from '@/strings/messages/LlamaCppBrowserModelRecovery__manage_models/es';
-import { LlamaCppBrowserModelRecovery__check_again } from '@/strings/messages/LlamaCppBrowserModelRecovery__check_again/es';
-import { LlamaCppBrowserModelRecovery__could_not_prepare_download } from '@/strings/messages/LlamaCppBrowserModelRecovery__could_not_prepare_download/es';
-import { LlamaCppBrowserModelRecovery__add_original_model_files } from '@/strings/messages/LlamaCppBrowserModelRecovery__add_original_model_files/es';
-import { LlamaCppBrowserModelRecovery__review_download } from '@/strings/messages/LlamaCppBrowserModelRecovery__review_download/es';
-import { LlamaCppBrowserModelRecovery__download } from '@/strings/messages/LlamaCppBrowserModelRecovery__download/es';
-import { LlamaCppBrowserModelRecovery__keep_your_draft_while_preparing } from '@/strings/messages/LlamaCppBrowserModelRecovery__keep_your_draft_while_preparing/es';
-import { LlamaCppBrowserModelRecovery__model_not_in_this_browser } from '@/strings/messages/LlamaCppBrowserModelRecovery__model_not_in_this_browser/es';
-import { LlamaCppBrowserModelRecovery__could_not_check_model_storage } from '@/strings/messages/LlamaCppBrowserModelRecovery__could_not_check_model_storage/es';
-import { LlamaCppBrowserModelLaunchPrivacy__model_files_from_hugging_face } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__model_files_from_hugging_face/es';
-import { LlamaCppBrowserModelLaunchPrivacy__no_apps_or_servers } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__no_apps_or_servers/es';
-import { LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser/es';
-
-import { llamaCppBrowserDownloads__find_more } from '@/strings/messages/llamaCppBrowserDownloads__find_more/es';
-import { llamaCppBrowserDownloads__active_downloads } from '@/strings/messages/llamaCppBrowserDownloads__active_downloads/es';
-import { llamaCppBrowserDownloads__model_catalog } from '@/strings/messages/llamaCppBrowserDownloads__model_catalog/es';
-import { llamaCppBrowserDownloads__download_contents } from '@/strings/messages/llamaCppBrowserDownloads__download_contents/es';
-import { llamaCppBrowserDownloads__all } from '@/strings/messages/llamaCppBrowserDownloads__all/es';
-import { llamaCppBrowserDownloads__approximately_size } from '@/strings/messages/llamaCppBrowserDownloads__approximately_size/es';
-import { llamaCppBrowserDownloads__change_default_model } from '@/strings/messages/llamaCppBrowserDownloads__change_default_model/es';
-import { llamaCppBrowserDownloads__check_download_contents } from '@/strings/messages/llamaCppBrowserDownloads__check_download_contents/es';
-import { llamaCppBrowserDownloads__checking_hugging_face } from '@/strings/messages/llamaCppBrowserDownloads__checking_hugging_face/es';
-import { llamaCppBrowserDownloads__clear_search } from '@/strings/messages/llamaCppBrowserDownloads__clear_search/es';
-import { llamaCppBrowserDownloads__default_model } from '@/strings/messages/llamaCppBrowserDownloads__default_model/es';
-import { llamaCppBrowserDownloads__details } from '@/strings/messages/llamaCppBrowserDownloads__details/es';
-import { llamaCppBrowserDownloads__download } from '@/strings/messages/llamaCppBrowserDownloads__download/es';
-import { llamaCppBrowserDownloads__endpoint_type } from '@/strings/messages/llamaCppBrowserDownloads__endpoint_type/es';
-import { llamaCppBrowserDownloads__global_settings_scope } from '@/strings/messages/llamaCppBrowserDownloads__global_settings_scope/es';
-import { llamaCppBrowserDownloads__in_use } from '@/strings/messages/llamaCppBrowserDownloads__in_use/es';
-import { llamaCppBrowserDownloads__memory } from '@/strings/messages/llamaCppBrowserDownloads__memory/es';
-import { llamaCppBrowserDownloads__no_matching_models } from '@/strings/messages/llamaCppBrowserDownloads__no_matching_models/es';
-import { llamaCppBrowserDownloads__not_set } from '@/strings/messages/llamaCppBrowserDownloads__not_set/es';
-import { llamaCppBrowserDownloads__pause } from '@/strings/messages/llamaCppBrowserDownloads__pause/es';
-import { llamaCppBrowserDownloads__paused } from '@/strings/messages/llamaCppBrowserDownloads__paused/es';
-import { llamaCppBrowserDownloads__pausing } from '@/strings/messages/llamaCppBrowserDownloads__pausing/es';
-import { llamaCppBrowserDownloads__plan_needs_review } from '@/strings/messages/llamaCppBrowserDownloads__plan_needs_review/es';
-import { llamaCppBrowserDownloads__queue_position } from '@/strings/messages/llamaCppBrowserDownloads__queue_position/es';
-import { llamaCppBrowserDownloads__refresh_download_contents } from '@/strings/messages/llamaCppBrowserDownloads__refresh_download_contents/es';
-import { llamaCppBrowserDownloads__resume } from '@/strings/messages/llamaCppBrowserDownloads__resume/es';
-import { llamaCppBrowserDownloads__retry } from '@/strings/messages/llamaCppBrowserDownloads__retry/es';
-import { llamaCppBrowserDownloads__save_file_to_device } from '@/strings/messages/llamaCppBrowserDownloads__save_file_to_device/es';
-import { llamaCppBrowserDownloads__search_model_names } from '@/strings/messages/llamaCppBrowserDownloads__search_model_names/es';
-import { llamaCppBrowserDownloads__set_as_default } from '@/strings/messages/llamaCppBrowserDownloads__set_as_default/es';
-import { llamaCppBrowserDownloads__settings_changed_review_again } from '@/strings/messages/llamaCppBrowserDownloads__settings_changed_review_again/es';
-import { llamaCppBrowserDownloads__total } from '@/strings/messages/llamaCppBrowserDownloads__total/es';
-import { llamaCppBrowserDownloads__waiting } from '@/strings/messages/llamaCppBrowserDownloads__waiting/es';
-
-import { ChatPage__failed_to_load_chat } from '@/strings/messages/ChatPage__failed_to_load_chat/es';
-import { ChatPage__retry } from '@/strings/messages/ChatPage__retry/es';
-import { ChatPage__loading_chat } from '@/strings/messages/ChatPage__loading_chat/es';
-
 import { AboutTab__about_naidan } from '@/strings/messages/AboutTab__about_naidan/es';
 import { AboutTab__built_with_open_source_software } from '@/strings/messages/AboutTab__built_with_open_source_software/es';
 import { AboutTab__github_repository } from '@/strings/messages/AboutTab__github_repository/es';
@@ -451,9 +105,13 @@ import { ChatGroupSettingsPanel__disabled } from '@/strings/messages/ChatGroupSe
 import { ChatGroupSettingsPanel__enabled } from '@/strings/messages/ChatGroupSettingsPanel__enabled/es';
 import { ChatGroupSettingsPanel__endpoint_type } from '@/strings/messages/ChatGroupSettingsPanel__endpoint_type/es';
 import { ChatGroupSettingsPanel__endpoint_url } from '@/strings/messages/ChatGroupSettingsPanel__endpoint_url/es';
+import { ChatGroupSettingsPanel__enter_instructions_for_this_chat_group } from '@/strings/messages/ChatGroupSettingsPanel__enter_instructions_for_this_chat_group/es';
+import { ChatGroupSettingsPanel__enter_instructions_that_replace_the_parent_setting } from '@/strings/messages/ChatGroupSettingsPanel__enter_instructions_that_replace_the_parent_setting/es';
+import { ChatGroupSettingsPanel__enter_instructions_to_append } from '@/strings/messages/ChatGroupSettingsPanel__enter_instructions_to_append/es';
 import { ChatGroupSettingsPanel__failed_to_save_chat_group_settings } from '@/strings/messages/ChatGroupSettingsPanel__failed_to_save_chat_group_settings/es';
 import { ChatGroupSettingsPanel__files } from '@/strings/messages/ChatGroupSettingsPanel__files/es';
 import { ChatGroupSettingsPanel__folders } from '@/strings/messages/ChatGroupSettingsPanel__folders/es';
+import { ChatGroupSettingsPanel__global } from '@/strings/messages/ChatGroupSettingsPanel__global/es';
 import { ChatGroupSettingsPanel__global_default } from '@/strings/messages/ChatGroupSettingsPanel__global_default/es';
 import { ChatGroupSettingsPanel__global_endpoint_type } from '@/strings/messages/ChatGroupSettingsPanel__global_endpoint_type/es';
 import { ChatGroupSettingsPanel__global_model } from '@/strings/messages/ChatGroupSettingsPanel__global_model/es';
@@ -463,29 +121,19 @@ import { ChatGroupSettingsPanel__group_overrides } from '@/strings/messages/Chat
 import { ChatGroupSettingsPanel__group_settings_take_precedence_over_global_settings_but_can_be_overridden_by_individual_chats } from '@/strings/messages/ChatGroupSettingsPanel__group_settings_take_precedence_over_global_settings_but_can_be_overridden_by_individual_chats/es';
 import { ChatGroupSettingsPanel__group_settings_title } from '@/strings/messages/ChatGroupSettingsPanel__group_settings_title/es';
 import { ChatGroupSettingsPanel__group_system_prompt } from '@/strings/messages/ChatGroupSettingsPanel__group_system_prompt/es';
-import { ChatGroupSettingsPanel__global } from '@/strings/messages/ChatGroupSettingsPanel__global/es';
-import { ChatGroupSettingsPanel__no_prompt } from '@/strings/messages/ChatGroupSettingsPanel__no_prompt/es';
-import { ChatGroupSettingsPanel__system_prompt_global_set } from '@/strings/messages/ChatGroupSettingsPanel__system_prompt_global_set/es';
-import { ChatGroupSettingsPanel__system_prompt_global_not_set } from '@/strings/messages/ChatGroupSettingsPanel__system_prompt_global_not_set/es';
-import { ChatGroupSettingsPanel__system_prompt_no_prompt } from '@/strings/messages/ChatGroupSettingsPanel__system_prompt_no_prompt/es';
-import { ChatGroupSettingsPanel__instructions_for_this_chat_group } from '@/strings/messages/ChatGroupSettingsPanel__instructions_for_this_chat_group/es';
-import { ChatGroupSettingsPanel__instructions_to_append } from '@/strings/messages/ChatGroupSettingsPanel__instructions_to_append/es';
-import { ChatGroupSettingsPanel__start_typing_to_override } from '@/strings/messages/ChatGroupSettingsPanel__start_typing_to_override/es';
-import { ChatGroupSettingsPanel__enter_instructions_for_this_chat_group } from '@/strings/messages/ChatGroupSettingsPanel__enter_instructions_for_this_chat_group/es';
-import { ChatGroupSettingsPanel__start_typing_to_replace } from '@/strings/messages/ChatGroupSettingsPanel__start_typing_to_replace/es';
-import { ChatGroupSettingsPanel__replace } from '@/strings/messages/ChatGroupSettingsPanel__replace/es';
-import { ChatGroupSettingsPanel__enter_instructions_that_replace_the_parent_setting } from '@/strings/messages/ChatGroupSettingsPanel__enter_instructions_that_replace_the_parent_setting/es';
-import { ChatGroupSettingsPanel__enter_instructions_to_append } from '@/strings/messages/ChatGroupSettingsPanel__enter_instructions_to_append/es';
 import { ChatGroupSettingsPanel__inherit } from '@/strings/messages/ChatGroupSettingsPanel__inherit/es';
 import { ChatGroupSettingsPanel__inherit_global_settings_or_override_individual_tools_for_this_chat_group } from '@/strings/messages/ChatGroupSettingsPanel__inherit_global_settings_or_override_individual_tools_for_this_chat_group/es';
 import { ChatGroupSettingsPanel__inherited } from '@/strings/messages/ChatGroupSettingsPanel__inherited/es';
 import { ChatGroupSettingsPanel__inherited_instructions } from '@/strings/messages/ChatGroupSettingsPanel__inherited_instructions/es';
+import { ChatGroupSettingsPanel__instructions_for_this_chat_group } from '@/strings/messages/ChatGroupSettingsPanel__instructions_for_this_chat_group/es';
+import { ChatGroupSettingsPanel__instructions_to_append } from '@/strings/messages/ChatGroupSettingsPanel__instructions_to_append/es';
 import { ChatGroupSettingsPanel__load_from_saved_profiles } from '@/strings/messages/ChatGroupSettingsPanel__load_from_saved_profiles/es';
 import { ChatGroupSettingsPanel__local_overrides } from '@/strings/messages/ChatGroupSettingsPanel__local_overrides/es';
 import { ChatGroupSettingsPanel__model_id_override } from '@/strings/messages/ChatGroupSettingsPanel__model_id_override/es';
 import { ChatGroupSettingsPanel__name } from '@/strings/messages/ChatGroupSettingsPanel__name/es';
 import { ChatGroupSettingsPanel__no_custom_headers } from '@/strings/messages/ChatGroupSettingsPanel__no_custom_headers/es';
 import { ChatGroupSettingsPanel__no_global_instructions_defined } from '@/strings/messages/ChatGroupSettingsPanel__no_global_instructions_defined/es';
+import { ChatGroupSettingsPanel__no_prompt } from '@/strings/messages/ChatGroupSettingsPanel__no_prompt/es';
 import { ChatGroupSettingsPanel__none } from '@/strings/messages/ChatGroupSettingsPanel__none/es';
 import { ChatGroupSettingsPanel__ollama } from '@/strings/messages/ChatGroupSettingsPanel__ollama/es';
 import { ChatGroupSettingsPanel__openai_compatible } from '@/strings/messages/ChatGroupSettingsPanel__openai_compatible/es';
@@ -494,26 +142,32 @@ import { ChatGroupSettingsPanel__overriding } from '@/strings/messages/ChatGroup
 import { ChatGroupSettingsPanel__parameters } from '@/strings/messages/ChatGroupSettingsPanel__parameters/es';
 import { ChatGroupSettingsPanel__quick_endpoint_presets } from '@/strings/messages/ChatGroupSettingsPanel__quick_endpoint_presets/es';
 import { ChatGroupSettingsPanel__quick_profile_switcher } from '@/strings/messages/ChatGroupSettingsPanel__quick_profile_switcher/es';
+import { ChatGroupSettingsPanel__replace } from '@/strings/messages/ChatGroupSettingsPanel__replace/es';
 import { ChatGroupSettingsPanel__restore_defaults } from '@/strings/messages/ChatGroupSettingsPanel__restore_defaults/es';
+import { ChatGroupSettingsPanel__same_as_group_chat_endpoint } from '@/strings/messages/ChatGroupSettingsPanel__same_as_group_chat_endpoint/es';
 import { ChatGroupSettingsPanel__search_group } from '@/strings/messages/ChatGroupSettingsPanel__search_group/es';
 import { ChatGroupSettingsPanel__search_messages } from '@/strings/messages/ChatGroupSettingsPanel__search_messages/es';
 import { ChatGroupSettingsPanel__set_group_name } from '@/strings/messages/ChatGroupSettingsPanel__set_group_name/es';
 import { ChatGroupSettingsPanel__settings_resolution } from '@/strings/messages/ChatGroupSettingsPanel__settings_resolution/es';
 import { ChatGroupSettingsPanel__share_settings } from '@/strings/messages/ChatGroupSettingsPanel__share_settings/es';
+import { ChatGroupSettingsPanel__start_typing_to_override } from '@/strings/messages/ChatGroupSettingsPanel__start_typing_to_override/es';
+import { ChatGroupSettingsPanel__start_typing_to_replace } from '@/strings/messages/ChatGroupSettingsPanel__start_typing_to_replace/es';
 import { ChatGroupSettingsPanel__system_prompt } from '@/strings/messages/ChatGroupSettingsPanel__system_prompt/es';
+import { ChatGroupSettingsPanel__system_prompt_global_not_set } from '@/strings/messages/ChatGroupSettingsPanel__system_prompt_global_not_set/es';
+import { ChatGroupSettingsPanel__system_prompt_global_set } from '@/strings/messages/ChatGroupSettingsPanel__system_prompt_global_set/es';
+import { ChatGroupSettingsPanel__system_prompt_no_prompt } from '@/strings/messages/ChatGroupSettingsPanel__system_prompt_no_prompt/es';
 import { ChatGroupSettingsPanel__these_settings_only_apply_to_this_group } from '@/strings/messages/ChatGroupSettingsPanel__these_settings_only_apply_to_this_group/es';
 import { ChatGroupSettingsPanel__these_settings_will_apply_to_all_chats_within_this_group_unless_overridden_by_a_specific_chat } from '@/strings/messages/ChatGroupSettingsPanel__these_settings_will_apply_to_all_chats_within_this_group_unless_overridden_by_a_specific_chat/es';
 import { ChatGroupSettingsPanel__this_group_will_not_use_any_system_instructions } from '@/strings/messages/ChatGroupSettingsPanel__this_group_will_not_use_any_system_instructions/es';
-import { ChatGroupSettingsPanel__title_model_explanation } from '@/strings/messages/ChatGroupSettingsPanel__title_model_explanation/es';
-import { ChatGroupSettingsPanel__use_global_setting } from '@/strings/messages/ChatGroupSettingsPanel__use_global_setting/es';
-import { ChatGroupSettingsPanel__title_model_override } from '@/strings/messages/ChatGroupSettingsPanel__title_model_override/es';
-import { ChatGroupSettingsPanel__same_as_group_chat_endpoint } from '@/strings/messages/ChatGroupSettingsPanel__same_as_group_chat_endpoint/es';
 import { ChatGroupSettingsPanel__title_endpoint_type } from '@/strings/messages/ChatGroupSettingsPanel__title_endpoint_type/es';
+import { ChatGroupSettingsPanel__title_model_explanation } from '@/strings/messages/ChatGroupSettingsPanel__title_model_explanation/es';
+import { ChatGroupSettingsPanel__title_model_override } from '@/strings/messages/ChatGroupSettingsPanel__title_model_override/es';
+import { ChatGroupSettingsPanel__title_reasoning } from '@/strings/messages/ChatGroupSettingsPanel__title_reasoning/es';
 import { ChatGroupSettingsPanel__tools } from '@/strings/messages/ChatGroupSettingsPanel__tools/es';
 import { ChatGroupSettingsPanel__transformers_js } from '@/strings/messages/ChatGroupSettingsPanel__transformers_js/es';
 import { ChatGroupSettingsPanel__transformers_js_experimental } from '@/strings/messages/ChatGroupSettingsPanel__transformers_js_experimental/es';
+import { ChatGroupSettingsPanel__use_global_setting } from '@/strings/messages/ChatGroupSettingsPanel__use_global_setting/es';
 import { ChatGroupSettingsPanel__value } from '@/strings/messages/ChatGroupSettingsPanel__value/es';
-import { ChatGroupSettingsPanel__title_reasoning } from '@/strings/messages/ChatGroupSettingsPanel__title_reasoning/es';
 import { ChatInput__cancel } from '@/strings/messages/ChatInput__cancel/es';
 import { ChatInput__copying_name } from '@/strings/messages/ChatInput__copying_name/es';
 import { ChatInput__edit_image } from '@/strings/messages/ChatInput__edit_image/es';
@@ -552,11 +206,14 @@ import { ChatMediaShelf__reverse } from '@/strings/messages/ChatMediaShelf__reve
 import { ChatMediaShelf__seed } from '@/strings/messages/ChatMediaShelf__seed/es';
 import { ChatMediaShelf__steps } from '@/strings/messages/ChatMediaShelf__steps/es';
 import { ChatMediaShelf__view_details_and_copy_parameters } from '@/strings/messages/ChatMediaShelf__view_details_and_copy_parameters/es';
+import { ChatPage__failed_to_load_chat } from '@/strings/messages/ChatPage__failed_to_load_chat/es';
+import { ChatPage__loading_chat } from '@/strings/messages/ChatPage__loading_chat/es';
+import { ChatPage__retry } from '@/strings/messages/ChatPage__retry/es';
+import { ChatPaneHeader__chat_inspector } from '@/strings/messages/ChatPaneHeader__chat_inspector/es';
 import { ChatPaneHeader__chat_settings_and_model_override } from '@/strings/messages/ChatPaneHeader__chat_settings_and_model_override/es';
 import { ChatPaneHeader__conversation_outline } from '@/strings/messages/ChatPaneHeader__conversation_outline/es';
 import { ChatPaneHeader__copy_shareable_chat_url } from '@/strings/messages/ChatPaneHeader__copy_shareable_chat_url/es';
 import { ChatPaneHeader__custom_overrides_active } from '@/strings/messages/ChatPaneHeader__custom_overrides_active/es';
-import { ChatPaneHeader__chat_inspector } from '@/strings/messages/ChatPaneHeader__chat_inspector/es';
 import { ChatPaneHeader__debug_mode } from '@/strings/messages/ChatPaneHeader__debug_mode/es';
 import { ChatPaneHeader__delete_chat } from '@/strings/messages/ChatPaneHeader__delete_chat/es';
 import { ChatPaneHeader__edit_chat_title } from '@/strings/messages/ChatPaneHeader__edit_chat_title/es';
@@ -568,6 +225,7 @@ import { ChatPaneHeader__fork_chat_from_last_message } from '@/strings/messages/
 import { ChatPaneHeader__group_name } from '@/strings/messages/ChatPaneHeader__group_name/es';
 import { ChatPaneHeader__jump_to_original_chat } from '@/strings/messages/ChatPaneHeader__jump_to_original_chat/es';
 import { ChatPaneHeader__media_gallery } from '@/strings/messages/ChatPaneHeader__media_gallery/es';
+import { ChatPaneHeader__model_and_chat_settings } from '@/strings/messages/ChatPaneHeader__model_and_chat_settings/es';
 import { ChatPaneHeader__more_actions } from '@/strings/messages/ChatPaneHeader__more_actions/es';
 import { ChatPaneHeader__move_to_group } from '@/strings/messages/ChatPaneHeader__move_to_group/es';
 import { ChatPaneHeader__open_print_dialog } from '@/strings/messages/ChatPaneHeader__open_print_dialog/es';
@@ -603,6 +261,7 @@ import { ChatSettingsPanel__append } from '@/strings/messages/ChatSettingsPanel_
 import { ChatSettingsPanel__appending } from '@/strings/messages/ChatSettingsPanel__appending/es';
 import { ChatSettingsPanel__auto_check } from '@/strings/messages/ChatSettingsPanel__auto_check/es';
 import { ChatSettingsPanel__automatic_title } from '@/strings/messages/ChatSettingsPanel__automatic_title/es';
+import { ChatSettingsPanel__chat_group } from '@/strings/messages/ChatSettingsPanel__chat_group/es';
 import { ChatSettingsPanel__chat_overrides } from '@/strings/messages/ChatSettingsPanel__chat_overrides/es';
 import { ChatSettingsPanel__chat_settings_take_precedence_over_provider_profiles_which_take_precedence_over_group_settings_which_take_precedence_over_global_settings } from '@/strings/messages/ChatSettingsPanel__chat_settings_take_precedence_over_provider_profiles_which_take_precedence_over_group_settings_which_take_precedence_over_global_settings/es';
 import { ChatSettingsPanel__chat_specific_overrides } from '@/strings/messages/ChatSettingsPanel__chat_specific_overrides/es';
@@ -617,30 +276,23 @@ import { ChatSettingsPanel__disabled } from '@/strings/messages/ChatSettingsPane
 import { ChatSettingsPanel__enabled } from '@/strings/messages/ChatSettingsPanel__enabled/es';
 import { ChatSettingsPanel__endpoint_type } from '@/strings/messages/ChatSettingsPanel__endpoint_type/es';
 import { ChatSettingsPanel__endpoint_url } from '@/strings/messages/ChatSettingsPanel__endpoint_url/es';
-import { ChatSettingsPanel__failed_to_save_chat_settings } from '@/strings/messages/ChatSettingsPanel__failed_to_save_chat_settings/es';
-import { ChatSettingsPanel__group_global_default } from '@/strings/messages/ChatSettingsPanel__group_global_default/es';
-import { ChatSettingsPanel__chat_group } from '@/strings/messages/ChatSettingsPanel__chat_group/es';
-import { ChatSettingsPanel__no_prompt } from '@/strings/messages/ChatSettingsPanel__no_prompt/es';
-import { ChatSettingsPanel__system_prompt_chat_group_set } from '@/strings/messages/ChatSettingsPanel__system_prompt_chat_group_set/es';
-import { ChatSettingsPanel__system_prompt_chat_group_not_set } from '@/strings/messages/ChatSettingsPanel__system_prompt_chat_group_not_set/es';
-import { ChatSettingsPanel__system_prompt_no_prompt } from '@/strings/messages/ChatSettingsPanel__system_prompt_no_prompt/es';
-import { ChatSettingsPanel__instructions_for_this_chat } from '@/strings/messages/ChatSettingsPanel__instructions_for_this_chat/es';
-import { ChatSettingsPanel__instructions_to_append } from '@/strings/messages/ChatSettingsPanel__instructions_to_append/es';
-import { ChatSettingsPanel__start_typing_to_override } from '@/strings/messages/ChatSettingsPanel__start_typing_to_override/es';
 import { ChatSettingsPanel__enter_instructions_for_this_chat } from '@/strings/messages/ChatSettingsPanel__enter_instructions_for_this_chat/es';
-import { ChatSettingsPanel__start_typing_to_replace } from '@/strings/messages/ChatSettingsPanel__start_typing_to_replace/es';
-import { ChatSettingsPanel__replace } from '@/strings/messages/ChatSettingsPanel__replace/es';
 import { ChatSettingsPanel__enter_instructions_that_replace_the_parent_setting } from '@/strings/messages/ChatSettingsPanel__enter_instructions_that_replace_the_parent_setting/es';
 import { ChatSettingsPanel__enter_instructions_to_append } from '@/strings/messages/ChatSettingsPanel__enter_instructions_to_append/es';
+import { ChatSettingsPanel__failed_to_save_chat_settings } from '@/strings/messages/ChatSettingsPanel__failed_to_save_chat_settings/es';
+import { ChatSettingsPanel__group_global_default } from '@/strings/messages/ChatSettingsPanel__group_global_default/es';
 import { ChatSettingsPanel__inherit } from '@/strings/messages/ChatSettingsPanel__inherit/es';
 import { ChatSettingsPanel__inherited } from '@/strings/messages/ChatSettingsPanel__inherited/es';
 import { ChatSettingsPanel__inherited_instructions } from '@/strings/messages/ChatSettingsPanel__inherited_instructions/es';
+import { ChatSettingsPanel__instructions_for_this_chat } from '@/strings/messages/ChatSettingsPanel__instructions_for_this_chat/es';
+import { ChatSettingsPanel__instructions_to_append } from '@/strings/messages/ChatSettingsPanel__instructions_to_append/es';
 import { ChatSettingsPanel__load_from_saved_profiles } from '@/strings/messages/ChatSettingsPanel__load_from_saved_profiles/es';
 import { ChatSettingsPanel__local_overrides } from '@/strings/messages/ChatSettingsPanel__local_overrides/es';
 import { ChatSettingsPanel__model_override } from '@/strings/messages/ChatSettingsPanel__model_override/es';
 import { ChatSettingsPanel__name } from '@/strings/messages/ChatSettingsPanel__name/es';
 import { ChatSettingsPanel__no_custom_headers } from '@/strings/messages/ChatSettingsPanel__no_custom_headers/es';
 import { ChatSettingsPanel__no_instructions_inherited } from '@/strings/messages/ChatSettingsPanel__no_instructions_inherited/es';
+import { ChatSettingsPanel__no_prompt } from '@/strings/messages/ChatSettingsPanel__no_prompt/es';
 import { ChatSettingsPanel__ollama } from '@/strings/messages/ChatSettingsPanel__ollama/es';
 import { ChatSettingsPanel__openai_compatible } from '@/strings/messages/ChatSettingsPanel__openai_compatible/es';
 import { ChatSettingsPanel__override } from '@/strings/messages/ChatSettingsPanel__override/es';
@@ -649,20 +301,26 @@ import { ChatSettingsPanel__parameters } from '@/strings/messages/ChatSettingsPa
 import { ChatSettingsPanel__parent_prompt_cleared } from '@/strings/messages/ChatSettingsPanel__parent_prompt_cleared/es';
 import { ChatSettingsPanel__quick_endpoint_presets } from '@/strings/messages/ChatSettingsPanel__quick_endpoint_presets/es';
 import { ChatSettingsPanel__quick_profile_switcher } from '@/strings/messages/ChatSettingsPanel__quick_profile_switcher/es';
+import { ChatSettingsPanel__replace } from '@/strings/messages/ChatSettingsPanel__replace/es';
 import { ChatSettingsPanel__restore_defaults } from '@/strings/messages/ChatSettingsPanel__restore_defaults/es';
+import { ChatSettingsPanel__same_as_chat_endpoint } from '@/strings/messages/ChatSettingsPanel__same_as_chat_endpoint/es';
 import { ChatSettingsPanel__settings_resolution } from '@/strings/messages/ChatSettingsPanel__settings_resolution/es';
+import { ChatSettingsPanel__start_typing_to_override } from '@/strings/messages/ChatSettingsPanel__start_typing_to_override/es';
+import { ChatSettingsPanel__start_typing_to_replace } from '@/strings/messages/ChatSettingsPanel__start_typing_to_replace/es';
 import { ChatSettingsPanel__system_prompt } from '@/strings/messages/ChatSettingsPanel__system_prompt/es';
+import { ChatSettingsPanel__system_prompt_chat_group_not_set } from '@/strings/messages/ChatSettingsPanel__system_prompt_chat_group_not_set/es';
+import { ChatSettingsPanel__system_prompt_chat_group_set } from '@/strings/messages/ChatSettingsPanel__system_prompt_chat_group_set/es';
+import { ChatSettingsPanel__system_prompt_no_prompt } from '@/strings/messages/ChatSettingsPanel__system_prompt_no_prompt/es';
 import { ChatSettingsPanel__these_settings_only_apply_to_this_chat } from '@/strings/messages/ChatSettingsPanel__these_settings_only_apply_to_this_chat/es';
 import { ChatSettingsPanel__this_chat_will_not_use_any_system_instructions } from '@/strings/messages/ChatSettingsPanel__this_chat_will_not_use_any_system_instructions/es';
-import { ChatSettingsPanel__title_model_explanation } from '@/strings/messages/ChatSettingsPanel__title_model_explanation/es';
-import { ChatSettingsPanel__use_chat_group_setting } from '@/strings/messages/ChatSettingsPanel__use_chat_group_setting/es';
-import { ChatSettingsPanel__title_model_override } from '@/strings/messages/ChatSettingsPanel__title_model_override/es';
-import { ChatSettingsPanel__same_as_chat_endpoint } from '@/strings/messages/ChatSettingsPanel__same_as_chat_endpoint/es';
 import { ChatSettingsPanel__title_endpoint_type } from '@/strings/messages/ChatSettingsPanel__title_endpoint_type/es';
+import { ChatSettingsPanel__title_model_explanation } from '@/strings/messages/ChatSettingsPanel__title_model_explanation/es';
+import { ChatSettingsPanel__title_model_override } from '@/strings/messages/ChatSettingsPanel__title_model_override/es';
+import { ChatSettingsPanel__title_reasoning } from '@/strings/messages/ChatSettingsPanel__title_reasoning/es';
 import { ChatSettingsPanel__transformers_js } from '@/strings/messages/ChatSettingsPanel__transformers_js/es';
 import { ChatSettingsPanel__transformers_js_experimental } from '@/strings/messages/ChatSettingsPanel__transformers_js_experimental/es';
+import { ChatSettingsPanel__use_chat_group_setting } from '@/strings/messages/ChatSettingsPanel__use_chat_group_setting/es';
 import { ChatSettingsPanel__value } from '@/strings/messages/ChatSettingsPanel__value/es';
-import { ChatSettingsPanel__title_reasoning } from '@/strings/messages/ChatSettingsPanel__title_reasoning/es';
 import { ChatTitleDialog__chat_override } from '@/strings/messages/ChatTitleDialog__chat_override/es';
 import { ChatTitleDialog__chat_title } from '@/strings/messages/ChatTitleDialog__chat_title/es';
 import { ChatTitleDialog__close } from '@/strings/messages/ChatTitleDialog__close/es';
@@ -719,19 +377,19 @@ import { ConnectionTab__save_changes } from '@/strings/messages/ConnectionTab__s
 import { ConnectionTab__save_failed } from '@/strings/messages/ConnectionTab__save_failed/es';
 import { ConnectionTab__settings_saved } from '@/strings/messages/ConnectionTab__settings_saved/es';
 import { ConnectionTab__setup_url_copied } from '@/strings/messages/ConnectionTab__setup_url_copied/es';
-import { ConnectionTab__title_generation_model } from '@/strings/messages/ConnectionTab__title_generation_model/es';
-import { ConnectionTab__transformers_js_experimental } from '@/strings/messages/ConnectionTab__transformers_js_experimental/es';
-import { ConnectionTab__use_current_chat_endpoint } from '@/strings/messages/ConnectionTab__use_current_chat_endpoint/es';
 import { ConnectionTab__title_endpoint } from '@/strings/messages/ConnectionTab__title_endpoint/es';
+import { ConnectionTab__title_generation_model } from '@/strings/messages/ConnectionTab__title_generation_model/es';
+import { ConnectionTab__title_reasoning } from '@/strings/messages/ConnectionTab__title_reasoning/es';
+import { ConnectionTab__transformers_js_experimental } from '@/strings/messages/ConnectionTab__transformers_js_experimental/es';
 import { ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions } from '@/strings/messages/ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions/es';
 import { ConnectionTab__understand } from '@/strings/messages/ConnectionTab__understand/es';
 import { ConnectionTab__url_copied } from '@/strings/messages/ConnectionTab__url_copied/es';
+import { ConnectionTab__use_current_chat_endpoint } from '@/strings/messages/ConnectionTab__use_current_chat_endpoint/es';
 import { ConnectionTab__use_current_chat_model } from '@/strings/messages/ConnectionTab__use_current_chat_model/es';
+import { ConnectionTab__use_current_chat_reasoning } from '@/strings/messages/ConnectionTab__use_current_chat_reasoning/es';
 import { ConnectionTab__used_for_new_conversations } from '@/strings/messages/ConnectionTab__used_for_new_conversations/es';
 import { ConnectionTab__value } from '@/strings/messages/ConnectionTab__value/es';
 import { ConnectionTab__view_profiles } from '@/strings/messages/ConnectionTab__view_profiles/es';
-import { ConnectionTab__title_reasoning } from '@/strings/messages/ConnectionTab__title_reasoning/es';
-import { ConnectionTab__use_current_chat_reasoning } from '@/strings/messages/ConnectionTab__use_current_chat_reasoning/es';
 import { ContextCompactProgressStrip__abort_compact } from '@/strings/messages/ContextCompactProgressStrip__abort_compact/es';
 import { ContextCompactProgressStrip__hide_request } from '@/strings/messages/ContextCompactProgressStrip__hide_request/es';
 import { ContextCompactProgressStrip__live_output } from '@/strings/messages/ContextCompactProgressStrip__live_output/es';
@@ -898,17 +556,24 @@ import { HistoryManipulationModal__system_prompt_resolution } from '@/strings/me
 import { HistoryManipulationModal__this_chat_will_not_use_any_system_instructions } from '@/strings/messages/HistoryManipulationModal__this_chat_will_not_use_any_system_instructions/es';
 import { HistoryManipulationModal__thoughts } from '@/strings/messages/HistoryManipulationModal__thoughts/es';
 import { HistoryManipulationModal__type_message_content } from '@/strings/messages/HistoryManipulationModal__type_message_content/es';
+import { ImageBenchmarkResult__generated_image } from '@/strings/messages/ImageBenchmarkResult__generated_image/es';
+import { ImageBenchmarkResult__image_memory_limit_reached } from '@/strings/messages/ImageBenchmarkResult__image_memory_limit_reached/es';
+import { ImageBenchmarkResult__image_not_retained } from '@/strings/messages/ImageBenchmarkResult__image_not_retained/es';
+import { ImageBenchmarkResult__no_image } from '@/strings/messages/ImageBenchmarkResult__no_image/es';
 import { ImageConjuringLoader__generating_image } from '@/strings/messages/ImageConjuringLoader__generating_image/es';
 import { ImageConjuringLoader__generating_images } from '@/strings/messages/ImageConjuringLoader__generating_images/es';
 import { ImageConjuringLoader__image_count } from '@/strings/messages/ImageConjuringLoader__image_count/es';
-import { ImageGenerationProgress__steps_completed } from '@/strings/messages/ImageGenerationProgress__steps_completed/es';
-import { ImageGenerationProgress__processing_step } from '@/strings/messages/ImageGenerationProgress__processing_step/es';
 import { ImageConjuringLoader__steps } from '@/strings/messages/ImageConjuringLoader__steps/es';
 import { ImageDownloadButton__download_image } from '@/strings/messages/ImageDownloadButton__download_image/es';
 import { ImageDownloadButton__embed_prompt_seed_etc } from '@/strings/messages/ImageDownloadButton__embed_prompt_seed_etc/es';
 import { ImageDownloadButton__more_options } from '@/strings/messages/ImageDownloadButton__more_options/es';
 import { ImageDownloadButton__not_supported_for_this_format } from '@/strings/messages/ImageDownloadButton__not_supported_for_this_format/es';
 import { ImageDownloadButton__with_metadata } from '@/strings/messages/ImageDownloadButton__with_metadata/es';
+import { ImageDownloadMenu__download } from '@/strings/messages/ImageDownloadMenu__download/es';
+import { ImageDownloadMenu__download_options } from '@/strings/messages/ImageDownloadMenu__download_options/es';
+import { ImageDownloadMenu__downloaded_copy_only } from '@/strings/messages/ImageDownloadMenu__downloaded_copy_only/es';
+import { ImageDownloadMenu__image_format } from '@/strings/messages/ImageDownloadMenu__image_format/es';
+import { ImageDownloadMenu__include_generation_settings } from '@/strings/messages/ImageDownloadMenu__include_generation_settings/es';
 import { ImageEditor__apply_resize } from '@/strings/messages/ImageEditor__apply_resize/es';
 import { ImageEditor__black } from '@/strings/messages/ImageEditor__black/es';
 import { ImageEditor__close } from '@/strings/messages/ImageEditor__close/es';
@@ -951,6 +616,100 @@ import { ImageEditor__white } from '@/strings/messages/ImageEditor__white/es';
 import { ImageEditor__zoom } from '@/strings/messages/ImageEditor__zoom/es';
 import { ImageEditor__zoom_in } from '@/strings/messages/ImageEditor__zoom_in/es';
 import { ImageEditor__zoom_out } from '@/strings/messages/ImageEditor__zoom_out/es';
+import { ImageEngineState__busy_during_generation } from '@/strings/messages/ImageEngineState__busy_during_generation/es';
+import { ImageEngineState__could_not_read_state } from '@/strings/messages/ImageEngineState__could_not_read_state/es';
+import { ImageEngineState__detail_label } from '@/strings/messages/ImageEngineState__detail_label/es';
+import { ImageEngineState__engine_busy_until_idle } from '@/strings/messages/ImageEngineState__engine_busy_until_idle/es';
+import { ImageEngineState__engine_state } from '@/strings/messages/ImageEngineState__engine_state/es';
+import { ImageEngineState__memory_label } from '@/strings/messages/ImageEngineState__memory_label/es';
+import { ImageEngineState__memory_observations } from '@/strings/messages/ImageEngineState__memory_observations/es';
+import { ImageEngineState__memory_values_are_not_total_gpu_memory } from '@/strings/messages/ImageEngineState__memory_values_are_not_total_gpu_memory/es';
+import { ImageEngineState__no_model_loaded } from '@/strings/messages/ImageEngineState__no_model_loaded/es';
+import { ImageEngineState__not_observed_yet } from '@/strings/messages/ImageEngineState__not_observed_yet/es';
+import { ImageEngineState__observed_at } from '@/strings/messages/ImageEngineState__observed_at/es';
+import { ImageEngineState__refresh_state } from '@/strings/messages/ImageEngineState__refresh_state/es';
+import { ImageEngineState__refreshing } from '@/strings/messages/ImageEngineState__refreshing/es';
+import { ImageEngineState__released } from '@/strings/messages/ImageEngineState__released/es';
+import { ImageEngineState__runtime_and_model } from '@/strings/messages/ImageEngineState__runtime_and_model/es';
+import { ImageEngineState__runtime_buffer_reports_may_be_missing } from '@/strings/messages/ImageEngineState__runtime_buffer_reports_may_be_missing/es';
+import { ImageEngineState__some_counters_saturated } from '@/strings/messages/ImageEngineState__some_counters_saturated/es';
+import { ImageEngineState__unavailable } from '@/strings/messages/ImageEngineState__unavailable/es';
+import { ImageEngineState__unknown_model } from '@/strings/messages/ImageEngineState__unknown_model/es';
+import { ImageGenerationEditor__choose_model_to_begin } from '@/strings/messages/ImageGenerationEditor__choose_model_to_begin/es';
+import { ImageGenerationEditor__custom_size } from '@/strings/messages/ImageGenerationEditor__custom_size/es';
+import { ImageGenerationEditor__edits_apply_to_next_generation } from '@/strings/messages/ImageGenerationEditor__edits_apply_to_next_generation/es';
+import { ImageGenerationEditor__fixed_seed } from '@/strings/messages/ImageGenerationEditor__fixed_seed/es';
+import { ImageGenerationEditor__image_size } from '@/strings/messages/ImageGenerationEditor__image_size/es';
+import { ImageGenerationEditor__model_configuration } from '@/strings/messages/ImageGenerationEditor__model_configuration/es';
+import { ImageGenerationEditor__new_seed_each_time } from '@/strings/messages/ImageGenerationEditor__new_seed_each_time/es';
+import { ImageGenerationEditor__pick_new_seed } from '@/strings/messages/ImageGenerationEditor__pick_new_seed/es';
+import { ImageGenerationEditor__prepare_model } from '@/strings/messages/ImageGenerationEditor__prepare_model/es';
+import { ImageGenerationEditor__resolution_must_use_supported_dimensions } from '@/strings/messages/ImageGenerationEditor__resolution_must_use_supported_dimensions/es';
+import { ImageGenerationEditor__sampling_settings } from '@/strings/messages/ImageGenerationEditor__sampling_settings/es';
+import { ImageGenerationEditor__swap_width_and_height } from '@/strings/messages/ImageGenerationEditor__swap_width_and_height/es';
+import { ImageGenerationEditor__view_result } from '@/strings/messages/ImageGenerationEditor__view_result/es';
+import { ImageGenerationHistory__backup_does_not_include_history } from '@/strings/messages/ImageGenerationHistory__backup_does_not_include_history/es';
+import { ImageGenerationHistory__close_details } from '@/strings/messages/ImageGenerationHistory__close_details/es';
+import { ImageGenerationHistory__delete_image_file } from '@/strings/messages/ImageGenerationHistory__delete_image_file/es';
+import { ImageGenerationHistory__deleting_image_file_affects_other_records } from '@/strings/messages/ImageGenerationHistory__deleting_image_file_affects_other_records/es';
+import { ImageGenerationHistory__experimental_history_notice } from '@/strings/messages/ImageGenerationHistory__experimental_history_notice/es';
+import { ImageGenerationHistory__first_page } from '@/strings/messages/ImageGenerationHistory__first_page/es';
+import { ImageGenerationHistory__generation_details } from '@/strings/messages/ImageGenerationHistory__generation_details/es';
+import { ImageGenerationHistory__include_settings_in_png } from '@/strings/messages/ImageGenerationHistory__include_settings_in_png/es';
+import { ImageGenerationHistory__last_page } from '@/strings/messages/ImageGenerationHistory__last_page/es';
+import { ImageGenerationHistory__load_more } from '@/strings/messages/ImageGenerationHistory__load_more/es';
+import { ImageGenerationHistory__loading_history } from '@/strings/messages/ImageGenerationHistory__loading_history/es';
+import { ImageGenerationHistory__next_page } from '@/strings/messages/ImageGenerationHistory__next_page/es';
+import { ImageGenerationHistory__no_history_found } from '@/strings/messages/ImageGenerationHistory__no_history_found/es';
+import { ImageGenerationHistory__opfs_required } from '@/strings/messages/ImageGenerationHistory__opfs_required/es';
+import { ImageGenerationHistory__page_of_total } from '@/strings/messages/ImageGenerationHistory__page_of_total/es';
+import { ImageGenerationHistory__previous_page } from '@/strings/messages/ImageGenerationHistory__previous_page/es';
+import { ImageGenerationHistory__read_warnings } from '@/strings/messages/ImageGenerationHistory__read_warnings/es';
+import { ImageGenerationHistory__readable_matches } from '@/strings/messages/ImageGenerationHistory__readable_matches/es';
+import { ImageGenerationHistory__refresh } from '@/strings/messages/ImageGenerationHistory__refresh/es';
+import { ImageGenerationHistory__remove_from_history } from '@/strings/messages/ImageGenerationHistory__remove_from_history/es';
+import { ImageGenerationHistory__removing_keeps_image_files } from '@/strings/messages/ImageGenerationHistory__removing_keeps_image_files/es';
+import { ImageGenerationHistory__requested_seed } from '@/strings/messages/ImageGenerationHistory__requested_seed/es';
+import { ImageGenerationHistory__requested_settings } from '@/strings/messages/ImageGenerationHistory__requested_settings/es';
+import { ImageGenerationHistory__reuse_does_not_download_models } from '@/strings/messages/ImageGenerationHistory__reuse_does_not_download_models/es';
+import { ImageGenerationHistory__reuse_settings } from '@/strings/messages/ImageGenerationHistory__reuse_settings/es';
+import { ImageGenerationHistory__search_history } from '@/strings/messages/ImageGenerationHistory__search_history/es';
+import { ImageGenerationHistory__some_history_files_could_not_be_read } from '@/strings/messages/ImageGenerationHistory__some_history_files_could_not_be_read/es';
+import { ImageGenerationHistory__use_as_initial_image } from '@/strings/messages/ImageGenerationHistory__use_as_initial_image/es';
+import { ImageGenerationHistory__use_as_reference_image } from '@/strings/messages/ImageGenerationHistory__use_as_reference_image/es';
+import { ImageGenerationLab__back_to_generation } from '@/strings/messages/ImageGenerationLab__back_to_generation/es';
+import { ImageGenerationLab__continue_without_missing_files } from '@/strings/messages/ImageGenerationLab__continue_without_missing_files/es';
+import { ImageGenerationLab__debug } from '@/strings/messages/ImageGenerationLab__debug/es';
+import { ImageGenerationLab__disabled_loras_not_restored } from '@/strings/messages/ImageGenerationLab__disabled_loras_not_restored/es';
+import { ImageGenerationLab__history } from '@/strings/messages/ImageGenerationLab__history/es';
+import { ImageGenerationLab__image_generation_entirely_in_browser } from '@/strings/messages/ImageGenerationLab__image_generation_entirely_in_browser/es';
+import { ImageGenerationLab__models } from '@/strings/messages/ImageGenerationLab__models/es';
+import { ImageGenerationLab__prepare_models_help } from '@/strings/messages/ImageGenerationLab__prepare_models_help/es';
+import { ImageGenerationLab__record_detailed_logs } from '@/strings/messages/ImageGenerationLab__record_detailed_logs/es';
+import { ImageGenerationLab__saved_models } from '@/strings/messages/ImageGenerationLab__saved_models/es';
+import { ImageGenerationLab__select_missing_files } from '@/strings/messages/ImageGenerationLab__select_missing_files/es';
+import { ImageGenerationPreview__preview_from_cancelled_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_cancelled_generation/es';
+import { ImageGenerationPreview__preview_from_failed_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_failed_generation/es';
+import { ImageGenerationProgress__processing_step } from '@/strings/messages/ImageGenerationProgress__processing_step/es';
+import { ImageGenerationProgress__steps_completed } from '@/strings/messages/ImageGenerationProgress__steps_completed/es';
+import { ImageGenerationResults__about_saved_history } from '@/strings/messages/ImageGenerationResults__about_saved_history/es';
+import { ImageGenerationResults__current_images_are_temporary } from '@/strings/messages/ImageGenerationResults__current_images_are_temporary/es';
+import { ImageGenerationResults__display_settings } from '@/strings/messages/ImageGenerationResults__display_settings/es';
+import { ImageGenerationResults__history_save_failed_download_image } from '@/strings/messages/ImageGenerationResults__history_save_failed_download_image/es';
+import { ImageGenerationResults__history_setting_applies_to_next_generation } from '@/strings/messages/ImageGenerationResults__history_setting_applies_to_next_generation/es';
+import { ImageGenerationResults__image_generation_failed } from '@/strings/messages/ImageGenerationResults__image_generation_failed/es';
+import { ImageGenerationResults__images_kept_on_screen } from '@/strings/messages/ImageGenerationResults__images_kept_on_screen/es';
+import { ImageGenerationResults__latest_generation } from '@/strings/messages/ImageGenerationResults__latest_generation/es';
+import { ImageGenerationResults__no_final_image_was_created } from '@/strings/messages/ImageGenerationResults__no_final_image_was_created/es';
+import { ImageGenerationResults__previous_results } from '@/strings/messages/ImageGenerationResults__previous_results/es';
+import { ImageGenerationResults__retry_saving } from '@/strings/messages/ImageGenerationResults__retry_saving/es';
+import { ImageGenerationResults__return_to_opfs_to_retry } from '@/strings/messages/ImageGenerationResults__return_to_opfs_to_retry/es';
+import { ImageGenerationResults__save_generation_history } from '@/strings/messages/ImageGenerationResults__save_generation_history/es';
+import { ImageGenerationResults__saved_to_history } from '@/strings/messages/ImageGenerationResults__saved_to_history/es';
+import { ImageGenerationResults__saving_history } from '@/strings/messages/ImageGenerationResults__saving_history/es';
+import { ImageGenerationResults__unsaved_generations } from '@/strings/messages/ImageGenerationResults__unsaved_generations/es';
+import { ImageGenerationResults__view_diagnostics } from '@/strings/messages/ImageGenerationResults__view_diagnostics/es';
+import { ImageGenerationResults__view_in_my_images } from '@/strings/messages/ImageGenerationResults__view_in_my_images/es';
 import { ImageGenerationSettings__auto } from '@/strings/messages/ImageGenerationSettings__auto/es';
 import { ImageGenerationSettings__click_to_enter_specific_seed } from '@/strings/messages/ImageGenerationSettings__click_to_enter_specific_seed/es';
 import { ImageGenerationSettings__create_image_experimental } from '@/strings/messages/ImageGenerationSettings__create_image_experimental/es';
@@ -971,6 +730,40 @@ import { ImageGenerationSettings__steps } from '@/strings/messages/ImageGenerati
 import { ImageGenerationSettings__swap_width_and_height } from '@/strings/messages/ImageGenerationSettings__swap_width_and_height/es';
 import { ImageGenerationSettings__webp } from '@/strings/messages/ImageGenerationSettings__webp/es';
 import { ImageGenerationSettings__width } from '@/strings/messages/ImageGenerationSettings__width/es';
+import { ImageGenerationViewer__close_preview } from '@/strings/messages/ImageGenerationViewer__close_preview/es';
+import { ImageGenerationViewer__details } from '@/strings/messages/ImageGenerationViewer__details/es';
+import { ImageGenerationViewer__image_preview } from '@/strings/messages/ImageGenerationViewer__image_preview/es';
+import { ImageGenerationViewer__next_image } from '@/strings/messages/ImageGenerationViewer__next_image/es';
+import { ImageGenerationViewer__previous_image } from '@/strings/messages/ImageGenerationViewer__previous_image/es';
+import { ImageGenerationViewer__reset_view } from '@/strings/messages/ImageGenerationViewer__reset_view/es';
+import { ImageGenerationViewer__zoom_in } from '@/strings/messages/ImageGenerationViewer__zoom_in/es';
+import { ImageGenerationViewer__zoom_out } from '@/strings/messages/ImageGenerationViewer__zoom_out/es';
+import { ImageGenerationWorkspace__generate_without_saving } from '@/strings/messages/ImageGenerationWorkspace__generate_without_saving/es';
+import { ImageHistoryImage__could_not_load_image } from '@/strings/messages/ImageHistoryImage__could_not_load_image/es';
+import { ImageHistoryImage__image_unavailable } from '@/strings/messages/ImageHistoryImage__image_unavailable/es';
+import { ImageHistoryImage__loading_image } from '@/strings/messages/ImageHistoryImage__loading_image/es';
+import { ImageHostModelDirectories__browser_storage } from '@/strings/messages/ImageHostModelDirectories__browser_storage/es';
+import { ImageHostModelDirectories__browser_storage_unavailable } from '@/strings/messages/ImageHostModelDirectories__browser_storage_unavailable/es';
+import { ImageHostModelDirectories__choose_folder_above_owner } from '@/strings/messages/ImageHostModelDirectories__choose_folder_above_owner/es';
+import { ImageHostModelDirectories__download_to } from '@/strings/messages/ImageHostModelDirectories__download_to/es';
+import { ImageHostModelDirectories__example_folder_layout } from '@/strings/messages/ImageHostModelDirectories__example_folder_layout/es';
+import { ImageHostModelDirectories__folder_access } from '@/strings/messages/ImageHostModelDirectories__folder_access/es';
+import { ImageHostModelDirectories__link_folder } from '@/strings/messages/ImageHostModelDirectories__link_folder/es';
+import { ImageHostModelDirectories__linked_folder } from '@/strings/messages/ImageHostModelDirectories__linked_folder/es';
+import { ImageHostModelDirectories__linked_folders } from '@/strings/messages/ImageHostModelDirectories__linked_folders/es';
+import { ImageHostModelDirectories__linked_folders_unavailable } from '@/strings/messages/ImageHostModelDirectories__linked_folders_unavailable/es';
+import { ImageHostModelDirectories__reconnect } from '@/strings/messages/ImageHostModelDirectories__reconnect/es';
+import { ImageHostModelDirectories__unlink } from '@/strings/messages/ImageHostModelDirectories__unlink/es';
+import { ImageHostModelDirectories__unlink_keeps_files } from '@/strings/messages/ImageHostModelDirectories__unlink_keeps_files/es';
+import { ImageInferenceLocation__compute_with } from '@/strings/messages/ImageInferenceLocation__compute_with/es';
+import { ImageInferenceLocation__connect_in_rpc_settings } from '@/strings/messages/ImageInferenceLocation__connect_in_rpc_settings/es';
+import { ImageInferenceLocation__explicit_model_configuration } from '@/strings/messages/ImageInferenceLocation__explicit_model_configuration/es';
+import { ImageInferenceLocation__list_remote_models } from '@/strings/messages/ImageInferenceLocation__list_remote_models/es';
+import { ImageInferenceLocation__refresh_connections } from '@/strings/messages/ImageInferenceLocation__refresh_connections/es';
+import { ImageInferenceLocation__remote_model } from '@/strings/messages/ImageInferenceLocation__remote_model/es';
+import { ImageInferenceLocation__remote_models_are_read_only } from '@/strings/messages/ImageInferenceLocation__remote_models_are_read_only/es';
+import { ImageInferenceLocation__this_device } from '@/strings/messages/ImageInferenceLocation__this_device/es';
+import { ImageInferenceLocation__use_configuration } from '@/strings/messages/ImageInferenceLocation__use_configuration/es';
 import { ImageInfoDisplay__copy_prompt } from '@/strings/messages/ImageInfoDisplay__copy_prompt/es';
 import { ImageInfoDisplay__copy_seed } from '@/strings/messages/ImageInfoDisplay__copy_seed/es';
 import { ImageInfoDisplay__image_info } from '@/strings/messages/ImageInfoDisplay__image_info/es';
@@ -978,6 +771,71 @@ import { ImageInfoDisplay__prompt } from '@/strings/messages/ImageInfoDisplay__p
 import { ImageInfoDisplay__seed } from '@/strings/messages/ImageInfoDisplay__seed/es';
 import { ImageInfoDisplay__size } from '@/strings/messages/ImageInfoDisplay__size/es';
 import { ImageInfoDisplay__steps } from '@/strings/messages/ImageInfoDisplay__steps/es';
+import { ImageInputControls__add_reference_images } from '@/strings/messages/ImageInputControls__add_reference_images/es';
+import { ImageInputControls__change_strength } from '@/strings/messages/ImageInputControls__change_strength/es';
+import { ImageInputControls__choose_image } from '@/strings/messages/ImageInputControls__choose_image/es';
+import { ImageInputControls__choose_png_jpeg_or_webp } from '@/strings/messages/ImageInputControls__choose_png_jpeg_or_webp/es';
+import { ImageInputControls__clipboard_failed } from '@/strings/messages/ImageInputControls__clipboard_failed/es';
+import { ImageInputControls__clipboard_no_image } from '@/strings/messages/ImageInputControls__clipboard_no_image/es';
+import { ImageInputControls__clipboard_unavailable } from '@/strings/messages/ImageInputControls__clipboard_unavailable/es';
+import { ImageInputControls__drop_image_here } from '@/strings/messages/ImageInputControls__drop_image_here/es';
+import { ImageInputControls__expand_image } from '@/strings/messages/ImageInputControls__expand_image/es';
+import { ImageInputControls__image_count } from '@/strings/messages/ImageInputControls__image_count/es';
+import { ImageInputControls__initial_image } from '@/strings/messages/ImageInputControls__initial_image/es';
+import { ImageInputControls__initial_image_help } from '@/strings/messages/ImageInputControls__initial_image_help/es';
+import { ImageInputControls__input_images } from '@/strings/messages/ImageInputControls__input_images/es';
+import { ImageInputControls__model_support_required } from '@/strings/messages/ImageInputControls__model_support_required/es';
+import { ImageInputControls__move_earlier } from '@/strings/messages/ImageInputControls__move_earlier/es';
+import { ImageInputControls__move_later } from '@/strings/messages/ImageInputControls__move_later/es';
+import { ImageInputControls__paste_help } from '@/strings/messages/ImageInputControls__paste_help/es';
+import { ImageInputControls__paste_image } from '@/strings/messages/ImageInputControls__paste_image/es';
+import { ImageInputControls__preview_unavailable } from '@/strings/messages/ImageInputControls__preview_unavailable/es';
+import { ImageInputControls__reading_clipboard } from '@/strings/messages/ImageInputControls__reading_clipboard/es';
+import { ImageInputControls__reference_images } from '@/strings/messages/ImageInputControls__reference_images/es';
+import { ImageInputControls__reference_images_help } from '@/strings/messages/ImageInputControls__reference_images_help/es';
+import { ImageInputControls__remove } from '@/strings/messages/ImageInputControls__remove/es';
+import { ImageInputControls__replace_image } from '@/strings/messages/ImageInputControls__replace_image/es';
+import { ImageLoraControls__add_adapter } from '@/strings/messages/ImageLoraControls__add_adapter/es';
+import { ImageLoraControls__choose_adapters_for_selected_model } from '@/strings/messages/ImageLoraControls__choose_adapters_for_selected_model/es';
+import { ImageLoraControls__choose_files } from '@/strings/messages/ImageLoraControls__choose_files/es';
+import { ImageLoraControls__choose_saved_adapter } from '@/strings/messages/ImageLoraControls__choose_saved_adapter/es';
+import { ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files } from '@/strings/messages/ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files/es';
+import { ImageLoraControls__enabled } from '@/strings/messages/ImageLoraControls__enabled/es';
+import { ImageLoraControls__lora_adapters } from '@/strings/messages/ImageLoraControls__lora_adapters/es';
+import { ImageLoraControls__remove } from '@/strings/messages/ImageLoraControls__remove/es';
+import { ImageLoraControls__saved_adapter_compatibility_unverified } from '@/strings/messages/ImageLoraControls__saved_adapter_compatibility_unverified/es';
+import { ImageLoraControls__saved_adapters } from '@/strings/messages/ImageLoraControls__saved_adapters/es';
+import { ImageLoraControls__selected_adapters } from '@/strings/messages/ImageLoraControls__selected_adapters/es';
+import { ImageLoraControls__strength } from '@/strings/messages/ImageLoraControls__strength/es';
+import { ImageModelCatalog__checking_saved_models } from '@/strings/messages/ImageModelCatalog__checking_saved_models/es';
+import { ImageModelCatalog__download_queue } from '@/strings/messages/ImageModelCatalog__download_queue/es';
+import { ImageModelCatalog__optional_lora } from '@/strings/messages/ImageModelCatalog__optional_lora/es';
+import { ImageModelCatalog__queued } from '@/strings/messages/ImageModelCatalog__queued/es';
+import { ImageModelCatalog__recommended } from '@/strings/messages/ImageModelCatalog__recommended/es';
+import { ImageModelCatalog__reference_style_lora_help } from '@/strings/messages/ImageModelCatalog__reference_style_lora_help/es';
+import { ImageModelCatalog__saved_choose_in_lora_controls } from '@/strings/messages/ImageModelCatalog__saved_choose_in_lora_controls/es';
+import { ImageModelPicker__choose_a_model } from '@/strings/messages/ImageModelPicker__choose_a_model/es';
+import { ImageModelPicker__search_choices } from '@/strings/messages/ImageModelPicker__search_choices/es';
+import { ImageModelPicker__use_built_in_component } from '@/strings/messages/ImageModelPicker__use_built_in_component/es';
+import { ImagePendingHistory__discard } from '@/strings/messages/ImagePendingHistory__discard/es';
+import { ImagePendingHistory__discard_warning } from '@/strings/messages/ImagePendingHistory__discard_warning/es';
+import { ImagePendingHistory__download_image } from '@/strings/messages/ImagePendingHistory__download_image/es';
+import { ImagePendingHistory__save_without_generating_again } from '@/strings/messages/ImagePendingHistory__save_without_generating_again/es';
+import { ImagePendingHistory__unsaved_images } from '@/strings/messages/ImagePendingHistory__unsaved_images/es';
+import { ImagePendingRuns__completion_unconfirmed } from '@/strings/messages/ImagePendingRuns__completion_unconfirmed/es';
+import { ImagePendingRuns__discard_pending_save } from '@/strings/messages/ImagePendingRuns__discard_pending_save/es';
+import { ImagePendingRuns__discard_warning } from '@/strings/messages/ImagePendingRuns__discard_warning/es';
+import { ImagePendingRuns__download_image } from '@/strings/messages/ImagePendingRuns__download_image/es';
+import { ImagePendingRuns__run_information_pending } from '@/strings/messages/ImagePendingRuns__run_information_pending/es';
+import { ImagePendingRuns__save_without_generating_again } from '@/strings/messages/ImagePendingRuns__save_without_generating_again/es';
+import { ImagePendingRuns__unsaved_runs } from '@/strings/messages/ImagePendingRuns__unsaved_runs/es';
+import { ImageRecoveredOutputs__discard_image } from '@/strings/messages/ImageRecoveredOutputs__discard_image/es';
+import { ImageRecoveredOutputs__discard_warning } from '@/strings/messages/ImageRecoveredOutputs__discard_warning/es';
+import { ImageRecoveredOutputs__download_image } from '@/strings/messages/ImageRecoveredOutputs__download_image/es';
+import { ImageRecoveredOutputs__managed_by_pending_run } from '@/strings/messages/ImageRecoveredOutputs__managed_by_pending_run/es';
+import { ImageRecoveredOutputs__recovery_explanation } from '@/strings/messages/ImageRecoveredOutputs__recovery_explanation/es';
+import { ImageRecoveredOutputs__unconfirmed } from '@/strings/messages/ImageRecoveredOutputs__unconfirmed/es';
+import { ImageRecoveredOutputs__unconfirmed_images } from '@/strings/messages/ImageRecoveredOutputs__unconfirmed_images/es';
 import { ImportExportModal__add_new } from '@/strings/messages/ImportExportModal__add_new/es';
 import { ImportExportModal__analyzing_file } from '@/strings/messages/ImportExportModal__analyzing_file/es';
 import { ImportExportModal__append_keeps_current_data } from '@/strings/messages/ImportExportModal__append_keeps_current_data/es';
@@ -1041,6 +899,122 @@ import { ImportExportModal__zip_contains_all_data_by_default } from '@/strings/m
 import { ImportExportService__export_dump_failed } from '@/strings/messages/ImportExportService__export_dump_failed/es';
 import { ImportExportService__invalid_zip_file } from '@/strings/messages/ImportExportService__invalid_zip_file/es';
 import { LanguageSelector__language } from '@/strings/messages/LanguageSelector__language/es';
+import { LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files } from '@/strings/messages/LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files/es';
+import { LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support } from '@/strings/messages/LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support/es';
+import { LlamaCppBrowserDownloadDestination__browser_storage } from '@/strings/messages/LlamaCppBrowserDownloadDestination__browser_storage/es';
+import { LlamaCppBrowserDownloadDestination__choose_folder_above_owner } from '@/strings/messages/LlamaCppBrowserDownloadDestination__choose_folder_above_owner/es';
+import { LlamaCppBrowserDownloadDestination__download_to } from '@/strings/messages/LlamaCppBrowserDownloadDestination__download_to/es';
+import { LlamaCppBrowserDownloadDestination__folder_access } from '@/strings/messages/LlamaCppBrowserDownloadDestination__folder_access/es';
+import { LlamaCppBrowserDownloadDestination__link_folder } from '@/strings/messages/LlamaCppBrowserDownloadDestination__link_folder/es';
+import { LlamaCppBrowserDownloadDestination__link_folder_to_download } from '@/strings/messages/LlamaCppBrowserDownloadDestination__link_folder_to_download/es';
+import { LlamaCppBrowserDownloadDestination__linked_folder } from '@/strings/messages/LlamaCppBrowserDownloadDestination__linked_folder/es';
+import { LlamaCppBrowserDownloadDestination__linked_folders_unavailable } from '@/strings/messages/LlamaCppBrowserDownloadDestination__linked_folders_unavailable/es';
+import { LlamaCppBrowserDownloadDestination__not_linked } from '@/strings/messages/LlamaCppBrowserDownloadDestination__not_linked/es';
+import { LlamaCppBrowserDownloadDestination__reconnect } from '@/strings/messages/LlamaCppBrowserDownloadDestination__reconnect/es';
+import { LlamaCppBrowserDownloadDestination__reconnect_in_folder_settings } from '@/strings/messages/LlamaCppBrowserDownloadDestination__reconnect_in_folder_settings/es';
+import { LlamaCppBrowserDownloadDestination__unavailable } from '@/strings/messages/LlamaCppBrowserDownloadDestination__unavailable/es';
+import { LlamaCppBrowserDownloadDestination__unlink } from '@/strings/messages/LlamaCppBrowserDownloadDestination__unlink/es';
+import { LlamaCppBrowserDownloadDestination__unlink_keeps_files } from '@/strings/messages/LlamaCppBrowserDownloadDestination__unlink_keeps_files/es';
+import { LlamaCppBrowserDownloadSources__copy_failed } from '@/strings/messages/LlamaCppBrowserDownloadSources__copy_failed/es';
+import { LlamaCppBrowserDownloadSources__copy_url } from '@/strings/messages/LlamaCppBrowserDownloadSources__copy_url/es';
+import { LlamaCppBrowserDownloadSources__current_file } from '@/strings/messages/LlamaCppBrowserDownloadSources__current_file/es';
+import { LlamaCppBrowserDownloadSources__files_and_sources } from '@/strings/messages/LlamaCppBrowserDownloadSources__files_and_sources/es';
+import { LlamaCppBrowserDownloadSources__request_urls_help } from '@/strings/messages/LlamaCppBrowserDownloadSources__request_urls_help/es';
+import { LlamaCppBrowserDownloadSources__revision } from '@/strings/messages/LlamaCppBrowserDownloadSources__revision/es';
+import { LlamaCppBrowserDownloadSources__url_copied } from '@/strings/messages/LlamaCppBrowserDownloadSources__url_copied/es';
+import { LlamaCppBrowserFirefoxWebGpuWarning__firefox_webgpu_can_slow_model_execution } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__firefox_webgpu_can_slow_model_execution/es';
+import { LlamaCppBrowserFirefoxWebGpuWarning__gpu_completion_timer_polling } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__gpu_completion_timer_polling/es';
+import { LlamaCppBrowserFirefoxWebGpuWarning__gpu_readback_latency_report } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__gpu_readback_latency_report/es';
+import { LlamaCppBrowserFirefoxWebGpuWarning__mozilla_bug_reports_in_english } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__mozilla_bug_reports_in_english/es';
+import { LlamaCppBrowserFirefoxWebGpuWarning__recommend_chromium_for_faster_performance } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__recommend_chromium_for_faster_performance/es';
+import { LlamaCppBrowserFirefoxWebGpuWarning__technical_details } from '@/strings/messages/LlamaCppBrowserFirefoxWebGpuWarning__technical_details/es';
+import { LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining/es';
+import { LlamaCppBrowserHuggingFaceManager__about_hours_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_hours_remaining/es';
+import { LlamaCppBrowserHuggingFaceManager__about_minutes_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_minutes_remaining/es';
+import { LlamaCppBrowserHuggingFaceManager__about_seconds_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_seconds_remaining/es';
+import { LlamaCppBrowserHuggingFaceManager__another_download_already_exists } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__another_download_already_exists/es';
+import { LlamaCppBrowserHuggingFaceManager__cancel_and_delete } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__cancel_and_delete/es';
+import { LlamaCppBrowserHuggingFaceManager__check_model } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__check_model/es';
+import { LlamaCppBrowserHuggingFaceManager__checking_model } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__checking_model/es';
+import { LlamaCppBrowserHuggingFaceManager__choose_between_variants_in_download_details } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__choose_between_variants_in_download_details/es';
+import { LlamaCppBrowserHuggingFaceManager__choose_companion_file } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__choose_companion_file/es';
+import { LlamaCppBrowserHuggingFaceManager__choose_model_files } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__choose_model_files/es';
+import { LlamaCppBrowserHuggingFaceManager__companion_file } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__companion_file/es';
+import { LlamaCppBrowserHuggingFaceManager__download } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download/es';
+import { LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models/es';
+import { LlamaCppBrowserHuggingFaceManager__download_details } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_details/es';
+import { LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume/es';
+import { LlamaCppBrowserHuggingFaceManager__download_paused } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_paused/es';
+import { LlamaCppBrowserHuggingFaceManager__downloaded } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__downloaded/es';
+import { LlamaCppBrowserHuggingFaceManager__downloading_model } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__downloading_model/es';
+import { LlamaCppBrowserHuggingFaceManager__estimating_remaining_time } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__estimating_remaining_time/es';
+import { LlamaCppBrowserHuggingFaceManager__model_files_already_exist } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__model_files_already_exist/es';
+import { LlamaCppBrowserHuggingFaceManager__model_variant } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__model_variant/es';
+import { LlamaCppBrowserHuggingFaceManager__multimodal_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__multimodal_quantization/es';
+import { LlamaCppBrowserHuggingFaceManager__multimodal_support } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__multimodal_support/es';
+import { LlamaCppBrowserHuggingFaceManager__no_companion_files_available } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__no_companion_files_available/es';
+import { LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found/es';
+import { LlamaCppBrowserHuggingFaceManager__pause } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__pause/es';
+import { LlamaCppBrowserHuggingFaceManager__performing_final_checks } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__performing_final_checks/es';
+import { LlamaCppBrowserHuggingFaceManager__quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__quantization/es';
+import { LlamaCppBrowserHuggingFaceManager__repository } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__repository/es';
+import { LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection/es';
+import { LlamaCppBrowserHuggingFaceManager__resume } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__resume/es';
+import { LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict/es';
+import { LlamaCppBrowserHuggingFaceManager__total_download_size } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__total_download_size/es';
+import { LlamaCppBrowserHuggingFaceManager__unspecified_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__unspecified_quantization/es';
+import { LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server/es';
+import { LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser/es';
+import { LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded/es';
+import { LlamaCppBrowserModelLaunchPrivacy__model_files_from_hugging_face } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__model_files_from_hugging_face/es';
+import { LlamaCppBrowserModelLaunchPrivacy__no_apps_or_servers } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__no_apps_or_servers/es';
+import { LlamaCppBrowserModelLaunchPrivacy__runs_on_your_device } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__runs_on_your_device/es';
+import { LlamaCppBrowserModelLaunchPrivacy__tools_and_other_connections } from '@/strings/messages/LlamaCppBrowserModelLaunchPrivacy__tools_and_other_connections/es';
+import { LlamaCppBrowserModelLaunch__chat_settings_changed } from '@/strings/messages/LlamaCppBrowserModelLaunch__chat_settings_changed/es';
+import { LlamaCppBrowserModelLaunch__checking_local_files } from '@/strings/messages/LlamaCppBrowserModelLaunch__checking_local_files/es';
+import { LlamaCppBrowserModelLaunch__checking_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__checking_model/es';
+import { LlamaCppBrowserModelLaunch__companion_needs_selection } from '@/strings/messages/LlamaCppBrowserModelLaunch__companion_needs_selection/es';
+import { LlamaCppBrowserModelLaunch__could_not_prepare_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__could_not_prepare_model/es';
+import { LlamaCppBrowserModelLaunch__global_defaults_not_saved } from '@/strings/messages/LlamaCppBrowserModelLaunch__global_defaults_not_saved/es';
+import { LlamaCppBrowserModelLaunch__initializing_runtime_and_context } from '@/strings/messages/LlamaCppBrowserModelLaunch__initializing_runtime_and_context/es';
+import { LlamaCppBrowserModelLaunch__loading_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__loading_model/es';
+import { LlamaCppBrowserModelLaunch__loading_model_weights } from '@/strings/messages/LlamaCppBrowserModelLaunch__loading_model_weights/es';
+import { LlamaCppBrowserModelLaunch__model_link_could_not_be_opened } from '@/strings/messages/LlamaCppBrowserModelLaunch__model_link_could_not_be_opened/es';
+import { LlamaCppBrowserModelLaunch__model_not_ready } from '@/strings/messages/LlamaCppBrowserModelLaunch__model_not_ready/es';
+import { LlamaCppBrowserModelLaunch__no_installation_or_environment_setup } from '@/strings/messages/LlamaCppBrowserModelLaunch__no_installation_or_environment_setup/es';
+import { LlamaCppBrowserModelLaunch__opening_chat } from '@/strings/messages/LlamaCppBrowserModelLaunch__opening_chat/es';
+import { LlamaCppBrowserModelLaunch__prepare_on_send } from '@/strings/messages/LlamaCppBrowserModelLaunch__prepare_on_send/es';
+import { LlamaCppBrowserModelLaunch__quantization } from '@/strings/messages/LlamaCppBrowserModelLaunch__quantization/es';
+import { LlamaCppBrowserModelLaunch__ready_when_you_are } from '@/strings/messages/LlamaCppBrowserModelLaunch__ready_when_you_are/es';
+import { LlamaCppBrowserModelLaunch__refresh_choices } from '@/strings/messages/LlamaCppBrowserModelLaunch__refresh_choices/es';
+import { LlamaCppBrowserModelLaunch__restoring_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__restoring_model/es';
+import { LlamaCppBrowserModelLaunch__retry } from '@/strings/messages/LlamaCppBrowserModelLaunch__retry/es';
+import { LlamaCppBrowserModelLaunch__runs_privately_in_your_browser } from '@/strings/messages/LlamaCppBrowserModelLaunch__runs_privately_in_your_browser/es';
+import { LlamaCppBrowserModelLaunch__start_with_this_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__start_with_this_model/es';
+import { LlamaCppBrowserModelLaunch__unavailable_here } from '@/strings/messages/LlamaCppBrowserModelLaunch__unavailable_here/es';
+import { LlamaCppBrowserModelLaunch__use_selected_model } from '@/strings/messages/LlamaCppBrowserModelLaunch__use_selected_model/es';
+import { LlamaCppBrowserModelLaunch__variant_not_found } from '@/strings/messages/LlamaCppBrowserModelLaunch__variant_not_found/es';
+import { LlamaCppBrowserModelRecovery__add_original_model_files } from '@/strings/messages/LlamaCppBrowserModelRecovery__add_original_model_files/es';
+import { LlamaCppBrowserModelRecovery__check_again } from '@/strings/messages/LlamaCppBrowserModelRecovery__check_again/es';
+import { LlamaCppBrowserModelRecovery__could_not_check_model_storage } from '@/strings/messages/LlamaCppBrowserModelRecovery__could_not_check_model_storage/es';
+import { LlamaCppBrowserModelRecovery__could_not_prepare_download } from '@/strings/messages/LlamaCppBrowserModelRecovery__could_not_prepare_download/es';
+import { LlamaCppBrowserModelRecovery__download } from '@/strings/messages/LlamaCppBrowserModelRecovery__download/es';
+import { LlamaCppBrowserModelRecovery__keep_your_draft_while_preparing } from '@/strings/messages/LlamaCppBrowserModelRecovery__keep_your_draft_while_preparing/es';
+import { LlamaCppBrowserModelRecovery__manage_models } from '@/strings/messages/LlamaCppBrowserModelRecovery__manage_models/es';
+import { LlamaCppBrowserModelRecovery__model_not_in_this_browser } from '@/strings/messages/LlamaCppBrowserModelRecovery__model_not_in_this_browser/es';
+import { LlamaCppBrowserModelRecovery__review_download } from '@/strings/messages/LlamaCppBrowserModelRecovery__review_download/es';
+import { LlamaCppMemoryPanel__active_history } from '@/strings/messages/LlamaCppMemoryPanel__active_history/es';
+import { LlamaCppMemoryPanel__change_since_latest_load_started } from '@/strings/messages/LlamaCppMemoryPanel__change_since_latest_load_started/es';
+import { LlamaCppMemoryPanel__ended_history } from '@/strings/messages/LlamaCppMemoryPanel__ended_history/es';
+import { LlamaCppMemoryPanel__gpu_request_note } from '@/strings/messages/LlamaCppMemoryPanel__gpu_request_note/es';
+import { LlamaCppMemoryPanel__gpu_request_totals } from '@/strings/messages/LlamaCppMemoryPanel__gpu_request_totals/es';
+import { LlamaCppMemoryPanel__gpu_requests_since_load_started } from '@/strings/messages/LlamaCppMemoryPanel__gpu_requests_since_load_started/es';
+import { LlamaCppMemoryPanel__last_sample } from '@/strings/messages/LlamaCppMemoryPanel__last_sample/es';
+import { LlamaCppMemoryPanel__linear_memory_capacity } from '@/strings/messages/LlamaCppMemoryPanel__linear_memory_capacity/es';
+import { LlamaCppMemoryPanel__llama_cpp_browser } from '@/strings/messages/LlamaCppMemoryPanel__llama_cpp_browser/es';
+import { LlamaCppMemoryPanel__no_samples } from '@/strings/messages/LlamaCppMemoryPanel__no_samples/es';
+import { LlamaCppMemoryPanel__observation_note } from '@/strings/messages/LlamaCppMemoryPanel__observation_note/es';
+import { LlamaCppMemoryPanel__observed_maximum } from '@/strings/messages/LlamaCppMemoryPanel__observed_maximum/es';
 import { LmParametersEditor__default } from '@/strings/messages/LmParametersEditor__default/es';
 import { LmParametersEditor__empty_fields_use_provider_defaults } from '@/strings/messages/LmParametersEditor__empty_fields_use_provider_defaults/es';
 import { LmParametersEditor__invalid_json } from '@/strings/messages/LmParametersEditor__invalid_json/es';
@@ -1118,10 +1092,137 @@ import { ModelSelector__inherit } from '@/strings/messages/ModelSelector__inheri
 import { ModelSelector__no_models_found } from '@/strings/messages/ModelSelector__no_models_found/es';
 import { ModelSelector__refresh_model_list } from '@/strings/messages/ModelSelector__refresh_model_list/es';
 import { ModelSelector__select_a_model } from '@/strings/messages/ModelSelector__select_a_model/es';
+import { ModelSupportInvestigationModal__add_models_placeholder } from '@/strings/messages/ModelSupportInvestigationModal__add_models_placeholder/es';
+import { ModelSupportInvestigationModal__allow } from '@/strings/messages/ModelSupportInvestigationModal__allow/es';
+import { ModelSupportInvestigationModal__blocked } from '@/strings/messages/ModelSupportInvestigationModal__blocked/es';
+import { ModelSupportInvestigationModal__cache_revision_unknown } from '@/strings/messages/ModelSupportInvestigationModal__cache_revision_unknown/es';
+import { ModelSupportInvestigationModal__candidate_eligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_eligible/es';
+import { ModelSupportInvestigationModal__candidate_ineligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_ineligible/es';
+import { ModelSupportInvestigationModal__candidate_plan_summary } from '@/strings/messages/ModelSupportInvestigationModal__candidate_plan_summary/es';
+import { ModelSupportInvestigationModal__candidate_registry_failed } from '@/strings/messages/ModelSupportInvestigationModal__candidate_registry_failed/es';
+import { ModelSupportInvestigationModal__capability_probes } from '@/strings/messages/ModelSupportInvestigationModal__capability_probes/es';
+import { ModelSupportInvestigationModal__checking_same_origin_runtime_assets } from '@/strings/messages/ModelSupportInvestigationModal__checking_same_origin_runtime_assets/es';
+import { ModelSupportInvestigationModal__close } from '@/strings/messages/ModelSupportInvestigationModal__close/es';
+import { ModelSupportInvestigationModal__continuity_and_kv_cache } from '@/strings/messages/ModelSupportInvestigationModal__continuity_and_kv_cache/es';
+import { ModelSupportInvestigationModal__copy_model_list } from '@/strings/messages/ModelSupportInvestigationModal__copy_model_list/es';
+import { ModelSupportInvestigationModal__current_operation } from '@/strings/messages/ModelSupportInvestigationModal__current_operation/es';
+import { ModelSupportInvestigationModal__custom } from '@/strings/messages/ModelSupportInvestigationModal__custom/es';
+import { ModelSupportInvestigationModal__declaration_files_summary } from '@/strings/messages/ModelSupportInvestigationModal__declaration_files_summary/es';
+import { ModelSupportInvestigationModal__deny } from '@/strings/messages/ModelSupportInvestigationModal__deny/es';
+import { ModelSupportInvestigationModal__download_evidence_zip } from '@/strings/messages/ModelSupportInvestigationModal__download_evidence_zip/es';
+import { ModelSupportInvestigationModal__download_focused } from '@/strings/messages/ModelSupportInvestigationModal__download_focused/es';
+import { ModelSupportInvestigationModal__download_verification } from '@/strings/messages/ModelSupportInvestigationModal__download_verification/es';
+import { ModelSupportInvestigationModal__environment_evidence_disclosure } from '@/strings/messages/ModelSupportInvestigationModal__environment_evidence_disclosure/es';
+import { ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status } from '@/strings/messages/ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status/es';
+import { ModelSupportInvestigationModal__evidence_export } from '@/strings/messages/ModelSupportInvestigationModal__evidence_export/es';
+import { ModelSupportInvestigationModal__evidence_readiness } from '@/strings/messages/ModelSupportInvestigationModal__evidence_readiness/es';
+import { ModelSupportInvestigationModal__evidence_readiness_summary } from '@/strings/messages/ModelSupportInvestigationModal__evidence_readiness_summary/es';
+import { ModelSupportInvestigationModal__execution_policy } from '@/strings/messages/ModelSupportInvestigationModal__execution_policy/es';
+import { ModelSupportInvestigationModal__existing_model_data } from '@/strings/messages/ModelSupportInvestigationModal__existing_model_data/es';
+import { ModelSupportInvestigationModal__external_network_access } from '@/strings/messages/ModelSupportInvestigationModal__external_network_access/es';
+import { ModelSupportInvestigationModal__failed } from '@/strings/messages/ModelSupportInvestigationModal__failed/es';
+import { ModelSupportInvestigationModal__findings } from '@/strings/messages/ModelSupportInvestigationModal__findings/es';
+import { ModelSupportInvestigationModal__full_investigation } from '@/strings/messages/ModelSupportInvestigationModal__full_investigation/es';
+import { ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation } from '@/strings/messages/ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation/es';
+import { ModelSupportInvestigationModal__generation } from '@/strings/messages/ModelSupportInvestigationModal__generation/es';
+import { ModelSupportInvestigationModal__invalid_model_line } from '@/strings/messages/ModelSupportInvestigationModal__invalid_model_line/es';
+import { ModelSupportInvestigationModal__investigation_scope } from '@/strings/messages/ModelSupportInvestigationModal__investigation_scope/es';
+import { ModelSupportInvestigationModal__lane_comparison } from '@/strings/messages/ModelSupportInvestigationModal__lane_comparison/es';
+import { ModelSupportInvestigationModal__lane_continuity_failed } from '@/strings/messages/ModelSupportInvestigationModal__lane_continuity_failed/es';
+import { ModelSupportInvestigationModal__lane_continuity_summary } from '@/strings/messages/ModelSupportInvestigationModal__lane_continuity_summary/es';
+import { ModelSupportInvestigationModal__lane_failed } from '@/strings/messages/ModelSupportInvestigationModal__lane_failed/es';
+import { ModelSupportInvestigationModal__lane_input_match } from '@/strings/messages/ModelSupportInvestigationModal__lane_input_match/es';
+import { ModelSupportInvestigationModal__lane_input_mismatch } from '@/strings/messages/ModelSupportInvestigationModal__lane_input_mismatch/es';
+import { ModelSupportInvestigationModal__lane_route_summary } from '@/strings/messages/ModelSupportInvestigationModal__lane_route_summary/es';
+import { ModelSupportInvestigationModal__loading_investigation } from '@/strings/messages/ModelSupportInvestigationModal__loading_investigation/es';
+import { ModelSupportInvestigationModal__missing_model_type } from '@/strings/messages/ModelSupportInvestigationModal__missing_model_type/es';
+import { ModelSupportInvestigationModal__model_declarations } from '@/strings/messages/ModelSupportInvestigationModal__model_declarations/es';
+import { ModelSupportInvestigationModal__model_file_plan } from '@/strings/messages/ModelSupportInvestigationModal__model_file_plan/es';
+import { ModelSupportInvestigationModal__model_file_plan_summary } from '@/strings/messages/ModelSupportInvestigationModal__model_file_plan_summary/es';
+import { ModelSupportInvestigationModal__model_load } from '@/strings/messages/ModelSupportInvestigationModal__model_load/es';
+import { ModelSupportInvestigationModal__model_support_investigation } from '@/strings/messages/ModelSupportInvestigationModal__model_support_investigation/es';
+import { ModelSupportInvestigationModal__model_type } from '@/strings/messages/ModelSupportInvestigationModal__model_type/es';
+import { ModelSupportInvestigationModal__models_are_investigated_sequentially } from '@/strings/messages/ModelSupportInvestigationModal__models_are_investigated_sequentially/es';
+import { ModelSupportInvestigationModal__multimodal_failed } from '@/strings/messages/ModelSupportInvestigationModal__multimodal_failed/es';
+import { ModelSupportInvestigationModal__multimodal_observed } from '@/strings/messages/ModelSupportInvestigationModal__multimodal_observed/es';
+import { ModelSupportInvestigationModal__multimodal_unavailable } from '@/strings/messages/ModelSupportInvestigationModal__multimodal_unavailable/es';
+import { ModelSupportInvestigationModal__new_investigation } from '@/strings/messages/ModelSupportInvestigationModal__new_investigation/es';
+import { ModelSupportInvestigationModal__no_supported_auto_classes } from '@/strings/messages/ModelSupportInvestigationModal__no_supported_auto_classes/es';
+import { ModelSupportInvestigationModal__not_run } from '@/strings/messages/ModelSupportInvestigationModal__not_run/es';
+import { ModelSupportInvestigationModal__offline } from '@/strings/messages/ModelSupportInvestigationModal__offline/es';
+import { ModelSupportInvestigationModal__one_model_per_line } from '@/strings/messages/ModelSupportInvestigationModal__one_model_per_line/es';
+import { ModelSupportInvestigationModal__opfs_inventory } from '@/strings/messages/ModelSupportInvestigationModal__opfs_inventory/es';
+import { ModelSupportInvestigationModal__opfs_inventory_summary } from '@/strings/messages/ModelSupportInvestigationModal__opfs_inventory_summary/es';
+import { ModelSupportInvestigationModal__passed } from '@/strings/messages/ModelSupportInvestigationModal__passed/es';
+import { ModelSupportInvestigationModal__persistence_roundtrip_summary } from '@/strings/messages/ModelSupportInvestigationModal__persistence_roundtrip_summary/es';
+import { ModelSupportInvestigationModal__presets } from '@/strings/messages/ModelSupportInvestigationModal__presets/es';
+import { ModelSupportInvestigationModal__previous_investigation_cleanup_failed_reload_before_starting_another } from '@/strings/messages/ModelSupportInvestigationModal__previous_investigation_cleanup_failed_reload_before_starting_another/es';
+import { ModelSupportInvestigationModal__ready_to_start } from '@/strings/messages/ModelSupportInvestigationModal__ready_to_start/es';
+import { ModelSupportInvestigationModal__reasoning_differential_failed } from '@/strings/messages/ModelSupportInvestigationModal__reasoning_differential_failed/es';
+import { ModelSupportInvestigationModal__reasoning_differential_observed } from '@/strings/messages/ModelSupportInvestigationModal__reasoning_differential_observed/es';
+import { ModelSupportInvestigationModal__reasoning_differential_unavailable } from '@/strings/messages/ModelSupportInvestigationModal__reasoning_differential_unavailable/es';
+import { ModelSupportInvestigationModal__replace_results_and_return_to_setup } from '@/strings/messages/ModelSupportInvestigationModal__replace_results_and_return_to_setup/es';
+import { ModelSupportInvestigationModal__repository } from '@/strings/messages/ModelSupportInvestigationModal__repository/es';
+import { ModelSupportInvestigationModal__repository_and_download } from '@/strings/messages/ModelSupportInvestigationModal__repository_and_download/es';
+import { ModelSupportInvestigationModal__repository_information } from '@/strings/messages/ModelSupportInvestigationModal__repository_information/es';
+import { ModelSupportInvestigationModal__repository_summary } from '@/strings/messages/ModelSupportInvestigationModal__repository_summary/es';
+import { ModelSupportInvestigationModal__required_by_selected_scope } from '@/strings/messages/ModelSupportInvestigationModal__required_by_selected_scope/es';
+import { ModelSupportInvestigationModal__running } from '@/strings/messages/ModelSupportInvestigationModal__running/es';
+import { ModelSupportInvestigationModal__running_and_results } from '@/strings/messages/ModelSupportInvestigationModal__running_and_results/es';
+import { ModelSupportInvestigationModal__runtime_assets } from '@/strings/messages/ModelSupportInvestigationModal__runtime_assets/es';
+import { ModelSupportInvestigationModal__runtime_bytes } from '@/strings/messages/ModelSupportInvestigationModal__runtime_bytes/es';
+import { ModelSupportInvestigationModal__runtime_control } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control/es';
+import { ModelSupportInvestigationModal__runtime_control_inputs } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control_inputs/es';
+import { ModelSupportInvestigationModal__runtime_control_webgpu } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control_webgpu/es';
+import { ModelSupportInvestigationModal__runtime_environment } from '@/strings/messages/ModelSupportInvestigationModal__runtime_environment/es';
+import { ModelSupportInvestigationModal__runtime_environment_summary } from '@/strings/messages/ModelSupportInvestigationModal__runtime_environment_summary/es';
+import { ModelSupportInvestigationModal__runtime_mjs } from '@/strings/messages/ModelSupportInvestigationModal__runtime_mjs/es';
+import { ModelSupportInvestigationModal__runtime_no_output } from '@/strings/messages/ModelSupportInvestigationModal__runtime_no_output/es';
+import { ModelSupportInvestigationModal__runtime_variant } from '@/strings/messages/ModelSupportInvestigationModal__runtime_variant/es';
+import { ModelSupportInvestigationModal__runtime_wasm } from '@/strings/messages/ModelSupportInvestigationModal__runtime_wasm/es';
+import { ModelSupportInvestigationModal__selected_scope_execution_summary } from '@/strings/messages/ModelSupportInvestigationModal__selected_scope_execution_summary/es';
+import { ModelSupportInvestigationModal__setup } from '@/strings/messages/ModelSupportInvestigationModal__setup/es';
+import { ModelSupportInvestigationModal__skipped } from '@/strings/messages/ModelSupportInvestigationModal__skipped/es';
+import { ModelSupportInvestigationModal__start_investigation } from '@/strings/messages/ModelSupportInvestigationModal__start_investigation/es';
+import { ModelSupportInvestigationModal__stop_investigation } from '@/strings/messages/ModelSupportInvestigationModal__stop_investigation/es';
+import { ModelSupportInvestigationModal__stop_this_model_and_continue } from '@/strings/messages/ModelSupportInvestigationModal__stop_this_model_and_continue/es';
+import { ModelSupportInvestigationModal__support_boundary } from '@/strings/messages/ModelSupportInvestigationModal__support_boundary/es';
+import { ModelSupportInvestigationModal__support_boundary_summary } from '@/strings/messages/ModelSupportInvestigationModal__support_boundary_summary/es';
+import { ModelSupportInvestigationModal__supported_auto_classes } from '@/strings/messages/ModelSupportInvestigationModal__supported_auto_classes/es';
+import { ModelSupportInvestigationModal__targets } from '@/strings/messages/ModelSupportInvestigationModal__targets/es';
+import { ModelSupportInvestigationModal__template_behavior } from '@/strings/messages/ModelSupportInvestigationModal__template_behavior/es';
+import { ModelSupportInvestigationModal__template_behavior_summary } from '@/strings/messages/ModelSupportInvestigationModal__template_behavior_summary/es';
+import { ModelSupportInvestigationModal__tool_protocol_probe_summary } from '@/strings/messages/ModelSupportInvestigationModal__tool_protocol_probe_summary/es';
+import { ModelSupportInvestigationModal__tool_result_production_continuation_failed } from '@/strings/messages/ModelSupportInvestigationModal__tool_result_production_continuation_failed/es';
+import { ModelSupportInvestigationModal__tool_result_production_continuation_passed } from '@/strings/messages/ModelSupportInvestigationModal__tool_result_production_continuation_passed/es';
+import { ModelSupportInvestigationModal__tool_template_provenance_summary } from '@/strings/messages/ModelSupportInvestigationModal__tool_template_provenance_summary/es';
+import { ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness } from '@/strings/messages/ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness/es';
+import { ModelSupportInvestigationSession__comparison_mismatch_does_not_establish_feature_failure } from '@/strings/messages/ModelSupportInvestigationSession__comparison_mismatch_does_not_establish_feature_failure/es';
+import { ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation } from '@/strings/messages/ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation/es';
+import { ModelSupportInvestigationSession__export_retained_download_timing } from '@/strings/messages/ModelSupportInvestigationSession__export_retained_download_timing/es';
+import { ModelSupportInvestigationSession__failed_and_not_run_checks } from '@/strings/messages/ModelSupportInvestigationSession__failed_and_not_run_checks/es';
+import { ModelSupportInvestigationSession__failed_to_export_retained_download_timing } from '@/strings/messages/ModelSupportInvestigationSession__failed_to_export_retained_download_timing/es';
+import { ModelSupportInvestigationSession__feature_check_result } from '@/strings/messages/ModelSupportInvestigationSession__feature_check_result/es';
+import { ModelSupportInvestigationSession__fresh_metadata_preparation_status } from '@/strings/messages/ModelSupportInvestigationSession__fresh_metadata_preparation_status/es';
+import { ModelSupportInvestigationSession__maximum_phase_deadlines } from '@/strings/messages/ModelSupportInvestigationSession__maximum_phase_deadlines/es';
+import { ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load } from '@/strings/messages/ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load/es';
+import { ModelSupportInvestigationSession__native_recording_is_not_correctness } from '@/strings/messages/ModelSupportInvestigationSession__native_recording_is_not_correctness/es';
+import { ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session } from '@/strings/messages/ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session/es';
+import { ModelSupportInvestigationSession__provider_collection_progress } from '@/strings/messages/ModelSupportInvestigationSession__provider_collection_progress/es';
+import { ModelSupportInvestigationSession__recording_retention_budget } from '@/strings/messages/ModelSupportInvestigationSession__recording_retention_budget/es';
+import { ModelSupportInvestigationSession__some_download_timing_was_not_retained } from '@/strings/messages/ModelSupportInvestigationSession__some_download_timing_was_not_retained/es';
 import { MountBadgeList__browse_path } from '@/strings/messages/MountBadgeList__browse_path/es';
 import { MountBadgeList__read_and_write_click_to_restrict } from '@/strings/messages/MountBadgeList__read_and_write_click_to_restrict/es';
 import { MountBadgeList__read_only_click_to_allow_write } from '@/strings/messages/MountBadgeList__read_only_click_to_allow_write/es';
 import { MountBadgeList__remove } from '@/strings/messages/MountBadgeList__remove/es';
+import { NaidanRpcTab__automatic_connection_help } from '@/strings/messages/NaidanRpcTab__automatic_connection_help/es';
+import { NaidanRpcTab__checking_connection } from '@/strings/messages/NaidanRpcTab__checking_connection/es';
+import { NaidanRpcTab__connect_automatically_on_startup } from '@/strings/messages/NaidanRpcTab__connect_automatically_on_startup/es';
+import { NaidanRpcTab__connection_check_paused } from '@/strings/messages/NaidanRpcTab__connection_check_paused/es';
+import { NaidanRpcTab__method_details } from '@/strings/messages/NaidanRpcTab__method_details/es';
+import { NaidanRpcTab__partially_enabled } from '@/strings/messages/NaidanRpcTab__partially_enabled/es';
+import { NaidanRpcTab__save_name } from '@/strings/messages/NaidanRpcTab__save_name/es';
+import { NaidanRpcTab__save_with_persistent_storage_first } from '@/strings/messages/NaidanRpcTab__save_with_persistent_storage_first/es';
 import { OllamaManagementView__ollama_runtime } from '@/strings/messages/OllamaManagementView__ollama_runtime/es';
 import { OllamaManagementView__view_and_unload_models_currently_held_in_memory_by_this_ollama_server } from '@/strings/messages/OllamaManagementView__view_and_unload_models_currently_held_in_memory_by_this_ollama_server/es';
 import { OllamaPsView__checking } from '@/strings/messages/OllamaPsView__checking/es';
@@ -1175,12 +1276,12 @@ import { OnboardingModal__endpoint_configuration } from '@/strings/messages/Onbo
 import { OnboardingModal__enter_existing_server_url } from '@/strings/messages/OnboardingModal__enter_existing_server_url/es';
 import { OnboardingModal__enter_valid_url } from '@/strings/messages/OnboardingModal__enter_valid_url/es';
 import { OnboardingModal__experimental } from '@/strings/messages/OnboardingModal__experimental/es';
-import { OnboardingModal__llama_cpp_browser } from '@/strings/messages/OnboardingModal__llama_cpp_browser/es';
 import { OnboardingModal__failed_to_connect } from '@/strings/messages/OnboardingModal__failed_to_connect/es';
 import { OnboardingModal__failed_to_save_settings } from '@/strings/messages/OnboardingModal__failed_to_save_settings/es';
 import { OnboardingModal__get_started } from '@/strings/messages/OnboardingModal__get_started/es';
 import { OnboardingModal__help_and_guide } from '@/strings/messages/OnboardingModal__help_and_guide/es';
 import { OnboardingModal__in_browser_ai } from '@/strings/messages/OnboardingModal__in_browser_ai/es';
+import { OnboardingModal__llama_cpp_browser } from '@/strings/messages/OnboardingModal__llama_cpp_browser/es';
 import { OnboardingModal__name } from '@/strings/messages/OnboardingModal__name/es';
 import { OnboardingModal__ollama } from '@/strings/messages/OnboardingModal__ollama/es';
 import { OnboardingModal__openai_compatible } from '@/strings/messages/OnboardingModal__openai_compatible/es';
@@ -1195,10 +1296,10 @@ import { OnboardingModal__successfully_connected } from '@/strings/messages/Onbo
 import { OnboardingModal__transformers_js } from '@/strings/messages/OnboardingModal__transformers_js/es';
 import { OnboardingModal__value } from '@/strings/messages/OnboardingModal__value/es';
 import { PWAManager__app_ready_to_work_offline } from '@/strings/messages/PWAManager__app_ready_to_work_offline/es';
-import { PWAUpdateNotification__reload_to_update } from '@/strings/messages/PWAUpdateNotification__reload_to_update/es';
-import { PWAUpdateNotification__preparing_update } from '@/strings/messages/PWAUpdateNotification__preparing_update/es';
-import { PWAUpdateNotification__temporary_online_update } from '@/strings/messages/PWAUpdateNotification__temporary_online_update/es';
 import { PWAUpdateNotification__applying_update } from '@/strings/messages/PWAUpdateNotification__applying_update/es';
+import { PWAUpdateNotification__preparing_update } from '@/strings/messages/PWAUpdateNotification__preparing_update/es';
+import { PWAUpdateNotification__reload_to_update } from '@/strings/messages/PWAUpdateNotification__reload_to_update/es';
+import { PWAUpdateNotification__temporary_online_update } from '@/strings/messages/PWAUpdateNotification__temporary_online_update/es';
 import { PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser } from '@/strings/messages/PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser/es';
 import { PromptApiStatus__browser_provided_model_is_not_available_on_this_device } from '@/strings/messages/PromptApiStatus__browser_provided_model_is_not_available_on_this_device/es';
 import { PromptApiStatus__browser_provided_model_is_ready } from '@/strings/messages/PromptApiStatus__browser_provided_model_is_ready/es';
@@ -1304,6 +1405,15 @@ import { RelativeTime__hours_ago } from '@/strings/messages/RelativeTime__hours_
 import { RelativeTime__just_now } from '@/strings/messages/RelativeTime__just_now/es';
 import { RelativeTime__minutes_ago } from '@/strings/messages/RelativeTime__minutes_ago/es';
 import { RelativeTime__seconds_ago } from '@/strings/messages/RelativeTime__seconds_ago/es';
+import { RpcPeerProvision__available_from_peer } from '@/strings/messages/RpcPeerProvision__available_from_peer/es';
+import { RpcPeerProvision__chat_inference } from '@/strings/messages/RpcPeerProvision__chat_inference/es';
+import { RpcPeerProvision__checking_provided_functions } from '@/strings/messages/RpcPeerProvision__checking_provided_functions/es';
+import { RpcPeerProvision__connect_to_check } from '@/strings/messages/RpcPeerProvision__connect_to_check/es';
+import { RpcPeerProvision__could_not_check } from '@/strings/messages/RpcPeerProvision__could_not_check/es';
+import { RpcPeerProvision__image_generation } from '@/strings/messages/RpcPeerProvision__image_generation/es';
+import { RpcPeerProvision__not_provided } from '@/strings/messages/RpcPeerProvision__not_provided/es';
+import { RpcPeerProvision__partially_provided } from '@/strings/messages/RpcPeerProvision__partially_provided/es';
+import { RpcPeerProvision__provided } from '@/strings/messages/RpcPeerProvision__provided/es';
 import { SearchPreview__alt_branch } from '@/strings/messages/SearchPreview__alt_branch/es';
 import { SearchPreview__conversation_match } from '@/strings/messages/SearchPreview__conversation_match/es';
 import { SearchPreview__following_messages } from '@/strings/messages/SearchPreview__following_messages/es';
@@ -1329,6 +1439,7 @@ import { SettingsModal__failed_to_import_recipes } from '@/strings/messages/Sett
 import { SettingsModal__files } from '@/strings/messages/SettingsModal__files/es';
 import { SettingsModal__folders } from '@/strings/messages/SettingsModal__folders/es';
 import { SettingsModal__keep_editing } from '@/strings/messages/SettingsModal__keep_editing/es';
+import { SettingsModal__llama_cpp_browser } from '@/strings/messages/SettingsModal__llama_cpp_browser/es';
 import { SettingsModal__provider_profiles } from '@/strings/messages/SettingsModal__provider_profiles/es';
 import { SettingsModal__recipes } from '@/strings/messages/SettingsModal__recipes/es';
 import { SettingsModal__settings } from '@/strings/messages/SettingsModal__settings/es';
@@ -1337,7 +1448,6 @@ import { SettingsModal__storage } from '@/strings/messages/SettingsModal__storag
 import { SettingsModal__successfully_imported_recipes_as_chat_groups } from '@/strings/messages/SettingsModal__successfully_imported_recipes_as_chat_groups/es';
 import { SettingsModal__tools } from '@/strings/messages/SettingsModal__tools/es';
 import { SettingsModal__transformers_js } from '@/strings/messages/SettingsModal__transformers_js/es';
-import { SettingsModal__llama_cpp_browser } from '@/strings/messages/SettingsModal__llama_cpp_browser/es';
 import { SidebarDebugControls__debug_events } from '@/strings/messages/SidebarDebugControls__debug_events/es';
 import { SidebarDebugControls__file_explorer } from '@/strings/messages/SidebarDebugControls__file_explorer/es';
 import { SidebarDebugControls__more_actions } from '@/strings/messages/SidebarDebugControls__more_actions/es';
@@ -1446,6 +1556,7 @@ import { StorageTab__unsupported } from '@/strings/messages/StorageTab__unsuppor
 import { ThemeToggle__dark_mode } from '@/strings/messages/ThemeToggle__dark_mode/es';
 import { ThemeToggle__light_mode } from '@/strings/messages/ThemeToggle__light_mode/es';
 import { ThemeToggle__system_mode } from '@/strings/messages/ThemeToggle__system_mode/es';
+import { ToolCallDraftItem__generating_tool_call } from '@/strings/messages/ToolCallDraftItem__generating_tool_call/es';
 import { ToolCallGroupItem__used_tools } from '@/strings/messages/ToolCallGroupItem__used_tools/es';
 import { ToolConfigHierarchySettings__access_global_knowledge } from '@/strings/messages/ToolConfigHierarchySettings__access_global_knowledge/es';
 import { ToolConfigHierarchySettings__calculator } from '@/strings/messages/ToolConfigHierarchySettings__calculator/es';
@@ -1472,126 +1583,7 @@ import { TransformersJsLoadingIndicator__loading_model_weights_into_browser_memo
 import { TransformersJsLoadingIndicator__model } from '@/strings/messages/TransformersJsLoadingIndicator__model/es';
 import { TransformersJsLoadingIndicator__on_device_execution } from '@/strings/messages/TransformersJsLoadingIndicator__on_device_execution/es';
 import { TransformersJsLoadingIndicator__transformers_js_error } from '@/strings/messages/TransformersJsLoadingIndicator__transformers_js_error/es';
-import { ModelSupportInvestigationModal__download_verification } from '@/strings/messages/ModelSupportInvestigationModal__download_verification/es';
-import { ModelSupportInvestigationModal__blocked } from '@/strings/messages/ModelSupportInvestigationModal__blocked/es';
-import { ModelSupportInvestigationModal__skipped } from '@/strings/messages/ModelSupportInvestigationModal__skipped/es';
-import { ModelSupportInvestigationModal__stop_this_model_and_continue } from '@/strings/messages/ModelSupportInvestigationModal__stop_this_model_and_continue/es';
-import { ModelSupportInvestigationModal__candidate_eligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_eligible/es';
-import { ModelSupportInvestigationModal__candidate_ineligible } from '@/strings/messages/ModelSupportInvestigationModal__candidate_ineligible/es';
-import { ModelSupportInvestigationModal__candidate_plan_summary } from '@/strings/messages/ModelSupportInvestigationModal__candidate_plan_summary/es';
-import { ModelSupportInvestigationModal__candidate_registry_failed } from '@/strings/messages/ModelSupportInvestigationModal__candidate_registry_failed/es';
-import { ModelSupportInvestigationModal__model_file_plan } from '@/strings/messages/ModelSupportInvestigationModal__model_file_plan/es';
-import { ModelSupportInvestigationModal__model_file_plan_summary } from '@/strings/messages/ModelSupportInvestigationModal__model_file_plan_summary/es';
-import { ModelSupportInvestigationModal__cache_revision_unknown } from '@/strings/messages/ModelSupportInvestigationModal__cache_revision_unknown/es';
-import { ModelSupportInvestigationModal__checking_same_origin_runtime_assets } from '@/strings/messages/ModelSupportInvestigationModal__checking_same_origin_runtime_assets/es';
-import { ModelSupportInvestigationModal__close } from '@/strings/messages/ModelSupportInvestigationModal__close/es';
-import { ModelSupportInvestigationModal__current_operation } from '@/strings/messages/ModelSupportInvestigationModal__current_operation/es';
-import { ModelSupportInvestigationModal__declaration_files_summary } from '@/strings/messages/ModelSupportInvestigationModal__declaration_files_summary/es';
-import { ModelSupportInvestigationModal__download_evidence_zip } from '@/strings/messages/ModelSupportInvestigationModal__download_evidence_zip/es';
-import { ModelSupportInvestigationModal__evidence_export } from '@/strings/messages/ModelSupportInvestigationModal__evidence_export/es';
-import { ModelSupportInvestigationModal__environment_evidence_disclosure } from '@/strings/messages/ModelSupportInvestigationModal__environment_evidence_disclosure/es';
-import { ModelSupportInvestigationModal__evidence_readiness } from '@/strings/messages/ModelSupportInvestigationModal__evidence_readiness/es';
-import { ModelSupportInvestigationModal__evidence_readiness_summary } from '@/strings/messages/ModelSupportInvestigationModal__evidence_readiness_summary/es';
-import { ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status } from '@/strings/messages/ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status/es';
-import { ModelSupportInvestigationModal__existing_model_data } from '@/strings/messages/ModelSupportInvestigationModal__existing_model_data/es';
-import { ModelSupportInvestigationModal__failed } from '@/strings/messages/ModelSupportInvestigationModal__failed/es';
-import { ModelSupportInvestigationModal__findings } from '@/strings/messages/ModelSupportInvestigationModal__findings/es';
-import { ModelSupportInvestigationModal__loading_investigation } from '@/strings/messages/ModelSupportInvestigationModal__loading_investigation/es';
-import { ModelSupportInvestigationModal__lane_comparison } from '@/strings/messages/ModelSupportInvestigationModal__lane_comparison/es';
-import { ModelSupportInvestigationModal__lane_continuity_failed } from '@/strings/messages/ModelSupportInvestigationModal__lane_continuity_failed/es';
-import { ModelSupportInvestigationModal__lane_continuity_summary } from '@/strings/messages/ModelSupportInvestigationModal__lane_continuity_summary/es';
-import { ModelSupportInvestigationModal__lane_failed } from '@/strings/messages/ModelSupportInvestigationModal__lane_failed/es';
-import { ModelSupportInvestigationModal__lane_input_match } from '@/strings/messages/ModelSupportInvestigationModal__lane_input_match/es';
-import { ModelSupportInvestigationModal__lane_input_mismatch } from '@/strings/messages/ModelSupportInvestigationModal__lane_input_mismatch/es';
-import { ModelSupportInvestigationModal__lane_route_summary } from '@/strings/messages/ModelSupportInvestigationModal__lane_route_summary/es';
-import { ModelSupportInvestigationModal__multimodal_failed } from '@/strings/messages/ModelSupportInvestigationModal__multimodal_failed/es';
-import { ModelSupportInvestigationModal__multimodal_observed } from '@/strings/messages/ModelSupportInvestigationModal__multimodal_observed/es';
-import { ModelSupportInvestigationModal__multimodal_unavailable } from '@/strings/messages/ModelSupportInvestigationModal__multimodal_unavailable/es';
-import { ModelSupportInvestigationModal__reasoning_differential_failed } from '@/strings/messages/ModelSupportInvestigationModal__reasoning_differential_failed/es';
-import { ModelSupportInvestigationModal__reasoning_differential_observed } from '@/strings/messages/ModelSupportInvestigationModal__reasoning_differential_observed/es';
-import { ModelSupportInvestigationModal__reasoning_differential_unavailable } from '@/strings/messages/ModelSupportInvestigationModal__reasoning_differential_unavailable/es';
-import { ModelSupportInvestigationModal__model_declarations } from '@/strings/messages/ModelSupportInvestigationModal__model_declarations/es';
-import { ModelSupportInvestigationModal__model_support_investigation } from '@/strings/messages/ModelSupportInvestigationModal__model_support_investigation/es';
-import { ModelSupportInvestigationModal__missing_model_type } from '@/strings/messages/ModelSupportInvestigationModal__missing_model_type/es';
-import { ModelSupportInvestigationModal__model_type } from '@/strings/messages/ModelSupportInvestigationModal__model_type/es';
-import { ModelSupportInvestigationModal__no_supported_auto_classes } from '@/strings/messages/ModelSupportInvestigationModal__no_supported_auto_classes/es';
-import { ModelSupportInvestigationModal__not_run } from '@/strings/messages/ModelSupportInvestigationModal__not_run/es';
-import { ModelSupportInvestigationModal__opfs_inventory } from '@/strings/messages/ModelSupportInvestigationModal__opfs_inventory/es';
-import { ModelSupportInvestigationModal__opfs_inventory_summary } from '@/strings/messages/ModelSupportInvestigationModal__opfs_inventory_summary/es';
-import { ModelSupportInvestigationModal__persistence_roundtrip_summary } from '@/strings/messages/ModelSupportInvestigationModal__persistence_roundtrip_summary/es';
-import { ModelSupportInvestigationModal__passed } from '@/strings/messages/ModelSupportInvestigationModal__passed/es';
-import { ModelSupportInvestigationModal__repository } from '@/strings/messages/ModelSupportInvestigationModal__repository/es';
-import { ModelSupportInvestigationModal__repository_information } from '@/strings/messages/ModelSupportInvestigationModal__repository_information/es';
-import { ModelSupportInvestigationModal__repository_summary } from '@/strings/messages/ModelSupportInvestigationModal__repository_summary/es';
-import { ModelSupportInvestigationModal__running } from '@/strings/messages/ModelSupportInvestigationModal__running/es';
-import { ModelSupportInvestigationModal__stop_investigation } from '@/strings/messages/ModelSupportInvestigationModal__stop_investigation/es';
-import { ModelSupportInvestigationModal__runtime_assets } from '@/strings/messages/ModelSupportInvestigationModal__runtime_assets/es';
-import { ModelSupportInvestigationModal__runtime_control_webgpu } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control_webgpu/es';
-import { ModelSupportInvestigationModal__runtime_no_output } from '@/strings/messages/ModelSupportInvestigationModal__runtime_no_output/es';
-import { ModelSupportInvestigationModal__runtime_bytes } from '@/strings/messages/ModelSupportInvestigationModal__runtime_bytes/es';
-import { ModelSupportInvestigationModal__runtime_control } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control/es';
-import { ModelSupportInvestigationModal__runtime_control_inputs } from '@/strings/messages/ModelSupportInvestigationModal__runtime_control_inputs/es';
-import { ModelSupportInvestigationModal__runtime_environment } from '@/strings/messages/ModelSupportInvestigationModal__runtime_environment/es';
-import { ModelSupportInvestigationModal__runtime_environment_summary } from '@/strings/messages/ModelSupportInvestigationModal__runtime_environment_summary/es';
-import { ModelSupportInvestigationModal__runtime_mjs } from '@/strings/messages/ModelSupportInvestigationModal__runtime_mjs/es';
-import { ModelSupportInvestigationModal__runtime_variant } from '@/strings/messages/ModelSupportInvestigationModal__runtime_variant/es';
-import { ModelSupportInvestigationModal__runtime_wasm } from '@/strings/messages/ModelSupportInvestigationModal__runtime_wasm/es';
-import { ModelSupportInvestigationModal__supported_auto_classes } from '@/strings/messages/ModelSupportInvestigationModal__supported_auto_classes/es';
-import { ModelSupportInvestigationModal__support_boundary } from '@/strings/messages/ModelSupportInvestigationModal__support_boundary/es';
-import { ModelSupportInvestigationModal__support_boundary_summary } from '@/strings/messages/ModelSupportInvestigationModal__support_boundary_summary/es';
-import { ModelSupportInvestigationModal__template_behavior } from '@/strings/messages/ModelSupportInvestigationModal__template_behavior/es';
-import { ModelSupportInvestigationModal__template_behavior_summary } from '@/strings/messages/ModelSupportInvestigationModal__template_behavior_summary/es';
-import { ModelSupportInvestigationModal__tool_protocol_probe_summary } from '@/strings/messages/ModelSupportInvestigationModal__tool_protocol_probe_summary/es';
-import { ModelSupportInvestigationModal__tool_result_production_continuation_failed } from '@/strings/messages/ModelSupportInvestigationModal__tool_result_production_continuation_failed/es';
-import { ModelSupportInvestigationModal__tool_result_production_continuation_passed } from '@/strings/messages/ModelSupportInvestigationModal__tool_result_production_continuation_passed/es';
-import { ModelSupportInvestigationModal__tool_template_provenance_summary } from '@/strings/messages/ModelSupportInvestigationModal__tool_template_provenance_summary/es';
-import { ModelSupportInvestigationModal__selected_scope_execution_summary } from '@/strings/messages/ModelSupportInvestigationModal__selected_scope_execution_summary/es';
-import { ModelSupportInvestigationSession__fresh_metadata_preparation_status } from '@/strings/messages/ModelSupportInvestigationSession__fresh_metadata_preparation_status/es';
-import { ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness } from '@/strings/messages/ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness/es';
-import { ModelSupportInvestigationSession__comparison_mismatch_does_not_establish_feature_failure } from '@/strings/messages/ModelSupportInvestigationSession__comparison_mismatch_does_not_establish_feature_failure/es';
-import { ModelSupportInvestigationSession__failed_and_not_run_checks } from '@/strings/messages/ModelSupportInvestigationSession__failed_and_not_run_checks/es';
-import { ModelSupportInvestigationSession__feature_check_result } from '@/strings/messages/ModelSupportInvestigationSession__feature_check_result/es';
-import { ModelSupportInvestigationSession__provider_collection_progress } from '@/strings/messages/ModelSupportInvestigationSession__provider_collection_progress/es';
-import { ModelSupportInvestigationSession__maximum_phase_deadlines } from '@/strings/messages/ModelSupportInvestigationSession__maximum_phase_deadlines/es';
-import { ModelSupportInvestigationSession__native_recording_is_not_correctness } from '@/strings/messages/ModelSupportInvestigationSession__native_recording_is_not_correctness/es';
-import { ModelSupportInvestigationSession__export_retained_download_timing } from '@/strings/messages/ModelSupportInvestigationSession__export_retained_download_timing/es';
-import { ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation } from '@/strings/messages/ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation/es';
-import { ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session } from '@/strings/messages/ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session/es';
-import { ModelSupportInvestigationSession__some_download_timing_was_not_retained } from '@/strings/messages/ModelSupportInvestigationSession__some_download_timing_was_not_retained/es';
-import { ModelSupportInvestigationSession__failed_to_export_retained_download_timing } from '@/strings/messages/ModelSupportInvestigationSession__failed_to_export_retained_download_timing/es';
-import { ModelSupportInvestigationSession__recording_retention_budget } from '@/strings/messages/ModelSupportInvestigationSession__recording_retention_budget/es';
-import { ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load } from '@/strings/messages/ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load/es';
-import { ModelSupportInvestigationModal__start_investigation } from '@/strings/messages/ModelSupportInvestigationModal__start_investigation/es';
-import { ModelSupportInvestigationModal__new_investigation } from '@/strings/messages/ModelSupportInvestigationModal__new_investigation/es';
-import { ModelSupportInvestigationModal__previous_investigation_cleanup_failed_reload_before_starting_another } from '@/strings/messages/ModelSupportInvestigationModal__previous_investigation_cleanup_failed_reload_before_starting_another/es';
-import { ModelSupportInvestigationModal__replace_results_and_return_to_setup } from '@/strings/messages/ModelSupportInvestigationModal__replace_results_and_return_to_setup/es';
-import { ModelSupportInvestigationModal__ready_to_start } from '@/strings/messages/ModelSupportInvestigationModal__ready_to_start/es';
-import { ModelSupportInvestigationModal__targets } from '@/strings/messages/ModelSupportInvestigationModal__targets/es';
-import { ModelSupportInvestigationModal__one_model_per_line } from '@/strings/messages/ModelSupportInvestigationModal__one_model_per_line/es';
-import { ModelSupportInvestigationModal__copy_model_list } from '@/strings/messages/ModelSupportInvestigationModal__copy_model_list/es';
-import { ModelSupportInvestigationModal__invalid_model_line } from '@/strings/messages/ModelSupportInvestigationModal__invalid_model_line/es';
-import { ModelSupportInvestigationModal__presets } from '@/strings/messages/ModelSupportInvestigationModal__presets/es';
-import { ModelSupportInvestigationModal__full_investigation } from '@/strings/messages/ModelSupportInvestigationModal__full_investigation/es';
-import { ModelSupportInvestigationModal__offline } from '@/strings/messages/ModelSupportInvestigationModal__offline/es';
-import { ModelSupportInvestigationModal__download_focused } from '@/strings/messages/ModelSupportInvestigationModal__download_focused/es';
-import { ModelSupportInvestigationModal__custom } from '@/strings/messages/ModelSupportInvestigationModal__custom/es';
-import { ModelSupportInvestigationModal__execution_policy } from '@/strings/messages/ModelSupportInvestigationModal__execution_policy/es';
-import { ModelSupportInvestigationModal__external_network_access } from '@/strings/messages/ModelSupportInvestigationModal__external_network_access/es';
-import { ModelSupportInvestigationModal__allow } from '@/strings/messages/ModelSupportInvestigationModal__allow/es';
-import { ModelSupportInvestigationModal__deny } from '@/strings/messages/ModelSupportInvestigationModal__deny/es';
-import { ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation } from '@/strings/messages/ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation/es';
-import { ModelSupportInvestigationModal__investigation_scope } from '@/strings/messages/ModelSupportInvestigationModal__investigation_scope/es';
-import { ModelSupportInvestigationModal__repository_and_download } from '@/strings/messages/ModelSupportInvestigationModal__repository_and_download/es';
-import { ModelSupportInvestigationModal__model_load } from '@/strings/messages/ModelSupportInvestigationModal__model_load/es';
-import { ModelSupportInvestigationModal__generation } from '@/strings/messages/ModelSupportInvestigationModal__generation/es';
-import { ModelSupportInvestigationModal__continuity_and_kv_cache } from '@/strings/messages/ModelSupportInvestigationModal__continuity_and_kv_cache/es';
-import { ModelSupportInvestigationModal__capability_probes } from '@/strings/messages/ModelSupportInvestigationModal__capability_probes/es';
-import { ModelSupportInvestigationModal__required_by_selected_scope } from '@/strings/messages/ModelSupportInvestigationModal__required_by_selected_scope/es';
-import { ModelSupportInvestigationModal__setup } from '@/strings/messages/ModelSupportInvestigationModal__setup/es';
-import { ModelSupportInvestigationModal__running_and_results } from '@/strings/messages/ModelSupportInvestigationModal__running_and_results/es';
-import { ModelSupportInvestigationModal__models_are_investigated_sequentially } from '@/strings/messages/ModelSupportInvestigationModal__models_are_investigated_sequentially/es';
-import { ModelSupportInvestigationModal__add_models_placeholder } from '@/strings/messages/ModelSupportInvestigationModal__add_models_placeholder/es';
-import { TransformersJsManager__investigate } from '@/strings/messages/TransformersJsManager__investigate/es';
+import { TransformersJsManager__about_time_remaining } from '@/strings/messages/TransformersJsManager__about_time_remaining/es';
 import { TransformersJsManager__active } from '@/strings/messages/TransformersJsManager__active/es';
 import { TransformersJsManager__active_model } from '@/strings/messages/TransformersJsManager__active_model/es';
 import { TransformersJsManager__add_new_models } from '@/strings/messages/TransformersJsManager__add_new_models/es';
@@ -1599,21 +1591,28 @@ import { TransformersJsManager__ai_engine_worker_restarted_successfully } from '
 import { TransformersJsManager__asset_details } from '@/strings/messages/TransformersJsManager__asset_details/es';
 import { TransformersJsManager__browsers_often_disable_the } from '@/strings/messages/TransformersJsManager__browsers_often_disable_the/es';
 import { TransformersJsManager__cache_api } from '@/strings/messages/TransformersJsManager__cache_api/es';
+import { TransformersJsManager__cached } from '@/strings/messages/TransformersJsManager__cached/es';
+import { TransformersJsManager__candidate_number } from '@/strings/messages/TransformersJsManager__candidate_number/es';
+import { TransformersJsManager__checking_cache } from '@/strings/messages/TransformersJsManager__checking_cache/es';
+import { TransformersJsManager__checking_required_files } from '@/strings/messages/TransformersJsManager__checking_required_files/es';
+import { TransformersJsManager__checking_runtime } from '@/strings/messages/TransformersJsManager__checking_runtime/es';
+import { TransformersJsManager__close_error_details } from '@/strings/messages/TransformersJsManager__close_error_details/es';
+import { TransformersJsManager__complete } from '@/strings/messages/TransformersJsManager__complete/es';
 import { TransformersJsManager__could_not_determine_a_valid_model_name_from_folder_structure } from '@/strings/messages/TransformersJsManager__could_not_determine_a_valid_model_name_from_folder_structure/es';
+import { TransformersJsManager__current_candidate_download_time_remaining } from '@/strings/messages/TransformersJsManager__current_candidate_download_time_remaining/es';
+import { TransformersJsManager__current_candidate_preparation_includes_cached_files } from '@/strings/messages/TransformersJsManager__current_candidate_preparation_includes_cached_files/es';
+import { TransformersJsManager__current_candidate_received_and_cached_bytes } from '@/strings/messages/TransformersJsManager__current_candidate_received_and_cached_bytes/es';
 import { TransformersJsManager__delete } from '@/strings/messages/TransformersJsManager__delete/es';
 import { TransformersJsManager__delete_downloaded_model } from '@/strings/messages/TransformersJsManager__delete_downloaded_model/es';
 import { TransformersJsManager__delete_failed } from '@/strings/messages/TransformersJsManager__delete_failed/es';
 import { TransformersJsManager__delete_model } from '@/strings/messages/TransformersJsManager__delete_model/es';
 import { TransformersJsManager__delete_model_warning } from '@/strings/messages/TransformersJsManager__delete_model_warning/es';
 import { TransformersJsManager__deleted_model } from '@/strings/messages/TransformersJsManager__deleted_model/es';
+import { TransformersJsManager__download_complete } from '@/strings/messages/TransformersJsManager__download_complete/es';
 import { TransformersJsManager__download_failed } from '@/strings/messages/TransformersJsManager__download_failed/es';
 import { TransformersJsManager__download_failed_check_details_in_the_section_below } from '@/strings/messages/TransformersJsManager__download_failed_check_details_in_the_section_below/es';
 import { TransformersJsManager__download_from_hugging_face } from '@/strings/messages/TransformersJsManager__download_from_hugging_face/es';
 import { TransformersJsManager__download_model } from '@/strings/messages/TransformersJsManager__download_model/es';
-import { TransformersJsManager__reusing_downloaded_file } from '@/strings/messages/TransformersJsManager__reusing_downloaded_file/es';
-import { TransformersJsManager__download_complete } from '@/strings/messages/TransformersJsManager__download_complete/es';
-import { TransformersJsManager__received_and_reused_bytes } from '@/strings/messages/TransformersJsManager__received_and_reused_bytes/es';
-import { TransformersJsManager__about_time_remaining } from '@/strings/messages/TransformersJsManager__about_time_remaining/es';
 import { TransformersJsManager__downloaded_models } from '@/strings/messages/TransformersJsManager__downloaded_models/es';
 import { TransformersJsManager__downloading_and_compiling } from '@/strings/messages/TransformersJsManager__downloading_and_compiling/es';
 import { TransformersJsManager__engine_control } from '@/strings/messages/TransformersJsManager__engine_control/es';
@@ -1622,6 +1621,8 @@ import { TransformersJsManager__engine_ready } from '@/strings/messages/Transfor
 import { TransformersJsManager__engine_unloaded_and_resources_released } from '@/strings/messages/TransformersJsManager__engine_unloaded_and_resources_released/es';
 import { TransformersJsManager__enter_hugging_face_model_id_e_g_onnx_community_phi_4 } from '@/strings/messages/TransformersJsManager__enter_hugging_face_model_id_e_g_onnx_community_phi_4/es';
 import { TransformersJsManager__error } from '@/strings/messages/TransformersJsManager__error/es';
+import { TransformersJsManager__estimating_download_time } from '@/strings/messages/TransformersJsManager__estimating_download_time/es';
+import { TransformersJsManager__files_complete } from '@/strings/messages/TransformersJsManager__files_complete/es';
 import { TransformersJsManager__filter_downloaded_models } from '@/strings/messages/TransformersJsManager__filter_downloaded_models/es';
 import { TransformersJsManager__find_more_models } from '@/strings/messages/TransformersJsManager__find_more_models/es';
 import { TransformersJsManager__for_local_file_urls_to_avoid_downloading_models_on_every_reload_use_a_local_web_server_or_the_hosted_version } from '@/strings/messages/TransformersJsManager__for_local_file_urls_to_avoid_downloading_models_on_every_reload_use_a_local_web_server_or_the_hosted_version/es';
@@ -1634,6 +1635,7 @@ import { TransformersJsManager__in_browser_ai_transformers_js_is_not_available_b
 import { TransformersJsManager__in_browser_ai_transformers_js_is_not_available_in_the_standalone_build_due_to_browser_restrictions_on_web_workers_and_webassembly_when_running_from_a_local_file } from '@/strings/messages/TransformersJsManager__in_browser_ai_transformers_js_is_not_available_in_the_standalone_build_due_to_browser_restrictions_on_web_workers_and_webassembly_when_running_from_a_local_file/es';
 import { TransformersJsManager__incomplete } from '@/strings/messages/TransformersJsManager__incomplete/es';
 import { TransformersJsManager__initializing_engine } from '@/strings/messages/TransformersJsManager__initializing_engine/es';
+import { TransformersJsManager__investigate } from '@/strings/messages/TransformersJsManager__investigate/es';
 import { TransformersJsManager__load } from '@/strings/messages/TransformersJsManager__load/es';
 import { TransformersJsManager__load_a_model_from_the_list_below_to_start_in_browser_inference } from '@/strings/messages/TransformersJsManager__load_a_model_from_the_list_below_to_start_in_browser_inference/es';
 import { TransformersJsManager__loading_from_local_storage } from '@/strings/messages/TransformersJsManager__loading_from_local_storage/es';
@@ -1645,39 +1647,29 @@ import { TransformersJsManager__no_models_match_your_filter } from '@/strings/me
 import { TransformersJsManager__note } from '@/strings/messages/TransformersJsManager__note/es';
 import { TransformersJsManager__origin_private_file_system_opfs } from '@/strings/messages/TransformersJsManager__origin_private_file_system_opfs/es';
 import { TransformersJsManager__overall_progress } from '@/strings/messages/TransformersJsManager__overall_progress/es';
-import { TransformersJsManager__close_error_details } from '@/strings/messages/TransformersJsManager__close_error_details/es';
-import { TransformersJsManager__resolving_revision } from '@/strings/messages/TransformersJsManager__resolving_revision/es';
-import { TransformersJsManager__checking_cache } from '@/strings/messages/TransformersJsManager__checking_cache/es';
 import { TransformersJsManager__preparing_metadata } from '@/strings/messages/TransformersJsManager__preparing_metadata/es';
-import { TransformersJsManager__checking_required_files } from '@/strings/messages/TransformersJsManager__checking_required_files/es';
-import { TransformersJsManager__transferring } from '@/strings/messages/TransformersJsManager__transferring/es';
-import { TransformersJsManager__saving } from '@/strings/messages/TransformersJsManager__saving/es';
-import { TransformersJsManager__checking_runtime } from '@/strings/messages/TransformersJsManager__checking_runtime/es';
-import { TransformersJsManager__complete } from '@/strings/messages/TransformersJsManager__complete/es';
-import { TransformersJsManager__queued } from '@/strings/messages/TransformersJsManager__queued/es';
-import { TransformersJsManager__cached } from '@/strings/messages/TransformersJsManager__cached/es';
-import { TransformersJsManager__current_candidate_preparation_includes_cached_files } from '@/strings/messages/TransformersJsManager__current_candidate_preparation_includes_cached_files/es';
-import { TransformersJsManager__total_size_unknown } from '@/strings/messages/TransformersJsManager__total_size_unknown/es';
-import { TransformersJsManager__recalculated_after_size_update } from '@/strings/messages/TransformersJsManager__recalculated_after_size_update/es';
-import { TransformersJsManager__recalculated_after_download_restart } from '@/strings/messages/TransformersJsManager__recalculated_after_download_restart/es';
-import { TransformersJsManager__retrying_with_another_candidate } from '@/strings/messages/TransformersJsManager__retrying_with_another_candidate/es';
-import { TransformersJsManager__saving_and_checks_not_included } from '@/strings/messages/TransformersJsManager__saving_and_checks_not_included/es';
-import { TransformersJsManager__estimating_download_time } from '@/strings/messages/TransformersJsManager__estimating_download_time/es';
-import { TransformersJsManager__recalculating_download_time } from '@/strings/messages/TransformersJsManager__recalculating_download_time/es';
-import { TransformersJsManager__files_complete } from '@/strings/messages/TransformersJsManager__files_complete/es';
-import { TransformersJsManager__current_candidate_download_time_remaining } from '@/strings/messages/TransformersJsManager__current_candidate_download_time_remaining/es';
-import { TransformersJsManager__candidate_number } from '@/strings/messages/TransformersJsManager__candidate_number/es';
-import { TransformersJsManager__current_candidate_received_and_cached_bytes } from '@/strings/messages/TransformersJsManager__current_candidate_received_and_cached_bytes/es';
 import { TransformersJsManager__preset_model_paths } from '@/strings/messages/TransformersJsManager__preset_model_paths/es';
+import { TransformersJsManager__queued } from '@/strings/messages/TransformersJsManager__queued/es';
+import { TransformersJsManager__recalculated_after_download_restart } from '@/strings/messages/TransformersJsManager__recalculated_after_download_restart/es';
+import { TransformersJsManager__recalculated_after_size_update } from '@/strings/messages/TransformersJsManager__recalculated_after_size_update/es';
+import { TransformersJsManager__recalculating_download_time } from '@/strings/messages/TransformersJsManager__recalculating_download_time/es';
+import { TransformersJsManager__received_and_reused_bytes } from '@/strings/messages/TransformersJsManager__received_and_reused_bytes/es';
 import { TransformersJsManager__refresh } from '@/strings/messages/TransformersJsManager__refresh/es';
+import { TransformersJsManager__resolving_revision } from '@/strings/messages/TransformersJsManager__resolving_revision/es';
 import { TransformersJsManager__restart } from '@/strings/messages/TransformersJsManager__restart/es';
 import { TransformersJsManager__restart_ai_engine } from '@/strings/messages/TransformersJsManager__restart_ai_engine/es';
 import { TransformersJsManager__resume } from '@/strings/messages/TransformersJsManager__resume/es';
+import { TransformersJsManager__retrying_with_another_candidate } from '@/strings/messages/TransformersJsManager__retrying_with_another_candidate/es';
+import { TransformersJsManager__reusing_downloaded_file } from '@/strings/messages/TransformersJsManager__reusing_downloaded_file/es';
+import { TransformersJsManager__saving } from '@/strings/messages/TransformersJsManager__saving/es';
+import { TransformersJsManager__saving_and_checks_not_included } from '@/strings/messages/TransformersJsManager__saving_and_checks_not_included/es';
 import { TransformersJsManager__select_a_folder_containing_onnx_model_files_to_import_it_into_the_browsers_storage } from '@/strings/messages/TransformersJsManager__select_a_folder_containing_onnx_model_files_to_import_it_into_the_browsers_storage/es';
 import { TransformersJsManager__select_model_folder } from '@/strings/messages/TransformersJsManager__select_model_folder/es';
 import { TransformersJsManager__successfully_downloaded_model } from '@/strings/messages/TransformersJsManager__successfully_downloaded_model/es';
 import { TransformersJsManager__successfully_imported_model } from '@/strings/messages/TransformersJsManager__successfully_imported_model/es';
 import { TransformersJsManager__this_will_terminate_the_current_background_worker_and_start_a_fresh_one_use_this_if_the_engine_becomes_unresponsive_or_shows_fatal_errors } from '@/strings/messages/TransformersJsManager__this_will_terminate_the_current_background_worker_and_start_a_fresh_one_use_this_if_the_engine_becomes_unresponsive_or_shows_fatal_errors/es';
+import { TransformersJsManager__total_size_unknown } from '@/strings/messages/TransformersJsManager__total_size_unknown/es';
+import { TransformersJsManager__transferring } from '@/strings/messages/TransformersJsManager__transferring/es';
 import { TransformersJsManager__unknown } from '@/strings/messages/TransformersJsManager__unknown/es';
 import { TransformersJsManager__unload_model_and_release_resources } from '@/strings/messages/TransformersJsManager__unload_model_and_release_resources/es';
 import { TransformersJsManager__use_custom_id } from '@/strings/messages/TransformersJsManager__use_custom_id/es';
@@ -1740,6 +1732,118 @@ import { advancedTextEditor__undo_with_shortcut } from '@/strings/messages/advan
 import { advancedTextEditor__updating } from '@/strings/messages/advancedTextEditor__updating/es';
 import { advancedTextEditor__use_regex } from '@/strings/messages/advancedTextEditor__use_regex/es';
 import { advancedTextEditor__words } from '@/strings/messages/advancedTextEditor__words/es';
+import { audioGeneration__add_reference_files } from '@/strings/messages/audioGeneration__add_reference_files/es';
+import { audioGeneration__advanced_model_selection } from '@/strings/messages/audioGeneration__advanced_model_selection/es';
+import { audioGeneration__advanced_settings } from '@/strings/messages/audioGeneration__advanced_settings/es';
+import { audioGeneration__all_models_help } from '@/strings/messages/audioGeneration__all_models_help/es';
+import { audioGeneration__audio_generation } from '@/strings/messages/audioGeneration__audio_generation/es';
+import { audioGeneration__audio_model } from '@/strings/messages/audioGeneration__audio_model/es';
+import { audioGeneration__audio_processor } from '@/strings/messages/audioGeneration__audio_processor/es';
+import { audioGeneration__automatic_profile } from '@/strings/messages/audioGeneration__automatic_profile/es';
+import { audioGeneration__backbone_temperature } from '@/strings/messages/audioGeneration__backbone_temperature/es';
+import { audioGeneration__backbone_top_k } from '@/strings/messages/audioGeneration__backbone_top_k/es';
+import { audioGeneration__backbone_top_p } from '@/strings/messages/audioGeneration__backbone_top_p/es';
+import { audioGeneration__cancel_and_discard } from '@/strings/messages/audioGeneration__cancel_and_discard/es';
+import { audioGeneration__capture_preview } from '@/strings/messages/audioGeneration__capture_preview/es';
+import { audioGeneration__captured_steps } from '@/strings/messages/audioGeneration__captured_steps/es';
+import { audioGeneration__check_parameters } from '@/strings/messages/audioGeneration__check_parameters/es';
+import { audioGeneration__checking_local_model_metadata } from '@/strings/messages/audioGeneration__checking_local_model_metadata/es';
+import { audioGeneration__choose_model } from '@/strings/messages/audioGeneration__choose_model/es';
+import { audioGeneration__clear_reference } from '@/strings/messages/audioGeneration__clear_reference/es';
+import { audioGeneration__context_full } from '@/strings/messages/audioGeneration__context_full/es';
+import { audioGeneration__context_help } from '@/strings/messages/audioGeneration__context_help/es';
+import { audioGeneration__context_tokens } from '@/strings/messages/audioGeneration__context_tokens/es';
+import { audioGeneration__copy_failed_select_text } from '@/strings/messages/audioGeneration__copy_failed_select_text/es';
+import { audioGeneration__copy_text } from '@/strings/messages/audioGeneration__copy_text/es';
+import { audioGeneration__cpu_audio } from '@/strings/messages/audioGeneration__cpu_audio/es';
+import { audioGeneration__decoding_audio } from '@/strings/messages/audioGeneration__decoding_audio/es';
+import { audioGeneration__delete_all_audio } from '@/strings/messages/audioGeneration__delete_all_audio/es';
+import { audioGeneration__delete_all_references } from '@/strings/messages/audioGeneration__delete_all_references/es';
+import { audioGeneration__delete_audio } from '@/strings/messages/audioGeneration__delete_audio/es';
+import { audioGeneration__delete_reference } from '@/strings/messages/audioGeneration__delete_reference/es';
+import { audioGeneration__deselect_all_references } from '@/strings/messages/audioGeneration__deselect_all_references/es';
+import { audioGeneration__discard_recording } from '@/strings/messages/audioGeneration__discard_recording/es';
+import { audioGeneration__drop_reference_audio } from '@/strings/messages/audioGeneration__drop_reference_audio/es';
+import { audioGeneration__empty_audio } from '@/strings/messages/audioGeneration__empty_audio/es';
+import { audioGeneration__finish_and_keep_audio } from '@/strings/messages/audioGeneration__finish_and_keep_audio/es';
+import { audioGeneration__finish_audio_help } from '@/strings/messages/audioGeneration__finish_audio_help/es';
+import { audioGeneration__finished_early } from '@/strings/messages/audioGeneration__finished_early/es';
+import { audioGeneration__finishing_current_step } from '@/strings/messages/audioGeneration__finishing_current_step/es';
+import { audioGeneration__generate_audio } from '@/strings/messages/audioGeneration__generate_audio/es';
+import { audioGeneration__generated_audio } from '@/strings/messages/audioGeneration__generated_audio/es';
+import { audioGeneration__generation_failed } from '@/strings/messages/audioGeneration__generation_failed/es';
+import { audioGeneration__generation_settings } from '@/strings/messages/audioGeneration__generation_settings/es';
+import { audioGeneration__generation_stopped } from '@/strings/messages/audioGeneration__generation_stopped/es';
+import { audioGeneration__history_memory_usage } from '@/strings/messages/audioGeneration__history_memory_usage/es';
+import { audioGeneration__input_placeholder } from '@/strings/messages/audioGeneration__input_placeholder/es';
+import { audioGeneration__input_text } from '@/strings/messages/audioGeneration__input_text/es';
+import { audioGeneration__integer_range } from '@/strings/messages/audioGeneration__integer_range/es';
+import { audioGeneration__introduction } from '@/strings/messages/audioGeneration__introduction/es';
+import { audioGeneration__invalid_reference } from '@/strings/messages/audioGeneration__invalid_reference/es';
+import { audioGeneration__invalid_text } from '@/strings/messages/audioGeneration__invalid_text/es';
+import { audioGeneration__invalid_top_p } from '@/strings/messages/audioGeneration__invalid_top_p/es';
+import { audioGeneration__language } from '@/strings/messages/audioGeneration__language/es';
+import { audioGeneration__language_help } from '@/strings/messages/audioGeneration__language_help/es';
+import { audioGeneration__limit_reached } from '@/strings/messages/audioGeneration__limit_reached/es';
+import { audioGeneration__manage_models_and_runtime } from '@/strings/messages/audioGeneration__manage_models_and_runtime/es';
+import { audioGeneration__maximum_steps } from '@/strings/messages/audioGeneration__maximum_steps/es';
+import { audioGeneration__microphone_permission_denied } from '@/strings/messages/audioGeneration__microphone_permission_denied/es';
+import { audioGeneration__microphone_unavailable } from '@/strings/messages/audioGeneration__microphone_unavailable/es';
+import { audioGeneration__model_default } from '@/strings/messages/audioGeneration__model_default/es';
+import { audioGeneration__model_detection_help } from '@/strings/messages/audioGeneration__model_detection_help/es';
+import { audioGeneration__model_setup_help } from '@/strings/messages/audioGeneration__model_setup_help/es';
+import { audioGeneration__model_support_help } from '@/strings/messages/audioGeneration__model_support_help/es';
+import { audioGeneration__native_diagnostics } from '@/strings/messages/audioGeneration__native_diagnostics/es';
+import { audioGeneration__no_audio_models_detected } from '@/strings/messages/audioGeneration__no_audio_models_detected/es';
+import { audioGeneration__no_reference_selected } from '@/strings/messages/audioGeneration__no_reference_selected/es';
+import { audioGeneration__not_detected_as_audio } from '@/strings/messages/audioGeneration__not_detected_as_audio/es';
+import { audioGeneration__number_range } from '@/strings/messages/audioGeneration__number_range/es';
+import { audioGeneration__output_lifetime } from '@/strings/messages/audioGeneration__output_lifetime/es';
+import { audioGeneration__preparing_recording } from '@/strings/messages/audioGeneration__preparing_recording/es';
+import { audioGeneration__preparing_references } from '@/strings/messages/audioGeneration__preparing_references/es';
+import { audioGeneration__preview_help } from '@/strings/messages/audioGeneration__preview_help/es';
+import { audioGeneration__preview_pending } from '@/strings/messages/audioGeneration__preview_pending/es';
+import { audioGeneration__preview_result } from '@/strings/messages/audioGeneration__preview_result/es';
+import { audioGeneration__processor_help } from '@/strings/messages/audioGeneration__processor_help/es';
+import { audioGeneration__random_seed } from '@/strings/messages/audioGeneration__random_seed/es';
+import { audioGeneration__record_reference } from '@/strings/messages/audioGeneration__record_reference/es';
+import { audioGeneration__recorded_settings_help } from '@/strings/messages/audioGeneration__recorded_settings_help/es';
+import { audioGeneration__recording_audio } from '@/strings/messages/audioGeneration__recording_audio/es';
+import { audioGeneration__recording_failed } from '@/strings/messages/audioGeneration__recording_failed/es';
+import { audioGeneration__recording_help } from '@/strings/messages/audioGeneration__recording_help/es';
+import { audioGeneration__recording_limited_to_thirty_seconds } from '@/strings/messages/audioGeneration__recording_limited_to_thirty_seconds/es';
+import { audioGeneration__recording_unavailable } from '@/strings/messages/audioGeneration__recording_unavailable/es';
+import { audioGeneration__reference_collection_help } from '@/strings/messages/audioGeneration__reference_collection_help/es';
+import { audioGeneration__reference_decode_failed } from '@/strings/messages/audioGeneration__reference_decode_failed/es';
+import { audioGeneration__reference_empty } from '@/strings/messages/audioGeneration__reference_empty/es';
+import { audioGeneration__reference_help } from '@/strings/messages/audioGeneration__reference_help/es';
+import { audioGeneration__reference_library_full } from '@/strings/messages/audioGeneration__reference_library_full/es';
+import { audioGeneration__reference_required } from '@/strings/messages/audioGeneration__reference_required/es';
+import { audioGeneration__reference_too_large } from '@/strings/messages/audioGeneration__reference_too_large/es';
+import { audioGeneration__reference_too_long } from '@/strings/messages/audioGeneration__reference_too_long/es';
+import { audioGeneration__reference_usage_notes } from '@/strings/messages/audioGeneration__reference_usage_notes/es';
+import { audioGeneration__reference_voice } from '@/strings/messages/audioGeneration__reference_voice/es';
+import { audioGeneration__reinitialize_runtime } from '@/strings/messages/audioGeneration__reinitialize_runtime/es';
+import { audioGeneration__reinitialize_runtime_help } from '@/strings/messages/audioGeneration__reinitialize_runtime_help/es';
+import { audioGeneration__reinitializing_runtime } from '@/strings/messages/audioGeneration__reinitializing_runtime/es';
+import { audioGeneration__requested_profile } from '@/strings/messages/audioGeneration__requested_profile/es';
+import { audioGeneration__requesting_microphone } from '@/strings/messages/audioGeneration__requesting_microphone/es';
+import { audioGeneration__runtime_audio } from '@/strings/messages/audioGeneration__runtime_audio/es';
+import { audioGeneration__runtime_unavailable } from '@/strings/messages/audioGeneration__runtime_unavailable/es';
+import { audioGeneration__sampling_help } from '@/strings/messages/audioGeneration__sampling_help/es';
+import { audioGeneration__save_wav } from '@/strings/messages/audioGeneration__save_wav/es';
+import { audioGeneration__seed } from '@/strings/messages/audioGeneration__seed/es';
+import { audioGeneration__selected_references } from '@/strings/messages/audioGeneration__selected_references/es';
+import { audioGeneration__show_all_llama_cpp_browser_models } from '@/strings/messages/audioGeneration__show_all_llama_cpp_browser_models/es';
+import { audioGeneration__show_all_models } from '@/strings/messages/audioGeneration__show_all_models/es';
+import { audioGeneration__step_limit_help } from '@/strings/messages/audioGeneration__step_limit_help/es';
+import { audioGeneration__steps_completed } from '@/strings/messages/audioGeneration__steps_completed/es';
+import { audioGeneration__stop_and_use_recording } from '@/strings/messages/audioGeneration__stop_and_use_recording/es';
+import { audioGeneration__stop_generation } from '@/strings/messages/audioGeneration__stop_generation/es';
+import { audioGeneration__stopping } from '@/strings/messages/audioGeneration__stopping/es';
+import { audioGeneration__text_copied } from '@/strings/messages/audioGeneration__text_copied/es';
+import { audioGeneration__unsupported_model } from '@/strings/messages/audioGeneration__unsupported_model/es';
+import { audioGeneration__waiting } from '@/strings/messages/audioGeneration__waiting/es';
 import { binaryObjects__binary_objects } from '@/strings/messages/binaryObjects__binary_objects/es';
 import { binaryObjects__close_with_escape } from '@/strings/messages/binaryObjects__close_with_escape/es';
 import { binaryObjects__copy_name } from '@/strings/messages/binaryObjects__copy_name/es';
@@ -1835,9 +1939,13 @@ import { dataDeletion__preview_entries } from '@/strings/messages/dataDeletion__
 import { dataDeletion__scanning_storage } from '@/strings/messages/dataDeletion__scanning_storage/es';
 import { dataDeletion__select_at_least_one_deletion_selector } from '@/strings/messages/dataDeletion__select_at_least_one_deletion_selector/es';
 import { fileExplorer__add } from '@/strings/messages/fileExplorer__add/es';
+import { fileExplorer__addition_count } from '@/strings/messages/fileExplorer__addition_count/es';
+import { fileExplorer__analyzing_zip } from '@/strings/messages/fileExplorer__analyzing_zip/es';
 import { fileExplorer__archive_name } from '@/strings/messages/fileExplorer__archive_name/es';
 import { fileExplorer__binary_file } from '@/strings/messages/fileExplorer__binary_file/es';
+import { fileExplorer__blocked_count } from '@/strings/messages/fileExplorer__blocked_count/es';
 import { fileExplorer__byte_count } from '@/strings/messages/fileExplorer__byte_count/es';
+import { fileExplorer__cannot_be_placed } from '@/strings/messages/fileExplorer__cannot_be_placed/es';
 import { fileExplorer__close } from '@/strings/messages/fileExplorer__close/es';
 import { fileExplorer__close_preview } from '@/strings/messages/fileExplorer__close_preview/es';
 import { fileExplorer__column_view } from '@/strings/messages/fileExplorer__column_view/es';
@@ -1859,13 +1967,16 @@ import { fileExplorer__enter_a_name_for_the_new_folder } from '@/strings/message
 import { fileExplorer__entry_info } from '@/strings/messages/fileExplorer__entry_info/es';
 import { fileExplorer__exclude_items } from '@/strings/messages/fileExplorer__exclude_items/es';
 import { fileExplorer__exclude_items_help } from '@/strings/messages/fileExplorer__exclude_items_help/es';
+import { fileExplorer__existing } from '@/strings/messages/fileExplorer__existing/es';
+import { fileExplorer__extract_and_place } from '@/strings/messages/fileExplorer__extract_and_place/es';
+import { fileExplorer__extract_and_place_description } from '@/strings/messages/fileExplorer__extract_and_place_description/es';
 import { fileExplorer__failed_to_copy_items } from '@/strings/messages/fileExplorer__failed_to_copy_items/es';
 import { fileExplorer__failed_to_create_file } from '@/strings/messages/fileExplorer__failed_to_create_file/es';
 import { fileExplorer__failed_to_create_folder } from '@/strings/messages/fileExplorer__failed_to_create_folder/es';
-import { fileExplorer__failed_to_load_exclusion_suggestions } from '@/strings/messages/fileExplorer__failed_to_load_exclusion_suggestions/es';
 import { fileExplorer__failed_to_delete } from '@/strings/messages/fileExplorer__failed_to_delete/es';
 import { fileExplorer__failed_to_download } from '@/strings/messages/fileExplorer__failed_to_download/es';
 import { fileExplorer__failed_to_load_directory } from '@/strings/messages/fileExplorer__failed_to_load_directory/es';
+import { fileExplorer__failed_to_load_exclusion_suggestions } from '@/strings/messages/fileExplorer__failed_to_load_exclusion_suggestions/es';
 import { fileExplorer__failed_to_move_items } from '@/strings/messages/fileExplorer__failed_to_move_items/es';
 import { fileExplorer__failed_to_rename } from '@/strings/messages/fileExplorer__failed_to_rename/es';
 import { fileExplorer__failed_to_upload_files } from '@/strings/messages/fileExplorer__failed_to_upload_files/es';
@@ -1885,6 +1996,7 @@ import { fileExplorer__item_count_label } from '@/strings/messages/fileExplorer_
 import { fileExplorer__list_view } from '@/strings/messages/fileExplorer__list_view/es';
 import { fileExplorer__load_anyway } from '@/strings/messages/fileExplorer__load_anyway/es';
 import { fileExplorer__locked_click_to_unlock } from '@/strings/messages/fileExplorer__locked_click_to_unlock/es';
+import { fileExplorer__merge_count } from '@/strings/messages/fileExplorer__merge_count/es';
 import { fileExplorer__modified } from '@/strings/messages/fileExplorer__modified/es';
 import { fileExplorer__modified_label } from '@/strings/messages/fileExplorer__modified_label/es';
 import { fileExplorer__name } from '@/strings/messages/fileExplorer__name/es';
@@ -1892,39 +2004,13 @@ import { fileExplorer__new_file } from '@/strings/messages/fileExplorer__new_fil
 import { fileExplorer__new_file_unlock_to_enable } from '@/strings/messages/fileExplorer__new_file_unlock_to_enable/es';
 import { fileExplorer__new_folder } from '@/strings/messages/fileExplorer__new_folder/es';
 import { fileExplorer__new_folder_unlock_to_enable } from '@/strings/messages/fileExplorer__new_folder_unlock_to_enable/es';
+import { fileExplorer__next_zip } from '@/strings/messages/fileExplorer__next_zip/es';
 import { fileExplorer__no_matching_items } from '@/strings/messages/fileExplorer__no_matching_items/es';
+import { fileExplorer__not_changed_yet } from '@/strings/messages/fileExplorer__not_changed_yet/es';
 import { fileExplorer__open } from '@/strings/messages/fileExplorer__open/es';
 import { fileExplorer__optional } from '@/strings/messages/fileExplorer__optional/es';
-import { fileExplorer__paste } from '@/strings/messages/fileExplorer__paste/es';
-import { fileExplorer__preview } from '@/strings/messages/fileExplorer__preview/es';
-import { fileExplorer__refresh } from '@/strings/messages/fileExplorer__refresh/es';
-import { fileExplorer__relative_path } from '@/strings/messages/fileExplorer__relative_path/es';
-import { fileExplorer__rename } from '@/strings/messages/fileExplorer__rename/es';
-import { fileExplorer__search } from '@/strings/messages/fileExplorer__search/es';
-import { fileExplorer__select_a_file } from '@/strings/messages/fileExplorer__select_a_file/es';
-import { fileExplorer__select_all } from '@/strings/messages/fileExplorer__select_all/es';
-import { fileExplorer__selected_count_label } from '@/strings/messages/fileExplorer__selected_count_label/es';
-import { fileExplorer__show_preview } from '@/strings/messages/fileExplorer__show_preview/es';
-import { fileExplorer__size } from '@/strings/messages/fileExplorer__size/es';
-import { fileExplorer__size_label } from '@/strings/messages/fileExplorer__size_label/es';
-import { fileExplorer__type } from '@/strings/messages/fileExplorer__type/es';
-import { fileExplorer__type_to_narrow_results } from '@/strings/messages/fileExplorer__type_to_narrow_results/es';
-import { fileExplorer__unlock_to_enable } from '@/strings/messages/fileExplorer__unlock_to_enable/es';
-import { fileExplorer__unlocked_click_to_lock } from '@/strings/messages/fileExplorer__unlocked_click_to_lock/es';
-import { fileExplorer__unsupported_items_were_skipped } from '@/strings/messages/fileExplorer__unsupported_items_were_skipped/es';
-import { fileExplorer__upload_files } from '@/strings/messages/fileExplorer__upload_files/es';
-import { fileExplorer__upload_files_unlock_to_enable } from '@/strings/messages/fileExplorer__upload_files_unlock_to_enable/es';
-import { fileExplorer__addition_count } from '@/strings/messages/fileExplorer__addition_count/es';
-import { fileExplorer__analyzing_zip } from '@/strings/messages/fileExplorer__analyzing_zip/es';
-import { fileExplorer__blocked_count } from '@/strings/messages/fileExplorer__blocked_count/es';
-import { fileExplorer__cannot_be_placed } from '@/strings/messages/fileExplorer__cannot_be_placed/es';
-import { fileExplorer__existing } from '@/strings/messages/fileExplorer__existing/es';
-import { fileExplorer__extract_and_place } from '@/strings/messages/fileExplorer__extract_and_place/es';
-import { fileExplorer__extract_and_place_description } from '@/strings/messages/fileExplorer__extract_and_place_description/es';
-import { fileExplorer__merge_count } from '@/strings/messages/fileExplorer__merge_count/es';
-import { fileExplorer__next_zip } from '@/strings/messages/fileExplorer__next_zip/es';
-import { fileExplorer__not_changed_yet } from '@/strings/messages/fileExplorer__not_changed_yet/es';
 import { fileExplorer__overwrite_count } from '@/strings/messages/fileExplorer__overwrite_count/es';
+import { fileExplorer__paste } from '@/strings/messages/fileExplorer__paste/es';
 import { fileExplorer__place_contents_here } from '@/strings/messages/fileExplorer__place_contents_here/es';
 import { fileExplorer__place_contents_here_description } from '@/strings/messages/fileExplorer__place_contents_here_description/es';
 import { fileExplorer__place_directory_itself } from '@/strings/messages/fileExplorer__place_directory_itself/es';
@@ -1936,19 +2022,593 @@ import { fileExplorer__placement_preview } from '@/strings/messages/fileExplorer
 import { fileExplorer__planned_addition } from '@/strings/messages/fileExplorer__planned_addition/es';
 import { fileExplorer__planned_merge } from '@/strings/messages/fileExplorer__planned_merge/es';
 import { fileExplorer__planned_overwrite } from '@/strings/messages/fileExplorer__planned_overwrite/es';
+import { fileExplorer__preview } from '@/strings/messages/fileExplorer__preview/es';
+import { fileExplorer__refresh } from '@/strings/messages/fileExplorer__refresh/es';
+import { fileExplorer__relative_path } from '@/strings/messages/fileExplorer__relative_path/es';
+import { fileExplorer__rename } from '@/strings/messages/fileExplorer__rename/es';
 import { fileExplorer__root_directory_handling } from '@/strings/messages/fileExplorer__root_directory_handling/es';
+import { fileExplorer__search } from '@/strings/messages/fileExplorer__search/es';
+import { fileExplorer__select_a_file } from '@/strings/messages/fileExplorer__select_a_file/es';
+import { fileExplorer__select_all } from '@/strings/messages/fileExplorer__select_all/es';
+import { fileExplorer__selected_count_label } from '@/strings/messages/fileExplorer__selected_count_label/es';
+import { fileExplorer__show_preview } from '@/strings/messages/fileExplorer__show_preview/es';
+import { fileExplorer__size } from '@/strings/messages/fileExplorer__size/es';
+import { fileExplorer__size_label } from '@/strings/messages/fileExplorer__size_label/es';
 import { fileExplorer__status } from '@/strings/messages/fileExplorer__status/es';
+import { fileExplorer__type } from '@/strings/messages/fileExplorer__type/es';
+import { fileExplorer__type_to_narrow_results } from '@/strings/messages/fileExplorer__type_to_narrow_results/es';
+import { fileExplorer__unlock_to_enable } from '@/strings/messages/fileExplorer__unlock_to_enable/es';
+import { fileExplorer__unlocked_click_to_lock } from '@/strings/messages/fileExplorer__unlocked_click_to_lock/es';
+import { fileExplorer__unsupported_items_were_skipped } from '@/strings/messages/fileExplorer__unsupported_items_were_skipped/es';
+import { fileExplorer__upload_files } from '@/strings/messages/fileExplorer__upload_files/es';
+import { fileExplorer__upload_files_unlock_to_enable } from '@/strings/messages/fileExplorer__upload_files_unlock_to_enable/es';
 import { fileExplorer__uploading } from '@/strings/messages/fileExplorer__uploading/es';
 import { fileExplorer__zip_archive } from '@/strings/messages/fileExplorer__zip_archive/es';
 import { fileExplorer__zip_cannot_be_extracted } from '@/strings/messages/fileExplorer__zip_cannot_be_extracted/es';
 import { fileExplorer__zip_file_upload } from '@/strings/messages/fileExplorer__zip_file_upload/es';
 import { fileExplorer__zip_upload_preview_outdated } from '@/strings/messages/fileExplorer__zip_upload_preview_outdated/es';
 import { formatSettingsSourceLabel__default } from '@/strings/messages/formatSettingsSourceLabel__default/es';
-import { formatSettingsSourceLabel__value_from_chat } from '@/strings/messages/formatSettingsSourceLabel__value_from_chat/es';
 import { formatSettingsSourceLabel__none } from '@/strings/messages/formatSettingsSourceLabel__none/es';
+import { formatSettingsSourceLabel__value_from_chat } from '@/strings/messages/formatSettingsSourceLabel__value_from_chat/es';
 import { formatSettingsSourceLabel__value_from_global } from '@/strings/messages/formatSettingsSourceLabel__value_from_global/es';
 import { formatSettingsSourceLabel__value_from_group } from '@/strings/messages/formatSettingsSourceLabel__value_from_group/es';
-import { ToolCallDraftItem__generating_tool_call } from '@/strings/messages/ToolCallDraftItem__generating_tool_call/es';
+import { imageBenchmark__archive_saved } from '@/strings/messages/imageBenchmark__archive_saved/es';
+import { imageBenchmark__available_models } from '@/strings/messages/imageBenchmark__available_models/es';
+import { imageBenchmark__cancelled } from '@/strings/messages/imageBenchmark__cancelled/es';
+import { imageBenchmark__check_plan } from '@/strings/messages/imageBenchmark__check_plan/es';
+import { imageBenchmark__cold } from '@/strings/messages/imageBenchmark__cold/es';
+import { imageBenchmark__cold_then_warm } from '@/strings/messages/imageBenchmark__cold_then_warm/es';
+import { imageBenchmark__cooldown } from '@/strings/messages/imageBenchmark__cooldown/es';
+import { imageBenchmark__defaults_help } from '@/strings/messages/imageBenchmark__defaults_help/es';
+import { imageBenchmark__diagnostics } from '@/strings/messages/imageBenchmark__diagnostics/es';
+import { imageBenchmark__download_zip } from '@/strings/messages/imageBenchmark__download_zip/es';
+import { imageBenchmark__effective_request } from '@/strings/messages/imageBenchmark__effective_request/es';
+import { imageBenchmark__elapsed } from '@/strings/messages/imageBenchmark__elapsed/es';
+import { imageBenchmark__environment_notes } from '@/strings/messages/imageBenchmark__environment_notes/es';
+import { imageBenchmark__export_privacy } from '@/strings/messages/imageBenchmark__export_privacy/es';
+import { imageBenchmark__exporting } from '@/strings/messages/imageBenchmark__exporting/es';
+import { imageBenchmark__failed } from '@/strings/messages/imageBenchmark__failed/es';
+import { imageBenchmark__fairness } from '@/strings/messages/imageBenchmark__fairness/es';
+import { imageBenchmark__fresh_each } from '@/strings/messages/imageBenchmark__fresh_each/es';
+import { imageBenchmark__freshness_warning } from '@/strings/messages/imageBenchmark__freshness_warning/es';
+import { imageBenchmark__include_input_images_in_zip } from '@/strings/messages/imageBenchmark__include_input_images_in_zip/es';
+import { imageBenchmark__include_prompts } from '@/strings/messages/imageBenchmark__include_prompts/es';
+import { imageBenchmark__introduction } from '@/strings/messages/imageBenchmark__introduction/es';
+import { imageBenchmark__keep_images } from '@/strings/messages/imageBenchmark__keep_images/es';
+import { imageBenchmark__limits } from '@/strings/messages/imageBenchmark__limits/es';
+import { imageBenchmark__listed_order } from '@/strings/messages/imageBenchmark__listed_order/es';
+import { imageBenchmark__model_load } from '@/strings/messages/imageBenchmark__model_load/es';
+import { imageBenchmark__model_sampling_defaults } from '@/strings/messages/imageBenchmark__model_sampling_defaults/es';
+import { imageBenchmark__new_measurement } from '@/strings/messages/imageBenchmark__new_measurement/es';
+import { imageBenchmark__no_models } from '@/strings/messages/imageBenchmark__no_models/es';
+import { imageBenchmark__order } from '@/strings/messages/imageBenchmark__order/es';
+import { imageBenchmark__override } from '@/strings/messages/imageBenchmark__override/es';
+import { imageBenchmark__overrides } from '@/strings/messages/imageBenchmark__overrides/es';
+import { imageBenchmark__protocol } from '@/strings/messages/imageBenchmark__protocol/es';
+import { imageBenchmark__queued } from '@/strings/messages/imageBenchmark__queued/es';
+import { imageBenchmark__results } from '@/strings/messages/imageBenchmark__results/es';
+import { imageBenchmark__reverse_order } from '@/strings/messages/imageBenchmark__reverse_order/es';
+import { imageBenchmark__run } from '@/strings/messages/imageBenchmark__run/es';
+import { imageBenchmark__running } from '@/strings/messages/imageBenchmark__running/es';
+import { imageBenchmark__runs_per_model } from '@/strings/messages/imageBenchmark__runs_per_model/es';
+import { imageBenchmark__sampling } from '@/strings/messages/imageBenchmark__sampling/es';
+import { imageBenchmark__select_all } from '@/strings/messages/imageBenchmark__select_all/es';
+import { imageBenchmark__select_none } from '@/strings/messages/imageBenchmark__select_none/es';
+import { imageBenchmark__shared_settings } from '@/strings/messages/imageBenchmark__shared_settings/es';
+import { imageBenchmark__skipped } from '@/strings/messages/imageBenchmark__skipped/es';
+import { imageBenchmark__start } from '@/strings/messages/imageBenchmark__start/es';
+import { imageBenchmark__stop } from '@/strings/messages/imageBenchmark__stop/es';
+import { imageBenchmark__succeeded } from '@/strings/messages/imageBenchmark__succeeded/es';
+import { imageBenchmark__timeout } from '@/strings/messages/imageBenchmark__timeout/es';
+import { imageBenchmark__unavailable_components } from '@/strings/messages/imageBenchmark__unavailable_components/es';
+import { imageBenchmark__warm } from '@/strings/messages/imageBenchmark__warm/es';
+import { imageGeneration__action_applied } from '@/strings/messages/imageGeneration__action_applied/es';
+import { imageGeneration__active_images } from '@/strings/messages/imageGeneration__active_images/es';
+import { imageGeneration__actual_seed } from '@/strings/messages/imageGeneration__actual_seed/es';
+import { imageGeneration__add_tag } from '@/strings/messages/imageGeneration__add_tag/es';
+import { imageGeneration__after } from '@/strings/messages/imageGeneration__after/es';
+import { imageGeneration__all_images } from '@/strings/messages/imageGeneration__all_images/es';
+import { imageGeneration__all_tags } from '@/strings/messages/imageGeneration__all_tags/es';
+import { imageGeneration__apply_tag } from '@/strings/messages/imageGeneration__apply_tag/es';
+import { imageGeneration__apply_this_setting } from '@/strings/messages/imageGeneration__apply_this_setting/es';
+import { imageGeneration__apply_to_next_run } from '@/strings/messages/imageGeneration__apply_to_next_run/es';
+import { imageGeneration__archive } from '@/strings/messages/imageGeneration__archive/es';
+import { imageGeneration__archive_help } from '@/strings/messages/imageGeneration__archive_help/es';
+import { imageGeneration__archive_run } from '@/strings/messages/imageGeneration__archive_run/es';
+import { imageGeneration__archived_images } from '@/strings/messages/imageGeneration__archived_images/es';
+import { imageGeneration__assistant } from '@/strings/messages/imageGeneration__assistant/es';
+import { imageGeneration__assistant_help } from '@/strings/messages/imageGeneration__assistant_help/es';
+import { imageGeneration__assistant_privacy } from '@/strings/messages/imageGeneration__assistant_privacy/es';
+import { imageGeneration__attach_chat } from '@/strings/messages/imageGeneration__attach_chat/es';
+import { imageGeneration__back_to_chats } from '@/strings/messages/imageGeneration__back_to_chats/es';
+import { imageGeneration__batch_failed } from '@/strings/messages/imageGeneration__batch_failed/es';
+import { imageGeneration__before } from '@/strings/messages/imageGeneration__before/es';
+import { imageGeneration__cancelled } from '@/strings/messages/imageGeneration__cancelled/es';
+import { imageGeneration__capture_for_assistant } from '@/strings/messages/imageGeneration__capture_for_assistant/es';
+import { imageGeneration__change_chat } from '@/strings/messages/imageGeneration__change_chat/es';
+import { imageGeneration__chat_help } from '@/strings/messages/imageGeneration__chat_help/es';
+import { imageGeneration__choose_chat_help } from '@/strings/messages/imageGeneration__choose_chat_help/es';
+import { imageGeneration__clear_selection } from '@/strings/messages/imageGeneration__clear_selection/es';
+import { imageGeneration__close_chat } from '@/strings/messages/imageGeneration__close_chat/es';
+import { imageGeneration__close_details } from '@/strings/messages/imageGeneration__close_details/es';
+import { imageGeneration__compare } from '@/strings/messages/imageGeneration__compare/es';
+import { imageGeneration__compare_equal } from '@/strings/messages/imageGeneration__compare_equal/es';
+import { imageGeneration__compare_help } from '@/strings/messages/imageGeneration__compare_help/es';
+import { imageGeneration__compare_notice } from '@/strings/messages/imageGeneration__compare_notice/es';
+import { imageGeneration__completed } from '@/strings/messages/imageGeneration__completed/es';
+import { imageGeneration__copied } from '@/strings/messages/imageGeneration__copied/es';
+import { imageGeneration__copy_failed } from '@/strings/messages/imageGeneration__copy_failed/es';
+import { imageGeneration__copy_negative_prompt } from '@/strings/messages/imageGeneration__copy_negative_prompt/es';
+import { imageGeneration__copy_prompt } from '@/strings/messages/imageGeneration__copy_prompt/es';
+import { imageGeneration__copy_settings } from '@/strings/messages/imageGeneration__copy_settings/es';
+import { imageGeneration__count_help } from '@/strings/messages/imageGeneration__count_help/es';
+import { imageGeneration__create_and_connect_chat } from '@/strings/messages/imageGeneration__create_and_connect_chat/es';
+import { imageGeneration__create_chat_in_group } from '@/strings/messages/imageGeneration__create_chat_in_group/es';
+import { imageGeneration__current_value } from '@/strings/messages/imageGeneration__current_value/es';
+import { imageGeneration__delete_images } from '@/strings/messages/imageGeneration__delete_images/es';
+import { imageGeneration__delete_images_notice } from '@/strings/messages/imageGeneration__delete_images_notice/es';
+import { imageGeneration__delete_session } from '@/strings/messages/imageGeneration__delete_session/es';
+import { imageGeneration__delete_session_notice } from '@/strings/messages/imageGeneration__delete_session_notice/es';
+import { imageGeneration__detach } from '@/strings/messages/imageGeneration__detach/es';
+import { imageGeneration__dock_chat } from '@/strings/messages/imageGeneration__dock_chat/es';
+import { imageGeneration__draft_dirty } from '@/strings/messages/imageGeneration__draft_dirty/es';
+import { imageGeneration__draft_failed } from '@/strings/messages/imageGeneration__draft_failed/es';
+import { imageGeneration__draft_saved } from '@/strings/messages/imageGeneration__draft_saved/es';
+import { imageGeneration__draft_saving } from '@/strings/messages/imageGeneration__draft_saving/es';
+import { imageGeneration__editor } from '@/strings/messages/imageGeneration__editor/es';
+import { imageGeneration__empty_gallery } from '@/strings/messages/imageGeneration__empty_gallery/es';
+import { imageGeneration__execution } from '@/strings/messages/imageGeneration__execution/es';
+import { imageGeneration__export_cancelled } from '@/strings/messages/imageGeneration__export_cancelled/es';
+import { imageGeneration__export_notice } from '@/strings/messages/imageGeneration__export_notice/es';
+import { imageGeneration__export_session } from '@/strings/messages/imageGeneration__export_session/es';
+import { imageGeneration__exporting } from '@/strings/messages/imageGeneration__exporting/es';
+import { imageGeneration__failed } from '@/strings/messages/imageGeneration__failed/es';
+import { imageGeneration__favorite } from '@/strings/messages/imageGeneration__favorite/es';
+import { imageGeneration__finish_session_work_before_deleting } from '@/strings/messages/imageGeneration__finish_session_work_before_deleting/es';
+import { imageGeneration__float_chat } from '@/strings/messages/imageGeneration__float_chat/es';
+import { imageGeneration__gallery } from '@/strings/messages/imageGeneration__gallery/es';
+import { imageGeneration__generation_session } from '@/strings/messages/imageGeneration__generation_session/es';
+import { imageGeneration__images } from '@/strings/messages/imageGeneration__images/es';
+import { imageGeneration__initial_image } from '@/strings/messages/imageGeneration__initial_image/es';
+import { imageGeneration__inspect } from '@/strings/messages/imageGeneration__inspect/es';
+import { imageGeneration__interrupted } from '@/strings/messages/imageGeneration__interrupted/es';
+import { imageGeneration__interrupted_help } from '@/strings/messages/imageGeneration__interrupted_help/es';
+import { imageGeneration__leave_warning } from '@/strings/messages/imageGeneration__leave_warning/es';
+import { imageGeneration__lineage } from '@/strings/messages/imageGeneration__lineage/es';
+import { imageGeneration__load_more } from '@/strings/messages/imageGeneration__load_more/es';
+import { imageGeneration__loading } from '@/strings/messages/imageGeneration__loading/es';
+import { imageGeneration__manage_tags } from '@/strings/messages/imageGeneration__manage_tags/es';
+import { imageGeneration__more_execution } from '@/strings/messages/imageGeneration__more_execution/es';
+import { imageGeneration__name } from '@/strings/messages/imageGeneration__name/es';
+import { imageGeneration__new_session } from '@/strings/messages/imageGeneration__new_session/es';
+import { imageGeneration__new_tag } from '@/strings/messages/imageGeneration__new_tag/es';
+import { imageGeneration__newest_first } from '@/strings/messages/imageGeneration__newest_first/es';
+import { imageGeneration__next_image } from '@/strings/messages/imageGeneration__next_image/es';
+import { imageGeneration__next_unavailable } from '@/strings/messages/imageGeneration__next_unavailable/es';
+import { imageGeneration__no_chat } from '@/strings/messages/imageGeneration__no_chat/es';
+import { imageGeneration__no_chat_choices } from '@/strings/messages/imageGeneration__no_chat_choices/es';
+import { imageGeneration__no_sessions } from '@/strings/messages/imageGeneration__no_sessions/es';
+import { imageGeneration__notice_body } from '@/strings/messages/imageGeneration__notice_body/es';
+import { imageGeneration__notice_dismiss } from '@/strings/messages/imageGeneration__notice_dismiss/es';
+import { imageGeneration__notice_title } from '@/strings/messages/imageGeneration__notice_title/es';
+import { imageGeneration__open_assistant_chat } from '@/strings/messages/imageGeneration__open_assistant_chat/es';
+import { imageGeneration__open_chat } from '@/strings/messages/imageGeneration__open_chat/es';
+import { imageGeneration__other_session_running } from '@/strings/messages/imageGeneration__other_session_running/es';
+import { imageGeneration__parameters } from '@/strings/messages/imageGeneration__parameters/es';
+import { imageGeneration__pending_deletions } from '@/strings/messages/imageGeneration__pending_deletions/es';
+import { imageGeneration__pending_save } from '@/strings/messages/imageGeneration__pending_save/es';
+import { imageGeneration__preview_empty } from '@/strings/messages/imageGeneration__preview_empty/es';
+import { imageGeneration__previous_image } from '@/strings/messages/imageGeneration__previous_image/es';
+import { imageGeneration__progress_only } from '@/strings/messages/imageGeneration__progress_only/es';
+import { imageGeneration__prompt_edit } from '@/strings/messages/imageGeneration__prompt_edit/es';
+import { imageGeneration__queued } from '@/strings/messages/imageGeneration__queued/es';
+import { imageGeneration__recommended_value } from '@/strings/messages/imageGeneration__recommended_value/es';
+import { imageGeneration__reference_image } from '@/strings/messages/imageGeneration__reference_image/es';
+import { imageGeneration__refresh } from '@/strings/messages/imageGeneration__refresh/es';
+import { imageGeneration__remove_tag } from '@/strings/messages/imageGeneration__remove_tag/es';
+import { imageGeneration__rename } from '@/strings/messages/imageGeneration__rename/es';
+import { imageGeneration__rename_session } from '@/strings/messages/imageGeneration__rename_session/es';
+import { imageGeneration__rename_tag } from '@/strings/messages/imageGeneration__rename_tag/es';
+import { imageGeneration__restore } from '@/strings/messages/imageGeneration__restore/es';
+import { imageGeneration__restore_run } from '@/strings/messages/imageGeneration__restore_run/es';
+import { imageGeneration__retry_deletions } from '@/strings/messages/imageGeneration__retry_deletions/es';
+import { imageGeneration__reuse_prompt } from '@/strings/messages/imageGeneration__reuse_prompt/es';
+import { imageGeneration__reuse_settings } from '@/strings/messages/imageGeneration__reuse_settings/es';
+import { imageGeneration__review } from '@/strings/messages/imageGeneration__review/es';
+import { imageGeneration__run_empty } from '@/strings/messages/imageGeneration__run_empty/es';
+import { imageGeneration__run_status } from '@/strings/messages/imageGeneration__run_status/es';
+import { imageGeneration__running } from '@/strings/messages/imageGeneration__running/es';
+import { imageGeneration__runs } from '@/strings/messages/imageGeneration__runs/es';
+import { imageGeneration__save_retry } from '@/strings/messages/imageGeneration__save_retry/es';
+import { imageGeneration__saving_required } from '@/strings/messages/imageGeneration__saving_required/es';
+import { imageGeneration__search_chats } from '@/strings/messages/imageGeneration__search_chats/es';
+import { imageGeneration__search_images } from '@/strings/messages/imageGeneration__search_images/es';
+import { imageGeneration__select_compare } from '@/strings/messages/imageGeneration__select_compare/es';
+import { imageGeneration__select_image } from '@/strings/messages/imageGeneration__select_image/es';
+import { imageGeneration__select_loaded } from '@/strings/messages/imageGeneration__select_loaded/es';
+import { imageGeneration__selected_images } from '@/strings/messages/imageGeneration__selected_images/es';
+import { imageGeneration__session_deletion_pending } from '@/strings/messages/imageGeneration__session_deletion_pending/es';
+import { imageGeneration__session_unavailable } from '@/strings/messages/imageGeneration__session_unavailable/es';
+import { imageGeneration__sessions } from '@/strings/messages/imageGeneration__sessions/es';
+import { imageGeneration__show_connected_chat } from '@/strings/messages/imageGeneration__show_connected_chat/es';
+import { imageGeneration__storage_required } from '@/strings/messages/imageGeneration__storage_required/es';
+import { imageGeneration__suggested_value } from '@/strings/messages/imageGeneration__suggested_value/es';
+import { imageGeneration__tag_rules } from '@/strings/messages/imageGeneration__tag_rules/es';
+import { imageGeneration__tags } from '@/strings/messages/imageGeneration__tags/es';
+import { imageGeneration__translation_add_header } from '@/strings/messages/imageGeneration__translation_add_header/es';
+import { imageGeneration__translation_cancelled } from '@/strings/messages/imageGeneration__translation_cancelled/es';
+import { imageGeneration__translation_choose_model } from '@/strings/messages/imageGeneration__translation_choose_model/es';
+import { imageGeneration__translation_close } from '@/strings/messages/imageGeneration__translation_close/es';
+import { imageGeneration__translation_copy } from '@/strings/messages/imageGeneration__translation_copy/es';
+import { imageGeneration__translation_default_settings } from '@/strings/messages/imageGeneration__translation_default_settings/es';
+import { imageGeneration__translation_defaults_help } from '@/strings/messages/imageGeneration__translation_defaults_help/es';
+import { imageGeneration__translation_effective } from '@/strings/messages/imageGeneration__translation_effective/es';
+import { imageGeneration__translation_endpoint } from '@/strings/messages/imageGeneration__translation_endpoint/es';
+import { imageGeneration__translation_header_name } from '@/strings/messages/imageGeneration__translation_header_name/es';
+import { imageGeneration__translation_header_value } from '@/strings/messages/imageGeneration__translation_header_value/es';
+import { imageGeneration__translation_headers } from '@/strings/messages/imageGeneration__translation_headers/es';
+import { imageGeneration__translation_inherit } from '@/strings/messages/imageGeneration__translation_inherit/es';
+import { imageGeneration__translation_language } from '@/strings/messages/imageGeneration__translation_language/es';
+import { imageGeneration__translation_loading_model } from '@/strings/messages/imageGeneration__translation_loading_model/es';
+import { imageGeneration__translation_model } from '@/strings/messages/imageGeneration__translation_model/es';
+import { imageGeneration__translation_partial } from '@/strings/messages/imageGeneration__translation_partial/es';
+import { imageGeneration__translation_previous_source } from '@/strings/messages/imageGeneration__translation_previous_source/es';
+import { imageGeneration__translation_priority } from '@/strings/messages/imageGeneration__translation_priority/es';
+import { imageGeneration__translation_processing_input } from '@/strings/messages/imageGeneration__translation_processing_input/es';
+import { imageGeneration__translation_profile } from '@/strings/messages/imageGeneration__translation_profile/es';
+import { imageGeneration__translation_read_only } from '@/strings/messages/imageGeneration__translation_read_only/es';
+import { imageGeneration__translation_remove_header } from '@/strings/messages/imageGeneration__translation_remove_header/es';
+import { imageGeneration__translation_reset } from '@/strings/messages/imageGeneration__translation_reset/es';
+import { imageGeneration__translation_result } from '@/strings/messages/imageGeneration__translation_result/es';
+import { imageGeneration__translation_running } from '@/strings/messages/imageGeneration__translation_running/es';
+import { imageGeneration__translation_save_settings } from '@/strings/messages/imageGeneration__translation_save_settings/es';
+import { imageGeneration__translation_session_settings } from '@/strings/messages/imageGeneration__translation_session_settings/es';
+import { imageGeneration__translation_settings_not_saved } from '@/strings/messages/imageGeneration__translation_settings_not_saved/es';
+import { imageGeneration__translation_source_text } from '@/strings/messages/imageGeneration__translation_source_text/es';
+import { imageGeneration__translation_start } from '@/strings/messages/imageGeneration__translation_start/es';
+import { imageGeneration__translation_waiting } from '@/strings/messages/imageGeneration__translation_waiting/es';
+import { imageGeneration__unfavorite } from '@/strings/messages/imageGeneration__unfavorite/es';
+import { imageGeneration__view_translation } from '@/strings/messages/imageGeneration__view_translation/es';
+import { imageGeneration__viewing_other } from '@/strings/messages/imageGeneration__viewing_other/es';
+import { imageGeneration__visual_progress } from '@/strings/messages/imageGeneration__visual_progress/es';
+import { llamaCppBrowserDownloads__active_downloads } from '@/strings/messages/llamaCppBrowserDownloads__active_downloads/es';
+import { llamaCppBrowserDownloads__all } from '@/strings/messages/llamaCppBrowserDownloads__all/es';
+import { llamaCppBrowserDownloads__approximately_size } from '@/strings/messages/llamaCppBrowserDownloads__approximately_size/es';
+import { llamaCppBrowserDownloads__change_default_model } from '@/strings/messages/llamaCppBrowserDownloads__change_default_model/es';
+import { llamaCppBrowserDownloads__check_download_contents } from '@/strings/messages/llamaCppBrowserDownloads__check_download_contents/es';
+import { llamaCppBrowserDownloads__checking_hugging_face } from '@/strings/messages/llamaCppBrowserDownloads__checking_hugging_face/es';
+import { llamaCppBrowserDownloads__clear_search } from '@/strings/messages/llamaCppBrowserDownloads__clear_search/es';
+import { llamaCppBrowserDownloads__default_model } from '@/strings/messages/llamaCppBrowserDownloads__default_model/es';
+import { llamaCppBrowserDownloads__details } from '@/strings/messages/llamaCppBrowserDownloads__details/es';
+import { llamaCppBrowserDownloads__download } from '@/strings/messages/llamaCppBrowserDownloads__download/es';
+import { llamaCppBrowserDownloads__download_contents } from '@/strings/messages/llamaCppBrowserDownloads__download_contents/es';
+import { llamaCppBrowserDownloads__endpoint_type } from '@/strings/messages/llamaCppBrowserDownloads__endpoint_type/es';
+import { llamaCppBrowserDownloads__find_more } from '@/strings/messages/llamaCppBrowserDownloads__find_more/es';
+import { llamaCppBrowserDownloads__global_settings_scope } from '@/strings/messages/llamaCppBrowserDownloads__global_settings_scope/es';
+import { llamaCppBrowserDownloads__in_use } from '@/strings/messages/llamaCppBrowserDownloads__in_use/es';
+import { llamaCppBrowserDownloads__memory } from '@/strings/messages/llamaCppBrowserDownloads__memory/es';
+import { llamaCppBrowserDownloads__model_catalog } from '@/strings/messages/llamaCppBrowserDownloads__model_catalog/es';
+import { llamaCppBrowserDownloads__no_matching_models } from '@/strings/messages/llamaCppBrowserDownloads__no_matching_models/es';
+import { llamaCppBrowserDownloads__not_set } from '@/strings/messages/llamaCppBrowserDownloads__not_set/es';
+import { llamaCppBrowserDownloads__pause } from '@/strings/messages/llamaCppBrowserDownloads__pause/es';
+import { llamaCppBrowserDownloads__paused } from '@/strings/messages/llamaCppBrowserDownloads__paused/es';
+import { llamaCppBrowserDownloads__pausing } from '@/strings/messages/llamaCppBrowserDownloads__pausing/es';
+import { llamaCppBrowserDownloads__plan_needs_review } from '@/strings/messages/llamaCppBrowserDownloads__plan_needs_review/es';
+import { llamaCppBrowserDownloads__queue_position } from '@/strings/messages/llamaCppBrowserDownloads__queue_position/es';
+import { llamaCppBrowserDownloads__refresh_download_contents } from '@/strings/messages/llamaCppBrowserDownloads__refresh_download_contents/es';
+import { llamaCppBrowserDownloads__required_companion_included } from '@/strings/messages/llamaCppBrowserDownloads__required_companion_included/es';
+import { llamaCppBrowserDownloads__resume } from '@/strings/messages/llamaCppBrowserDownloads__resume/es';
+import { llamaCppBrowserDownloads__retry } from '@/strings/messages/llamaCppBrowserDownloads__retry/es';
+import { llamaCppBrowserDownloads__save_file_to_device } from '@/strings/messages/llamaCppBrowserDownloads__save_file_to_device/es';
+import { llamaCppBrowserDownloads__search_model_names } from '@/strings/messages/llamaCppBrowserDownloads__search_model_names/es';
+import { llamaCppBrowserDownloads__set_as_default } from '@/strings/messages/llamaCppBrowserDownloads__set_as_default/es';
+import { llamaCppBrowserDownloads__settings_changed_review_again } from '@/strings/messages/llamaCppBrowserDownloads__settings_changed_review_again/es';
+import { llamaCppBrowserDownloads__total } from '@/strings/messages/llamaCppBrowserDownloads__total/es';
+import { llamaCppBrowserDownloads__use_this_model } from '@/strings/messages/llamaCppBrowserDownloads__use_this_model/es';
+import { llamaCppBrowserDownloads__waiting } from '@/strings/messages/llamaCppBrowserDownloads__waiting/es';
+import { llamaCppBrowser__automatic_profile } from '@/strings/messages/llamaCppBrowser__automatic_profile/es';
+import { llamaCppBrowser__automatic_profile_description } from '@/strings/messages/llamaCppBrowser__automatic_profile_description/es';
+import { llamaCppBrowser__automatic_recommended } from '@/strings/messages/llamaCppBrowser__automatic_recommended/es';
+import { llamaCppBrowser__check_browser_support } from '@/strings/messages/llamaCppBrowser__check_browser_support/es';
+import { llamaCppBrowser__checking_browser_support } from '@/strings/messages/llamaCppBrowser__checking_browser_support/es';
+import { llamaCppBrowser__choose_gguf_files } from '@/strings/messages/llamaCppBrowser__choose_gguf_files/es';
+import { llamaCppBrowser__choose_model_folder } from '@/strings/messages/llamaCppBrowser__choose_model_folder/es';
+import { llamaCppBrowser__context_size } from '@/strings/messages/llamaCppBrowser__context_size/es';
+import { llamaCppBrowser__delete_model } from '@/strings/messages/llamaCppBrowser__delete_model/es';
+import { llamaCppBrowser__delete_model_confirmation } from '@/strings/messages/llamaCppBrowser__delete_model_confirmation/es';
+import { llamaCppBrowser__drop_model_folders_or_gguf_files_here } from '@/strings/messages/llamaCppBrowser__drop_model_folders_or_gguf_files_here/es';
+import { llamaCppBrowser__endpoint_label } from '@/strings/messages/llamaCppBrowser__endpoint_label/es';
+import { llamaCppBrowser__files_changed_review_before_deleting } from '@/strings/messages/llamaCppBrowser__files_changed_review_before_deleting/es';
+import { llamaCppBrowser__files_to_delete } from '@/strings/messages/llamaCppBrowser__files_to_delete/es';
+import { llamaCppBrowser__generating } from '@/strings/messages/llamaCppBrowser__generating/es';
+import { llamaCppBrowser__gguf_files_only } from '@/strings/messages/llamaCppBrowser__gguf_files_only/es';
+import { llamaCppBrowser__gguf_model_files } from '@/strings/messages/llamaCppBrowser__gguf_model_files/es';
+import { llamaCppBrowser__image_chat_requires_matching_projector } from '@/strings/messages/llamaCppBrowser__image_chat_requires_matching_projector/es';
+import { llamaCppBrowser__import_downloaded_gguf } from '@/strings/messages/llamaCppBrowser__import_downloaded_gguf/es';
+import { llamaCppBrowser__import_gguf } from '@/strings/messages/llamaCppBrowser__import_gguf/es';
+import { llamaCppBrowser__import_then_select } from '@/strings/messages/llamaCppBrowser__import_then_select/es';
+import { llamaCppBrowser__imported_models } from '@/strings/messages/llamaCppBrowser__imported_models/es';
+import { llamaCppBrowser__importing } from '@/strings/messages/llamaCppBrowser__importing/es';
+import { llamaCppBrowser__inference_settings } from '@/strings/messages/llamaCppBrowser__inference_settings/es';
+import { llamaCppBrowser__initializing } from '@/strings/messages/llamaCppBrowser__initializing/es';
+import { llamaCppBrowser__loading } from '@/strings/messages/llamaCppBrowser__loading/es';
+import { llamaCppBrowser__loading_model_list } from '@/strings/messages/llamaCppBrowser__loading_model_list/es';
+import { llamaCppBrowser__manage_gguf_models } from '@/strings/messages/llamaCppBrowser__manage_gguf_models/es';
+import { llamaCppBrowser__no_compatible_runtime } from '@/strings/messages/llamaCppBrowser__no_compatible_runtime/es';
+import { llamaCppBrowser__no_imported_models } from '@/strings/messages/llamaCppBrowser__no_imported_models/es';
+import { llamaCppBrowser__operation_failed } from '@/strings/messages/llamaCppBrowser__operation_failed/es';
+import { llamaCppBrowser__or_choose_files_from_your_device } from '@/strings/messages/llamaCppBrowser__or_choose_files_from_your_device/es';
+import { llamaCppBrowser__prefill } from '@/strings/messages/llamaCppBrowser__prefill/es';
+import { llamaCppBrowser__profile } from '@/strings/messages/llamaCppBrowser__profile/es';
+import { llamaCppBrowser__ready } from '@/strings/messages/llamaCppBrowser__ready/es';
+import { llamaCppBrowser__refresh_models } from '@/strings/messages/llamaCppBrowser__refresh_models/es';
+import { llamaCppBrowser__release_runtime } from '@/strings/messages/llamaCppBrowser__release_runtime/es';
+import { llamaCppBrowser__unavailable_feature } from '@/strings/messages/llamaCppBrowser__unavailable_feature/es';
+import { llamaCppBrowser__unavailable_in_standalone } from '@/strings/messages/llamaCppBrowser__unavailable_in_standalone/es';
+import { llamaCppPerformance__add_models } from '@/strings/messages/llamaCppPerformance__add_models/es';
+import { llamaCppPerformance__advanced_conditions } from '@/strings/messages/llamaCppPerformance__advanced_conditions/es';
+import { llamaCppPerformance__back_to_settings } from '@/strings/messages/llamaCppPerformance__back_to_settings/es';
+import { llamaCppPerformance__clear_selection } from '@/strings/messages/llamaCppPerformance__clear_selection/es';
+import { llamaCppPerformance__completed_trials } from '@/strings/messages/llamaCppPerformance__completed_trials/es';
+import { llamaCppPerformance__copy_model_list } from '@/strings/messages/llamaCppPerformance__copy_model_list/es';
+import { llamaCppPerformance__creating_zip } from '@/strings/messages/llamaCppPerformance__creating_zip/es';
+import { llamaCppPerformance__download_requested } from '@/strings/messages/llamaCppPerformance__download_requested/es';
+import { llamaCppPerformance__elapsed_ms } from '@/strings/messages/llamaCppPerformance__elapsed_ms/es';
+import { llamaCppPerformance__environment_notes } from '@/strings/messages/llamaCppPerformance__environment_notes/es';
+import { llamaCppPerformance__first_received_ms } from '@/strings/messages/llamaCppPerformance__first_received_ms/es';
+import { llamaCppPerformance__generation_tokens_per_second } from '@/strings/messages/llamaCppPerformance__generation_tokens_per_second/es';
+import { llamaCppPerformance__initial_short_long_or_continuation } from '@/strings/messages/llamaCppPerformance__initial_short_long_or_continuation/es';
+import { llamaCppPerformance__keep_page_visible } from '@/strings/messages/llamaCppPerformance__keep_page_visible/es';
+import { llamaCppPerformance__loading_models } from '@/strings/messages/llamaCppPerformance__loading_models/es';
+import { llamaCppPerformance__maximum_output_tokens } from '@/strings/messages/llamaCppPerformance__maximum_output_tokens/es';
+import { llamaCppPerformance__measure_saved_models } from '@/strings/messages/llamaCppPerformance__measure_saved_models/es';
+import { llamaCppPerformance__model_input } from '@/strings/messages/llamaCppPerformance__model_input/es';
+import { llamaCppPerformance__model_input_help } from '@/strings/messages/llamaCppPerformance__model_input_help/es';
+import { llamaCppPerformance__no_saved_models } from '@/strings/messages/llamaCppPerformance__no_saved_models/es';
+import { llamaCppPerformance__not_collected } from '@/strings/messages/llamaCppPerformance__not_collected/es';
+import { llamaCppPerformance__notes_help } from '@/strings/messages/llamaCppPerformance__notes_help/es';
+import { llamaCppPerformance__open_speed_investigation } from '@/strings/messages/llamaCppPerformance__open_speed_investigation/es';
+import { llamaCppPerformance__operation_diagnostic } from '@/strings/messages/llamaCppPerformance__operation_diagnostic/es';
+import { llamaCppPerformance__operation_diagnostic_help } from '@/strings/messages/llamaCppPerformance__operation_diagnostic_help/es';
+import { llamaCppPerformance__output_preview } from '@/strings/messages/llamaCppPerformance__output_preview/es';
+import { llamaCppPerformance__per_request_timeout_minutes } from '@/strings/messages/llamaCppPerformance__per_request_timeout_minutes/es';
+import { llamaCppPerformance__planned_calls } from '@/strings/messages/llamaCppPerformance__planned_calls/es';
+import { llamaCppPerformance__preparation_or_measurement } from '@/strings/messages/llamaCppPerformance__preparation_or_measurement/es';
+import { llamaCppPerformance__refresh_models } from '@/strings/messages/llamaCppPerformance__refresh_models/es';
+import { llamaCppPerformance__remove_model } from '@/strings/messages/llamaCppPerformance__remove_model/es';
+import { llamaCppPerformance__repeats } from '@/strings/messages/llamaCppPerformance__repeats/es';
+import { llamaCppPerformance__replace_results_and_measure } from '@/strings/messages/llamaCppPerformance__replace_results_and_measure/es';
+import { llamaCppPerformance__result_details } from '@/strings/messages/llamaCppPerformance__result_details/es';
+import { llamaCppPerformance__results_are_memory_only } from '@/strings/messages/llamaCppPerformance__results_are_memory_only/es';
+import { llamaCppPerformance__runtime_profile } from '@/strings/messages/llamaCppPerformance__runtime_profile/es';
+import { llamaCppPerformance__save_zip } from '@/strings/messages/llamaCppPerformance__save_zip/es';
+import { llamaCppPerformance__saved_models } from '@/strings/messages/llamaCppPerformance__saved_models/es';
+import { llamaCppPerformance__search_models } from '@/strings/messages/llamaCppPerformance__search_models/es';
+import { llamaCppPerformance__select_all } from '@/strings/messages/llamaCppPerformance__select_all/es';
+import { llamaCppPerformance__speed_investigation } from '@/strings/messages/llamaCppPerformance__speed_investigation/es';
+import { llamaCppPerformance__standard_measurement } from '@/strings/messages/llamaCppPerformance__standard_measurement/es';
+import { llamaCppPerformance__standard_measurement_help } from '@/strings/messages/llamaCppPerformance__standard_measurement_help/es';
+import { llamaCppPerformance__start_measurement } from '@/strings/messages/llamaCppPerformance__start_measurement/es';
+import { llamaCppPerformance__stop_and_return_to_settings } from '@/strings/messages/llamaCppPerformance__stop_and_return_to_settings/es';
+import { llamaCppPerformance__stop_measurement } from '@/strings/messages/llamaCppPerformance__stop_measurement/es';
+import { llamaCppPerformance__stopping } from '@/strings/messages/llamaCppPerformance__stopping/es';
+import { llamaCppPerformance__trial_status } from '@/strings/messages/llamaCppPerformance__trial_status/es';
+import { llamaCppPerformance__wait_for_other_work } from '@/strings/messages/llamaCppPerformance__wait_for_other_work/es';
+import { llamaCppPerformance__waiting_for_visible_page } from '@/strings/messages/llamaCppPerformance__waiting_for_visible_page/es';
+import { naidanRpc__add_header } from '@/strings/messages/naidanRpc__add_header/es';
+import { naidanRpc__apply_methods } from '@/strings/messages/naidanRpc__apply_methods/es';
+import { naidanRpc__chat } from '@/strings/messages/naidanRpc__chat/es';
+import { naidanRpc__check_stop_again } from '@/strings/messages/naidanRpc__check_stop_again/es';
+import { naidanRpc__checking_response } from '@/strings/messages/naidanRpc__checking_response/es';
+import { naidanRpc__checking_stop_status } from '@/strings/messages/naidanRpc__checking_stop_status/es';
+import { naidanRpc__choose_connection } from '@/strings/messages/naidanRpc__choose_connection/es';
+import { naidanRpc__code } from '@/strings/messages/naidanRpc__code/es';
+import { naidanRpc__code_help } from '@/strings/messages/naidanRpc__code_help/es';
+import { naidanRpc__compare } from '@/strings/messages/naidanRpc__compare/es';
+import { naidanRpc__compare_help } from '@/strings/messages/naidanRpc__compare_help/es';
+import { naidanRpc__connect } from '@/strings/messages/naidanRpc__connect/es';
+import { naidanRpc__connected } from '@/strings/messages/naidanRpc__connected/es';
+import { naidanRpc__connecting } from '@/strings/messages/naidanRpc__connecting/es';
+import { naidanRpc__connections } from '@/strings/messages/naidanRpc__connections/es';
+import { naidanRpc__disable } from '@/strings/messages/naidanRpc__disable/es';
+import { naidanRpc__disabled } from '@/strings/messages/naidanRpc__disabled/es';
+import { naidanRpc__disconnect } from '@/strings/messages/naidanRpc__disconnect/es';
+import { naidanRpc__disconnect_confirm } from '@/strings/messages/naidanRpc__disconnect_confirm/es';
+import { naidanRpc__disconnected } from '@/strings/messages/naidanRpc__disconnected/es';
+import { naidanRpc__enable } from '@/strings/messages/naidanRpc__enable/es';
+import { naidanRpc__enable_first } from '@/strings/messages/naidanRpc__enable_first/es';
+import { naidanRpc__failed } from '@/strings/messages/naidanRpc__failed/es';
+import { naidanRpc__feature_details } from '@/strings/messages/naidanRpc__feature_details/es';
+import { naidanRpc__forget } from '@/strings/messages/naidanRpc__forget/es';
+import { naidanRpc__forget_confirm } from '@/strings/messages/naidanRpc__forget_confirm/es';
+import { naidanRpc__header_name } from '@/strings/messages/naidanRpc__header_name/es';
+import { naidanRpc__header_value } from '@/strings/messages/naidanRpc__header_value/es';
+import { naidanRpc__headers } from '@/strings/messages/naidanRpc__headers/es';
+import { naidanRpc__images } from '@/strings/messages/naidanRpc__images/es';
+import { naidanRpc__initiator } from '@/strings/messages/naidanRpc__initiator/es';
+import { naidanRpc__label } from '@/strings/messages/naidanRpc__label/es';
+import { naidanRpc__manage } from '@/strings/messages/naidanRpc__manage/es';
+import { naidanRpc__matches } from '@/strings/messages/naidanRpc__matches/es';
+import { naidanRpc__methods_empty } from '@/strings/messages/naidanRpc__methods_empty/es';
+import { naidanRpc__methods_pending } from '@/strings/messages/naidanRpc__methods_pending/es';
+import { naidanRpc__native_unavailable } from '@/strings/messages/naidanRpc__native_unavailable/es';
+import { naidanRpc__new_calls_blocked_waiting_for_completion } from '@/strings/messages/naidanRpc__new_calls_blocked_waiting_for_completion/es';
+import { naidanRpc__new_connection } from '@/strings/messages/naidanRpc__new_connection/es';
+import { naidanRpc__no_connections } from '@/strings/messages/naidanRpc__no_connections/es';
+import { naidanRpc__provide } from '@/strings/messages/naidanRpc__provide/es';
+import { naidanRpc__provide_help } from '@/strings/messages/naidanRpc__provide_help/es';
+import { naidanRpc__refresh } from '@/strings/messages/naidanRpc__refresh/es';
+import { naidanRpc__reject } from '@/strings/messages/naidanRpc__reject/es';
+import { naidanRpc__remember } from '@/strings/messages/naidanRpc__remember/es';
+import { naidanRpc__remember_help } from '@/strings/messages/naidanRpc__remember_help/es';
+import { naidanRpc__remove_header } from '@/strings/messages/naidanRpc__remove_header/es';
+import { naidanRpc__responder } from '@/strings/messages/naidanRpc__responder/es';
+import { naidanRpc__rpc_connections_stopped } from '@/strings/messages/naidanRpc__rpc_connections_stopped/es';
+import { naidanRpc__save_connection } from '@/strings/messages/naidanRpc__save_connection/es';
+import { naidanRpc__saved } from '@/strings/messages/naidanRpc__saved/es';
+import { naidanRpc__saving } from '@/strings/messages/naidanRpc__saving/es';
+import { naidanRpc__server } from '@/strings/messages/naidanRpc__server/es';
+import { naidanRpc__start } from '@/strings/messages/naidanRpc__start/es';
+import { naidanRpc__stop_not_confirmed_check_managing_tab } from '@/strings/messages/naidanRpc__stop_not_confirmed_check_managing_tab/es';
+import { naidanRpc__stopping } from '@/strings/messages/naidanRpc__stopping/es';
+import { naidanRpc__summary } from '@/strings/messages/naidanRpc__summary/es';
+import { naidanRpc__temporary } from '@/strings/messages/naidanRpc__temporary/es';
+import { naidanRpc__title } from '@/strings/messages/naidanRpc__title/es';
+import { naidanRpc__transport } from '@/strings/messages/naidanRpc__transport/es';
+import { naidanRpc__use_help } from '@/strings/messages/naidanRpc__use_help/es';
+import { naidanRpc__waiting_for_capacity } from '@/strings/messages/naidanRpc__waiting_for_capacity/es';
+import { stableDiffusionCppBrowser__add_models } from '@/strings/messages/stableDiffusionCppBrowser__add_models/es';
+import { stableDiffusionCppBrowser__advanced_parameters } from '@/strings/messages/stableDiffusionCppBrowser__advanced_parameters/es';
+import { stableDiffusionCppBrowser__advanced_parameters_help } from '@/strings/messages/stableDiffusionCppBrowser__advanced_parameters_help/es';
+import { stableDiffusionCppBrowser__apply_recommended_settings } from '@/strings/messages/stableDiffusionCppBrowser__apply_recommended_settings/es';
+import { stableDiffusionCppBrowser__artifact_not_installed } from '@/strings/messages/stableDiffusionCppBrowser__artifact_not_installed/es';
+import { stableDiffusionCppBrowser__bf16_weight_conversion } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_conversion/es';
+import { stableDiffusionCppBrowser__bf16_weight_conversion_help } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_conversion_help/es';
+import { stableDiffusionCppBrowser__cancel } from '@/strings/messages/stableDiffusionCppBrowser__cancel/es';
+import { stableDiffusionCppBrowser__cancel_wait_help } from '@/strings/messages/stableDiffusionCppBrowser__cancel_wait_help/es';
+import { stableDiffusionCppBrowser__cancelled } from '@/strings/messages/stableDiffusionCppBrowser__cancelled/es';
+import { stableDiffusionCppBrowser__catalog_download } from '@/strings/messages/stableDiffusionCppBrowser__catalog_download/es';
+import { stableDiffusionCppBrowser__catalog_drop_help } from '@/strings/messages/stableDiffusionCppBrowser__catalog_drop_help/es';
+import { stableDiffusionCppBrowser__catalog_file_notice } from '@/strings/messages/stableDiffusionCppBrowser__catalog_file_notice/es';
+import { stableDiffusionCppBrowser__catalog_help } from '@/strings/messages/stableDiffusionCppBrowser__catalog_help/es';
+import { stableDiffusionCppBrowser__catalog_layout } from '@/strings/messages/stableDiffusionCppBrowser__catalog_layout/es';
+import { stableDiffusionCppBrowser__catalog_qwen_image } from '@/strings/messages/stableDiffusionCppBrowser__catalog_qwen_image/es';
+import { stableDiffusionCppBrowser__catalog_source } from '@/strings/messages/stableDiffusionCppBrowser__catalog_source/es';
+import { stableDiffusionCppBrowser__catalog_title } from '@/strings/messages/stableDiffusionCppBrowser__catalog_title/es';
+import { stableDiffusionCppBrowser__catalog_validation } from '@/strings/messages/stableDiffusionCppBrowser__catalog_validation/es';
+import { stableDiffusionCppBrowser__catalog_z_image } from '@/strings/messages/stableDiffusionCppBrowser__catalog_z_image/es';
+import { stableDiffusionCppBrowser__check_inputs } from '@/strings/messages/stableDiffusionCppBrowser__check_inputs/es';
+import { stableDiffusionCppBrowser__checkpoint } from '@/strings/messages/stableDiffusionCppBrowser__checkpoint/es';
+import { stableDiffusionCppBrowser__choose_repository_folder } from '@/strings/messages/stableDiffusionCppBrowser__choose_repository_folder/es';
+import { stableDiffusionCppBrowser__clear_previews } from '@/strings/messages/stableDiffusionCppBrowser__clear_previews/es';
+import { stableDiffusionCppBrowser__clear_results } from '@/strings/messages/stableDiffusionCppBrowser__clear_results/es';
+import { stableDiffusionCppBrowser__clip_g_file } from '@/strings/messages/stableDiffusionCppBrowser__clip_g_file/es';
+import { stableDiffusionCppBrowser__clip_l_file } from '@/strings/messages/stableDiffusionCppBrowser__clip_l_file/es';
+import { stableDiffusionCppBrowser__companion_files_help } from '@/strings/messages/stableDiffusionCppBrowser__companion_files_help/es';
+import { stableDiffusionCppBrowser__component_evidence_help } from '@/strings/messages/stableDiffusionCppBrowser__component_evidence_help/es';
+import { stableDiffusionCppBrowser__component_required } from '@/strings/messages/stableDiffusionCppBrowser__component_required/es';
+import { stableDiffusionCppBrowser__components_detected } from '@/strings/messages/stableDiffusionCppBrowser__components_detected/es';
+import { stableDiffusionCppBrowser__conditioning_cache } from '@/strings/messages/stableDiffusionCppBrowser__conditioning_cache/es';
+import { stableDiffusionCppBrowser__copy_logs } from '@/strings/messages/stableDiffusionCppBrowser__copy_logs/es';
+import { stableDiffusionCppBrowser__debug_help } from '@/strings/messages/stableDiffusionCppBrowser__debug_help/es';
+import { stableDiffusionCppBrowser__debug_mode } from '@/strings/messages/stableDiffusionCppBrowser__debug_mode/es';
+import { stableDiffusionCppBrowser__decoding_image } from '@/strings/messages/stableDiffusionCppBrowser__decoding_image/es';
+import { stableDiffusionCppBrowser__diagnostics } from '@/strings/messages/stableDiffusionCppBrowser__diagnostics/es';
+import { stableDiffusionCppBrowser__diffusion_file } from '@/strings/messages/stableDiffusionCppBrowser__diffusion_file/es';
+import { stableDiffusionCppBrowser__distilled_guidance } from '@/strings/messages/stableDiffusionCppBrowser__distilled_guidance/es';
+import { stableDiffusionCppBrowser__download_and_select } from '@/strings/messages/stableDiffusionCppBrowser__download_and_select/es';
+import { stableDiffusionCppBrowser__download_cancelled } from '@/strings/messages/stableDiffusionCppBrowser__download_cancelled/es';
+import { stableDiffusionCppBrowser__download_complete } from '@/strings/messages/stableDiffusionCppBrowser__download_complete/es';
+import { stableDiffusionCppBrowser__download_failed } from '@/strings/messages/stableDiffusionCppBrowser__download_failed/es';
+import { stableDiffusionCppBrowser__download_png } from '@/strings/messages/stableDiffusionCppBrowser__download_png/es';
+import { stableDiffusionCppBrowser__downloaded_but_incomplete } from '@/strings/messages/stableDiffusionCppBrowser__downloaded_but_incomplete/es';
+import { stableDiffusionCppBrowser__downloading_selected } from '@/strings/messages/stableDiffusionCppBrowser__downloading_selected/es';
+import { stableDiffusionCppBrowser__encoding } from '@/strings/messages/stableDiffusionCppBrowser__encoding/es';
+import { stableDiffusionCppBrowser__experimental_local_workspace } from '@/strings/messages/stableDiffusionCppBrowser__experimental_local_workspace/es';
+import { stableDiffusionCppBrowser__file_count } from '@/strings/messages/stableDiffusionCppBrowser__file_count/es';
+import { stableDiffusionCppBrowser__files_available } from '@/strings/messages/stableDiffusionCppBrowser__files_available/es';
+import { stableDiffusionCppBrowser__filter_components } from '@/strings/messages/stableDiffusionCppBrowser__filter_components/es';
+import { stableDiffusionCppBrowser__flash_attention } from '@/strings/messages/stableDiffusionCppBrowser__flash_attention/es';
+import { stableDiffusionCppBrowser__force_stop } from '@/strings/messages/stableDiffusionCppBrowser__force_stop/es';
+import { stableDiffusionCppBrowser__gallery_budget } from '@/strings/messages/stableDiffusionCppBrowser__gallery_budget/es';
+import { stableDiffusionCppBrowser__generate } from '@/strings/messages/stableDiffusionCppBrowser__generate/es';
+import { stableDiffusionCppBrowser__generated_images } from '@/strings/messages/stableDiffusionCppBrowser__generated_images/es';
+import { stableDiffusionCppBrowser__generation_time } from '@/strings/messages/stableDiffusionCppBrowser__generation_time/es';
+import { stableDiffusionCppBrowser__gpu_budget } from '@/strings/messages/stableDiffusionCppBrowser__gpu_budget/es';
+import { stableDiffusionCppBrowser__gpu_budget_help } from '@/strings/messages/stableDiffusionCppBrowser__gpu_budget_help/es';
+import { stableDiffusionCppBrowser__guidance } from '@/strings/messages/stableDiffusionCppBrowser__guidance/es';
+import { stableDiffusionCppBrowser__height } from '@/strings/messages/stableDiffusionCppBrowser__height/es';
+import { stableDiffusionCppBrowser__history_is_temporary } from '@/strings/messages/stableDiffusionCppBrowser__history_is_temporary/es';
+import { stableDiffusionCppBrowser__hosted_build_required } from '@/strings/messages/stableDiffusionCppBrowser__hosted_build_required/es';
+import { stableDiffusionCppBrowser__image_generation_lab } from '@/strings/messages/stableDiffusionCppBrowser__image_generation_lab/es';
+import { stableDiffusionCppBrowser__import_models } from '@/strings/messages/stableDiffusionCppBrowser__import_models/es';
+import { stableDiffusionCppBrowser__import_repository_help } from '@/strings/messages/stableDiffusionCppBrowser__import_repository_help/es';
+import { stableDiffusionCppBrowser__importing_repository } from '@/strings/messages/stableDiffusionCppBrowser__importing_repository/es';
+import { stableDiffusionCppBrowser__incompatible_candidate } from '@/strings/messages/stableDiffusionCppBrowser__incompatible_candidate/es';
+import { stableDiffusionCppBrowser__incomplete_components } from '@/strings/messages/stableDiffusionCppBrowser__incomplete_components/es';
+import { stableDiffusionCppBrowser__inspection_issues } from '@/strings/messages/stableDiffusionCppBrowser__inspection_issues/es';
+import { stableDiffusionCppBrowser__jspi_unavailable } from '@/strings/messages/stableDiffusionCppBrowser__jspi_unavailable/es';
+import { stableDiffusionCppBrowser__keep_model_loaded } from '@/strings/messages/stableDiffusionCppBrowser__keep_model_loaded/es';
+import { stableDiffusionCppBrowser__keep_previews } from '@/strings/messages/stableDiffusionCppBrowser__keep_previews/es';
+import { stableDiffusionCppBrowser__listing_repositories } from '@/strings/messages/stableDiffusionCppBrowser__listing_repositories/es';
+import { stableDiffusionCppBrowser__lm_file } from '@/strings/messages/stableDiffusionCppBrowser__lm_file/es';
+import { stableDiffusionCppBrowser__loading_model } from '@/strings/messages/stableDiffusionCppBrowser__loading_model/es';
+import { stableDiffusionCppBrowser__loading_runtime } from '@/strings/messages/stableDiffusionCppBrowser__loading_runtime/es';
+import { stableDiffusionCppBrowser__local_files_only } from '@/strings/messages/stableDiffusionCppBrowser__local_files_only/es';
+import { stableDiffusionCppBrowser__local_library } from '@/strings/messages/stableDiffusionCppBrowser__local_library/es';
+import { stableDiffusionCppBrowser__logs_copied } from '@/strings/messages/stableDiffusionCppBrowser__logs_copied/es';
+import { stableDiffusionCppBrowser__logs_copy_failed } from '@/strings/messages/stableDiffusionCppBrowser__logs_copy_failed/es';
+import { stableDiffusionCppBrowser__main_image_model } from '@/strings/messages/stableDiffusionCppBrowser__main_image_model/es';
+import { stableDiffusionCppBrowser__manual_model_files } from '@/strings/messages/stableDiffusionCppBrowser__manual_model_files/es';
+import { stableDiffusionCppBrowser__memory64_unavailable } from '@/strings/messages/stableDiffusionCppBrowser__memory64_unavailable/es';
+import { stableDiffusionCppBrowser__memory_and_cancellation } from '@/strings/messages/stableDiffusionCppBrowser__memory_and_cancellation/es';
+import { stableDiffusionCppBrowser__model_and_runtime } from '@/strings/messages/stableDiffusionCppBrowser__model_and_runtime/es';
+import { stableDiffusionCppBrowser__model_arguments } from '@/strings/messages/stableDiffusionCppBrowser__model_arguments/es';
+import { stableDiffusionCppBrowser__model_file } from '@/strings/messages/stableDiffusionCppBrowser__model_file/es';
+import { stableDiffusionCppBrowser__model_layout } from '@/strings/messages/stableDiffusionCppBrowser__model_layout/es';
+import { stableDiffusionCppBrowser__model_resident } from '@/strings/messages/stableDiffusionCppBrowser__model_resident/es';
+import { stableDiffusionCppBrowser__negative_prompt } from '@/strings/messages/stableDiffusionCppBrowser__negative_prompt/es';
+import { stableDiffusionCppBrowser__no_images_yet } from '@/strings/messages/stableDiffusionCppBrowser__no_images_yet/es';
+import { stableDiffusionCppBrowser__preset_policy } from '@/strings/messages/stableDiffusionCppBrowser__preset_policy/es';
+import { stableDiffusionCppBrowser__preset_sources } from '@/strings/messages/stableDiffusionCppBrowser__preset_sources/es';
+import { stableDiffusionCppBrowser__preset_unknown } from '@/strings/messages/stableDiffusionCppBrowser__preset_unknown/es';
+import { stableDiffusionCppBrowser__preview_after_step } from '@/strings/messages/stableDiffusionCppBrowser__preview_after_step/es';
+import { stableDiffusionCppBrowser__preview_empty } from '@/strings/messages/stableDiffusionCppBrowser__preview_empty/es';
+import { stableDiffusionCppBrowser__preview_enabled } from '@/strings/messages/stableDiffusionCppBrowser__preview_enabled/es';
+import { stableDiffusionCppBrowser__preview_help } from '@/strings/messages/stableDiffusionCppBrowser__preview_help/es';
+import { stableDiffusionCppBrowser__preview_interval } from '@/strings/messages/stableDiffusionCppBrowser__preview_interval/es';
+import { stableDiffusionCppBrowser__preview_limit } from '@/strings/messages/stableDiffusionCppBrowser__preview_limit/es';
+import { stableDiffusionCppBrowser__preview_max_edge } from '@/strings/messages/stableDiffusionCppBrowser__preview_max_edge/es';
+import { stableDiffusionCppBrowser__preview_mode } from '@/strings/messages/stableDiffusionCppBrowser__preview_mode/es';
+import { stableDiffusionCppBrowser__preview_mode_locked } from '@/strings/messages/stableDiffusionCppBrowser__preview_mode_locked/es';
+import { stableDiffusionCppBrowser__preview_original } from '@/strings/messages/stableDiffusionCppBrowser__preview_original/es';
+import { stableDiffusionCppBrowser__preview_projection } from '@/strings/messages/stableDiffusionCppBrowser__preview_projection/es';
+import { stableDiffusionCppBrowser__preview_start_step } from '@/strings/messages/stableDiffusionCppBrowser__preview_start_step/es';
+import { stableDiffusionCppBrowser__preview_title } from '@/strings/messages/stableDiffusionCppBrowser__preview_title/es';
+import { stableDiffusionCppBrowser__preview_vae } from '@/strings/messages/stableDiffusionCppBrowser__preview_vae/es';
+import { stableDiffusionCppBrowser__profile } from '@/strings/messages/stableDiffusionCppBrowser__profile/es';
+import { stableDiffusionCppBrowser__prompt } from '@/strings/messages/stableDiffusionCppBrowser__prompt/es';
+import { stableDiffusionCppBrowser__qwen_preset_policy } from '@/strings/messages/stableDiffusionCppBrowser__qwen_preset_policy/es';
+import { stableDiffusionCppBrowser__qwen_vae_bounded } from '@/strings/messages/stableDiffusionCppBrowser__qwen_vae_bounded/es';
+import { stableDiffusionCppBrowser__qwen_vae_help } from '@/strings/messages/stableDiffusionCppBrowser__qwen_vae_help/es';
+import { stableDiffusionCppBrowser__recommended_preview_summary } from '@/strings/messages/stableDiffusionCppBrowser__recommended_preview_summary/es';
+import { stableDiffusionCppBrowser__recommended_settings } from '@/strings/messages/stableDiffusionCppBrowser__recommended_settings/es';
+import { stableDiffusionCppBrowser__refresh_repositories } from '@/strings/messages/stableDiffusionCppBrowser__refresh_repositories/es';
+import { stableDiffusionCppBrowser__release_model } from '@/strings/messages/stableDiffusionCppBrowser__release_model/es';
+import { stableDiffusionCppBrowser__remove } from '@/strings/messages/stableDiffusionCppBrowser__remove/es';
+import { stableDiffusionCppBrowser__result_limit } from '@/strings/messages/stableDiffusionCppBrowser__result_limit/es';
+import { stableDiffusionCppBrowser__runtime_settings } from '@/strings/messages/stableDiffusionCppBrowser__runtime_settings/es';
+import { stableDiffusionCppBrowser__sampler } from '@/strings/messages/stableDiffusionCppBrowser__sampler/es';
+import { stableDiffusionCppBrowser__sampling } from '@/strings/messages/stableDiffusionCppBrowser__sampling/es';
+import { stableDiffusionCppBrowser__save_logs } from '@/strings/messages/stableDiffusionCppBrowser__save_logs/es';
+import { stableDiffusionCppBrowser__scanning_repositories } from '@/strings/messages/stableDiffusionCppBrowser__scanning_repositories/es';
+import { stableDiffusionCppBrowser__scheduler } from '@/strings/messages/stableDiffusionCppBrowser__scheduler/es';
+import { stableDiffusionCppBrowser__seed } from '@/strings/messages/stableDiffusionCppBrowser__seed/es';
+import { stableDiffusionCppBrowser__select_component } from '@/strings/messages/stableDiffusionCppBrowser__select_component/es';
+import { stableDiffusionCppBrowser__select_saved_recipe } from '@/strings/messages/stableDiffusionCppBrowser__select_saved_recipe/es';
+import { stableDiffusionCppBrowser__selected } from '@/strings/messages/stableDiffusionCppBrowser__selected/es';
+import { stableDiffusionCppBrowser__selected_model } from '@/strings/messages/stableDiffusionCppBrowser__selected_model/es';
+import { stableDiffusionCppBrowser__separate_components } from '@/strings/messages/stableDiffusionCppBrowser__separate_components/es';
+import { stableDiffusionCppBrowser__show_all_weights } from '@/strings/messages/stableDiffusionCppBrowser__show_all_weights/es';
+import { stableDiffusionCppBrowser__show_logs } from '@/strings/messages/stableDiffusionCppBrowser__show_logs/es';
+import { stableDiffusionCppBrowser__steps } from '@/strings/messages/stableDiffusionCppBrowser__steps/es';
+import { stableDiffusionCppBrowser__stopping_retained } from '@/strings/messages/stableDiffusionCppBrowser__stopping_retained/es';
+import { stableDiffusionCppBrowser__structural_match } from '@/strings/messages/stableDiffusionCppBrowser__structural_match/es';
+import { stableDiffusionCppBrowser__t5_file } from '@/strings/messages/stableDiffusionCppBrowser__t5_file/es';
+import { stableDiffusionCppBrowser__uniform_image_warning } from '@/strings/messages/stableDiffusionCppBrowser__uniform_image_warning/es';
+import { stableDiffusionCppBrowser__unverified_candidate } from '@/strings/messages/stableDiffusionCppBrowser__unverified_candidate/es';
+import { stableDiffusionCppBrowser__vae_file } from '@/strings/messages/stableDiffusionCppBrowser__vae_file/es';
+import { stableDiffusionCppBrowser__vae_tile_size } from '@/strings/messages/stableDiffusionCppBrowser__vae_tile_size/es';
+import { stableDiffusionCppBrowser__vae_tiling } from '@/strings/messages/stableDiffusionCppBrowser__vae_tiling/es';
+import { stableDiffusionCppBrowser__validation_limits } from '@/strings/messages/stableDiffusionCppBrowser__validation_limits/es';
+import { stableDiffusionCppBrowser__webgpu_required } from '@/strings/messages/stableDiffusionCppBrowser__webgpu_required/es';
+import { stableDiffusionCppBrowser__weight_residency } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency/es';
+import { stableDiffusionCppBrowser__weight_residency_auto } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_auto/es';
+import { stableDiffusionCppBrowser__weight_residency_cpu } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_cpu/es';
+import { stableDiffusionCppBrowser__weight_residency_disk } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_disk/es';
+import { stableDiffusionCppBrowser__weight_residency_help } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_help/es';
+import { stableDiffusionCppBrowser__weight_residency_hybrid } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_hybrid/es';
+import { stableDiffusionCppBrowser__width } from '@/strings/messages/stableDiffusionCppBrowser__width/es';
 import { toolCall__arguments } from '@/strings/messages/toolCall__arguments/es';
 import { toolCall__code } from '@/strings/messages/toolCall__code/es';
 import { toolCall__disable_wrap } from '@/strings/messages/toolCall__disable_wrap/es';
@@ -2069,517 +2729,6 @@ import { weshTerminal__wesh_terminal } from '@/strings/messages/weshTerminal__we
 
 import type { Strings } from './en';
 
-import { llamaCppBrowser__endpoint_label } from '@/strings/messages/llamaCppBrowser__endpoint_label/es';
-import { llamaCppBrowser__gguf_model_files } from '@/strings/messages/llamaCppBrowser__gguf_model_files/es';
-import { llamaCppBrowser__choose_gguf_files } from '@/strings/messages/llamaCppBrowser__choose_gguf_files/es';
-import { LlamaCppBrowserHuggingFaceManager__check_model } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__check_model/es';
-import { LlamaCppBrowserHuggingFaceManager__unspecified_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__unspecified_quantization/es';
-import { LlamaCppBrowserHuggingFaceManager__multimodal_support } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__multimodal_support/es';
-import { LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models/es';
-import { LlamaCppBrowserHuggingFaceManager__no_companion_files_available } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__no_companion_files_available/es';
-import { LlamaCppBrowserHuggingFaceManager__choose_between_variants_in_download_details } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__choose_between_variants_in_download_details/es';
-import { LlamaCppBrowserHuggingFaceManager__download_details } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_details/es';
-import { LlamaCppBrowserHuggingFaceManager__model_variant } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__model_variant/es';
-import { LlamaCppBrowserHuggingFaceManager__companion_file } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__companion_file/es';
-import { LlamaCppBrowserHuggingFaceManager__choose_companion_file } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__choose_companion_file/es';
-import { LlamaCppBrowserHuggingFaceManager__downloading_model } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__downloading_model/es';
-import { LlamaCppBrowserHuggingFaceManager__checking_model } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__checking_model/es';
-import { LlamaCppBrowserHuggingFaceManager__download_paused } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_paused/es';
-import { llamaCppBrowser__files_to_delete } from '@/strings/messages/llamaCppBrowser__files_to_delete/es';
-import { llamaCppBrowser__files_changed_review_before_deleting } from '@/strings/messages/llamaCppBrowser__files_changed_review_before_deleting/es';
-import { LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files } from '@/strings/messages/LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files/es';
-import { LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support } from '@/strings/messages/LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support/es';
-import { LlamaCppBrowserHuggingFaceManager__multimodal_quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__multimodal_quantization/es';
-import { LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict/es';
-import { LlamaCppBrowserHuggingFaceManager__estimating_remaining_time } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__estimating_remaining_time/es';
-import { LlamaCppBrowserHuggingFaceManager__performing_final_checks } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__performing_final_checks/es';
-import { LlamaCppBrowserHuggingFaceManager__about_seconds_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_seconds_remaining/es';
-import { LlamaCppBrowserHuggingFaceManager__about_minutes_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_minutes_remaining/es';
-import { LlamaCppBrowserHuggingFaceManager__about_hours_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_hours_remaining/es';
-import { LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining/es';
-import { LlamaCppBrowserHuggingFaceManager__model_files_already_exist } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__model_files_already_exist/es';
-import { LlamaCppBrowserHuggingFaceManager__another_download_already_exists } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__another_download_already_exists/es';
-import { LlamaCppBrowserHuggingFaceManager__repository } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__repository/es';
-import { LlamaCppBrowserHuggingFaceManager__quantization } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__quantization/es';
-import { LlamaCppBrowserHuggingFaceManager__choose_model_files } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__choose_model_files/es';
-import { LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection/es';
-import { LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found/es';
-import { LlamaCppBrowserHuggingFaceManager__total_download_size } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__total_download_size/es';
-import { LlamaCppBrowserHuggingFaceManager__download } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download/es';
-import { LlamaCppBrowserHuggingFaceManager__downloaded } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__downloaded/es';
-import { LlamaCppBrowserHuggingFaceManager__pause } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__pause/es';
-import { LlamaCppBrowserHuggingFaceManager__resume } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__resume/es';
-import { LlamaCppBrowserHuggingFaceManager__cancel_and_delete } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__cancel_and_delete/es';
-import { LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume } from '@/strings/messages/LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume/es';
-import { llamaCppBrowser__choose_model_folder } from '@/strings/messages/llamaCppBrowser__choose_model_folder/es';
-import { llamaCppBrowser__gguf_files_only } from '@/strings/messages/llamaCppBrowser__gguf_files_only/es';
-import { llamaCppBrowser__drop_model_folders_or_gguf_files_here } from '@/strings/messages/llamaCppBrowser__drop_model_folders_or_gguf_files_here/es';
-import { llamaCppBrowser__or_choose_files_from_your_device } from '@/strings/messages/llamaCppBrowser__or_choose_files_from_your_device/es';
-import { llamaCppBrowser__inference_settings } from '@/strings/messages/llamaCppBrowser__inference_settings/es';
-import { llamaCppBrowser__automatic_profile } from '@/strings/messages/llamaCppBrowser__automatic_profile/es';
-import { llamaCppBrowser__checking_browser_support } from '@/strings/messages/llamaCppBrowser__checking_browser_support/es';
-import { llamaCppBrowser__check_browser_support } from '@/strings/messages/llamaCppBrowser__check_browser_support/es';
-import { llamaCppBrowser__unavailable_feature } from '@/strings/messages/llamaCppBrowser__unavailable_feature/es';
-import { llamaCppBrowser__no_compatible_runtime } from '@/strings/messages/llamaCppBrowser__no_compatible_runtime/es';
-import { llamaCppBrowser__automatic_recommended } from '@/strings/messages/llamaCppBrowser__automatic_recommended/es';
-import { llamaCppBrowser__automatic_profile_description } from '@/strings/messages/llamaCppBrowser__automatic_profile_description/es';
-import { llamaCppBrowser__imported_models } from '@/strings/messages/llamaCppBrowser__imported_models/es';
-import { llamaCppBrowser__loading_model_list } from '@/strings/messages/llamaCppBrowser__loading_model_list/es';
-import { llamaCppBrowser__manage_gguf_models } from '@/strings/messages/llamaCppBrowser__manage_gguf_models/es';
-import { llamaCppBrowser__import_downloaded_gguf } from '@/strings/messages/llamaCppBrowser__import_downloaded_gguf/es';
-import { llamaCppBrowser__unavailable_in_standalone } from '@/strings/messages/llamaCppBrowser__unavailable_in_standalone/es';
-import { llamaCppBrowser__image_chat_requires_matching_projector } from '@/strings/messages/llamaCppBrowser__image_chat_requires_matching_projector/es';
-import { llamaCppBrowser__import_gguf } from '@/strings/messages/llamaCppBrowser__import_gguf/es';
-import { llamaCppBrowser__profile } from '@/strings/messages/llamaCppBrowser__profile/es';
-import { llamaCppBrowser__context_size } from '@/strings/messages/llamaCppBrowser__context_size/es';
-import { llamaCppBrowser__no_imported_models } from '@/strings/messages/llamaCppBrowser__no_imported_models/es';
-import { llamaCppBrowser__delete_model } from '@/strings/messages/llamaCppBrowser__delete_model/es';
-import { llamaCppBrowser__delete_model_confirmation } from '@/strings/messages/llamaCppBrowser__delete_model_confirmation/es';
-import { llamaCppBrowser__release_runtime } from '@/strings/messages/llamaCppBrowser__release_runtime/es';
-import { llamaCppBrowser__refresh_models } from '@/strings/messages/llamaCppBrowser__refresh_models/es';
-import { llamaCppBrowser__operation_failed } from '@/strings/messages/llamaCppBrowser__operation_failed/es';
-import { llamaCppBrowser__ready } from '@/strings/messages/llamaCppBrowser__ready/es';
-import { llamaCppBrowser__importing } from '@/strings/messages/llamaCppBrowser__importing/es';
-import { llamaCppBrowser__initializing } from '@/strings/messages/llamaCppBrowser__initializing/es';
-import { llamaCppBrowser__loading } from '@/strings/messages/llamaCppBrowser__loading/es';
-import { llamaCppBrowser__prefill } from '@/strings/messages/llamaCppBrowser__prefill/es';
-import { llamaCppBrowser__generating } from '@/strings/messages/llamaCppBrowser__generating/es';
-import { llamaCppBrowser__import_then_select } from '@/strings/messages/llamaCppBrowser__import_then_select/es';
-import { audioGeneration__decoding_audio } from '@/strings/messages/audioGeneration__decoding_audio/es';
-import { audioGeneration__audio_generation } from '@/strings/messages/audioGeneration__audio_generation/es';
-import { audioGeneration__introduction } from '@/strings/messages/audioGeneration__introduction/es';
-import { audioGeneration__manage_models_and_runtime } from '@/strings/messages/audioGeneration__manage_models_and_runtime/es';
-import { audioGeneration__model_setup_help } from '@/strings/messages/audioGeneration__model_setup_help/es';
-import { audioGeneration__model_support_help } from '@/strings/messages/audioGeneration__model_support_help/es';
-import { audioGeneration__audio_model } from '@/strings/messages/audioGeneration__audio_model/es';
-import { audioGeneration__choose_model } from '@/strings/messages/audioGeneration__choose_model/es';
-import { audioGeneration__input_text } from '@/strings/messages/audioGeneration__input_text/es';
-import { audioGeneration__input_placeholder } from '@/strings/messages/audioGeneration__input_placeholder/es';
-import { audioGeneration__language } from '@/strings/messages/audioGeneration__language/es';
-import { audioGeneration__model_default } from '@/strings/messages/audioGeneration__model_default/es';
-import { audioGeneration__language_help } from '@/strings/messages/audioGeneration__language_help/es';
-import { audioGeneration__reference_voice } from '@/strings/messages/audioGeneration__reference_voice/es';
-import { audioGeneration__reference_help } from '@/strings/messages/audioGeneration__reference_help/es';
-import { audioGeneration__clear_reference } from '@/strings/messages/audioGeneration__clear_reference/es';
-import { audioGeneration__advanced_settings } from '@/strings/messages/audioGeneration__advanced_settings/es';
-import { audioGeneration__audio_processor } from '@/strings/messages/audioGeneration__audio_processor/es';
-import { audioGeneration__cpu_audio } from '@/strings/messages/audioGeneration__cpu_audio/es';
-import { audioGeneration__runtime_audio } from '@/strings/messages/audioGeneration__runtime_audio/es';
-import { audioGeneration__processor_help } from '@/strings/messages/audioGeneration__processor_help/es';
-import { audioGeneration__context_tokens } from '@/strings/messages/audioGeneration__context_tokens/es';
-import { audioGeneration__maximum_steps } from '@/strings/messages/audioGeneration__maximum_steps/es';
-import { audioGeneration__backbone_temperature } from '@/strings/messages/audioGeneration__backbone_temperature/es';
-import { audioGeneration__backbone_top_k } from '@/strings/messages/audioGeneration__backbone_top_k/es';
-import { audioGeneration__backbone_top_p } from '@/strings/messages/audioGeneration__backbone_top_p/es';
-import { audioGeneration__seed } from '@/strings/messages/audioGeneration__seed/es';
-import { audioGeneration__sampling_help } from '@/strings/messages/audioGeneration__sampling_help/es';
-import { audioGeneration__native_diagnostics } from '@/strings/messages/audioGeneration__native_diagnostics/es';
-import { audioGeneration__generate_audio } from '@/strings/messages/audioGeneration__generate_audio/es';
-import { audioGeneration__stop_generation } from '@/strings/messages/audioGeneration__stop_generation/es';
-import { audioGeneration__stopping } from '@/strings/messages/audioGeneration__stopping/es';
-import { audioGeneration__waiting } from '@/strings/messages/audioGeneration__waiting/es';
-import { audioGeneration__finish_and_keep_audio } from '@/strings/messages/audioGeneration__finish_and_keep_audio/es';
-import { audioGeneration__finishing_current_step } from '@/strings/messages/audioGeneration__finishing_current_step/es';
-import { audioGeneration__finish_audio_help } from '@/strings/messages/audioGeneration__finish_audio_help/es';
-import { audioGeneration__finished_early } from '@/strings/messages/audioGeneration__finished_early/es';
-import { audioGeneration__cancel_and_discard } from '@/strings/messages/audioGeneration__cancel_and_discard/es';
-import { audioGeneration__drop_reference_audio } from '@/strings/messages/audioGeneration__drop_reference_audio/es';
-import { audioGeneration__add_reference_files } from '@/strings/messages/audioGeneration__add_reference_files/es';
-import { audioGeneration__record_reference } from '@/strings/messages/audioGeneration__record_reference/es';
-import { audioGeneration__stop_and_use_recording } from '@/strings/messages/audioGeneration__stop_and_use_recording/es';
-import { audioGeneration__discard_recording } from '@/strings/messages/audioGeneration__discard_recording/es';
-import { audioGeneration__requesting_microphone } from '@/strings/messages/audioGeneration__requesting_microphone/es';
-import { audioGeneration__recording_audio } from '@/strings/messages/audioGeneration__recording_audio/es';
-import { audioGeneration__preparing_recording } from '@/strings/messages/audioGeneration__preparing_recording/es';
-import { audioGeneration__preparing_references } from '@/strings/messages/audioGeneration__preparing_references/es';
-import { audioGeneration__recording_help } from '@/strings/messages/audioGeneration__recording_help/es';
-import { audioGeneration__reference_collection_help } from '@/strings/messages/audioGeneration__reference_collection_help/es';
-import { audioGeneration__selected_references } from '@/strings/messages/audioGeneration__selected_references/es';
-import { audioGeneration__deselect_all_references } from '@/strings/messages/audioGeneration__deselect_all_references/es';
-import { audioGeneration__delete_reference } from '@/strings/messages/audioGeneration__delete_reference/es';
-import { audioGeneration__delete_all_references } from '@/strings/messages/audioGeneration__delete_all_references/es';
-import { audioGeneration__no_reference_selected } from '@/strings/messages/audioGeneration__no_reference_selected/es';
-import { audioGeneration__reference_empty } from '@/strings/messages/audioGeneration__reference_empty/es';
-import { audioGeneration__reference_too_large } from '@/strings/messages/audioGeneration__reference_too_large/es';
-import { audioGeneration__reference_too_long } from '@/strings/messages/audioGeneration__reference_too_long/es';
-import { audioGeneration__reference_decode_failed } from '@/strings/messages/audioGeneration__reference_decode_failed/es';
-import { audioGeneration__recording_unavailable } from '@/strings/messages/audioGeneration__recording_unavailable/es';
-import { audioGeneration__reference_library_full } from '@/strings/messages/audioGeneration__reference_library_full/es';
-import { audioGeneration__microphone_permission_denied } from '@/strings/messages/audioGeneration__microphone_permission_denied/es';
-import { audioGeneration__microphone_unavailable } from '@/strings/messages/audioGeneration__microphone_unavailable/es';
-import { audioGeneration__recording_failed } from '@/strings/messages/audioGeneration__recording_failed/es';
-import { audioGeneration__recording_limited_to_thirty_seconds } from '@/strings/messages/audioGeneration__recording_limited_to_thirty_seconds/es';
-import { audioGeneration__reference_usage_notes } from '@/strings/messages/audioGeneration__reference_usage_notes/es';
-import { audioGeneration__generation_stopped } from '@/strings/messages/audioGeneration__generation_stopped/es';
-import { audioGeneration__generated_audio } from '@/strings/messages/audioGeneration__generated_audio/es';
-import { audioGeneration__save_wav } from '@/strings/messages/audioGeneration__save_wav/es';
-import { audioGeneration__limit_reached } from '@/strings/messages/audioGeneration__limit_reached/es';
-import { audioGeneration__output_lifetime } from '@/strings/messages/audioGeneration__output_lifetime/es';
-import { audioGeneration__check_parameters } from '@/strings/messages/audioGeneration__check_parameters/es';
-import { audioGeneration__unsupported_model } from '@/strings/messages/audioGeneration__unsupported_model/es';
-import { audioGeneration__reference_required } from '@/strings/messages/audioGeneration__reference_required/es';
-import { audioGeneration__invalid_reference } from '@/strings/messages/audioGeneration__invalid_reference/es';
-import { audioGeneration__empty_audio } from '@/strings/messages/audioGeneration__empty_audio/es';
-import { audioGeneration__context_full } from '@/strings/messages/audioGeneration__context_full/es';
-import { audioGeneration__generation_failed } from '@/strings/messages/audioGeneration__generation_failed/es';
-import { audioGeneration__runtime_unavailable } from '@/strings/messages/audioGeneration__runtime_unavailable/es';
-import { audioGeneration__steps_completed } from '@/strings/messages/audioGeneration__steps_completed/es';
-
-import { audioGeneration__not_detected_as_audio } from '@/strings/messages/audioGeneration__not_detected_as_audio/es';
-import { audioGeneration__checking_local_model_metadata } from '@/strings/messages/audioGeneration__checking_local_model_metadata/es';
-import { audioGeneration__no_audio_models_detected } from '@/strings/messages/audioGeneration__no_audio_models_detected/es';
-import { audioGeneration__show_all_models } from '@/strings/messages/audioGeneration__show_all_models/es';
-import { audioGeneration__model_detection_help } from '@/strings/messages/audioGeneration__model_detection_help/es';
-import { audioGeneration__advanced_model_selection } from '@/strings/messages/audioGeneration__advanced_model_selection/es';
-import { audioGeneration__show_all_llama_cpp_browser_models } from '@/strings/messages/audioGeneration__show_all_llama_cpp_browser_models/es';
-import { audioGeneration__all_models_help } from '@/strings/messages/audioGeneration__all_models_help/es';
-import { audioGeneration__step_limit_help } from '@/strings/messages/audioGeneration__step_limit_help/es';
-import { audioGeneration__delete_audio } from '@/strings/messages/audioGeneration__delete_audio/es';
-import { audioGeneration__generation_settings } from '@/strings/messages/audioGeneration__generation_settings/es';
-import { audioGeneration__recorded_settings_help } from '@/strings/messages/audioGeneration__recorded_settings_help/es';
-import { audioGeneration__random_seed } from '@/strings/messages/audioGeneration__random_seed/es';
-import { audioGeneration__requested_profile } from '@/strings/messages/audioGeneration__requested_profile/es';
-import { audioGeneration__automatic_profile } from '@/strings/messages/audioGeneration__automatic_profile/es';
-import { audioGeneration__delete_all_audio } from '@/strings/messages/audioGeneration__delete_all_audio/es';
-import { audioGeneration__history_memory_usage } from '@/strings/messages/audioGeneration__history_memory_usage/es';
-
-import { audioGeneration__reinitialize_runtime } from '@/strings/messages/audioGeneration__reinitialize_runtime/es';
-import { audioGeneration__reinitializing_runtime } from '@/strings/messages/audioGeneration__reinitializing_runtime/es';
-import { audioGeneration__reinitialize_runtime_help } from '@/strings/messages/audioGeneration__reinitialize_runtime_help/es';
-import { audioGeneration__copy_text } from '@/strings/messages/audioGeneration__copy_text/es';
-import { audioGeneration__text_copied } from '@/strings/messages/audioGeneration__text_copied/es';
-import { audioGeneration__copy_failed_select_text } from '@/strings/messages/audioGeneration__copy_failed_select_text/es';
-import { stableDiffusionCppBrowser__image_generation_lab } from '@/strings/messages/stableDiffusionCppBrowser__image_generation_lab/es';
-import { stableDiffusionCppBrowser__experimental_local_workspace } from '@/strings/messages/stableDiffusionCppBrowser__experimental_local_workspace/es';
-import { stableDiffusionCppBrowser__validation_limits } from '@/strings/messages/stableDiffusionCppBrowser__validation_limits/es';
-import { stableDiffusionCppBrowser__local_files_only } from '@/strings/messages/stableDiffusionCppBrowser__local_files_only/es';
-import { stableDiffusionCppBrowser__artifact_not_installed } from '@/strings/messages/stableDiffusionCppBrowser__artifact_not_installed/es';
-import { stableDiffusionCppBrowser__hosted_build_required } from '@/strings/messages/stableDiffusionCppBrowser__hosted_build_required/es';
-import { stableDiffusionCppBrowser__webgpu_required } from '@/strings/messages/stableDiffusionCppBrowser__webgpu_required/es';
-import { stableDiffusionCppBrowser__jspi_unavailable } from '@/strings/messages/stableDiffusionCppBrowser__jspi_unavailable/es';
-import { stableDiffusionCppBrowser__model_and_runtime } from '@/strings/messages/stableDiffusionCppBrowser__model_and_runtime/es';
-import { stableDiffusionCppBrowser__model_layout } from '@/strings/messages/stableDiffusionCppBrowser__model_layout/es';
-import { stableDiffusionCppBrowser__checkpoint } from '@/strings/messages/stableDiffusionCppBrowser__checkpoint/es';
-import { stableDiffusionCppBrowser__separate_components } from '@/strings/messages/stableDiffusionCppBrowser__separate_components/es';
-import { stableDiffusionCppBrowser__model_file } from '@/strings/messages/stableDiffusionCppBrowser__model_file/es';
-import { stableDiffusionCppBrowser__diffusion_file } from '@/strings/messages/stableDiffusionCppBrowser__diffusion_file/es';
-import { stableDiffusionCppBrowser__vae_file } from '@/strings/messages/stableDiffusionCppBrowser__vae_file/es';
-import { stableDiffusionCppBrowser__clip_l_file } from '@/strings/messages/stableDiffusionCppBrowser__clip_l_file/es';
-import { stableDiffusionCppBrowser__clip_g_file } from '@/strings/messages/stableDiffusionCppBrowser__clip_g_file/es';
-import { stableDiffusionCppBrowser__t5_file } from '@/strings/messages/stableDiffusionCppBrowser__t5_file/es';
-import { stableDiffusionCppBrowser__lm_file } from '@/strings/messages/stableDiffusionCppBrowser__lm_file/es';
-import { stableDiffusionCppBrowser__companion_files_help } from '@/strings/messages/stableDiffusionCppBrowser__companion_files_help/es';
-import { stableDiffusionCppBrowser__profile } from '@/strings/messages/stableDiffusionCppBrowser__profile/es';
-import { stableDiffusionCppBrowser__weight_residency } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency/es';
-import { stableDiffusionCppBrowser__weight_residency_help } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_help/es';
-import { stableDiffusionCppBrowser__weight_residency_auto } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_auto/es';
-import { stableDiffusionCppBrowser__weight_residency_cpu } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_cpu/es';
-import { stableDiffusionCppBrowser__weight_residency_hybrid } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_hybrid/es';
-import { stableDiffusionCppBrowser__weight_residency_disk } from '@/strings/messages/stableDiffusionCppBrowser__weight_residency_disk/es';
-import { stableDiffusionCppBrowser__gpu_budget } from '@/strings/messages/stableDiffusionCppBrowser__gpu_budget/es';
-import { stableDiffusionCppBrowser__gpu_budget_help } from '@/strings/messages/stableDiffusionCppBrowser__gpu_budget_help/es';
-import { stableDiffusionCppBrowser__catalog_file_notice } from '@/strings/messages/stableDiffusionCppBrowser__catalog_file_notice/es';
-import { stableDiffusionCppBrowser__catalog_drop_help } from '@/strings/messages/stableDiffusionCppBrowser__catalog_drop_help/es';
-import { ImageHostModelDirectories__download_to } from '@/strings/messages/ImageHostModelDirectories__download_to/es';
-import { ImageHostModelDirectories__browser_storage } from '@/strings/messages/ImageHostModelDirectories__browser_storage/es';
-import { ImageHostModelDirectories__browser_storage_unavailable } from '@/strings/messages/ImageHostModelDirectories__browser_storage_unavailable/es';
-import { ImageHostModelDirectories__linked_folder } from '@/strings/messages/ImageHostModelDirectories__linked_folder/es';
-import { ImageHostModelDirectories__link_folder } from '@/strings/messages/ImageHostModelDirectories__link_folder/es';
-import { ImageHostModelDirectories__reconnect } from '@/strings/messages/ImageHostModelDirectories__reconnect/es';
-import { ImageHostModelDirectories__unlink } from '@/strings/messages/ImageHostModelDirectories__unlink/es';
-import { ImageHostModelDirectories__unlink_keeps_files } from '@/strings/messages/ImageHostModelDirectories__unlink_keeps_files/es';
-import { ImageHostModelDirectories__linked_folders_unavailable } from '@/strings/messages/ImageHostModelDirectories__linked_folders_unavailable/es';
-import { ImageHostModelDirectories__choose_folder_above_owner } from '@/strings/messages/ImageHostModelDirectories__choose_folder_above_owner/es';
-import { ImageHostModelDirectories__example_folder_layout } from '@/strings/messages/ImageHostModelDirectories__example_folder_layout/es';
-import { ImageHostModelDirectories__linked_folders } from '@/strings/messages/ImageHostModelDirectories__linked_folders/es';
-import { ImageHostModelDirectories__folder_access } from '@/strings/messages/ImageHostModelDirectories__folder_access/es';
-import { stableDiffusionCppBrowser__catalog_layout } from '@/strings/messages/stableDiffusionCppBrowser__catalog_layout/es';
-import { stableDiffusionCppBrowser__catalog_source } from '@/strings/messages/stableDiffusionCppBrowser__catalog_source/es';
-import { stableDiffusionCppBrowser__catalog_download } from '@/strings/messages/stableDiffusionCppBrowser__catalog_download/es';
-import { stableDiffusionCppBrowser__catalog_qwen_image } from '@/strings/messages/stableDiffusionCppBrowser__catalog_qwen_image/es';
-import { stableDiffusionCppBrowser__catalog_z_image } from '@/strings/messages/stableDiffusionCppBrowser__catalog_z_image/es';
-import { stableDiffusionCppBrowser__catalog_validation } from '@/strings/messages/stableDiffusionCppBrowser__catalog_validation/es';
-import { stableDiffusionCppBrowser__catalog_help } from '@/strings/messages/stableDiffusionCppBrowser__catalog_help/es';
-import { stableDiffusionCppBrowser__catalog_title } from '@/strings/messages/stableDiffusionCppBrowser__catalog_title/es';
-import { stableDiffusionCppBrowser__memory_and_cancellation } from '@/strings/messages/stableDiffusionCppBrowser__memory_and_cancellation/es';
-import { stableDiffusionCppBrowser__prompt } from '@/strings/messages/stableDiffusionCppBrowser__prompt/es';
-import { stableDiffusionCppBrowser__negative_prompt } from '@/strings/messages/stableDiffusionCppBrowser__negative_prompt/es';
-import { stableDiffusionCppBrowser__width } from '@/strings/messages/stableDiffusionCppBrowser__width/es';
-import { stableDiffusionCppBrowser__height } from '@/strings/messages/stableDiffusionCppBrowser__height/es';
-import { stableDiffusionCppBrowser__steps } from '@/strings/messages/stableDiffusionCppBrowser__steps/es';
-import { stableDiffusionCppBrowser__guidance } from '@/strings/messages/stableDiffusionCppBrowser__guidance/es';
-import { stableDiffusionCppBrowser__seed } from '@/strings/messages/stableDiffusionCppBrowser__seed/es';
-import { stableDiffusionCppBrowser__generate } from '@/strings/messages/stableDiffusionCppBrowser__generate/es';
-import { stableDiffusionCppBrowser__cancel } from '@/strings/messages/stableDiffusionCppBrowser__cancel/es';
-import { stableDiffusionCppBrowser__cancelled } from '@/strings/messages/stableDiffusionCppBrowser__cancelled/es';
-import { stableDiffusionCppBrowser__loading_runtime } from '@/strings/messages/stableDiffusionCppBrowser__loading_runtime/es';
-import { stableDiffusionCppBrowser__loading_model } from '@/strings/messages/stableDiffusionCppBrowser__loading_model/es';
-import { stableDiffusionCppBrowser__sampling } from '@/strings/messages/stableDiffusionCppBrowser__sampling/es';
-import { stableDiffusionCppBrowser__decoding_image } from '@/strings/messages/stableDiffusionCppBrowser__decoding_image/es';
-import { stableDiffusionCppBrowser__encoding } from '@/strings/messages/stableDiffusionCppBrowser__encoding/es';
-import { stableDiffusionCppBrowser__check_inputs } from '@/strings/messages/stableDiffusionCppBrowser__check_inputs/es';
-import { stableDiffusionCppBrowser__generated_images } from '@/strings/messages/stableDiffusionCppBrowser__generated_images/es';
-import { stableDiffusionCppBrowser__history_is_temporary } from '@/strings/messages/stableDiffusionCppBrowser__history_is_temporary/es';
-import { stableDiffusionCppBrowser__no_images_yet } from '@/strings/messages/stableDiffusionCppBrowser__no_images_yet/es';
-import { stableDiffusionCppBrowser__download_png } from '@/strings/messages/stableDiffusionCppBrowser__download_png/es';
-import { stableDiffusionCppBrowser__remove } from '@/strings/messages/stableDiffusionCppBrowser__remove/es';
-import { stableDiffusionCppBrowser__diagnostics } from '@/strings/messages/stableDiffusionCppBrowser__diagnostics/es';
-import { stableDiffusionCppBrowser__memory64_unavailable } from '@/strings/messages/stableDiffusionCppBrowser__memory64_unavailable/es';
-import { stableDiffusionCppBrowser__local_library } from '@/strings/messages/stableDiffusionCppBrowser__local_library/es';
-import { stableDiffusionCppBrowser__import_repository_help } from '@/strings/messages/stableDiffusionCppBrowser__import_repository_help/es';
-import { stableDiffusionCppBrowser__choose_repository_folder } from '@/strings/messages/stableDiffusionCppBrowser__choose_repository_folder/es';
-import { stableDiffusionCppBrowser__refresh_repositories } from '@/strings/messages/stableDiffusionCppBrowser__refresh_repositories/es';
-import { stableDiffusionCppBrowser__show_all_weights } from '@/strings/messages/stableDiffusionCppBrowser__show_all_weights/es';
-import { stableDiffusionCppBrowser__main_image_model } from '@/strings/messages/stableDiffusionCppBrowser__main_image_model/es';
-import { stableDiffusionCppBrowser__components_detected } from '@/strings/messages/stableDiffusionCppBrowser__components_detected/es';
-import { stableDiffusionCppBrowser__structural_match } from '@/strings/messages/stableDiffusionCppBrowser__structural_match/es';
-import { stableDiffusionCppBrowser__unverified_candidate } from '@/strings/messages/stableDiffusionCppBrowser__unverified_candidate/es';
-import { stableDiffusionCppBrowser__incompatible_candidate } from '@/strings/messages/stableDiffusionCppBrowser__incompatible_candidate/es';
-import { stableDiffusionCppBrowser__component_required } from '@/strings/messages/stableDiffusionCppBrowser__component_required/es';
-import { ImageModelPicker__use_built_in_component } from '@/strings/messages/ImageModelPicker__use_built_in_component/es';
-import { stableDiffusionCppBrowser__select_component } from '@/strings/messages/stableDiffusionCppBrowser__select_component/es';
-import { stableDiffusionCppBrowser__filter_components } from '@/strings/messages/stableDiffusionCppBrowser__filter_components/es';
-import { stableDiffusionCppBrowser__scanning_repositories } from '@/strings/messages/stableDiffusionCppBrowser__scanning_repositories/es';
-import { stableDiffusionCppBrowser__importing_repository } from '@/strings/messages/stableDiffusionCppBrowser__importing_repository/es';
-import { stableDiffusionCppBrowser__incomplete_components } from '@/strings/messages/stableDiffusionCppBrowser__incomplete_components/es';
-import { stableDiffusionCppBrowser__component_evidence_help } from '@/strings/messages/stableDiffusionCppBrowser__component_evidence_help/es';
-import { stableDiffusionCppBrowser__inspection_issues } from '@/strings/messages/stableDiffusionCppBrowser__inspection_issues/es';
-import { stableDiffusionCppBrowser__manual_model_files } from '@/strings/messages/stableDiffusionCppBrowser__manual_model_files/es';
-import { stableDiffusionCppBrowser__advanced_parameters } from '@/strings/messages/stableDiffusionCppBrowser__advanced_parameters/es';
-import { stableDiffusionCppBrowser__advanced_parameters_help } from '@/strings/messages/stableDiffusionCppBrowser__advanced_parameters_help/es';
-import { stableDiffusionCppBrowser__sampler } from '@/strings/messages/stableDiffusionCppBrowser__sampler/es';
-import { stableDiffusionCppBrowser__scheduler } from '@/strings/messages/stableDiffusionCppBrowser__scheduler/es';
-import { stableDiffusionCppBrowser__distilled_guidance } from '@/strings/messages/stableDiffusionCppBrowser__distilled_guidance/es';
-import { stableDiffusionCppBrowser__bf16_weight_conversion } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_conversion/es';
-import { stableDiffusionCppBrowser__bf16_weight_conversion_help } from '@/strings/messages/stableDiffusionCppBrowser__bf16_weight_conversion_help/es';
-import { stableDiffusionCppBrowser__conditioning_cache } from '@/strings/messages/stableDiffusionCppBrowser__conditioning_cache/es';
-import { stableDiffusionCppBrowser__vae_tiling } from '@/strings/messages/stableDiffusionCppBrowser__vae_tiling/es';
-import { stableDiffusionCppBrowser__vae_tile_size } from '@/strings/messages/stableDiffusionCppBrowser__vae_tile_size/es';
-import { stableDiffusionCppBrowser__flash_attention } from '@/strings/messages/stableDiffusionCppBrowser__flash_attention/es';
-import { stableDiffusionCppBrowser__model_arguments } from '@/strings/messages/stableDiffusionCppBrowser__model_arguments/es';
-import { imageBenchmark__diagnostics } from '@/strings/messages/imageBenchmark__diagnostics/es';
-
-import { imageBenchmark__introduction } from '@/strings/messages/imageBenchmark__introduction/es';
-
-import { imageBenchmark__shared_settings } from '@/strings/messages/imageBenchmark__shared_settings/es';
-
-import { imageBenchmark__model_sampling_defaults } from '@/strings/messages/imageBenchmark__model_sampling_defaults/es';
-
-import { imageBenchmark__defaults_help } from '@/strings/messages/imageBenchmark__defaults_help/es';
-
-import { imageBenchmark__protocol } from '@/strings/messages/imageBenchmark__protocol/es';
-
-import { imageBenchmark__cold_then_warm } from '@/strings/messages/imageBenchmark__cold_then_warm/es';
-
-import { imageBenchmark__fresh_each } from '@/strings/messages/imageBenchmark__fresh_each/es';
-
-import { imageBenchmark__runs_per_model } from '@/strings/messages/imageBenchmark__runs_per_model/es';
-
-import { imageBenchmark__order } from '@/strings/messages/imageBenchmark__order/es';
-
-import { imageBenchmark__listed_order } from '@/strings/messages/imageBenchmark__listed_order/es';
-
-import { imageBenchmark__reverse_order } from '@/strings/messages/imageBenchmark__reverse_order/es';
-
-import { imageBenchmark__cooldown } from '@/strings/messages/imageBenchmark__cooldown/es';
-
-import { imageBenchmark__timeout } from '@/strings/messages/imageBenchmark__timeout/es';
-
-import { imageBenchmark__keep_images } from '@/strings/messages/imageBenchmark__keep_images/es';
-
-import { imageBenchmark__limits } from '@/strings/messages/imageBenchmark__limits/es';
-
-import { imageBenchmark__fairness } from '@/strings/messages/imageBenchmark__fairness/es';
-
-import { imageBenchmark__environment_notes } from '@/strings/messages/imageBenchmark__environment_notes/es';
-
-import { imageBenchmark__available_models } from '@/strings/messages/imageBenchmark__available_models/es';
-
-import { imageBenchmark__select_all } from '@/strings/messages/imageBenchmark__select_all/es';
-
-import { imageBenchmark__select_none } from '@/strings/messages/imageBenchmark__select_none/es';
-
-import { imageBenchmark__no_models } from '@/strings/messages/imageBenchmark__no_models/es';
-
-import { imageBenchmark__unavailable_components } from '@/strings/messages/imageBenchmark__unavailable_components/es';
-
-import { imageBenchmark__overrides } from '@/strings/messages/imageBenchmark__overrides/es';
-
-import { imageBenchmark__override } from '@/strings/messages/imageBenchmark__override/es';
-
-import { imageBenchmark__effective_request } from '@/strings/messages/imageBenchmark__effective_request/es';
-
-import { imageBenchmark__start } from '@/strings/messages/imageBenchmark__start/es';
-
-import { imageBenchmark__stop } from '@/strings/messages/imageBenchmark__stop/es';
-
-import { imageBenchmark__download_zip } from '@/strings/messages/imageBenchmark__download_zip/es';
-
-import { imageBenchmark__new_measurement } from '@/strings/messages/imageBenchmark__new_measurement/es';
-
-import { imageBenchmark__include_prompts } from '@/strings/messages/imageBenchmark__include_prompts/es';
-
-import { imageBenchmark__export_privacy } from '@/strings/messages/imageBenchmark__export_privacy/es';
-
-import { imageBenchmark__archive_saved } from '@/strings/messages/imageBenchmark__archive_saved/es';
-
-import { imageBenchmark__results } from '@/strings/messages/imageBenchmark__results/es';
-
-import { imageBenchmark__run } from '@/strings/messages/imageBenchmark__run/es';
-
-import { imageBenchmark__cold } from '@/strings/messages/imageBenchmark__cold/es';
-
-import { imageBenchmark__warm } from '@/strings/messages/imageBenchmark__warm/es';
-
-import { imageBenchmark__queued } from '@/strings/messages/imageBenchmark__queued/es';
-
-import { imageBenchmark__running } from '@/strings/messages/imageBenchmark__running/es';
-
-import { imageBenchmark__succeeded } from '@/strings/messages/imageBenchmark__succeeded/es';
-
-import { imageBenchmark__failed } from '@/strings/messages/imageBenchmark__failed/es';
-
-import { imageBenchmark__cancelled } from '@/strings/messages/imageBenchmark__cancelled/es';
-
-import { imageBenchmark__skipped } from '@/strings/messages/imageBenchmark__skipped/es';
-
-import { imageBenchmark__elapsed } from '@/strings/messages/imageBenchmark__elapsed/es';
-
-import { imageBenchmark__sampling } from '@/strings/messages/imageBenchmark__sampling/es';
-
-import { imageBenchmark__model_load } from '@/strings/messages/imageBenchmark__model_load/es';
-
-import { imageBenchmark__check_plan } from '@/strings/messages/imageBenchmark__check_plan/es';
-
-import { imageBenchmark__exporting } from '@/strings/messages/imageBenchmark__exporting/es';
-
-import { imageBenchmark__freshness_warning } from '@/strings/messages/imageBenchmark__freshness_warning/es';
-
-import { ImageBenchmarkResult__generated_image } from '@/strings/messages/ImageBenchmarkResult__generated_image/es';
-import { ImageBenchmarkResult__image_not_retained } from '@/strings/messages/ImageBenchmarkResult__image_not_retained/es';
-import { ImageBenchmarkResult__image_memory_limit_reached } from '@/strings/messages/ImageBenchmarkResult__image_memory_limit_reached/es';
-import { ImageBenchmarkResult__no_image } from '@/strings/messages/ImageBenchmarkResult__no_image/es';
-
-import { ImageLoraControls__lora_adapters } from '@/strings/messages/ImageLoraControls__lora_adapters/es';
-import { ImageLoraControls__choose_files } from '@/strings/messages/ImageLoraControls__choose_files/es';
-import { ImageLoraControls__saved_adapters } from '@/strings/messages/ImageLoraControls__saved_adapters/es';
-import { ImageLoraControls__choose_saved_adapter } from '@/strings/messages/ImageLoraControls__choose_saved_adapter/es';
-import { ImageLoraControls__saved_adapter_compatibility_unverified } from '@/strings/messages/ImageLoraControls__saved_adapter_compatibility_unverified/es';
-import { ImageLoraControls__add_adapter } from '@/strings/messages/ImageLoraControls__add_adapter/es';
-import { ImageGenerationLab__image_generation_entirely_in_browser } from '@/strings/messages/ImageGenerationLab__image_generation_entirely_in_browser/es';
-import { ImageGenerationLab__debug } from '@/strings/messages/ImageGenerationLab__debug/es';
-import { ImageGenerationLab__record_detailed_logs } from '@/strings/messages/ImageGenerationLab__record_detailed_logs/es';
-import { ImageGenerationLab__models } from '@/strings/messages/ImageGenerationLab__models/es';
-import { ImageGenerationLab__history } from '@/strings/messages/ImageGenerationLab__history/es';
-import { ImageGenerationLab__prepare_models_help } from '@/strings/messages/ImageGenerationLab__prepare_models_help/es';
-import { ImageGenerationLab__back_to_generation } from '@/strings/messages/ImageGenerationLab__back_to_generation/es';
-import { ImageGenerationEditor__choose_model_to_begin } from '@/strings/messages/ImageGenerationEditor__choose_model_to_begin/es';
-import { ImageGenerationEditor__sampling_settings } from '@/strings/messages/ImageGenerationEditor__sampling_settings/es';
-import { ImageModelCatalog__checking_saved_models } from '@/strings/messages/ImageModelCatalog__checking_saved_models/es';
-import { ImageHistoryImage__loading_image } from '@/strings/messages/ImageHistoryImage__loading_image/es';
-import { ImageHistoryImage__image_unavailable } from '@/strings/messages/ImageHistoryImage__image_unavailable/es';
-import { ImageHistoryImage__could_not_load_image } from '@/strings/messages/ImageHistoryImage__could_not_load_image/es';
-import { ImageGenerationHistory__experimental_history_notice } from '@/strings/messages/ImageGenerationHistory__experimental_history_notice/es';
-import { ImageGenerationHistory__backup_does_not_include_history } from '@/strings/messages/ImageGenerationHistory__backup_does_not_include_history/es';
-import { ImageGenerationHistory__opfs_required } from '@/strings/messages/ImageGenerationHistory__opfs_required/es';
-import { ImageGenerationHistory__search_history } from '@/strings/messages/ImageGenerationHistory__search_history/es';
-import { ImageGenerationHistory__refresh } from '@/strings/messages/ImageGenerationHistory__refresh/es';
-import { ImageGenerationHistory__first_page } from '@/strings/messages/ImageGenerationHistory__first_page/es';
-import { ImageGenerationHistory__previous_page } from '@/strings/messages/ImageGenerationHistory__previous_page/es';
-import { ImageGenerationHistory__next_page } from '@/strings/messages/ImageGenerationHistory__next_page/es';
-import { ImageGenerationHistory__last_page } from '@/strings/messages/ImageGenerationHistory__last_page/es';
-import { ImageGenerationHistory__page_of_total } from '@/strings/messages/ImageGenerationHistory__page_of_total/es';
-import { ImageGenerationHistory__loading_history } from '@/strings/messages/ImageGenerationHistory__loading_history/es';
-import { ImageGenerationHistory__no_history_found } from '@/strings/messages/ImageGenerationHistory__no_history_found/es';
-import { ImageGenerationHistory__load_more } from '@/strings/messages/ImageGenerationHistory__load_more/es';
-import { ImageGenerationHistory__close_details } from '@/strings/messages/ImageGenerationHistory__close_details/es';
-import { ImageGenerationHistory__reuse_settings } from '@/strings/messages/ImageGenerationHistory__reuse_settings/es';
-import { ImageGenerationHistory__use_as_initial_image } from '@/strings/messages/ImageGenerationHistory__use_as_initial_image/es';
-import { ImageGenerationHistory__use_as_reference_image } from '@/strings/messages/ImageGenerationHistory__use_as_reference_image/es';
-import { ImageGenerationHistory__include_settings_in_png } from '@/strings/messages/ImageGenerationHistory__include_settings_in_png/es';
-import { ImageGenerationHistory__requested_seed } from '@/strings/messages/ImageGenerationHistory__requested_seed/es';
-import { ImageGenerationHistory__requested_settings } from '@/strings/messages/ImageGenerationHistory__requested_settings/es';
-import { ImageGenerationHistory__reuse_does_not_download_models } from '@/strings/messages/ImageGenerationHistory__reuse_does_not_download_models/es';
-import { ImageGenerationHistory__generation_details } from '@/strings/messages/ImageGenerationHistory__generation_details/es';
-import { ImageGenerationHistory__delete_image_file } from '@/strings/messages/ImageGenerationHistory__delete_image_file/es';
-import { ImageGenerationHistory__deleting_image_file_affects_other_records } from '@/strings/messages/ImageGenerationHistory__deleting_image_file_affects_other_records/es';
-import { ImageGenerationHistory__remove_from_history } from '@/strings/messages/ImageGenerationHistory__remove_from_history/es';
-import { ImageGenerationHistory__removing_keeps_image_files } from '@/strings/messages/ImageGenerationHistory__removing_keeps_image_files/es';
-import { ImageGenerationViewer__image_preview } from '@/strings/messages/ImageGenerationViewer__image_preview/es';
-import { ImageGenerationViewer__previous_image } from '@/strings/messages/ImageGenerationViewer__previous_image/es';
-import { ImageGenerationViewer__next_image } from '@/strings/messages/ImageGenerationViewer__next_image/es';
-import { ImageGenerationViewer__zoom_in } from '@/strings/messages/ImageGenerationViewer__zoom_in/es';
-import { ImageGenerationViewer__zoom_out } from '@/strings/messages/ImageGenerationViewer__zoom_out/es';
-import { ImageGenerationViewer__reset_view } from '@/strings/messages/ImageGenerationViewer__reset_view/es';
-import { ImageGenerationViewer__close_preview } from '@/strings/messages/ImageGenerationViewer__close_preview/es';
-import { ImageGenerationLab__select_missing_files } from '@/strings/messages/ImageGenerationLab__select_missing_files/es';
-import { ImageGenerationLab__continue_without_missing_files } from '@/strings/messages/ImageGenerationLab__continue_without_missing_files/es';
-import { ImageGenerationResults__save_generation_history } from '@/strings/messages/ImageGenerationResults__save_generation_history/es';
-import { ImageGenerationResults__saving_history } from '@/strings/messages/ImageGenerationResults__saving_history/es';
-import { ImageGenerationResults__history_setting_applies_to_next_generation } from '@/strings/messages/ImageGenerationResults__history_setting_applies_to_next_generation/es';
-import { ImageGenerationResults__saved_to_history } from '@/strings/messages/ImageGenerationResults__saved_to_history/es';
-import { ImageGenerationResults__history_save_failed_download_image } from '@/strings/messages/ImageGenerationResults__history_save_failed_download_image/es';
-import { ImageGenerationResults__retry_saving } from '@/strings/messages/ImageGenerationResults__retry_saving/es';
-import { ImageGenerationResults__about_saved_history } from '@/strings/messages/ImageGenerationResults__about_saved_history/es';
-import { ImageGenerationResults__current_images_are_temporary } from '@/strings/messages/ImageGenerationResults__current_images_are_temporary/es';
-import { ImageGenerationResults__latest_generation } from '@/strings/messages/ImageGenerationResults__latest_generation/es';
-import { ImageGenerationResults__image_generation_failed } from '@/strings/messages/ImageGenerationResults__image_generation_failed/es';
-import { ImageGenerationResults__no_final_image_was_created } from '@/strings/messages/ImageGenerationResults__no_final_image_was_created/es';
-import { ImageGenerationResults__view_diagnostics } from '@/strings/messages/ImageGenerationResults__view_diagnostics/es';
-import { ImageGenerationResults__previous_results } from '@/strings/messages/ImageGenerationResults__previous_results/es';
-import { ImageGenerationPreview__preview_from_failed_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_failed_generation/es';
-import { ImageGenerationPreview__preview_from_cancelled_generation } from '@/strings/messages/ImageGenerationPreview__preview_from_cancelled_generation/es';
-import { ImageGenerationResults__unsaved_generations } from '@/strings/messages/ImageGenerationResults__unsaved_generations/es';
-import { ImageGenerationResults__view_in_my_images } from '@/strings/messages/ImageGenerationResults__view_in_my_images/es';
-import { ImageGenerationEditor__model_configuration } from '@/strings/messages/ImageGenerationEditor__model_configuration/es';
-import { ImageInputControls__image_count } from '@/strings/messages/ImageInputControls__image_count/es';
-import { ImageInputControls__expand_image } from '@/strings/messages/ImageInputControls__expand_image/es';
-import { ImageInputControls__preview_unavailable } from '@/strings/messages/ImageInputControls__preview_unavailable/es';
-import { ImageInputControls__move_later } from '@/strings/messages/ImageInputControls__move_later/es';
-import { ImageInputControls__move_earlier } from '@/strings/messages/ImageInputControls__move_earlier/es';
-import { ImageInputControls__reference_images_help } from '@/strings/messages/ImageInputControls__reference_images_help/es';
-import { ImageInputControls__drop_image_here } from '@/strings/messages/ImageInputControls__drop_image_here/es';
-import { ImageInputControls__add_reference_images } from '@/strings/messages/ImageInputControls__add_reference_images/es';
-import { ImageInputControls__replace_image } from '@/strings/messages/ImageInputControls__replace_image/es';
-import { ImageInputControls__choose_image } from '@/strings/messages/ImageInputControls__choose_image/es';
-import { ImageLoraControls__selected_adapters } from '@/strings/messages/ImageLoraControls__selected_adapters/es';
-import { ImageGenerationLab__saved_models } from '@/strings/messages/ImageGenerationLab__saved_models/es';
-import { ImageGenerationEditor__view_result } from '@/strings/messages/ImageGenerationEditor__view_result/es';
-import { ImageGenerationEditor__edits_apply_to_next_generation } from '@/strings/messages/ImageGenerationEditor__edits_apply_to_next_generation/es';
-import { ImageGenerationEditor__pick_new_seed } from '@/strings/messages/ImageGenerationEditor__pick_new_seed/es';
-import { ImageGenerationEditor__fixed_seed } from '@/strings/messages/ImageGenerationEditor__fixed_seed/es';
-import { ImageGenerationEditor__new_seed_each_time } from '@/strings/messages/ImageGenerationEditor__new_seed_each_time/es';
-import { ImageGenerationEditor__resolution_must_use_supported_dimensions } from '@/strings/messages/ImageGenerationEditor__resolution_must_use_supported_dimensions/es';
-import { ImageGenerationEditor__swap_width_and_height } from '@/strings/messages/ImageGenerationEditor__swap_width_and_height/es';
-import { ImageGenerationEditor__image_size } from '@/strings/messages/ImageGenerationEditor__image_size/es';
-import { ImageGenerationEditor__prepare_model } from '@/strings/messages/ImageGenerationEditor__prepare_model/es';
-import { ImageGenerationHistory__read_warnings } from '@/strings/messages/ImageGenerationHistory__read_warnings/es';
-import { ImageGenerationHistory__readable_matches } from '@/strings/messages/ImageGenerationHistory__readable_matches/es';
-import { ImageGenerationHistory__some_history_files_could_not_be_read } from '@/strings/messages/ImageGenerationHistory__some_history_files_could_not_be_read/es';
-import { ImageGenerationLab__disabled_loras_not_restored } from '@/strings/messages/ImageGenerationLab__disabled_loras_not_restored/es';
-import { ImageGenerationResults__return_to_opfs_to_retry } from '@/strings/messages/ImageGenerationResults__return_to_opfs_to_retry/es';
-import { ImageModelCatalog__download_queue } from '@/strings/messages/ImageModelCatalog__download_queue/es';
-import { ImageModelCatalog__queued } from '@/strings/messages/ImageModelCatalog__queued/es';
-import { ImageModelCatalog__recommended } from '@/strings/messages/ImageModelCatalog__recommended/es';
-import { ImageModelCatalog__optional_lora } from '@/strings/messages/ImageModelCatalog__optional_lora/es';
-import { ImageModelCatalog__reference_style_lora_help } from '@/strings/messages/ImageModelCatalog__reference_style_lora_help/es';
-import { ImageModelCatalog__saved_choose_in_lora_controls } from '@/strings/messages/ImageModelCatalog__saved_choose_in_lora_controls/es';
-import { ImageLoraControls__strength } from '@/strings/messages/ImageLoraControls__strength/es';
-import { ImageLoraControls__enabled } from '@/strings/messages/ImageLoraControls__enabled/es';
-import { ImageLoraControls__remove } from '@/strings/messages/ImageLoraControls__remove/es';
-import { ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files } from '@/strings/messages/ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files/es';
-import { ImageLoraControls__choose_adapters_for_selected_model } from '@/strings/messages/ImageLoraControls__choose_adapters_for_selected_model/es';
-
-import { ImageInputControls__input_images } from '@/strings/messages/ImageInputControls__input_images/es';
-import { ImageInputControls__initial_image } from '@/strings/messages/ImageInputControls__initial_image/es';
-import { ImageInputControls__reference_images } from '@/strings/messages/ImageInputControls__reference_images/es';
-import { ImageInputControls__change_strength } from '@/strings/messages/ImageInputControls__change_strength/es';
-import { ImageInputControls__remove } from '@/strings/messages/ImageInputControls__remove/es';
-import { ImageInputControls__choose_png_jpeg_or_webp } from '@/strings/messages/ImageInputControls__choose_png_jpeg_or_webp/es';
-import { ImageInputControls__initial_image_help } from '@/strings/messages/ImageInputControls__initial_image_help/es';
-import { ImageInputControls__model_support_required } from '@/strings/messages/ImageInputControls__model_support_required/es';
-import { imageBenchmark__include_input_images_in_zip } from '@/strings/messages/imageBenchmark__include_input_images_in_zip/es';
-
 export const catalog = {
   // SHARED__ intentionally couples every call site. Follow messages/AGENTS.md.
   SHARED__all_chats,
@@ -2602,434 +2751,6 @@ export const catalog = {
   SHARED__uses_a_language_model_provided_and_managed_by_the_browser,
   SHARED__visibility,
   SHARED__writable_tmp_is_available_with_opfs_storage,
-  imageGeneration__session_deletion_pending,
-  imageGeneration__session_unavailable,
-  imageGeneration__finish_session_work_before_deleting,
-  imageGeneration__show_connected_chat,
-  imageGeneration__delete_session,
-  imageGeneration__view_translation,
-  imageGeneration__translation_priority,
-  imageGeneration__translation_profile,
-  imageGeneration__translation_inherit,
-  imageGeneration__translation_endpoint,
-  imageGeneration__translation_model,
-  imageGeneration__translation_headers,
-  imageGeneration__translation_header_name,
-  imageGeneration__translation_header_value,
-  imageGeneration__translation_add_header,
-  imageGeneration__translation_remove_header,
-  imageGeneration__translation_effective,
-  imageGeneration__translation_save_settings,
-  imageGeneration__translation_reset,
-  imageGeneration__translation_settings_not_saved,
-  imageGeneration__translation_read_only,
-  imageGeneration__translation_source_text,
-  imageGeneration__translation_language,
-  imageGeneration__translation_start,
-  imageGeneration__translation_running,
-  imageGeneration__translation_result,
-  imageGeneration__translation_copy,
-  imageGeneration__translation_choose_model,
-  imageGeneration__translation_session_settings,
-  imageGeneration__translation_default_settings,
-  imageGeneration__translation_defaults_help,
-  imageGeneration__translation_close,
-  imageGeneration__translation_cancelled,
-  imageGeneration__delete_session_notice,
-  imageGeneration__add_tag,
-  imageGeneration__manage_tags,
-  imageGeneration__notice_dismiss,
-  imageGeneration__notice_body,
-  imageGeneration__notice_title,
-  imageGeneration__copy_failed,
-  imageGeneration__copy_negative_prompt,
-  imageGeneration__float_chat,
-  imageGeneration__dock_chat,
-  imageGeneration__chat_help,
-  imageGeneration__review,
-  imageGeneration__editor,
-  imageGeneration__loading,
-  imageGeneration__run_empty,
-  imageGeneration__compare_equal,
-  imageGeneration__compare_notice,
-  imageGeneration__previous_image,
-  imageGeneration__next_image,
-  imageGeneration__run_status,
-  imageGeneration__queued,
-  imageGeneration__running,
-  imageGeneration__completed,
-  imageGeneration__cancelled,
-  imageGeneration__failed,
-  imageGeneration__interrupted,
-  imageGeneration__more_execution,
-  imageGeneration__saving_required,
-  imageGeneration__next_unavailable,
-  imageGeneration__export_cancelled,
-  imageGeneration__name,
-  imageGeneration__new_session,
-  imageGeneration__sessions,
-  imageGeneration__back_to_chats,
-  imageGeneration__rename_session,
-  imageGeneration__no_sessions,
-  imageGeneration__empty_gallery,
-  imageGeneration__storage_required,
-  imageGeneration__images,
-  imageGeneration__runs,
-  imageGeneration__gallery,
-  imageGeneration__compare,
-  imageGeneration__favorite,
-  imageGeneration__tags,
-  imageGeneration__new_tag,
-  imageGeneration__rename_tag,
-  imageGeneration__tag_rules,
-  imageGeneration__all_tags,
-  imageGeneration__search_images,
-  imageGeneration__load_more,
-  imageGeneration__inspect,
-  imageGeneration__select_compare,
-  imageGeneration__compare_help,
-  imageGeneration__reuse_settings,
-  imageGeneration__reuse_prompt,
-  imageGeneration__initial_image,
-  imageGeneration__reference_image,
-  imageGeneration__close_details,
-  imageGeneration__execution,
-  imageGeneration__save_retry,
-  imageGeneration__pending_save,
-  imageGeneration__draft_saved,
-  imageGeneration__draft_dirty,
-  imageGeneration__draft_saving,
-  imageGeneration__draft_failed,
-  imageGeneration__viewing_other,
-  imageGeneration__create_chat_in_group,
-  imageGeneration__delete_images_notice,
-  imageGeneration__batch_failed,
-  imageGeneration__selected_images,
-  imageGeneration__archive,
-  imageGeneration__restore,
-  imageGeneration__active_images,
-  imageGeneration__archived_images,
-  imageGeneration__all_images,
-  imageGeneration__archive_run,
-  imageGeneration__restore_run,
-  imageGeneration__delete_images,
-  imageGeneration__select_image,
-  imageGeneration__select_loaded,
-  imageGeneration__pending_deletions,
-  imageGeneration__retry_deletions,
-  imageGeneration__unfavorite,
-  imageGeneration__search_chats,
-  imageGeneration__create_and_connect_chat,
-  imageGeneration__change_chat,
-  imageGeneration__copy_prompt,
-  imageGeneration__copy_settings,
-  imageGeneration__copied,
-  imageGeneration__preview_empty,
-  imageGeneration__newest_first,
-  imageGeneration__archive_help,
-  imageGeneration__remove_tag,
-  imageGeneration__assistant,
-  imageGeneration__attach_chat,
-  imageGeneration__no_chat,
-  imageGeneration__open_chat,
-  imageGeneration__detach,
-  imageGeneration__assistant_help,
-  imageGeneration__assistant_privacy,
-  imageGeneration__prompt_edit,
-  imageGeneration__before,
-  imageGeneration__after,
-  imageGeneration__leave_warning,
-  imageGeneration__export_session,
-  imageGeneration__exporting,
-  imageGeneration__interrupted_help,
-  imageGeneration__clear_selection,
-  imageGeneration__refresh,
-  imageGeneration__rename,
-  imageGeneration__apply_tag,
-  imageGeneration__count_help,
-  imageGeneration__actual_seed,
-  imageGeneration__parameters,
-  imageGeneration__lineage,
-  imageGeneration__no_chat_choices,
-  imageGeneration__export_notice,
-  imageGeneration__capture_for_assistant,
-  ChatPaneHeader__model_and_chat_settings,
-  LlamaCppBrowserDownloadSources__copy_failed,
-  LlamaCppBrowserDownloadSources__url_copied,
-  LlamaCppBrowserDownloadSources__copy_url,
-  LlamaCppBrowserDownloadSources__current_file,
-  LlamaCppBrowserDownloadSources__revision,
-  LlamaCppBrowserDownloadSources__request_urls_help,
-  LlamaCppBrowserDownloadSources__files_and_sources,
-  LlamaCppBrowserModelLaunch__initializing_runtime_and_context,
-  LlamaCppBrowserModelLaunch__loading_model_weights,
-  LlamaCppBrowserModelLaunch__loading_model,
-  LlamaCppBrowserModelLaunch__restoring_model,
-  LlamaCppBrowserModelLaunch__checking_local_files,
-  LlamaCppBrowserModelLaunch__opening_chat,
-  LlamaCppBrowserModelLaunchPrivacy__runs_on_your_device,
-  LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server,
-  LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded,
-  LlamaCppBrowserModelLaunchPrivacy__tools_and_other_connections,
-  LlamaCppBrowserModelLaunch__prepare_on_send,
-  LlamaCppBrowserModelLaunch__runs_privately_in_your_browser,
-  LlamaCppBrowserModelLaunch__checking_model,
-  LlamaCppBrowserModelLaunch__model_link_could_not_be_opened,
-  LlamaCppBrowserModelLaunch__variant_not_found,
-  LlamaCppBrowserModelLaunch__companion_needs_selection,
-  LlamaCppBrowserModelLaunch__start_with_this_model,
-  LlamaCppBrowserModelLaunch__quantization,
-  LlamaCppBrowserModelLaunch__refresh_choices,
-  LlamaCppBrowserModelLaunch__retry,
-  LlamaCppBrowserModelLaunch__ready_when_you_are,
-  LlamaCppBrowserModelLaunch__no_installation_or_environment_setup,
-  LlamaCppBrowserModelLaunch__use_selected_model,
-  LlamaCppBrowserModelLaunch__could_not_prepare_model,
-  LlamaCppBrowserModelLaunch__global_defaults_not_saved,
-  LlamaCppBrowserModelLaunch__chat_settings_changed,
-  LlamaCppBrowserModelLaunch__unavailable_here,
-  LlamaCppBrowserModelLaunch__model_not_ready,
-
-  ImageModelPicker__choose_a_model,
-  ImageModelPicker__search_choices,
-  ImageEngineState__engine_busy_until_idle,
-  ImageEngineState__runtime_buffer_reports_may_be_missing,
-  ImageEngineState__engine_state,
-  ImageEngineState__refresh_state,
-  ImageEngineState__refreshing,
-  ImageEngineState__unknown_model,
-  ImageEngineState__unavailable,
-  ImageEngineState__released,
-  ImageEngineState__no_model_loaded,
-  ImageEngineState__not_observed_yet,
-  ImageEngineState__could_not_read_state,
-  ImageEngineState__runtime_and_model,
-  ImageEngineState__memory_observations,
-  ImageEngineState__memory_values_are_not_total_gpu_memory,
-  ImageEngineState__some_counters_saturated,
-  ImageEngineState__observed_at,
-  ImageEngineState__busy_during_generation,
-  ImageEngineState__detail_label,
-  ImageEngineState__memory_label,
-  ImageGenerationResults__images_kept_on_screen,
-  ImageGenerationResults__display_settings,
-  ImageGenerationEditor__custom_size,
-  ImageDownloadMenu__downloaded_copy_only,
-  ImageDownloadMenu__include_generation_settings,
-  ImageDownloadMenu__image_format,
-  ImageDownloadMenu__download_options,
-  ImageDownloadMenu__download,
-  stableDiffusionCppBrowser__preview_mode_locked,
-  stableDiffusionCppBrowser__preset_unknown,
-  stableDiffusionCppBrowser__qwen_preset_policy,
-  stableDiffusionCppBrowser__preset_policy,
-  stableDiffusionCppBrowser__preset_sources,
-  stableDiffusionCppBrowser__cancel_wait_help,
-  stableDiffusionCppBrowser__stopping_retained,
-  stableDiffusionCppBrowser__force_stop,
-  stableDiffusionCppBrowser__listing_repositories,
-  stableDiffusionCppBrowser__apply_recommended_settings,
-  stableDiffusionCppBrowser__generation_time,
-  stableDiffusionCppBrowser__preview_after_step,
-  stableDiffusionCppBrowser__preview_start_step,
-  stableDiffusionCppBrowser__recommended_preview_summary,
-  stableDiffusionCppBrowser__recommended_settings,
-  stableDiffusionCppBrowser__keep_model_loaded,
-  stableDiffusionCppBrowser__model_resident,
-  stableDiffusionCppBrowser__release_model,
-  stableDiffusionCppBrowser__preview_title,
-  stableDiffusionCppBrowser__preview_enabled,
-  stableDiffusionCppBrowser__preview_mode,
-  stableDiffusionCppBrowser__preview_projection,
-  stableDiffusionCppBrowser__preview_vae,
-  stableDiffusionCppBrowser__preview_interval,
-  stableDiffusionCppBrowser__preview_max_edge,
-  stableDiffusionCppBrowser__preview_original,
-  stableDiffusionCppBrowser__keep_previews,
-  stableDiffusionCppBrowser__preview_limit,
-  stableDiffusionCppBrowser__result_limit,
-  stableDiffusionCppBrowser__clear_previews,
-  stableDiffusionCppBrowser__clear_results,
-  stableDiffusionCppBrowser__preview_help,
-  stableDiffusionCppBrowser__preview_empty,
-  stableDiffusionCppBrowser__qwen_vae_bounded,
-  stableDiffusionCppBrowser__qwen_vae_help,
-  stableDiffusionCppBrowser__uniform_image_warning,
-  stableDiffusionCppBrowser__gallery_budget,
-
-  stableDiffusionCppBrowser__memory64_unavailable,
-  stableDiffusionCppBrowser__local_library,
-  stableDiffusionCppBrowser__import_repository_help,
-  stableDiffusionCppBrowser__choose_repository_folder,
-  stableDiffusionCppBrowser__refresh_repositories,
-  stableDiffusionCppBrowser__show_all_weights,
-  stableDiffusionCppBrowser__main_image_model,
-  stableDiffusionCppBrowser__components_detected,
-  stableDiffusionCppBrowser__structural_match,
-  stableDiffusionCppBrowser__unverified_candidate,
-  stableDiffusionCppBrowser__incompatible_candidate,
-  stableDiffusionCppBrowser__component_required,
-  ImageModelPicker__use_built_in_component,
-  stableDiffusionCppBrowser__select_component,
-  stableDiffusionCppBrowser__filter_components,
-  stableDiffusionCppBrowser__scanning_repositories,
-  stableDiffusionCppBrowser__importing_repository,
-  stableDiffusionCppBrowser__incomplete_components,
-  stableDiffusionCppBrowser__component_evidence_help,
-  stableDiffusionCppBrowser__inspection_issues,
-  stableDiffusionCppBrowser__manual_model_files,
-  stableDiffusionCppBrowser__advanced_parameters,
-  stableDiffusionCppBrowser__advanced_parameters_help,
-  stableDiffusionCppBrowser__sampler,
-  stableDiffusionCppBrowser__scheduler,
-  stableDiffusionCppBrowser__distilled_guidance,
-  stableDiffusionCppBrowser__bf16_weight_conversion,
-  stableDiffusionCppBrowser__bf16_weight_conversion_help,
-  stableDiffusionCppBrowser__conditioning_cache,
-  stableDiffusionCppBrowser__vae_tiling,
-  stableDiffusionCppBrowser__vae_tile_size,
-  stableDiffusionCppBrowser__flash_attention,
-  stableDiffusionCppBrowser__model_arguments,
-
-  stableDiffusionCppBrowser__image_generation_lab,
-  stableDiffusionCppBrowser__experimental_local_workspace,
-  stableDiffusionCppBrowser__validation_limits,
-  stableDiffusionCppBrowser__local_files_only,
-  stableDiffusionCppBrowser__artifact_not_installed,
-  stableDiffusionCppBrowser__hosted_build_required,
-  stableDiffusionCppBrowser__webgpu_required,
-  stableDiffusionCppBrowser__jspi_unavailable,
-  stableDiffusionCppBrowser__model_and_runtime,
-  stableDiffusionCppBrowser__model_layout,
-  stableDiffusionCppBrowser__checkpoint,
-  stableDiffusionCppBrowser__separate_components,
-  stableDiffusionCppBrowser__model_file,
-  stableDiffusionCppBrowser__diffusion_file,
-  stableDiffusionCppBrowser__vae_file,
-  stableDiffusionCppBrowser__clip_l_file,
-  stableDiffusionCppBrowser__clip_g_file,
-  stableDiffusionCppBrowser__t5_file,
-  stableDiffusionCppBrowser__lm_file,
-  stableDiffusionCppBrowser__companion_files_help,
-  stableDiffusionCppBrowser__profile,
-  stableDiffusionCppBrowser__weight_residency,
-  stableDiffusionCppBrowser__weight_residency_help,
-  stableDiffusionCppBrowser__weight_residency_auto,
-  stableDiffusionCppBrowser__weight_residency_cpu,
-  stableDiffusionCppBrowser__weight_residency_hybrid,
-  stableDiffusionCppBrowser__weight_residency_disk,
-  stableDiffusionCppBrowser__gpu_budget,
-  stableDiffusionCppBrowser__gpu_budget_help,
-  stableDiffusionCppBrowser__catalog_file_notice,
-  stableDiffusionCppBrowser__catalog_drop_help,
-  ImageHostModelDirectories__download_to,
-  ImageHostModelDirectories__browser_storage,
-  ImageHostModelDirectories__browser_storage_unavailable,
-  ImageHostModelDirectories__linked_folder,
-  ImageHostModelDirectories__link_folder,
-  ImageHostModelDirectories__reconnect,
-  ImageHostModelDirectories__unlink,
-  ImageHostModelDirectories__unlink_keeps_files,
-  ImageHostModelDirectories__linked_folders_unavailable,
-  ImageHostModelDirectories__choose_folder_above_owner,
-  ImageHostModelDirectories__example_folder_layout,
-  ImageHostModelDirectories__linked_folders,
-  ImageHostModelDirectories__folder_access,
-  stableDiffusionCppBrowser__catalog_layout,
-  stableDiffusionCppBrowser__catalog_source,
-  stableDiffusionCppBrowser__catalog_download,
-  stableDiffusionCppBrowser__catalog_qwen_image,
-  stableDiffusionCppBrowser__catalog_z_image,
-  stableDiffusionCppBrowser__catalog_validation,
-  stableDiffusionCppBrowser__catalog_help,
-  stableDiffusionCppBrowser__add_models,
-  stableDiffusionCppBrowser__selected_model,
-  stableDiffusionCppBrowser__runtime_settings,
-  stableDiffusionCppBrowser__download_and_select,
-  stableDiffusionCppBrowser__select_saved_recipe,
-  stableDiffusionCppBrowser__downloading_selected,
-  stableDiffusionCppBrowser__download_complete,
-  stableDiffusionCppBrowser__download_cancelled,
-  stableDiffusionCppBrowser__download_failed,
-  stableDiffusionCppBrowser__debug_mode,
-  stableDiffusionCppBrowser__copy_logs,
-  stableDiffusionCppBrowser__save_logs,
-  stableDiffusionCppBrowser__show_logs,
-  stableDiffusionCppBrowser__logs_copied,
-  stableDiffusionCppBrowser__logs_copy_failed,
-  stableDiffusionCppBrowser__file_count,
-  stableDiffusionCppBrowser__files_available,
-  stableDiffusionCppBrowser__selected,
-  stableDiffusionCppBrowser__downloaded_but_incomplete,
-  stableDiffusionCppBrowser__import_models,
-  stableDiffusionCppBrowser__debug_help,
-  stableDiffusionCppBrowser__catalog_title,
-  stableDiffusionCppBrowser__memory_and_cancellation,
-  stableDiffusionCppBrowser__prompt,
-  stableDiffusionCppBrowser__negative_prompt,
-  stableDiffusionCppBrowser__width,
-  stableDiffusionCppBrowser__height,
-  stableDiffusionCppBrowser__steps,
-  stableDiffusionCppBrowser__guidance,
-  stableDiffusionCppBrowser__seed,
-  stableDiffusionCppBrowser__generate,
-  stableDiffusionCppBrowser__cancel,
-  stableDiffusionCppBrowser__cancelled,
-  stableDiffusionCppBrowser__loading_runtime,
-  stableDiffusionCppBrowser__loading_model,
-  stableDiffusionCppBrowser__sampling,
-  stableDiffusionCppBrowser__decoding_image,
-  stableDiffusionCppBrowser__encoding,
-  stableDiffusionCppBrowser__check_inputs,
-  stableDiffusionCppBrowser__generated_images,
-  stableDiffusionCppBrowser__history_is_temporary,
-  stableDiffusionCppBrowser__no_images_yet,
-  stableDiffusionCppBrowser__download_png,
-  stableDiffusionCppBrowser__remove,
-  stableDiffusionCppBrowser__diagnostics,
-
-  audioGeneration__preview_result,
-  audioGeneration__preview_help,
-  audioGeneration__preview_pending,
-  audioGeneration__capture_preview,
-  audioGeneration__captured_steps,
-  llamaCppBrowserDownloads__required_companion_included,
-  llamaCppBrowserDownloads__use_this_model,
-  audioGeneration__not_detected_as_audio,
-  audioGeneration__checking_local_model_metadata,
-  audioGeneration__no_audio_models_detected,
-  audioGeneration__show_all_models,
-  audioGeneration__model_detection_help,
-  audioGeneration__advanced_model_selection,
-  audioGeneration__show_all_llama_cpp_browser_models,
-  audioGeneration__all_models_help,
-  audioGeneration__step_limit_help,
-  audioGeneration__delete_audio,
-  audioGeneration__generation_settings,
-  audioGeneration__recorded_settings_help,
-  audioGeneration__random_seed,
-  audioGeneration__requested_profile,
-  audioGeneration__automatic_profile,
-  audioGeneration__delete_all_audio,
-  audioGeneration__history_memory_usage,
-
-
-  LlamaCppBrowserModelRecovery__manage_models,
-  LlamaCppBrowserModelRecovery__check_again,
-  LlamaCppBrowserModelRecovery__could_not_prepare_download,
-  LlamaCppBrowserModelRecovery__add_original_model_files,
-  LlamaCppBrowserModelRecovery__review_download,
-  LlamaCppBrowserModelRecovery__download,
-  LlamaCppBrowserModelRecovery__keep_your_draft_while_preparing,
-  LlamaCppBrowserModelRecovery__model_not_in_this_browser,
-  LlamaCppBrowserModelRecovery__could_not_check_model_storage,
-  LlamaCppBrowserModelLaunchPrivacy__model_files_from_hugging_face,
-  LlamaCppBrowserModelLaunchPrivacy__no_apps_or_servers,
-  LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser,
-
-  ChatPage__failed_to_load_chat,
-  ChatPage__retry,
-  ChatPage__loading_chat,
   AboutTab__about_naidan,
   AboutTab__built_with_open_source_software,
   AboutTab__github_repository,
@@ -3112,9 +2833,13 @@ export const catalog = {
   ChatGroupSettingsPanel__enabled,
   ChatGroupSettingsPanel__endpoint_type,
   ChatGroupSettingsPanel__endpoint_url,
+  ChatGroupSettingsPanel__enter_instructions_for_this_chat_group,
+  ChatGroupSettingsPanel__enter_instructions_that_replace_the_parent_setting,
+  ChatGroupSettingsPanel__enter_instructions_to_append,
   ChatGroupSettingsPanel__failed_to_save_chat_group_settings,
   ChatGroupSettingsPanel__files,
   ChatGroupSettingsPanel__folders,
+  ChatGroupSettingsPanel__global,
   ChatGroupSettingsPanel__global_default,
   ChatGroupSettingsPanel__global_endpoint_type,
   ChatGroupSettingsPanel__global_model,
@@ -3124,29 +2849,19 @@ export const catalog = {
   ChatGroupSettingsPanel__group_settings_take_precedence_over_global_settings_but_can_be_overridden_by_individual_chats,
   ChatGroupSettingsPanel__group_settings_title,
   ChatGroupSettingsPanel__group_system_prompt,
-  ChatGroupSettingsPanel__global,
-  ChatGroupSettingsPanel__no_prompt,
-  ChatGroupSettingsPanel__system_prompt_global_set,
-  ChatGroupSettingsPanel__system_prompt_global_not_set,
-  ChatGroupSettingsPanel__system_prompt_no_prompt,
-  ChatGroupSettingsPanel__instructions_for_this_chat_group,
-  ChatGroupSettingsPanel__instructions_to_append,
-  ChatGroupSettingsPanel__start_typing_to_override,
-  ChatGroupSettingsPanel__enter_instructions_for_this_chat_group,
-  ChatGroupSettingsPanel__start_typing_to_replace,
-  ChatGroupSettingsPanel__replace,
-  ChatGroupSettingsPanel__enter_instructions_that_replace_the_parent_setting,
-  ChatGroupSettingsPanel__enter_instructions_to_append,
   ChatGroupSettingsPanel__inherit,
   ChatGroupSettingsPanel__inherit_global_settings_or_override_individual_tools_for_this_chat_group,
   ChatGroupSettingsPanel__inherited,
   ChatGroupSettingsPanel__inherited_instructions,
+  ChatGroupSettingsPanel__instructions_for_this_chat_group,
+  ChatGroupSettingsPanel__instructions_to_append,
   ChatGroupSettingsPanel__load_from_saved_profiles,
   ChatGroupSettingsPanel__local_overrides,
   ChatGroupSettingsPanel__model_id_override,
   ChatGroupSettingsPanel__name,
   ChatGroupSettingsPanel__no_custom_headers,
   ChatGroupSettingsPanel__no_global_instructions_defined,
+  ChatGroupSettingsPanel__no_prompt,
   ChatGroupSettingsPanel__none,
   ChatGroupSettingsPanel__ollama,
   ChatGroupSettingsPanel__openai_compatible,
@@ -3155,26 +2870,32 @@ export const catalog = {
   ChatGroupSettingsPanel__parameters,
   ChatGroupSettingsPanel__quick_endpoint_presets,
   ChatGroupSettingsPanel__quick_profile_switcher,
+  ChatGroupSettingsPanel__replace,
   ChatGroupSettingsPanel__restore_defaults,
+  ChatGroupSettingsPanel__same_as_group_chat_endpoint,
   ChatGroupSettingsPanel__search_group,
   ChatGroupSettingsPanel__search_messages,
   ChatGroupSettingsPanel__set_group_name,
   ChatGroupSettingsPanel__settings_resolution,
   ChatGroupSettingsPanel__share_settings,
+  ChatGroupSettingsPanel__start_typing_to_override,
+  ChatGroupSettingsPanel__start_typing_to_replace,
   ChatGroupSettingsPanel__system_prompt,
+  ChatGroupSettingsPanel__system_prompt_global_not_set,
+  ChatGroupSettingsPanel__system_prompt_global_set,
+  ChatGroupSettingsPanel__system_prompt_no_prompt,
   ChatGroupSettingsPanel__these_settings_only_apply_to_this_group,
   ChatGroupSettingsPanel__these_settings_will_apply_to_all_chats_within_this_group_unless_overridden_by_a_specific_chat,
   ChatGroupSettingsPanel__this_group_will_not_use_any_system_instructions,
-  ChatGroupSettingsPanel__title_model_explanation,
-  ChatGroupSettingsPanel__use_global_setting,
-  ChatGroupSettingsPanel__title_model_override,
-  ChatGroupSettingsPanel__same_as_group_chat_endpoint,
   ChatGroupSettingsPanel__title_endpoint_type,
+  ChatGroupSettingsPanel__title_model_explanation,
+  ChatGroupSettingsPanel__title_model_override,
+  ChatGroupSettingsPanel__title_reasoning,
   ChatGroupSettingsPanel__tools,
   ChatGroupSettingsPanel__transformers_js,
   ChatGroupSettingsPanel__transformers_js_experimental,
+  ChatGroupSettingsPanel__use_global_setting,
   ChatGroupSettingsPanel__value,
-  ChatGroupSettingsPanel__title_reasoning,
   ChatInput__cancel,
   ChatInput__copying_name,
   ChatInput__edit_image,
@@ -3213,11 +2934,14 @@ export const catalog = {
   ChatMediaShelf__seed,
   ChatMediaShelf__steps,
   ChatMediaShelf__view_details_and_copy_parameters,
+  ChatPage__failed_to_load_chat,
+  ChatPage__loading_chat,
+  ChatPage__retry,
+  ChatPaneHeader__chat_inspector,
   ChatPaneHeader__chat_settings_and_model_override,
   ChatPaneHeader__conversation_outline,
   ChatPaneHeader__copy_shareable_chat_url,
   ChatPaneHeader__custom_overrides_active,
-  ChatPaneHeader__chat_inspector,
   ChatPaneHeader__debug_mode,
   ChatPaneHeader__delete_chat,
   ChatPaneHeader__edit_chat_title,
@@ -3229,6 +2953,7 @@ export const catalog = {
   ChatPaneHeader__group_name,
   ChatPaneHeader__jump_to_original_chat,
   ChatPaneHeader__media_gallery,
+  ChatPaneHeader__model_and_chat_settings,
   ChatPaneHeader__more_actions,
   ChatPaneHeader__move_to_group,
   ChatPaneHeader__open_print_dialog,
@@ -3264,6 +2989,7 @@ export const catalog = {
   ChatSettingsPanel__appending,
   ChatSettingsPanel__auto_check,
   ChatSettingsPanel__automatic_title,
+  ChatSettingsPanel__chat_group,
   ChatSettingsPanel__chat_overrides,
   ChatSettingsPanel__chat_settings_take_precedence_over_provider_profiles_which_take_precedence_over_group_settings_which_take_precedence_over_global_settings,
   ChatSettingsPanel__chat_specific_overrides,
@@ -3278,30 +3004,23 @@ export const catalog = {
   ChatSettingsPanel__enabled,
   ChatSettingsPanel__endpoint_type,
   ChatSettingsPanel__endpoint_url,
-  ChatSettingsPanel__failed_to_save_chat_settings,
-  ChatSettingsPanel__group_global_default,
-  ChatSettingsPanel__chat_group,
-  ChatSettingsPanel__no_prompt,
-  ChatSettingsPanel__system_prompt_chat_group_set,
-  ChatSettingsPanel__system_prompt_chat_group_not_set,
-  ChatSettingsPanel__system_prompt_no_prompt,
-  ChatSettingsPanel__instructions_for_this_chat,
-  ChatSettingsPanel__instructions_to_append,
-  ChatSettingsPanel__start_typing_to_override,
   ChatSettingsPanel__enter_instructions_for_this_chat,
-  ChatSettingsPanel__start_typing_to_replace,
-  ChatSettingsPanel__replace,
   ChatSettingsPanel__enter_instructions_that_replace_the_parent_setting,
   ChatSettingsPanel__enter_instructions_to_append,
+  ChatSettingsPanel__failed_to_save_chat_settings,
+  ChatSettingsPanel__group_global_default,
   ChatSettingsPanel__inherit,
   ChatSettingsPanel__inherited,
   ChatSettingsPanel__inherited_instructions,
+  ChatSettingsPanel__instructions_for_this_chat,
+  ChatSettingsPanel__instructions_to_append,
   ChatSettingsPanel__load_from_saved_profiles,
   ChatSettingsPanel__local_overrides,
   ChatSettingsPanel__model_override,
   ChatSettingsPanel__name,
   ChatSettingsPanel__no_custom_headers,
   ChatSettingsPanel__no_instructions_inherited,
+  ChatSettingsPanel__no_prompt,
   ChatSettingsPanel__ollama,
   ChatSettingsPanel__openai_compatible,
   ChatSettingsPanel__override,
@@ -3310,20 +3029,26 @@ export const catalog = {
   ChatSettingsPanel__parent_prompt_cleared,
   ChatSettingsPanel__quick_endpoint_presets,
   ChatSettingsPanel__quick_profile_switcher,
+  ChatSettingsPanel__replace,
   ChatSettingsPanel__restore_defaults,
+  ChatSettingsPanel__same_as_chat_endpoint,
   ChatSettingsPanel__settings_resolution,
+  ChatSettingsPanel__start_typing_to_override,
+  ChatSettingsPanel__start_typing_to_replace,
   ChatSettingsPanel__system_prompt,
+  ChatSettingsPanel__system_prompt_chat_group_not_set,
+  ChatSettingsPanel__system_prompt_chat_group_set,
+  ChatSettingsPanel__system_prompt_no_prompt,
   ChatSettingsPanel__these_settings_only_apply_to_this_chat,
   ChatSettingsPanel__this_chat_will_not_use_any_system_instructions,
-  ChatSettingsPanel__title_model_explanation,
-  ChatSettingsPanel__use_chat_group_setting,
-  ChatSettingsPanel__title_model_override,
-  ChatSettingsPanel__same_as_chat_endpoint,
   ChatSettingsPanel__title_endpoint_type,
+  ChatSettingsPanel__title_model_explanation,
+  ChatSettingsPanel__title_model_override,
+  ChatSettingsPanel__title_reasoning,
   ChatSettingsPanel__transformers_js,
   ChatSettingsPanel__transformers_js_experimental,
+  ChatSettingsPanel__use_chat_group_setting,
   ChatSettingsPanel__value,
-  ChatSettingsPanel__title_reasoning,
   ChatTitleDialog__chat_override,
   ChatTitleDialog__chat_title,
   ChatTitleDialog__close,
@@ -3380,19 +3105,19 @@ export const catalog = {
   ConnectionTab__save_failed,
   ConnectionTab__settings_saved,
   ConnectionTab__setup_url_copied,
-  ConnectionTab__title_generation_model,
-  ConnectionTab__transformers_js_experimental,
-  ConnectionTab__use_current_chat_endpoint,
   ConnectionTab__title_endpoint,
+  ConnectionTab__title_generation_model,
+  ConnectionTab__title_reasoning,
+  ConnectionTab__transformers_js_experimental,
   ConnectionTab__unavailable_in_standalone_due_to_worker_wasm_restrictions,
   ConnectionTab__understand,
   ConnectionTab__url_copied,
+  ConnectionTab__use_current_chat_endpoint,
   ConnectionTab__use_current_chat_model,
+  ConnectionTab__use_current_chat_reasoning,
   ConnectionTab__used_for_new_conversations,
   ConnectionTab__value,
   ConnectionTab__view_profiles,
-  ConnectionTab__title_reasoning,
-  ConnectionTab__use_current_chat_reasoning,
   ContextCompactProgressStrip__abort_compact,
   ContextCompactProgressStrip__hide_request,
   ContextCompactProgressStrip__live_output,
@@ -3559,17 +3284,24 @@ export const catalog = {
   HistoryManipulationModal__this_chat_will_not_use_any_system_instructions,
   HistoryManipulationModal__thoughts,
   HistoryManipulationModal__type_message_content,
+  ImageBenchmarkResult__generated_image,
+  ImageBenchmarkResult__image_memory_limit_reached,
+  ImageBenchmarkResult__image_not_retained,
+  ImageBenchmarkResult__no_image,
   ImageConjuringLoader__generating_image,
   ImageConjuringLoader__generating_images,
   ImageConjuringLoader__image_count,
-  ImageGenerationProgress__steps_completed,
-  ImageGenerationProgress__processing_step,
   ImageConjuringLoader__steps,
   ImageDownloadButton__download_image,
   ImageDownloadButton__embed_prompt_seed_etc,
   ImageDownloadButton__more_options,
   ImageDownloadButton__not_supported_for_this_format,
   ImageDownloadButton__with_metadata,
+  ImageDownloadMenu__download,
+  ImageDownloadMenu__download_options,
+  ImageDownloadMenu__downloaded_copy_only,
+  ImageDownloadMenu__image_format,
+  ImageDownloadMenu__include_generation_settings,
   ImageEditor__apply_resize,
   ImageEditor__black,
   ImageEditor__close,
@@ -3612,6 +3344,100 @@ export const catalog = {
   ImageEditor__zoom,
   ImageEditor__zoom_in,
   ImageEditor__zoom_out,
+  ImageEngineState__busy_during_generation,
+  ImageEngineState__could_not_read_state,
+  ImageEngineState__detail_label,
+  ImageEngineState__engine_busy_until_idle,
+  ImageEngineState__engine_state,
+  ImageEngineState__memory_label,
+  ImageEngineState__memory_observations,
+  ImageEngineState__memory_values_are_not_total_gpu_memory,
+  ImageEngineState__no_model_loaded,
+  ImageEngineState__not_observed_yet,
+  ImageEngineState__observed_at,
+  ImageEngineState__refresh_state,
+  ImageEngineState__refreshing,
+  ImageEngineState__released,
+  ImageEngineState__runtime_and_model,
+  ImageEngineState__runtime_buffer_reports_may_be_missing,
+  ImageEngineState__some_counters_saturated,
+  ImageEngineState__unavailable,
+  ImageEngineState__unknown_model,
+  ImageGenerationEditor__choose_model_to_begin,
+  ImageGenerationEditor__custom_size,
+  ImageGenerationEditor__edits_apply_to_next_generation,
+  ImageGenerationEditor__fixed_seed,
+  ImageGenerationEditor__image_size,
+  ImageGenerationEditor__model_configuration,
+  ImageGenerationEditor__new_seed_each_time,
+  ImageGenerationEditor__pick_new_seed,
+  ImageGenerationEditor__prepare_model,
+  ImageGenerationEditor__resolution_must_use_supported_dimensions,
+  ImageGenerationEditor__sampling_settings,
+  ImageGenerationEditor__swap_width_and_height,
+  ImageGenerationEditor__view_result,
+  ImageGenerationHistory__backup_does_not_include_history,
+  ImageGenerationHistory__close_details,
+  ImageGenerationHistory__delete_image_file,
+  ImageGenerationHistory__deleting_image_file_affects_other_records,
+  ImageGenerationHistory__experimental_history_notice,
+  ImageGenerationHistory__first_page,
+  ImageGenerationHistory__generation_details,
+  ImageGenerationHistory__include_settings_in_png,
+  ImageGenerationHistory__last_page,
+  ImageGenerationHistory__load_more,
+  ImageGenerationHistory__loading_history,
+  ImageGenerationHistory__next_page,
+  ImageGenerationHistory__no_history_found,
+  ImageGenerationHistory__opfs_required,
+  ImageGenerationHistory__page_of_total,
+  ImageGenerationHistory__previous_page,
+  ImageGenerationHistory__read_warnings,
+  ImageGenerationHistory__readable_matches,
+  ImageGenerationHistory__refresh,
+  ImageGenerationHistory__remove_from_history,
+  ImageGenerationHistory__removing_keeps_image_files,
+  ImageGenerationHistory__requested_seed,
+  ImageGenerationHistory__requested_settings,
+  ImageGenerationHistory__reuse_does_not_download_models,
+  ImageGenerationHistory__reuse_settings,
+  ImageGenerationHistory__search_history,
+  ImageGenerationHistory__some_history_files_could_not_be_read,
+  ImageGenerationHistory__use_as_initial_image,
+  ImageGenerationHistory__use_as_reference_image,
+  ImageGenerationLab__back_to_generation,
+  ImageGenerationLab__continue_without_missing_files,
+  ImageGenerationLab__debug,
+  ImageGenerationLab__disabled_loras_not_restored,
+  ImageGenerationLab__history,
+  ImageGenerationLab__image_generation_entirely_in_browser,
+  ImageGenerationLab__models,
+  ImageGenerationLab__prepare_models_help,
+  ImageGenerationLab__record_detailed_logs,
+  ImageGenerationLab__saved_models,
+  ImageGenerationLab__select_missing_files,
+  ImageGenerationPreview__preview_from_cancelled_generation,
+  ImageGenerationPreview__preview_from_failed_generation,
+  ImageGenerationProgress__processing_step,
+  ImageGenerationProgress__steps_completed,
+  ImageGenerationResults__about_saved_history,
+  ImageGenerationResults__current_images_are_temporary,
+  ImageGenerationResults__display_settings,
+  ImageGenerationResults__history_save_failed_download_image,
+  ImageGenerationResults__history_setting_applies_to_next_generation,
+  ImageGenerationResults__image_generation_failed,
+  ImageGenerationResults__images_kept_on_screen,
+  ImageGenerationResults__latest_generation,
+  ImageGenerationResults__no_final_image_was_created,
+  ImageGenerationResults__previous_results,
+  ImageGenerationResults__retry_saving,
+  ImageGenerationResults__return_to_opfs_to_retry,
+  ImageGenerationResults__save_generation_history,
+  ImageGenerationResults__saved_to_history,
+  ImageGenerationResults__saving_history,
+  ImageGenerationResults__unsaved_generations,
+  ImageGenerationResults__view_diagnostics,
+  ImageGenerationResults__view_in_my_images,
   ImageGenerationSettings__auto,
   ImageGenerationSettings__click_to_enter_specific_seed,
   ImageGenerationSettings__create_image_experimental,
@@ -3632,6 +3458,40 @@ export const catalog = {
   ImageGenerationSettings__swap_width_and_height,
   ImageGenerationSettings__webp,
   ImageGenerationSettings__width,
+  ImageGenerationViewer__close_preview,
+  ImageGenerationViewer__details,
+  ImageGenerationViewer__image_preview,
+  ImageGenerationViewer__next_image,
+  ImageGenerationViewer__previous_image,
+  ImageGenerationViewer__reset_view,
+  ImageGenerationViewer__zoom_in,
+  ImageGenerationViewer__zoom_out,
+  ImageGenerationWorkspace__generate_without_saving,
+  ImageHistoryImage__could_not_load_image,
+  ImageHistoryImage__image_unavailable,
+  ImageHistoryImage__loading_image,
+  ImageHostModelDirectories__browser_storage,
+  ImageHostModelDirectories__browser_storage_unavailable,
+  ImageHostModelDirectories__choose_folder_above_owner,
+  ImageHostModelDirectories__download_to,
+  ImageHostModelDirectories__example_folder_layout,
+  ImageHostModelDirectories__folder_access,
+  ImageHostModelDirectories__link_folder,
+  ImageHostModelDirectories__linked_folder,
+  ImageHostModelDirectories__linked_folders,
+  ImageHostModelDirectories__linked_folders_unavailable,
+  ImageHostModelDirectories__reconnect,
+  ImageHostModelDirectories__unlink,
+  ImageHostModelDirectories__unlink_keeps_files,
+  ImageInferenceLocation__compute_with,
+  ImageInferenceLocation__connect_in_rpc_settings,
+  ImageInferenceLocation__explicit_model_configuration,
+  ImageInferenceLocation__list_remote_models,
+  ImageInferenceLocation__refresh_connections,
+  ImageInferenceLocation__remote_model,
+  ImageInferenceLocation__remote_models_are_read_only,
+  ImageInferenceLocation__this_device,
+  ImageInferenceLocation__use_configuration,
   ImageInfoDisplay__copy_prompt,
   ImageInfoDisplay__copy_seed,
   ImageInfoDisplay__image_info,
@@ -3639,6 +3499,71 @@ export const catalog = {
   ImageInfoDisplay__seed,
   ImageInfoDisplay__size,
   ImageInfoDisplay__steps,
+  ImageInputControls__add_reference_images,
+  ImageInputControls__change_strength,
+  ImageInputControls__choose_image,
+  ImageInputControls__choose_png_jpeg_or_webp,
+  ImageInputControls__clipboard_failed,
+  ImageInputControls__clipboard_no_image,
+  ImageInputControls__clipboard_unavailable,
+  ImageInputControls__drop_image_here,
+  ImageInputControls__expand_image,
+  ImageInputControls__image_count,
+  ImageInputControls__initial_image,
+  ImageInputControls__initial_image_help,
+  ImageInputControls__input_images,
+  ImageInputControls__model_support_required,
+  ImageInputControls__move_earlier,
+  ImageInputControls__move_later,
+  ImageInputControls__paste_help,
+  ImageInputControls__paste_image,
+  ImageInputControls__preview_unavailable,
+  ImageInputControls__reading_clipboard,
+  ImageInputControls__reference_images,
+  ImageInputControls__reference_images_help,
+  ImageInputControls__remove,
+  ImageInputControls__replace_image,
+  ImageLoraControls__add_adapter,
+  ImageLoraControls__choose_adapters_for_selected_model,
+  ImageLoraControls__choose_files,
+  ImageLoraControls__choose_saved_adapter,
+  ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files,
+  ImageLoraControls__enabled,
+  ImageLoraControls__lora_adapters,
+  ImageLoraControls__remove,
+  ImageLoraControls__saved_adapter_compatibility_unverified,
+  ImageLoraControls__saved_adapters,
+  ImageLoraControls__selected_adapters,
+  ImageLoraControls__strength,
+  ImageModelCatalog__checking_saved_models,
+  ImageModelCatalog__download_queue,
+  ImageModelCatalog__optional_lora,
+  ImageModelCatalog__queued,
+  ImageModelCatalog__recommended,
+  ImageModelCatalog__reference_style_lora_help,
+  ImageModelCatalog__saved_choose_in_lora_controls,
+  ImageModelPicker__choose_a_model,
+  ImageModelPicker__search_choices,
+  ImageModelPicker__use_built_in_component,
+  ImagePendingHistory__discard,
+  ImagePendingHistory__discard_warning,
+  ImagePendingHistory__download_image,
+  ImagePendingHistory__save_without_generating_again,
+  ImagePendingHistory__unsaved_images,
+  ImagePendingRuns__completion_unconfirmed,
+  ImagePendingRuns__discard_pending_save,
+  ImagePendingRuns__discard_warning,
+  ImagePendingRuns__download_image,
+  ImagePendingRuns__run_information_pending,
+  ImagePendingRuns__save_without_generating_again,
+  ImagePendingRuns__unsaved_runs,
+  ImageRecoveredOutputs__discard_image,
+  ImageRecoveredOutputs__discard_warning,
+  ImageRecoveredOutputs__download_image,
+  ImageRecoveredOutputs__managed_by_pending_run,
+  ImageRecoveredOutputs__recovery_explanation,
+  ImageRecoveredOutputs__unconfirmed,
+  ImageRecoveredOutputs__unconfirmed_images,
   ImportExportModal__add_new,
   ImportExportModal__analyzing_file,
   ImportExportModal__append_keeps_current_data,
@@ -3702,6 +3627,122 @@ export const catalog = {
   ImportExportService__export_dump_failed,
   ImportExportService__invalid_zip_file,
   LanguageSelector__language,
+  LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files,
+  LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support,
+  LlamaCppBrowserDownloadDestination__browser_storage,
+  LlamaCppBrowserDownloadDestination__choose_folder_above_owner,
+  LlamaCppBrowserDownloadDestination__download_to,
+  LlamaCppBrowserDownloadDestination__folder_access,
+  LlamaCppBrowserDownloadDestination__link_folder,
+  LlamaCppBrowserDownloadDestination__link_folder_to_download,
+  LlamaCppBrowserDownloadDestination__linked_folder,
+  LlamaCppBrowserDownloadDestination__linked_folders_unavailable,
+  LlamaCppBrowserDownloadDestination__not_linked,
+  LlamaCppBrowserDownloadDestination__reconnect,
+  LlamaCppBrowserDownloadDestination__reconnect_in_folder_settings,
+  LlamaCppBrowserDownloadDestination__unavailable,
+  LlamaCppBrowserDownloadDestination__unlink,
+  LlamaCppBrowserDownloadDestination__unlink_keeps_files,
+  LlamaCppBrowserDownloadSources__copy_failed,
+  LlamaCppBrowserDownloadSources__copy_url,
+  LlamaCppBrowserDownloadSources__current_file,
+  LlamaCppBrowserDownloadSources__files_and_sources,
+  LlamaCppBrowserDownloadSources__request_urls_help,
+  LlamaCppBrowserDownloadSources__revision,
+  LlamaCppBrowserDownloadSources__url_copied,
+  LlamaCppBrowserFirefoxWebGpuWarning__firefox_webgpu_can_slow_model_execution,
+  LlamaCppBrowserFirefoxWebGpuWarning__gpu_completion_timer_polling,
+  LlamaCppBrowserFirefoxWebGpuWarning__gpu_readback_latency_report,
+  LlamaCppBrowserFirefoxWebGpuWarning__mozilla_bug_reports_in_english,
+  LlamaCppBrowserFirefoxWebGpuWarning__recommend_chromium_for_faster_performance,
+  LlamaCppBrowserFirefoxWebGpuWarning__technical_details,
+  LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining,
+  LlamaCppBrowserHuggingFaceManager__about_hours_remaining,
+  LlamaCppBrowserHuggingFaceManager__about_minutes_remaining,
+  LlamaCppBrowserHuggingFaceManager__about_seconds_remaining,
+  LlamaCppBrowserHuggingFaceManager__another_download_already_exists,
+  LlamaCppBrowserHuggingFaceManager__cancel_and_delete,
+  LlamaCppBrowserHuggingFaceManager__check_model,
+  LlamaCppBrowserHuggingFaceManager__checking_model,
+  LlamaCppBrowserHuggingFaceManager__choose_between_variants_in_download_details,
+  LlamaCppBrowserHuggingFaceManager__choose_companion_file,
+  LlamaCppBrowserHuggingFaceManager__choose_model_files,
+  LlamaCppBrowserHuggingFaceManager__companion_file,
+  LlamaCppBrowserHuggingFaceManager__download,
+  LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models,
+  LlamaCppBrowserHuggingFaceManager__download_details,
+  LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume,
+  LlamaCppBrowserHuggingFaceManager__download_paused,
+  LlamaCppBrowserHuggingFaceManager__downloaded,
+  LlamaCppBrowserHuggingFaceManager__downloading_model,
+  LlamaCppBrowserHuggingFaceManager__estimating_remaining_time,
+  LlamaCppBrowserHuggingFaceManager__model_files_already_exist,
+  LlamaCppBrowserHuggingFaceManager__model_variant,
+  LlamaCppBrowserHuggingFaceManager__multimodal_quantization,
+  LlamaCppBrowserHuggingFaceManager__multimodal_support,
+  LlamaCppBrowserHuggingFaceManager__no_companion_files_available,
+  LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found,
+  LlamaCppBrowserHuggingFaceManager__pause,
+  LlamaCppBrowserHuggingFaceManager__performing_final_checks,
+  LlamaCppBrowserHuggingFaceManager__quantization,
+  LlamaCppBrowserHuggingFaceManager__repository,
+  LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection,
+  LlamaCppBrowserHuggingFaceManager__resume,
+  LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict,
+  LlamaCppBrowserHuggingFaceManager__total_download_size,
+  LlamaCppBrowserHuggingFaceManager__unspecified_quantization,
+  LlamaCppBrowserModelLaunchPrivacy__browser_not_cloud_or_native_server,
+  LlamaCppBrowserModelLaunchPrivacy__inference_in_this_browser,
+  LlamaCppBrowserModelLaunchPrivacy__model_files_are_downloaded,
+  LlamaCppBrowserModelLaunchPrivacy__model_files_from_hugging_face,
+  LlamaCppBrowserModelLaunchPrivacy__no_apps_or_servers,
+  LlamaCppBrowserModelLaunchPrivacy__runs_on_your_device,
+  LlamaCppBrowserModelLaunchPrivacy__tools_and_other_connections,
+  LlamaCppBrowserModelLaunch__chat_settings_changed,
+  LlamaCppBrowserModelLaunch__checking_local_files,
+  LlamaCppBrowserModelLaunch__checking_model,
+  LlamaCppBrowserModelLaunch__companion_needs_selection,
+  LlamaCppBrowserModelLaunch__could_not_prepare_model,
+  LlamaCppBrowserModelLaunch__global_defaults_not_saved,
+  LlamaCppBrowserModelLaunch__initializing_runtime_and_context,
+  LlamaCppBrowserModelLaunch__loading_model,
+  LlamaCppBrowserModelLaunch__loading_model_weights,
+  LlamaCppBrowserModelLaunch__model_link_could_not_be_opened,
+  LlamaCppBrowserModelLaunch__model_not_ready,
+  LlamaCppBrowserModelLaunch__no_installation_or_environment_setup,
+  LlamaCppBrowserModelLaunch__opening_chat,
+  LlamaCppBrowserModelLaunch__prepare_on_send,
+  LlamaCppBrowserModelLaunch__quantization,
+  LlamaCppBrowserModelLaunch__ready_when_you_are,
+  LlamaCppBrowserModelLaunch__refresh_choices,
+  LlamaCppBrowserModelLaunch__restoring_model,
+  LlamaCppBrowserModelLaunch__retry,
+  LlamaCppBrowserModelLaunch__runs_privately_in_your_browser,
+  LlamaCppBrowserModelLaunch__start_with_this_model,
+  LlamaCppBrowserModelLaunch__unavailable_here,
+  LlamaCppBrowserModelLaunch__use_selected_model,
+  LlamaCppBrowserModelLaunch__variant_not_found,
+  LlamaCppBrowserModelRecovery__add_original_model_files,
+  LlamaCppBrowserModelRecovery__check_again,
+  LlamaCppBrowserModelRecovery__could_not_check_model_storage,
+  LlamaCppBrowserModelRecovery__could_not_prepare_download,
+  LlamaCppBrowserModelRecovery__download,
+  LlamaCppBrowserModelRecovery__keep_your_draft_while_preparing,
+  LlamaCppBrowserModelRecovery__manage_models,
+  LlamaCppBrowserModelRecovery__model_not_in_this_browser,
+  LlamaCppBrowserModelRecovery__review_download,
+  LlamaCppMemoryPanel__active_history,
+  LlamaCppMemoryPanel__change_since_latest_load_started,
+  LlamaCppMemoryPanel__ended_history,
+  LlamaCppMemoryPanel__gpu_request_note,
+  LlamaCppMemoryPanel__gpu_request_totals,
+  LlamaCppMemoryPanel__gpu_requests_since_load_started,
+  LlamaCppMemoryPanel__last_sample,
+  LlamaCppMemoryPanel__linear_memory_capacity,
+  LlamaCppMemoryPanel__llama_cpp_browser,
+  LlamaCppMemoryPanel__no_samples,
+  LlamaCppMemoryPanel__observation_note,
+  LlamaCppMemoryPanel__observed_maximum,
   LmParametersEditor__default,
   LmParametersEditor__empty_fields_use_provider_defaults,
   LmParametersEditor__invalid_json,
@@ -3779,10 +3820,137 @@ export const catalog = {
   ModelSelector__no_models_found,
   ModelSelector__refresh_model_list,
   ModelSelector__select_a_model,
+  ModelSupportInvestigationModal__add_models_placeholder,
+  ModelSupportInvestigationModal__allow,
+  ModelSupportInvestigationModal__blocked,
+  ModelSupportInvestigationModal__cache_revision_unknown,
+  ModelSupportInvestigationModal__candidate_eligible,
+  ModelSupportInvestigationModal__candidate_ineligible,
+  ModelSupportInvestigationModal__candidate_plan_summary,
+  ModelSupportInvestigationModal__candidate_registry_failed,
+  ModelSupportInvestigationModal__capability_probes,
+  ModelSupportInvestigationModal__checking_same_origin_runtime_assets,
+  ModelSupportInvestigationModal__close,
+  ModelSupportInvestigationModal__continuity_and_kv_cache,
+  ModelSupportInvestigationModal__copy_model_list,
+  ModelSupportInvestigationModal__current_operation,
+  ModelSupportInvestigationModal__custom,
+  ModelSupportInvestigationModal__declaration_files_summary,
+  ModelSupportInvestigationModal__deny,
+  ModelSupportInvestigationModal__download_evidence_zip,
+  ModelSupportInvestigationModal__download_focused,
+  ModelSupportInvestigationModal__download_verification,
+  ModelSupportInvestigationModal__environment_evidence_disclosure,
+  ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status,
+  ModelSupportInvestigationModal__evidence_export,
+  ModelSupportInvestigationModal__evidence_readiness,
+  ModelSupportInvestigationModal__evidence_readiness_summary,
+  ModelSupportInvestigationModal__execution_policy,
+  ModelSupportInvestigationModal__existing_model_data,
+  ModelSupportInvestigationModal__external_network_access,
+  ModelSupportInvestigationModal__failed,
+  ModelSupportInvestigationModal__findings,
+  ModelSupportInvestigationModal__full_investigation,
+  ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation,
+  ModelSupportInvestigationModal__generation,
+  ModelSupportInvestigationModal__invalid_model_line,
+  ModelSupportInvestigationModal__investigation_scope,
+  ModelSupportInvestigationModal__lane_comparison,
+  ModelSupportInvestigationModal__lane_continuity_failed,
+  ModelSupportInvestigationModal__lane_continuity_summary,
+  ModelSupportInvestigationModal__lane_failed,
+  ModelSupportInvestigationModal__lane_input_match,
+  ModelSupportInvestigationModal__lane_input_mismatch,
+  ModelSupportInvestigationModal__lane_route_summary,
+  ModelSupportInvestigationModal__loading_investigation,
+  ModelSupportInvestigationModal__missing_model_type,
+  ModelSupportInvestigationModal__model_declarations,
+  ModelSupportInvestigationModal__model_file_plan,
+  ModelSupportInvestigationModal__model_file_plan_summary,
+  ModelSupportInvestigationModal__model_load,
+  ModelSupportInvestigationModal__model_support_investigation,
+  ModelSupportInvestigationModal__model_type,
+  ModelSupportInvestigationModal__models_are_investigated_sequentially,
+  ModelSupportInvestigationModal__multimodal_failed,
+  ModelSupportInvestigationModal__multimodal_observed,
+  ModelSupportInvestigationModal__multimodal_unavailable,
+  ModelSupportInvestigationModal__new_investigation,
+  ModelSupportInvestigationModal__no_supported_auto_classes,
+  ModelSupportInvestigationModal__not_run,
+  ModelSupportInvestigationModal__offline,
+  ModelSupportInvestigationModal__one_model_per_line,
+  ModelSupportInvestigationModal__opfs_inventory,
+  ModelSupportInvestigationModal__opfs_inventory_summary,
+  ModelSupportInvestigationModal__passed,
+  ModelSupportInvestigationModal__persistence_roundtrip_summary,
+  ModelSupportInvestigationModal__presets,
+  ModelSupportInvestigationModal__previous_investigation_cleanup_failed_reload_before_starting_another,
+  ModelSupportInvestigationModal__ready_to_start,
+  ModelSupportInvestigationModal__reasoning_differential_failed,
+  ModelSupportInvestigationModal__reasoning_differential_observed,
+  ModelSupportInvestigationModal__reasoning_differential_unavailable,
+  ModelSupportInvestigationModal__replace_results_and_return_to_setup,
+  ModelSupportInvestigationModal__repository,
+  ModelSupportInvestigationModal__repository_and_download,
+  ModelSupportInvestigationModal__repository_information,
+  ModelSupportInvestigationModal__repository_summary,
+  ModelSupportInvestigationModal__required_by_selected_scope,
+  ModelSupportInvestigationModal__running,
+  ModelSupportInvestigationModal__running_and_results,
+  ModelSupportInvestigationModal__runtime_assets,
+  ModelSupportInvestigationModal__runtime_bytes,
+  ModelSupportInvestigationModal__runtime_control,
+  ModelSupportInvestigationModal__runtime_control_inputs,
+  ModelSupportInvestigationModal__runtime_control_webgpu,
+  ModelSupportInvestigationModal__runtime_environment,
+  ModelSupportInvestigationModal__runtime_environment_summary,
+  ModelSupportInvestigationModal__runtime_mjs,
+  ModelSupportInvestigationModal__runtime_no_output,
+  ModelSupportInvestigationModal__runtime_variant,
+  ModelSupportInvestigationModal__runtime_wasm,
+  ModelSupportInvestigationModal__selected_scope_execution_summary,
+  ModelSupportInvestigationModal__setup,
+  ModelSupportInvestigationModal__skipped,
+  ModelSupportInvestigationModal__start_investigation,
+  ModelSupportInvestigationModal__stop_investigation,
+  ModelSupportInvestigationModal__stop_this_model_and_continue,
+  ModelSupportInvestigationModal__support_boundary,
+  ModelSupportInvestigationModal__support_boundary_summary,
+  ModelSupportInvestigationModal__supported_auto_classes,
+  ModelSupportInvestigationModal__targets,
+  ModelSupportInvestigationModal__template_behavior,
+  ModelSupportInvestigationModal__template_behavior_summary,
+  ModelSupportInvestigationModal__tool_protocol_probe_summary,
+  ModelSupportInvestigationModal__tool_result_production_continuation_failed,
+  ModelSupportInvestigationModal__tool_result_production_continuation_passed,
+  ModelSupportInvestigationModal__tool_template_provenance_summary,
+  ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness,
+  ModelSupportInvestigationSession__comparison_mismatch_does_not_establish_feature_failure,
+  ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation,
+  ModelSupportInvestigationSession__export_retained_download_timing,
+  ModelSupportInvestigationSession__failed_and_not_run_checks,
+  ModelSupportInvestigationSession__failed_to_export_retained_download_timing,
+  ModelSupportInvestigationSession__feature_check_result,
+  ModelSupportInvestigationSession__fresh_metadata_preparation_status,
+  ModelSupportInvestigationSession__maximum_phase_deadlines,
+  ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load,
+  ModelSupportInvestigationSession__native_recording_is_not_correctness,
+  ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session,
+  ModelSupportInvestigationSession__provider_collection_progress,
+  ModelSupportInvestigationSession__recording_retention_budget,
+  ModelSupportInvestigationSession__some_download_timing_was_not_retained,
   MountBadgeList__browse_path,
   MountBadgeList__read_and_write_click_to_restrict,
   MountBadgeList__read_only_click_to_allow_write,
   MountBadgeList__remove,
+  NaidanRpcTab__automatic_connection_help,
+  NaidanRpcTab__checking_connection,
+  NaidanRpcTab__connect_automatically_on_startup,
+  NaidanRpcTab__connection_check_paused,
+  NaidanRpcTab__method_details,
+  NaidanRpcTab__partially_enabled,
+  NaidanRpcTab__save_name,
+  NaidanRpcTab__save_with_persistent_storage_first,
   OllamaManagementView__ollama_runtime,
   OllamaManagementView__view_and_unload_models_currently_held_in_memory_by_this_ollama_server,
   OllamaPsView__checking,
@@ -3836,12 +4004,12 @@ export const catalog = {
   OnboardingModal__enter_existing_server_url,
   OnboardingModal__enter_valid_url,
   OnboardingModal__experimental,
-  OnboardingModal__llama_cpp_browser,
   OnboardingModal__failed_to_connect,
   OnboardingModal__failed_to_save_settings,
   OnboardingModal__get_started,
   OnboardingModal__help_and_guide,
   OnboardingModal__in_browser_ai,
+  OnboardingModal__llama_cpp_browser,
   OnboardingModal__name,
   OnboardingModal__ollama,
   OnboardingModal__openai_compatible,
@@ -3856,10 +4024,10 @@ export const catalog = {
   OnboardingModal__transformers_js,
   OnboardingModal__value,
   PWAManager__app_ready_to_work_offline,
-  PWAUpdateNotification__reload_to_update,
-  PWAUpdateNotification__preparing_update,
-  PWAUpdateNotification__temporary_online_update,
   PWAUpdateNotification__applying_update,
+  PWAUpdateNotification__preparing_update,
+  PWAUpdateNotification__reload_to_update,
+  PWAUpdateNotification__temporary_online_update,
   PromptApiStatus__browser_provided_language_models_are_not_available_in_this_browser,
   PromptApiStatus__browser_provided_model_is_not_available_on_this_device,
   PromptApiStatus__browser_provided_model_is_ready,
@@ -3965,6 +4133,15 @@ export const catalog = {
   RelativeTime__just_now,
   RelativeTime__minutes_ago,
   RelativeTime__seconds_ago,
+  RpcPeerProvision__available_from_peer,
+  RpcPeerProvision__chat_inference,
+  RpcPeerProvision__checking_provided_functions,
+  RpcPeerProvision__connect_to_check,
+  RpcPeerProvision__could_not_check,
+  RpcPeerProvision__image_generation,
+  RpcPeerProvision__not_provided,
+  RpcPeerProvision__partially_provided,
+  RpcPeerProvision__provided,
   SearchPreview__alt_branch,
   SearchPreview__conversation_match,
   SearchPreview__following_messages,
@@ -3990,6 +4167,7 @@ export const catalog = {
   SettingsModal__files,
   SettingsModal__folders,
   SettingsModal__keep_editing,
+  SettingsModal__llama_cpp_browser,
   SettingsModal__provider_profiles,
   SettingsModal__recipes,
   SettingsModal__settings,
@@ -3998,7 +4176,6 @@ export const catalog = {
   SettingsModal__successfully_imported_recipes_as_chat_groups,
   SettingsModal__tools,
   SettingsModal__transformers_js,
-  SettingsModal__llama_cpp_browser,
   SidebarDebugControls__debug_events,
   SidebarDebugControls__file_explorer,
   SidebarDebugControls__more_actions,
@@ -4107,6 +4284,7 @@ export const catalog = {
   ThemeToggle__dark_mode,
   ThemeToggle__light_mode,
   ThemeToggle__system_mode,
+  ToolCallDraftItem__generating_tool_call,
   ToolCallGroupItem__used_tools,
   ToolConfigHierarchySettings__access_global_knowledge,
   ToolConfigHierarchySettings__calculator,
@@ -4133,126 +4311,7 @@ export const catalog = {
   TransformersJsLoadingIndicator__model,
   TransformersJsLoadingIndicator__on_device_execution,
   TransformersJsLoadingIndicator__transformers_js_error,
-  ModelSupportInvestigationModal__download_verification,
-  ModelSupportInvestigationModal__blocked,
-  ModelSupportInvestigationModal__skipped,
-  ModelSupportInvestigationModal__stop_this_model_and_continue,
-  ModelSupportInvestigationModal__candidate_eligible,
-  ModelSupportInvestigationModal__candidate_ineligible,
-  ModelSupportInvestigationModal__candidate_plan_summary,
-  ModelSupportInvestigationModal__candidate_registry_failed,
-  ModelSupportInvestigationModal__model_file_plan,
-  ModelSupportInvestigationModal__model_file_plan_summary,
-  ModelSupportInvestigationModal__cache_revision_unknown,
-  ModelSupportInvestigationModal__checking_same_origin_runtime_assets,
-  ModelSupportInvestigationModal__close,
-  ModelSupportInvestigationModal__current_operation,
-  ModelSupportInvestigationModal__declaration_files_summary,
-  ModelSupportInvestigationModal__download_evidence_zip,
-  ModelSupportInvestigationModal__evidence_export,
-  ModelSupportInvestigationModal__environment_evidence_disclosure,
-  ModelSupportInvestigationModal__evidence_readiness,
-  ModelSupportInvestigationModal__evidence_readiness_summary,
-  ModelSupportInvestigationModal__evidence_coverage_is_not_execution_status,
-  ModelSupportInvestigationModal__existing_model_data,
-  ModelSupportInvestigationModal__failed,
-  ModelSupportInvestigationModal__findings,
-  ModelSupportInvestigationModal__loading_investigation,
-  ModelSupportInvestigationModal__lane_comparison,
-  ModelSupportInvestigationModal__lane_continuity_failed,
-  ModelSupportInvestigationModal__lane_continuity_summary,
-  ModelSupportInvestigationModal__lane_failed,
-  ModelSupportInvestigationModal__lane_input_match,
-  ModelSupportInvestigationModal__lane_input_mismatch,
-  ModelSupportInvestigationModal__lane_route_summary,
-  ModelSupportInvestigationModal__multimodal_failed,
-  ModelSupportInvestigationModal__multimodal_observed,
-  ModelSupportInvestigationModal__multimodal_unavailable,
-  ModelSupportInvestigationModal__reasoning_differential_failed,
-  ModelSupportInvestigationModal__reasoning_differential_observed,
-  ModelSupportInvestigationModal__reasoning_differential_unavailable,
-  ModelSupportInvestigationModal__model_declarations,
-  ModelSupportInvestigationModal__model_support_investigation,
-  ModelSupportInvestigationModal__missing_model_type,
-  ModelSupportInvestigationModal__model_type,
-  ModelSupportInvestigationModal__no_supported_auto_classes,
-  ModelSupportInvestigationModal__not_run,
-  ModelSupportInvestigationModal__opfs_inventory,
-  ModelSupportInvestigationModal__opfs_inventory_summary,
-  ModelSupportInvestigationModal__persistence_roundtrip_summary,
-  ModelSupportInvestigationModal__passed,
-  ModelSupportInvestigationModal__repository,
-  ModelSupportInvestigationModal__repository_information,
-  ModelSupportInvestigationModal__repository_summary,
-  ModelSupportInvestigationModal__running,
-  ModelSupportInvestigationModal__stop_investigation,
-  ModelSupportInvestigationModal__runtime_assets,
-  ModelSupportInvestigationModal__runtime_control_webgpu,
-  ModelSupportInvestigationModal__runtime_no_output,
-  ModelSupportInvestigationModal__runtime_bytes,
-  ModelSupportInvestigationModal__runtime_control,
-  ModelSupportInvestigationModal__runtime_control_inputs,
-  ModelSupportInvestigationModal__runtime_environment,
-  ModelSupportInvestigationModal__runtime_environment_summary,
-  ModelSupportInvestigationModal__runtime_mjs,
-  ModelSupportInvestigationModal__runtime_variant,
-  ModelSupportInvestigationModal__runtime_wasm,
-  ModelSupportInvestigationModal__supported_auto_classes,
-  ModelSupportInvestigationModal__support_boundary,
-  ModelSupportInvestigationModal__support_boundary_summary,
-  ModelSupportInvestigationModal__template_behavior,
-  ModelSupportInvestigationModal__template_behavior_summary,
-  ModelSupportInvestigationModal__tool_protocol_probe_summary,
-  ModelSupportInvestigationModal__tool_result_production_continuation_failed,
-  ModelSupportInvestigationModal__tool_result_production_continuation_passed,
-  ModelSupportInvestigationModal__tool_template_provenance_summary,
-  ModelSupportInvestigationModal__selected_scope_execution_summary,
-  ModelSupportInvestigationSession__fresh_metadata_preparation_status,
-  ModelSupportInvestigationSession__collection_completion_does_not_certify_feature_correctness,
-  ModelSupportInvestigationSession__comparison_mismatch_does_not_establish_feature_failure,
-  ModelSupportInvestigationSession__failed_and_not_run_checks,
-  ModelSupportInvestigationSession__feature_check_result,
-  ModelSupportInvestigationSession__provider_collection_progress,
-  ModelSupportInvestigationSession__maximum_phase_deadlines,
-  ModelSupportInvestigationSession__native_recording_is_not_correctness,
-  ModelSupportInvestigationSession__export_retained_download_timing,
-  ModelSupportInvestigationSession__export_existing_download_timing_without_running_an_investigation,
-  ModelSupportInvestigationSession__no_download_timing_is_retained_in_this_session,
-  ModelSupportInvestigationSession__some_download_timing_was_not_retained,
-  ModelSupportInvestigationSession__failed_to_export_retained_download_timing,
-  ModelSupportInvestigationSession__recording_retention_budget,
-  ModelSupportInvestigationSession__metadata_preparation_does_not_verify_full_download_or_load,
-  ModelSupportInvestigationModal__start_investigation,
-  ModelSupportInvestigationModal__new_investigation,
-  ModelSupportInvestigationModal__previous_investigation_cleanup_failed_reload_before_starting_another,
-  ModelSupportInvestigationModal__replace_results_and_return_to_setup,
-  ModelSupportInvestigationModal__ready_to_start,
-  ModelSupportInvestigationModal__targets,
-  ModelSupportInvestigationModal__one_model_per_line,
-  ModelSupportInvestigationModal__copy_model_list,
-  ModelSupportInvestigationModal__invalid_model_line,
-  ModelSupportInvestigationModal__presets,
-  ModelSupportInvestigationModal__full_investigation,
-  ModelSupportInvestigationModal__offline,
-  ModelSupportInvestigationModal__download_focused,
-  ModelSupportInvestigationModal__custom,
-  ModelSupportInvestigationModal__execution_policy,
-  ModelSupportInvestigationModal__external_network_access,
-  ModelSupportInvestigationModal__allow,
-  ModelSupportInvestigationModal__deny,
-  ModelSupportInvestigationModal__full_model_download_is_disabled_during_investigation,
-  ModelSupportInvestigationModal__investigation_scope,
-  ModelSupportInvestigationModal__repository_and_download,
-  ModelSupportInvestigationModal__model_load,
-  ModelSupportInvestigationModal__generation,
-  ModelSupportInvestigationModal__continuity_and_kv_cache,
-  ModelSupportInvestigationModal__capability_probes,
-  ModelSupportInvestigationModal__required_by_selected_scope,
-  ModelSupportInvestigationModal__setup,
-  ModelSupportInvestigationModal__running_and_results,
-  ModelSupportInvestigationModal__models_are_investigated_sequentially,
-  ModelSupportInvestigationModal__add_models_placeholder,
-  TransformersJsManager__investigate,
+  TransformersJsManager__about_time_remaining,
   TransformersJsManager__active,
   TransformersJsManager__active_model,
   TransformersJsManager__add_new_models,
@@ -4260,21 +4319,28 @@ export const catalog = {
   TransformersJsManager__asset_details,
   TransformersJsManager__browsers_often_disable_the,
   TransformersJsManager__cache_api,
+  TransformersJsManager__cached,
+  TransformersJsManager__candidate_number,
+  TransformersJsManager__checking_cache,
+  TransformersJsManager__checking_required_files,
+  TransformersJsManager__checking_runtime,
+  TransformersJsManager__close_error_details,
+  TransformersJsManager__complete,
   TransformersJsManager__could_not_determine_a_valid_model_name_from_folder_structure,
+  TransformersJsManager__current_candidate_download_time_remaining,
+  TransformersJsManager__current_candidate_preparation_includes_cached_files,
+  TransformersJsManager__current_candidate_received_and_cached_bytes,
   TransformersJsManager__delete,
   TransformersJsManager__delete_downloaded_model,
   TransformersJsManager__delete_failed,
   TransformersJsManager__delete_model,
   TransformersJsManager__delete_model_warning,
   TransformersJsManager__deleted_model,
+  TransformersJsManager__download_complete,
   TransformersJsManager__download_failed,
   TransformersJsManager__download_failed_check_details_in_the_section_below,
   TransformersJsManager__download_from_hugging_face,
   TransformersJsManager__download_model,
-  TransformersJsManager__reusing_downloaded_file,
-  TransformersJsManager__download_complete,
-  TransformersJsManager__received_and_reused_bytes,
-  TransformersJsManager__about_time_remaining,
   TransformersJsManager__downloaded_models,
   TransformersJsManager__downloading_and_compiling,
   TransformersJsManager__engine_control,
@@ -4283,6 +4349,8 @@ export const catalog = {
   TransformersJsManager__engine_unloaded_and_resources_released,
   TransformersJsManager__enter_hugging_face_model_id_e_g_onnx_community_phi_4,
   TransformersJsManager__error,
+  TransformersJsManager__estimating_download_time,
+  TransformersJsManager__files_complete,
   TransformersJsManager__filter_downloaded_models,
   TransformersJsManager__find_more_models,
   TransformersJsManager__for_local_file_urls_to_avoid_downloading_models_on_every_reload_use_a_local_web_server_or_the_hosted_version,
@@ -4295,6 +4363,7 @@ export const catalog = {
   TransformersJsManager__in_browser_ai_transformers_js_is_not_available_in_the_standalone_build_due_to_browser_restrictions_on_web_workers_and_webassembly_when_running_from_a_local_file,
   TransformersJsManager__incomplete,
   TransformersJsManager__initializing_engine,
+  TransformersJsManager__investigate,
   TransformersJsManager__load,
   TransformersJsManager__load_a_model_from_the_list_below_to_start_in_browser_inference,
   TransformersJsManager__loading_from_local_storage,
@@ -4306,39 +4375,29 @@ export const catalog = {
   TransformersJsManager__note,
   TransformersJsManager__origin_private_file_system_opfs,
   TransformersJsManager__overall_progress,
-  TransformersJsManager__close_error_details,
-  TransformersJsManager__resolving_revision,
-  TransformersJsManager__checking_cache,
   TransformersJsManager__preparing_metadata,
-  TransformersJsManager__checking_required_files,
-  TransformersJsManager__transferring,
-  TransformersJsManager__saving,
-  TransformersJsManager__checking_runtime,
-  TransformersJsManager__complete,
-  TransformersJsManager__queued,
-  TransformersJsManager__cached,
-  TransformersJsManager__current_candidate_preparation_includes_cached_files,
-  TransformersJsManager__total_size_unknown,
-  TransformersJsManager__recalculated_after_size_update,
-  TransformersJsManager__recalculated_after_download_restart,
-  TransformersJsManager__retrying_with_another_candidate,
-  TransformersJsManager__saving_and_checks_not_included,
-  TransformersJsManager__estimating_download_time,
-  TransformersJsManager__recalculating_download_time,
-  TransformersJsManager__files_complete,
-  TransformersJsManager__current_candidate_download_time_remaining,
-  TransformersJsManager__candidate_number,
-  TransformersJsManager__current_candidate_received_and_cached_bytes,
   TransformersJsManager__preset_model_paths,
+  TransformersJsManager__queued,
+  TransformersJsManager__recalculated_after_download_restart,
+  TransformersJsManager__recalculated_after_size_update,
+  TransformersJsManager__recalculating_download_time,
+  TransformersJsManager__received_and_reused_bytes,
   TransformersJsManager__refresh,
+  TransformersJsManager__resolving_revision,
   TransformersJsManager__restart,
   TransformersJsManager__restart_ai_engine,
   TransformersJsManager__resume,
+  TransformersJsManager__retrying_with_another_candidate,
+  TransformersJsManager__reusing_downloaded_file,
+  TransformersJsManager__saving,
+  TransformersJsManager__saving_and_checks_not_included,
   TransformersJsManager__select_a_folder_containing_onnx_model_files_to_import_it_into_the_browsers_storage,
   TransformersJsManager__select_model_folder,
   TransformersJsManager__successfully_downloaded_model,
   TransformersJsManager__successfully_imported_model,
   TransformersJsManager__this_will_terminate_the_current_background_worker_and_start_a_fresh_one_use_this_if_the_engine_becomes_unresponsive_or_shows_fatal_errors,
+  TransformersJsManager__total_size_unknown,
+  TransformersJsManager__transferring,
   TransformersJsManager__unknown,
   TransformersJsManager__unload_model_and_release_resources,
   TransformersJsManager__use_custom_id,
@@ -4401,6 +4460,118 @@ export const catalog = {
   advancedTextEditor__updating,
   advancedTextEditor__use_regex,
   advancedTextEditor__words,
+  audioGeneration__add_reference_files,
+  audioGeneration__advanced_model_selection,
+  audioGeneration__advanced_settings,
+  audioGeneration__all_models_help,
+  audioGeneration__audio_generation,
+  audioGeneration__audio_model,
+  audioGeneration__audio_processor,
+  audioGeneration__automatic_profile,
+  audioGeneration__backbone_temperature,
+  audioGeneration__backbone_top_k,
+  audioGeneration__backbone_top_p,
+  audioGeneration__cancel_and_discard,
+  audioGeneration__capture_preview,
+  audioGeneration__captured_steps,
+  audioGeneration__check_parameters,
+  audioGeneration__checking_local_model_metadata,
+  audioGeneration__choose_model,
+  audioGeneration__clear_reference,
+  audioGeneration__context_full,
+  audioGeneration__context_help,
+  audioGeneration__context_tokens,
+  audioGeneration__copy_failed_select_text,
+  audioGeneration__copy_text,
+  audioGeneration__cpu_audio,
+  audioGeneration__decoding_audio,
+  audioGeneration__delete_all_audio,
+  audioGeneration__delete_all_references,
+  audioGeneration__delete_audio,
+  audioGeneration__delete_reference,
+  audioGeneration__deselect_all_references,
+  audioGeneration__discard_recording,
+  audioGeneration__drop_reference_audio,
+  audioGeneration__empty_audio,
+  audioGeneration__finish_and_keep_audio,
+  audioGeneration__finish_audio_help,
+  audioGeneration__finished_early,
+  audioGeneration__finishing_current_step,
+  audioGeneration__generate_audio,
+  audioGeneration__generated_audio,
+  audioGeneration__generation_failed,
+  audioGeneration__generation_settings,
+  audioGeneration__generation_stopped,
+  audioGeneration__history_memory_usage,
+  audioGeneration__input_placeholder,
+  audioGeneration__input_text,
+  audioGeneration__integer_range,
+  audioGeneration__introduction,
+  audioGeneration__invalid_reference,
+  audioGeneration__invalid_text,
+  audioGeneration__invalid_top_p,
+  audioGeneration__language,
+  audioGeneration__language_help,
+  audioGeneration__limit_reached,
+  audioGeneration__manage_models_and_runtime,
+  audioGeneration__maximum_steps,
+  audioGeneration__microphone_permission_denied,
+  audioGeneration__microphone_unavailable,
+  audioGeneration__model_default,
+  audioGeneration__model_detection_help,
+  audioGeneration__model_setup_help,
+  audioGeneration__model_support_help,
+  audioGeneration__native_diagnostics,
+  audioGeneration__no_audio_models_detected,
+  audioGeneration__no_reference_selected,
+  audioGeneration__not_detected_as_audio,
+  audioGeneration__number_range,
+  audioGeneration__output_lifetime,
+  audioGeneration__preparing_recording,
+  audioGeneration__preparing_references,
+  audioGeneration__preview_help,
+  audioGeneration__preview_pending,
+  audioGeneration__preview_result,
+  audioGeneration__processor_help,
+  audioGeneration__random_seed,
+  audioGeneration__record_reference,
+  audioGeneration__recorded_settings_help,
+  audioGeneration__recording_audio,
+  audioGeneration__recording_failed,
+  audioGeneration__recording_help,
+  audioGeneration__recording_limited_to_thirty_seconds,
+  audioGeneration__recording_unavailable,
+  audioGeneration__reference_collection_help,
+  audioGeneration__reference_decode_failed,
+  audioGeneration__reference_empty,
+  audioGeneration__reference_help,
+  audioGeneration__reference_library_full,
+  audioGeneration__reference_required,
+  audioGeneration__reference_too_large,
+  audioGeneration__reference_too_long,
+  audioGeneration__reference_usage_notes,
+  audioGeneration__reference_voice,
+  audioGeneration__reinitialize_runtime,
+  audioGeneration__reinitialize_runtime_help,
+  audioGeneration__reinitializing_runtime,
+  audioGeneration__requested_profile,
+  audioGeneration__requesting_microphone,
+  audioGeneration__runtime_audio,
+  audioGeneration__runtime_unavailable,
+  audioGeneration__sampling_help,
+  audioGeneration__save_wav,
+  audioGeneration__seed,
+  audioGeneration__selected_references,
+  audioGeneration__show_all_llama_cpp_browser_models,
+  audioGeneration__show_all_models,
+  audioGeneration__step_limit_help,
+  audioGeneration__steps_completed,
+  audioGeneration__stop_and_use_recording,
+  audioGeneration__stop_generation,
+  audioGeneration__stopping,
+  audioGeneration__text_copied,
+  audioGeneration__unsupported_model,
+  audioGeneration__waiting,
   binaryObjects__binary_objects,
   binaryObjects__close_with_escape,
   binaryObjects__copy_name,
@@ -4496,9 +4667,13 @@ export const catalog = {
   dataDeletion__scanning_storage,
   dataDeletion__select_at_least_one_deletion_selector,
   fileExplorer__add,
+  fileExplorer__addition_count,
+  fileExplorer__analyzing_zip,
   fileExplorer__archive_name,
   fileExplorer__binary_file,
+  fileExplorer__blocked_count,
   fileExplorer__byte_count,
+  fileExplorer__cannot_be_placed,
   fileExplorer__close,
   fileExplorer__close_preview,
   fileExplorer__column_view,
@@ -4520,13 +4695,16 @@ export const catalog = {
   fileExplorer__entry_info,
   fileExplorer__exclude_items,
   fileExplorer__exclude_items_help,
+  fileExplorer__existing,
+  fileExplorer__extract_and_place,
+  fileExplorer__extract_and_place_description,
   fileExplorer__failed_to_copy_items,
   fileExplorer__failed_to_create_file,
   fileExplorer__failed_to_create_folder,
-  fileExplorer__failed_to_load_exclusion_suggestions,
   fileExplorer__failed_to_delete,
   fileExplorer__failed_to_download,
   fileExplorer__failed_to_load_directory,
+  fileExplorer__failed_to_load_exclusion_suggestions,
   fileExplorer__failed_to_move_items,
   fileExplorer__failed_to_rename,
   fileExplorer__failed_to_upload_files,
@@ -4546,6 +4724,7 @@ export const catalog = {
   fileExplorer__list_view,
   fileExplorer__load_anyway,
   fileExplorer__locked_click_to_unlock,
+  fileExplorer__merge_count,
   fileExplorer__modified,
   fileExplorer__modified_label,
   fileExplorer__name,
@@ -4553,39 +4732,13 @@ export const catalog = {
   fileExplorer__new_file_unlock_to_enable,
   fileExplorer__new_folder,
   fileExplorer__new_folder_unlock_to_enable,
+  fileExplorer__next_zip,
   fileExplorer__no_matching_items,
+  fileExplorer__not_changed_yet,
   fileExplorer__open,
   fileExplorer__optional,
-  fileExplorer__paste,
-  fileExplorer__preview,
-  fileExplorer__refresh,
-  fileExplorer__relative_path,
-  fileExplorer__rename,
-  fileExplorer__search,
-  fileExplorer__select_a_file,
-  fileExplorer__select_all,
-  fileExplorer__selected_count_label,
-  fileExplorer__show_preview,
-  fileExplorer__size,
-  fileExplorer__size_label,
-  fileExplorer__type,
-  fileExplorer__type_to_narrow_results,
-  fileExplorer__unlock_to_enable,
-  fileExplorer__unlocked_click_to_lock,
-  fileExplorer__unsupported_items_were_skipped,
-  fileExplorer__upload_files,
-  fileExplorer__upload_files_unlock_to_enable,
-  fileExplorer__addition_count,
-  fileExplorer__analyzing_zip,
-  fileExplorer__blocked_count,
-  fileExplorer__cannot_be_placed,
-  fileExplorer__existing,
-  fileExplorer__extract_and_place,
-  fileExplorer__extract_and_place_description,
-  fileExplorer__merge_count,
-  fileExplorer__next_zip,
-  fileExplorer__not_changed_yet,
   fileExplorer__overwrite_count,
+  fileExplorer__paste,
   fileExplorer__place_contents_here,
   fileExplorer__place_contents_here_description,
   fileExplorer__place_directory_itself,
@@ -4597,8 +4750,26 @@ export const catalog = {
   fileExplorer__planned_addition,
   fileExplorer__planned_merge,
   fileExplorer__planned_overwrite,
+  fileExplorer__preview,
+  fileExplorer__refresh,
+  fileExplorer__relative_path,
+  fileExplorer__rename,
   fileExplorer__root_directory_handling,
+  fileExplorer__search,
+  fileExplorer__select_a_file,
+  fileExplorer__select_all,
+  fileExplorer__selected_count_label,
+  fileExplorer__show_preview,
+  fileExplorer__size,
+  fileExplorer__size_label,
   fileExplorer__status,
+  fileExplorer__type,
+  fileExplorer__type_to_narrow_results,
+  fileExplorer__unlock_to_enable,
+  fileExplorer__unlocked_click_to_lock,
+  fileExplorer__unsupported_items_were_skipped,
+  fileExplorer__upload_files,
+  fileExplorer__upload_files_unlock_to_enable,
   fileExplorer__uploading,
   fileExplorer__zip_archive,
   fileExplorer__zip_cannot_be_extracted,
@@ -4609,7 +4780,563 @@ export const catalog = {
   formatSettingsSourceLabel__value_from_chat,
   formatSettingsSourceLabel__value_from_global,
   formatSettingsSourceLabel__value_from_group,
-  ToolCallDraftItem__generating_tool_call,
+  imageBenchmark__archive_saved,
+  imageBenchmark__available_models,
+  imageBenchmark__cancelled,
+  imageBenchmark__check_plan,
+  imageBenchmark__cold,
+  imageBenchmark__cold_then_warm,
+  imageBenchmark__cooldown,
+  imageBenchmark__defaults_help,
+  imageBenchmark__diagnostics,
+  imageBenchmark__download_zip,
+  imageBenchmark__effective_request,
+  imageBenchmark__elapsed,
+  imageBenchmark__environment_notes,
+  imageBenchmark__export_privacy,
+  imageBenchmark__exporting,
+  imageBenchmark__failed,
+  imageBenchmark__fairness,
+  imageBenchmark__fresh_each,
+  imageBenchmark__freshness_warning,
+  imageBenchmark__include_input_images_in_zip,
+  imageBenchmark__include_prompts,
+  imageBenchmark__introduction,
+  imageBenchmark__keep_images,
+  imageBenchmark__limits,
+  imageBenchmark__listed_order,
+  imageBenchmark__model_load,
+  imageBenchmark__model_sampling_defaults,
+  imageBenchmark__new_measurement,
+  imageBenchmark__no_models,
+  imageBenchmark__order,
+  imageBenchmark__override,
+  imageBenchmark__overrides,
+  imageBenchmark__protocol,
+  imageBenchmark__queued,
+  imageBenchmark__results,
+  imageBenchmark__reverse_order,
+  imageBenchmark__run,
+  imageBenchmark__running,
+  imageBenchmark__runs_per_model,
+  imageBenchmark__sampling,
+  imageBenchmark__select_all,
+  imageBenchmark__select_none,
+  imageBenchmark__shared_settings,
+  imageBenchmark__skipped,
+  imageBenchmark__start,
+  imageBenchmark__stop,
+  imageBenchmark__succeeded,
+  imageBenchmark__timeout,
+  imageBenchmark__unavailable_components,
+  imageBenchmark__warm,
+  imageGeneration__action_applied,
+  imageGeneration__active_images,
+  imageGeneration__actual_seed,
+  imageGeneration__add_tag,
+  imageGeneration__after,
+  imageGeneration__all_images,
+  imageGeneration__all_tags,
+  imageGeneration__apply_tag,
+  imageGeneration__apply_this_setting,
+  imageGeneration__apply_to_next_run,
+  imageGeneration__archive,
+  imageGeneration__archive_help,
+  imageGeneration__archive_run,
+  imageGeneration__archived_images,
+  imageGeneration__assistant,
+  imageGeneration__assistant_help,
+  imageGeneration__assistant_privacy,
+  imageGeneration__attach_chat,
+  imageGeneration__back_to_chats,
+  imageGeneration__batch_failed,
+  imageGeneration__before,
+  imageGeneration__cancelled,
+  imageGeneration__capture_for_assistant,
+  imageGeneration__change_chat,
+  imageGeneration__chat_help,
+  imageGeneration__choose_chat_help,
+  imageGeneration__clear_selection,
+  imageGeneration__close_chat,
+  imageGeneration__close_details,
+  imageGeneration__compare,
+  imageGeneration__compare_equal,
+  imageGeneration__compare_help,
+  imageGeneration__compare_notice,
+  imageGeneration__completed,
+  imageGeneration__copied,
+  imageGeneration__copy_failed,
+  imageGeneration__copy_negative_prompt,
+  imageGeneration__copy_prompt,
+  imageGeneration__copy_settings,
+  imageGeneration__count_help,
+  imageGeneration__create_and_connect_chat,
+  imageGeneration__create_chat_in_group,
+  imageGeneration__current_value,
+  imageGeneration__delete_images,
+  imageGeneration__delete_images_notice,
+  imageGeneration__delete_session,
+  imageGeneration__delete_session_notice,
+  imageGeneration__detach,
+  imageGeneration__dock_chat,
+  imageGeneration__draft_dirty,
+  imageGeneration__draft_failed,
+  imageGeneration__draft_saved,
+  imageGeneration__draft_saving,
+  imageGeneration__editor,
+  imageGeneration__empty_gallery,
+  imageGeneration__execution,
+  imageGeneration__export_cancelled,
+  imageGeneration__export_notice,
+  imageGeneration__export_session,
+  imageGeneration__exporting,
+  imageGeneration__failed,
+  imageGeneration__favorite,
+  imageGeneration__finish_session_work_before_deleting,
+  imageGeneration__float_chat,
+  imageGeneration__gallery,
+  imageGeneration__generation_session,
+  imageGeneration__images,
+  imageGeneration__initial_image,
+  imageGeneration__inspect,
+  imageGeneration__interrupted,
+  imageGeneration__interrupted_help,
+  imageGeneration__leave_warning,
+  imageGeneration__lineage,
+  imageGeneration__load_more,
+  imageGeneration__loading,
+  imageGeneration__manage_tags,
+  imageGeneration__more_execution,
+  imageGeneration__name,
+  imageGeneration__new_session,
+  imageGeneration__new_tag,
+  imageGeneration__newest_first,
+  imageGeneration__next_image,
+  imageGeneration__next_unavailable,
+  imageGeneration__no_chat,
+  imageGeneration__no_chat_choices,
+  imageGeneration__no_sessions,
+  imageGeneration__notice_body,
+  imageGeneration__notice_dismiss,
+  imageGeneration__notice_title,
+  imageGeneration__open_assistant_chat,
+  imageGeneration__open_chat,
+  imageGeneration__other_session_running,
+  imageGeneration__parameters,
+  imageGeneration__pending_deletions,
+  imageGeneration__pending_save,
+  imageGeneration__preview_empty,
+  imageGeneration__previous_image,
+  imageGeneration__progress_only,
+  imageGeneration__prompt_edit,
+  imageGeneration__queued,
+  imageGeneration__recommended_value,
+  imageGeneration__reference_image,
+  imageGeneration__refresh,
+  imageGeneration__remove_tag,
+  imageGeneration__rename,
+  imageGeneration__rename_session,
+  imageGeneration__rename_tag,
+  imageGeneration__restore,
+  imageGeneration__restore_run,
+  imageGeneration__retry_deletions,
+  imageGeneration__reuse_prompt,
+  imageGeneration__reuse_settings,
+  imageGeneration__review,
+  imageGeneration__run_empty,
+  imageGeneration__run_status,
+  imageGeneration__running,
+  imageGeneration__runs,
+  imageGeneration__save_retry,
+  imageGeneration__saving_required,
+  imageGeneration__search_chats,
+  imageGeneration__search_images,
+  imageGeneration__select_compare,
+  imageGeneration__select_image,
+  imageGeneration__select_loaded,
+  imageGeneration__selected_images,
+  imageGeneration__session_deletion_pending,
+  imageGeneration__session_unavailable,
+  imageGeneration__sessions,
+  imageGeneration__show_connected_chat,
+  imageGeneration__storage_required,
+  imageGeneration__suggested_value,
+  imageGeneration__tag_rules,
+  imageGeneration__tags,
+  imageGeneration__translation_add_header,
+  imageGeneration__translation_cancelled,
+  imageGeneration__translation_choose_model,
+  imageGeneration__translation_close,
+  imageGeneration__translation_copy,
+  imageGeneration__translation_default_settings,
+  imageGeneration__translation_defaults_help,
+  imageGeneration__translation_effective,
+  imageGeneration__translation_endpoint,
+  imageGeneration__translation_header_name,
+  imageGeneration__translation_header_value,
+  imageGeneration__translation_headers,
+  imageGeneration__translation_inherit,
+  imageGeneration__translation_language,
+  imageGeneration__translation_loading_model,
+  imageGeneration__translation_model,
+  imageGeneration__translation_partial,
+  imageGeneration__translation_previous_source,
+  imageGeneration__translation_priority,
+  imageGeneration__translation_processing_input,
+  imageGeneration__translation_profile,
+  imageGeneration__translation_read_only,
+  imageGeneration__translation_remove_header,
+  imageGeneration__translation_reset,
+  imageGeneration__translation_result,
+  imageGeneration__translation_running,
+  imageGeneration__translation_save_settings,
+  imageGeneration__translation_session_settings,
+  imageGeneration__translation_settings_not_saved,
+  imageGeneration__translation_source_text,
+  imageGeneration__translation_start,
+  imageGeneration__translation_waiting,
+  imageGeneration__unfavorite,
+  imageGeneration__view_translation,
+  imageGeneration__viewing_other,
+  imageGeneration__visual_progress,
+  llamaCppBrowserDownloads__active_downloads,
+  llamaCppBrowserDownloads__all,
+  llamaCppBrowserDownloads__approximately_size,
+  llamaCppBrowserDownloads__change_default_model,
+  llamaCppBrowserDownloads__check_download_contents,
+  llamaCppBrowserDownloads__checking_hugging_face,
+  llamaCppBrowserDownloads__clear_search,
+  llamaCppBrowserDownloads__default_model,
+  llamaCppBrowserDownloads__details,
+  llamaCppBrowserDownloads__download,
+  llamaCppBrowserDownloads__download_contents,
+  llamaCppBrowserDownloads__endpoint_type,
+  llamaCppBrowserDownloads__find_more,
+  llamaCppBrowserDownloads__global_settings_scope,
+  llamaCppBrowserDownloads__in_use,
+  llamaCppBrowserDownloads__memory,
+  llamaCppBrowserDownloads__model_catalog,
+  llamaCppBrowserDownloads__no_matching_models,
+  llamaCppBrowserDownloads__not_set,
+  llamaCppBrowserDownloads__pause,
+  llamaCppBrowserDownloads__paused,
+  llamaCppBrowserDownloads__pausing,
+  llamaCppBrowserDownloads__plan_needs_review,
+  llamaCppBrowserDownloads__queue_position,
+  llamaCppBrowserDownloads__refresh_download_contents,
+  llamaCppBrowserDownloads__required_companion_included,
+  llamaCppBrowserDownloads__resume,
+  llamaCppBrowserDownloads__retry,
+  llamaCppBrowserDownloads__save_file_to_device,
+  llamaCppBrowserDownloads__search_model_names,
+  llamaCppBrowserDownloads__set_as_default,
+  llamaCppBrowserDownloads__settings_changed_review_again,
+  llamaCppBrowserDownloads__total,
+  llamaCppBrowserDownloads__use_this_model,
+  llamaCppBrowserDownloads__waiting,
+  llamaCppBrowser__automatic_profile,
+  llamaCppBrowser__automatic_profile_description,
+  llamaCppBrowser__automatic_recommended,
+  llamaCppBrowser__check_browser_support,
+  llamaCppBrowser__checking_browser_support,
+  llamaCppBrowser__choose_gguf_files,
+  llamaCppBrowser__choose_model_folder,
+  llamaCppBrowser__context_size,
+  llamaCppBrowser__delete_model,
+  llamaCppBrowser__delete_model_confirmation,
+  llamaCppBrowser__drop_model_folders_or_gguf_files_here,
+  llamaCppBrowser__endpoint_label,
+  llamaCppBrowser__files_changed_review_before_deleting,
+  llamaCppBrowser__files_to_delete,
+  llamaCppBrowser__generating,
+  llamaCppBrowser__gguf_files_only,
+  llamaCppBrowser__gguf_model_files,
+  llamaCppBrowser__image_chat_requires_matching_projector,
+  llamaCppBrowser__import_downloaded_gguf,
+  llamaCppBrowser__import_gguf,
+  llamaCppBrowser__import_then_select,
+  llamaCppBrowser__imported_models,
+  llamaCppBrowser__importing,
+  llamaCppBrowser__inference_settings,
+  llamaCppBrowser__initializing,
+  llamaCppBrowser__loading,
+  llamaCppBrowser__loading_model_list,
+  llamaCppBrowser__manage_gguf_models,
+  llamaCppBrowser__no_compatible_runtime,
+  llamaCppBrowser__no_imported_models,
+  llamaCppBrowser__operation_failed,
+  llamaCppBrowser__or_choose_files_from_your_device,
+  llamaCppBrowser__prefill,
+  llamaCppBrowser__profile,
+  llamaCppBrowser__ready,
+  llamaCppBrowser__refresh_models,
+  llamaCppBrowser__release_runtime,
+  llamaCppBrowser__unavailable_feature,
+  llamaCppBrowser__unavailable_in_standalone,
+  llamaCppPerformance__add_models,
+  llamaCppPerformance__advanced_conditions,
+  llamaCppPerformance__back_to_settings,
+  llamaCppPerformance__clear_selection,
+  llamaCppPerformance__completed_trials,
+  llamaCppPerformance__copy_model_list,
+  llamaCppPerformance__creating_zip,
+  llamaCppPerformance__download_requested,
+  llamaCppPerformance__elapsed_ms,
+  llamaCppPerformance__environment_notes,
+  llamaCppPerformance__first_received_ms,
+  llamaCppPerformance__generation_tokens_per_second,
+  llamaCppPerformance__initial_short_long_or_continuation,
+  llamaCppPerformance__keep_page_visible,
+  llamaCppPerformance__loading_models,
+  llamaCppPerformance__maximum_output_tokens,
+  llamaCppPerformance__measure_saved_models,
+  llamaCppPerformance__model_input,
+  llamaCppPerformance__model_input_help,
+  llamaCppPerformance__no_saved_models,
+  llamaCppPerformance__not_collected,
+  llamaCppPerformance__notes_help,
+  llamaCppPerformance__open_speed_investigation,
+  llamaCppPerformance__operation_diagnostic,
+  llamaCppPerformance__operation_diagnostic_help,
+  llamaCppPerformance__output_preview,
+  llamaCppPerformance__per_request_timeout_minutes,
+  llamaCppPerformance__planned_calls,
+  llamaCppPerformance__preparation_or_measurement,
+  llamaCppPerformance__refresh_models,
+  llamaCppPerformance__remove_model,
+  llamaCppPerformance__repeats,
+  llamaCppPerformance__replace_results_and_measure,
+  llamaCppPerformance__result_details,
+  llamaCppPerformance__results_are_memory_only,
+  llamaCppPerformance__runtime_profile,
+  llamaCppPerformance__save_zip,
+  llamaCppPerformance__saved_models,
+  llamaCppPerformance__search_models,
+  llamaCppPerformance__select_all,
+  llamaCppPerformance__speed_investigation,
+  llamaCppPerformance__standard_measurement,
+  llamaCppPerformance__standard_measurement_help,
+  llamaCppPerformance__start_measurement,
+  llamaCppPerformance__stop_and_return_to_settings,
+  llamaCppPerformance__stop_measurement,
+  llamaCppPerformance__stopping,
+  llamaCppPerformance__trial_status,
+  llamaCppPerformance__wait_for_other_work,
+  llamaCppPerformance__waiting_for_visible_page,
+  naidanRpc__add_header,
+  naidanRpc__apply_methods,
+  naidanRpc__chat,
+  naidanRpc__check_stop_again,
+  naidanRpc__checking_response,
+  naidanRpc__checking_stop_status,
+  naidanRpc__choose_connection,
+  naidanRpc__code,
+  naidanRpc__code_help,
+  naidanRpc__compare,
+  naidanRpc__compare_help,
+  naidanRpc__connect,
+  naidanRpc__connected,
+  naidanRpc__connecting,
+  naidanRpc__connections,
+  naidanRpc__disable,
+  naidanRpc__disabled,
+  naidanRpc__disconnect,
+  naidanRpc__disconnect_confirm,
+  naidanRpc__disconnected,
+  naidanRpc__enable,
+  naidanRpc__enable_first,
+  naidanRpc__failed,
+  naidanRpc__feature_details,
+  naidanRpc__forget,
+  naidanRpc__forget_confirm,
+  naidanRpc__header_name,
+  naidanRpc__header_value,
+  naidanRpc__headers,
+  naidanRpc__images,
+  naidanRpc__initiator,
+  naidanRpc__label,
+  naidanRpc__manage,
+  naidanRpc__matches,
+  naidanRpc__methods_empty,
+  naidanRpc__methods_pending,
+  naidanRpc__native_unavailable,
+  naidanRpc__new_calls_blocked_waiting_for_completion,
+  naidanRpc__new_connection,
+  naidanRpc__no_connections,
+  naidanRpc__provide,
+  naidanRpc__provide_help,
+  naidanRpc__refresh,
+  naidanRpc__reject,
+  naidanRpc__remember,
+  naidanRpc__remember_help,
+  naidanRpc__remove_header,
+  naidanRpc__responder,
+  naidanRpc__rpc_connections_stopped,
+  naidanRpc__save_connection,
+  naidanRpc__saved,
+  naidanRpc__saving,
+  naidanRpc__server,
+  naidanRpc__start,
+  naidanRpc__stop_not_confirmed_check_managing_tab,
+  naidanRpc__stopping,
+  naidanRpc__summary,
+  naidanRpc__temporary,
+  naidanRpc__title,
+  naidanRpc__transport,
+  naidanRpc__use_help,
+  naidanRpc__waiting_for_capacity,
+  stableDiffusionCppBrowser__add_models,
+  stableDiffusionCppBrowser__advanced_parameters,
+  stableDiffusionCppBrowser__advanced_parameters_help,
+  stableDiffusionCppBrowser__apply_recommended_settings,
+  stableDiffusionCppBrowser__artifact_not_installed,
+  stableDiffusionCppBrowser__bf16_weight_conversion,
+  stableDiffusionCppBrowser__bf16_weight_conversion_help,
+  stableDiffusionCppBrowser__cancel,
+  stableDiffusionCppBrowser__cancel_wait_help,
+  stableDiffusionCppBrowser__cancelled,
+  stableDiffusionCppBrowser__catalog_download,
+  stableDiffusionCppBrowser__catalog_drop_help,
+  stableDiffusionCppBrowser__catalog_file_notice,
+  stableDiffusionCppBrowser__catalog_help,
+  stableDiffusionCppBrowser__catalog_layout,
+  stableDiffusionCppBrowser__catalog_qwen_image,
+  stableDiffusionCppBrowser__catalog_source,
+  stableDiffusionCppBrowser__catalog_title,
+  stableDiffusionCppBrowser__catalog_validation,
+  stableDiffusionCppBrowser__catalog_z_image,
+  stableDiffusionCppBrowser__check_inputs,
+  stableDiffusionCppBrowser__checkpoint,
+  stableDiffusionCppBrowser__choose_repository_folder,
+  stableDiffusionCppBrowser__clear_previews,
+  stableDiffusionCppBrowser__clear_results,
+  stableDiffusionCppBrowser__clip_g_file,
+  stableDiffusionCppBrowser__clip_l_file,
+  stableDiffusionCppBrowser__companion_files_help,
+  stableDiffusionCppBrowser__component_evidence_help,
+  stableDiffusionCppBrowser__component_required,
+  stableDiffusionCppBrowser__components_detected,
+  stableDiffusionCppBrowser__conditioning_cache,
+  stableDiffusionCppBrowser__copy_logs,
+  stableDiffusionCppBrowser__debug_help,
+  stableDiffusionCppBrowser__debug_mode,
+  stableDiffusionCppBrowser__decoding_image,
+  stableDiffusionCppBrowser__diagnostics,
+  stableDiffusionCppBrowser__diffusion_file,
+  stableDiffusionCppBrowser__distilled_guidance,
+  stableDiffusionCppBrowser__download_and_select,
+  stableDiffusionCppBrowser__download_cancelled,
+  stableDiffusionCppBrowser__download_complete,
+  stableDiffusionCppBrowser__download_failed,
+  stableDiffusionCppBrowser__download_png,
+  stableDiffusionCppBrowser__downloaded_but_incomplete,
+  stableDiffusionCppBrowser__downloading_selected,
+  stableDiffusionCppBrowser__encoding,
+  stableDiffusionCppBrowser__experimental_local_workspace,
+  stableDiffusionCppBrowser__file_count,
+  stableDiffusionCppBrowser__files_available,
+  stableDiffusionCppBrowser__filter_components,
+  stableDiffusionCppBrowser__flash_attention,
+  stableDiffusionCppBrowser__force_stop,
+  stableDiffusionCppBrowser__gallery_budget,
+  stableDiffusionCppBrowser__generate,
+  stableDiffusionCppBrowser__generated_images,
+  stableDiffusionCppBrowser__generation_time,
+  stableDiffusionCppBrowser__gpu_budget,
+  stableDiffusionCppBrowser__gpu_budget_help,
+  stableDiffusionCppBrowser__guidance,
+  stableDiffusionCppBrowser__height,
+  stableDiffusionCppBrowser__history_is_temporary,
+  stableDiffusionCppBrowser__hosted_build_required,
+  stableDiffusionCppBrowser__image_generation_lab,
+  stableDiffusionCppBrowser__import_models,
+  stableDiffusionCppBrowser__import_repository_help,
+  stableDiffusionCppBrowser__importing_repository,
+  stableDiffusionCppBrowser__incompatible_candidate,
+  stableDiffusionCppBrowser__incomplete_components,
+  stableDiffusionCppBrowser__inspection_issues,
+  stableDiffusionCppBrowser__jspi_unavailable,
+  stableDiffusionCppBrowser__keep_model_loaded,
+  stableDiffusionCppBrowser__keep_previews,
+  stableDiffusionCppBrowser__listing_repositories,
+  stableDiffusionCppBrowser__lm_file,
+  stableDiffusionCppBrowser__loading_model,
+  stableDiffusionCppBrowser__loading_runtime,
+  stableDiffusionCppBrowser__local_files_only,
+  stableDiffusionCppBrowser__local_library,
+  stableDiffusionCppBrowser__logs_copied,
+  stableDiffusionCppBrowser__logs_copy_failed,
+  stableDiffusionCppBrowser__main_image_model,
+  stableDiffusionCppBrowser__manual_model_files,
+  stableDiffusionCppBrowser__memory64_unavailable,
+  stableDiffusionCppBrowser__memory_and_cancellation,
+  stableDiffusionCppBrowser__model_and_runtime,
+  stableDiffusionCppBrowser__model_arguments,
+  stableDiffusionCppBrowser__model_file,
+  stableDiffusionCppBrowser__model_layout,
+  stableDiffusionCppBrowser__model_resident,
+  stableDiffusionCppBrowser__negative_prompt,
+  stableDiffusionCppBrowser__no_images_yet,
+  stableDiffusionCppBrowser__preset_policy,
+  stableDiffusionCppBrowser__preset_sources,
+  stableDiffusionCppBrowser__preset_unknown,
+  stableDiffusionCppBrowser__preview_after_step,
+  stableDiffusionCppBrowser__preview_empty,
+  stableDiffusionCppBrowser__preview_enabled,
+  stableDiffusionCppBrowser__preview_help,
+  stableDiffusionCppBrowser__preview_interval,
+  stableDiffusionCppBrowser__preview_limit,
+  stableDiffusionCppBrowser__preview_max_edge,
+  stableDiffusionCppBrowser__preview_mode,
+  stableDiffusionCppBrowser__preview_mode_locked,
+  stableDiffusionCppBrowser__preview_original,
+  stableDiffusionCppBrowser__preview_projection,
+  stableDiffusionCppBrowser__preview_start_step,
+  stableDiffusionCppBrowser__preview_title,
+  stableDiffusionCppBrowser__preview_vae,
+  stableDiffusionCppBrowser__profile,
+  stableDiffusionCppBrowser__prompt,
+  stableDiffusionCppBrowser__qwen_preset_policy,
+  stableDiffusionCppBrowser__qwen_vae_bounded,
+  stableDiffusionCppBrowser__qwen_vae_help,
+  stableDiffusionCppBrowser__recommended_preview_summary,
+  stableDiffusionCppBrowser__recommended_settings,
+  stableDiffusionCppBrowser__refresh_repositories,
+  stableDiffusionCppBrowser__release_model,
+  stableDiffusionCppBrowser__remove,
+  stableDiffusionCppBrowser__result_limit,
+  stableDiffusionCppBrowser__runtime_settings,
+  stableDiffusionCppBrowser__sampler,
+  stableDiffusionCppBrowser__sampling,
+  stableDiffusionCppBrowser__save_logs,
+  stableDiffusionCppBrowser__scanning_repositories,
+  stableDiffusionCppBrowser__scheduler,
+  stableDiffusionCppBrowser__seed,
+  stableDiffusionCppBrowser__select_component,
+  stableDiffusionCppBrowser__select_saved_recipe,
+  stableDiffusionCppBrowser__selected,
+  stableDiffusionCppBrowser__selected_model,
+  stableDiffusionCppBrowser__separate_components,
+  stableDiffusionCppBrowser__show_all_weights,
+  stableDiffusionCppBrowser__show_logs,
+  stableDiffusionCppBrowser__steps,
+  stableDiffusionCppBrowser__stopping_retained,
+  stableDiffusionCppBrowser__structural_match,
+  stableDiffusionCppBrowser__t5_file,
+  stableDiffusionCppBrowser__uniform_image_warning,
+  stableDiffusionCppBrowser__unverified_candidate,
+  stableDiffusionCppBrowser__vae_file,
+  stableDiffusionCppBrowser__vae_tile_size,
+  stableDiffusionCppBrowser__vae_tiling,
+  stableDiffusionCppBrowser__validation_limits,
+  stableDiffusionCppBrowser__webgpu_required,
+  stableDiffusionCppBrowser__weight_residency,
+  stableDiffusionCppBrowser__weight_residency_auto,
+  stableDiffusionCppBrowser__weight_residency_cpu,
+  stableDiffusionCppBrowser__weight_residency_disk,
+  stableDiffusionCppBrowser__weight_residency_help,
+  stableDiffusionCppBrowser__weight_residency_hybrid,
+  stableDiffusionCppBrowser__width,
   toolCall__arguments,
   toolCall__code,
   toolCall__disable_wrap,
@@ -4727,386 +5454,4 @@ export const catalog = {
   weshTerminal__session,
   weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue,
   weshTerminal__wesh_terminal,
-  llamaCppBrowser__endpoint_label,
-  llamaCppBrowser__gguf_model_files,
-  llamaCppBrowser__choose_gguf_files,
-  LlamaCppBrowserHuggingFaceManager__check_model,
-  LlamaCppBrowserHuggingFaceManager__unspecified_quantization,
-  LlamaCppBrowserHuggingFaceManager__multimodal_support,
-  LlamaCppBrowserHuggingFaceManager__download_companion_files_for_supported_models,
-  LlamaCppBrowserHuggingFaceManager__no_companion_files_available,
-  LlamaCppBrowserHuggingFaceManager__choose_between_variants_in_download_details,
-  LlamaCppBrowserHuggingFaceManager__download_details,
-  LlamaCppBrowserHuggingFaceManager__model_variant,
-  LlamaCppBrowserHuggingFaceManager__companion_file,
-  LlamaCppBrowserHuggingFaceManager__choose_companion_file,
-  LlamaCppBrowserHuggingFaceManager__downloading_model,
-  LlamaCppBrowserHuggingFaceManager__checking_model,
-  LlamaCppBrowserHuggingFaceManager__download_paused,
-  llamaCppBrowser__files_to_delete,
-  llamaCppBrowser__files_changed_review_before_deleting,
-  LlamaCppBrowserDeletionDialog__also_delete_shared_multimodal_files,
-  LlamaCppBrowserDeletionDialog__other_variants_will_lose_multimodal_support,
-  LlamaCppBrowserHuggingFaceManager__multimodal_quantization,
-  LlamaCppBrowserHuggingFaceManager__shared_multimodal_file_conflict,
-  LlamaCppBrowserHuggingFaceManager__estimating_remaining_time,
-  LlamaCppBrowserHuggingFaceManager__performing_final_checks,
-  LlamaCppBrowserHuggingFaceManager__about_seconds_remaining,
-  LlamaCppBrowserHuggingFaceManager__about_minutes_remaining,
-  LlamaCppBrowserHuggingFaceManager__about_hours_remaining,
-  LlamaCppBrowserHuggingFaceManager__about_hours_and_minutes_remaining,
-  LlamaCppBrowserHuggingFaceManager__model_files_already_exist,
-  LlamaCppBrowserHuggingFaceManager__another_download_already_exists,
-  LlamaCppBrowserHuggingFaceManager__repository,
-  LlamaCppBrowserHuggingFaceManager__quantization,
-  LlamaCppBrowserHuggingFaceManager__choose_model_files,
-  LlamaCppBrowserHuggingFaceManager__requested_variant_needs_selection,
-  LlamaCppBrowserHuggingFaceManager__no_complete_gguf_models_found,
-  LlamaCppBrowserHuggingFaceManager__total_download_size,
-  LlamaCppBrowserHuggingFaceManager__download,
-  LlamaCppBrowserHuggingFaceManager__downloaded,
-  LlamaCppBrowserHuggingFaceManager__pause,
-  LlamaCppBrowserHuggingFaceManager__resume,
-  LlamaCppBrowserHuggingFaceManager__cancel_and_delete,
-  LlamaCppBrowserHuggingFaceManager__download_failed_retry_or_resume,
-  llamaCppBrowser__choose_model_folder,
-  llamaCppBrowser__gguf_files_only,
-  llamaCppBrowser__drop_model_folders_or_gguf_files_here,
-  llamaCppBrowser__or_choose_files_from_your_device,
-  llamaCppBrowser__inference_settings,
-  llamaCppBrowser__automatic_profile,
-  llamaCppBrowser__checking_browser_support,
-  llamaCppBrowser__check_browser_support,
-  llamaCppBrowser__unavailable_feature,
-  llamaCppBrowser__no_compatible_runtime,
-  llamaCppBrowser__automatic_recommended,
-  llamaCppBrowser__automatic_profile_description,
-  llamaCppBrowser__imported_models,
-  llamaCppBrowser__loading_model_list,
-  llamaCppBrowser__manage_gguf_models,
-  llamaCppBrowser__import_downloaded_gguf,
-  llamaCppBrowser__unavailable_in_standalone,
-  llamaCppBrowser__image_chat_requires_matching_projector,
-  llamaCppBrowser__import_gguf,
-  llamaCppBrowser__profile,
-  llamaCppBrowser__context_size,
-  llamaCppBrowser__no_imported_models,
-  llamaCppBrowser__delete_model,
-  llamaCppBrowser__delete_model_confirmation,
-  llamaCppBrowser__release_runtime,
-  llamaCppBrowser__refresh_models,
-  llamaCppBrowser__operation_failed,
-  llamaCppBrowser__ready,
-  llamaCppBrowser__importing,
-  llamaCppBrowser__initializing,
-  llamaCppBrowser__loading,
-  llamaCppBrowser__prefill,
-  llamaCppBrowser__generating,
-  llamaCppBrowser__import_then_select,
-  llamaCppBrowserDownloads__active_downloads,
-  llamaCppBrowserDownloads__model_catalog,
-  llamaCppBrowserDownloads__download_contents,
-  llamaCppBrowserDownloads__all,
-  llamaCppBrowserDownloads__approximately_size,
-  llamaCppBrowserDownloads__change_default_model,
-  llamaCppBrowserDownloads__check_download_contents,
-  llamaCppBrowserDownloads__checking_hugging_face,
-  llamaCppBrowserDownloads__clear_search,
-  llamaCppBrowserDownloads__default_model,
-  llamaCppBrowserDownloads__details,
-  llamaCppBrowserDownloads__download,
-  llamaCppBrowserDownloads__endpoint_type,
-  llamaCppBrowserDownloads__global_settings_scope,
-  llamaCppBrowserDownloads__in_use,
-  llamaCppBrowserDownloads__memory,
-  llamaCppBrowserDownloads__no_matching_models,
-  llamaCppBrowserDownloads__not_set,
-  llamaCppBrowserDownloads__pause,
-  llamaCppBrowserDownloads__paused,
-  llamaCppBrowserDownloads__pausing,
-  llamaCppBrowserDownloads__plan_needs_review,
-  llamaCppBrowserDownloads__queue_position,
-  llamaCppBrowserDownloads__refresh_download_contents,
-  llamaCppBrowserDownloads__resume,
-  llamaCppBrowserDownloads__retry,
-  llamaCppBrowserDownloads__save_file_to_device,
-  llamaCppBrowserDownloads__search_model_names,
-  llamaCppBrowserDownloads__set_as_default,
-  llamaCppBrowserDownloads__settings_changed_review_again,
-  llamaCppBrowserDownloads__total,
-  llamaCppBrowserDownloads__waiting,
-  llamaCppBrowserDownloads__find_more,
-  audioGeneration__decoding_audio,
-  audioGeneration__audio_generation,
-  audioGeneration__introduction,
-  audioGeneration__manage_models_and_runtime,
-  audioGeneration__model_setup_help,
-  audioGeneration__model_support_help,
-  audioGeneration__audio_model,
-  audioGeneration__choose_model,
-  audioGeneration__input_text,
-  audioGeneration__input_placeholder,
-  audioGeneration__language,
-  audioGeneration__model_default,
-  audioGeneration__language_help,
-  audioGeneration__reference_voice,
-  audioGeneration__reference_help,
-  audioGeneration__clear_reference,
-  audioGeneration__advanced_settings,
-  audioGeneration__audio_processor,
-  audioGeneration__cpu_audio,
-  audioGeneration__runtime_audio,
-  audioGeneration__processor_help,
-  audioGeneration__context_tokens,
-  audioGeneration__maximum_steps,
-  audioGeneration__backbone_temperature,
-  audioGeneration__backbone_top_k,
-  audioGeneration__backbone_top_p,
-  audioGeneration__seed,
-  audioGeneration__sampling_help,
-  audioGeneration__native_diagnostics,
-  audioGeneration__generate_audio,
-  audioGeneration__stop_generation,
-  audioGeneration__stopping,
-  audioGeneration__waiting,
-  audioGeneration__finish_and_keep_audio,
-  audioGeneration__finishing_current_step,
-  audioGeneration__finish_audio_help,
-  audioGeneration__finished_early,
-  audioGeneration__cancel_and_discard,
-  audioGeneration__drop_reference_audio,
-  audioGeneration__add_reference_files,
-  audioGeneration__record_reference,
-  audioGeneration__stop_and_use_recording,
-  audioGeneration__discard_recording,
-  audioGeneration__requesting_microphone,
-  audioGeneration__recording_audio,
-  audioGeneration__preparing_recording,
-  audioGeneration__preparing_references,
-  audioGeneration__recording_help,
-  audioGeneration__reference_collection_help,
-  audioGeneration__selected_references,
-  audioGeneration__deselect_all_references,
-  audioGeneration__delete_reference,
-  audioGeneration__delete_all_references,
-  audioGeneration__no_reference_selected,
-  audioGeneration__reference_empty,
-  audioGeneration__reference_too_large,
-  audioGeneration__reference_too_long,
-  audioGeneration__reference_decode_failed,
-  audioGeneration__recording_unavailable,
-  audioGeneration__reference_library_full,
-  audioGeneration__microphone_permission_denied,
-  audioGeneration__microphone_unavailable,
-  audioGeneration__recording_failed,
-  audioGeneration__recording_limited_to_thirty_seconds,
-  audioGeneration__reference_usage_notes,
-  audioGeneration__generation_stopped,
-  audioGeneration__generated_audio,
-  audioGeneration__save_wav,
-  audioGeneration__limit_reached,
-  audioGeneration__output_lifetime,
-  audioGeneration__check_parameters,
-  audioGeneration__unsupported_model,
-  audioGeneration__reference_required,
-  audioGeneration__invalid_reference,
-  audioGeneration__empty_audio,
-  audioGeneration__context_full,
-  audioGeneration__generation_failed,
-  audioGeneration__runtime_unavailable,
-  audioGeneration__steps_completed,
-  audioGeneration__context_help,
-  audioGeneration__invalid_text,
-  audioGeneration__integer_range,
-  audioGeneration__number_range,
-  audioGeneration__invalid_top_p,
-  audioGeneration__reinitialize_runtime,
-  audioGeneration__reinitializing_runtime,
-  audioGeneration__reinitialize_runtime_help,
-  audioGeneration__copy_text,
-  audioGeneration__text_copied,
-  audioGeneration__copy_failed_select_text,
-  imageBenchmark__diagnostics,
-  imageBenchmark__introduction,
-  imageBenchmark__shared_settings,
-  imageBenchmark__model_sampling_defaults,
-  imageBenchmark__defaults_help,
-  imageBenchmark__protocol,
-  imageBenchmark__cold_then_warm,
-  imageBenchmark__fresh_each,
-  imageBenchmark__runs_per_model,
-  imageBenchmark__order,
-  imageBenchmark__listed_order,
-  imageBenchmark__reverse_order,
-  imageBenchmark__cooldown,
-  imageBenchmark__timeout,
-  ImageBenchmarkResult__no_image,
-  ImageBenchmarkResult__image_memory_limit_reached,
-  ImageBenchmarkResult__image_not_retained,
-  ImageBenchmarkResult__generated_image,
-  imageBenchmark__keep_images,
-  imageBenchmark__limits,
-  imageBenchmark__fairness,
-  imageBenchmark__environment_notes,
-  imageBenchmark__available_models,
-  imageBenchmark__select_all,
-  imageBenchmark__select_none,
-  imageBenchmark__no_models,
-  imageBenchmark__unavailable_components,
-  imageBenchmark__overrides,
-  imageBenchmark__override,
-  imageBenchmark__effective_request,
-  imageBenchmark__start,
-  imageBenchmark__stop,
-  imageBenchmark__download_zip,
-  imageBenchmark__new_measurement,
-  imageBenchmark__include_prompts,
-  imageBenchmark__export_privacy,
-  imageBenchmark__archive_saved,
-  imageBenchmark__results,
-  imageBenchmark__run,
-  imageBenchmark__cold,
-  imageBenchmark__warm,
-  imageBenchmark__queued,
-  imageBenchmark__running,
-  imageBenchmark__succeeded,
-  imageBenchmark__failed,
-  imageBenchmark__cancelled,
-  imageBenchmark__skipped,
-  imageBenchmark__elapsed,
-  imageBenchmark__sampling,
-  imageBenchmark__model_load,
-  imageBenchmark__check_plan,
-  imageBenchmark__exporting,
-  imageBenchmark__freshness_warning,
-  ImageLoraControls__lora_adapters,
-  ImageLoraControls__choose_files,
-  ImageLoraControls__saved_adapters,
-  ImageLoraControls__choose_saved_adapter,
-  ImageLoraControls__saved_adapter_compatibility_unverified,
-  ImageLoraControls__add_adapter,
-  ImageGenerationLab__image_generation_entirely_in_browser,
-  ImageGenerationLab__debug,
-  ImageGenerationLab__record_detailed_logs,
-  ImageGenerationLab__models,
-  ImageGenerationLab__history,
-  ImageGenerationLab__prepare_models_help,
-  ImageGenerationLab__back_to_generation,
-  ImageGenerationEditor__choose_model_to_begin,
-  ImageGenerationEditor__sampling_settings,
-  ImageModelCatalog__checking_saved_models,
-  ImageHistoryImage__loading_image,
-  ImageHistoryImage__image_unavailable,
-  ImageHistoryImage__could_not_load_image,
-  ImageGenerationHistory__experimental_history_notice,
-  ImageGenerationHistory__backup_does_not_include_history,
-  ImageGenerationHistory__opfs_required,
-  ImageGenerationHistory__search_history,
-  ImageGenerationHistory__refresh,
-  ImageGenerationHistory__first_page,
-  ImageGenerationHistory__previous_page,
-  ImageGenerationHistory__next_page,
-  ImageGenerationHistory__last_page,
-  ImageGenerationHistory__page_of_total,
-  ImageGenerationHistory__loading_history,
-  ImageGenerationHistory__no_history_found,
-  ImageGenerationHistory__load_more,
-  ImageGenerationHistory__close_details,
-  ImageGenerationHistory__reuse_settings,
-  ImageGenerationHistory__use_as_initial_image,
-  ImageGenerationHistory__use_as_reference_image,
-  ImageGenerationHistory__include_settings_in_png,
-  ImageGenerationHistory__requested_seed,
-  ImageGenerationHistory__requested_settings,
-  ImageGenerationHistory__reuse_does_not_download_models,
-  ImageGenerationHistory__generation_details,
-  ImageGenerationHistory__delete_image_file,
-  ImageGenerationHistory__deleting_image_file_affects_other_records,
-  ImageGenerationHistory__remove_from_history,
-  ImageGenerationHistory__removing_keeps_image_files,
-  ImageGenerationViewer__image_preview,
-  ImageGenerationViewer__previous_image,
-  ImageGenerationViewer__next_image,
-  ImageGenerationViewer__zoom_in,
-  ImageGenerationViewer__zoom_out,
-  ImageGenerationViewer__reset_view,
-  ImageGenerationViewer__close_preview,
-  ImageGenerationLab__select_missing_files,
-  ImageGenerationLab__continue_without_missing_files,
-  ImageGenerationResults__save_generation_history,
-  ImageGenerationResults__saving_history,
-  ImageGenerationResults__history_setting_applies_to_next_generation,
-  ImageGenerationResults__saved_to_history,
-  ImageGenerationResults__history_save_failed_download_image,
-  ImageGenerationResults__retry_saving,
-  ImageGenerationResults__about_saved_history,
-  ImageGenerationResults__current_images_are_temporary,
-  ImageGenerationResults__latest_generation,
-  ImageGenerationResults__image_generation_failed,
-  ImageGenerationResults__no_final_image_was_created,
-  ImageGenerationResults__view_diagnostics,
-  ImageGenerationResults__previous_results,
-  ImageGenerationPreview__preview_from_failed_generation,
-  ImageGenerationPreview__preview_from_cancelled_generation,
-  ImageGenerationResults__unsaved_generations,
-  ImageGenerationResults__view_in_my_images,
-  ImageGenerationEditor__model_configuration,
-  ImageInputControls__image_count,
-  ImageInputControls__expand_image,
-  ImageInputControls__preview_unavailable,
-  ImageInputControls__move_later,
-  ImageInputControls__move_earlier,
-  ImageInputControls__reference_images_help,
-  ImageInputControls__drop_image_here,
-  ImageInputControls__add_reference_images,
-  ImageInputControls__replace_image,
-  ImageInputControls__choose_image,
-  ImageLoraControls__selected_adapters,
-  ImageGenerationLab__saved_models,
-  ImageGenerationEditor__view_result,
-  ImageGenerationEditor__edits_apply_to_next_generation,
-  ImageGenerationEditor__pick_new_seed,
-  ImageGenerationEditor__fixed_seed,
-  ImageGenerationEditor__new_seed_each_time,
-  ImageGenerationEditor__resolution_must_use_supported_dimensions,
-  ImageGenerationEditor__swap_width_and_height,
-  ImageGenerationEditor__image_size,
-  ImageGenerationEditor__prepare_model,
-  ImageGenerationHistory__read_warnings,
-  ImageGenerationHistory__readable_matches,
-  ImageGenerationHistory__some_history_files_could_not_be_read,
-  ImageGenerationLab__disabled_loras_not_restored,
-  ImageGenerationResults__return_to_opfs_to_retry,
-  ImageModelCatalog__download_queue,
-  ImageModelCatalog__queued,
-  ImageModelCatalog__recommended,
-  ImageModelCatalog__optional_lora,
-  ImageModelCatalog__reference_style_lora_help,
-  ImageModelCatalog__saved_choose_in_lora_controls,
-  ImageLoraControls__strength,
-  ImageLoraControls__enabled,
-  ImageLoraControls__remove,
-  ImageLoraControls__choose_up_to_16_gguf_or_safetensors_files,
-  ImageLoraControls__choose_adapters_for_selected_model,
-  ImageInputControls__input_images,
-  ImageInputControls__initial_image,
-  ImageInputControls__reference_images,
-  ImageInputControls__change_strength,
-  ImageInputControls__remove,
-  ImageInputControls__choose_png_jpeg_or_webp,
-  ImageInputControls__initial_image_help,
-  ImageInputControls__model_support_required,
-  imageBenchmark__include_input_images_in_zip,
-  ImageInputControls__reading_clipboard,
-  ImageInputControls__clipboard_no_image,
-  ImageInputControls__clipboard_failed,
-  ImageInputControls__clipboard_unavailable,
-  ImageInputControls__paste_help,
-  ImageInputControls__paste_image,
-  ImageGenerationViewer__details,
-  imageGeneration__action_applied,
-  imageGeneration__generation_session,
-  imageGeneration__choose_chat_help,
-  imageGeneration__close_chat,
-  imageGeneration__open_assistant_chat,
 } satisfies Strings;

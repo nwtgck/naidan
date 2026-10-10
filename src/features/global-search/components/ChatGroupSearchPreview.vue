@@ -45,7 +45,8 @@ async function selectAndNavigate({ chatId }: { chatId: ChatId }) {
 }
 
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short', day: 'numeric',
+  month: 'short',
+  day: 'numeric',
 });
 
 function formatTime({ timestamp }: { timestamp: number }) {

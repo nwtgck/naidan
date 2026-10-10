@@ -79,7 +79,9 @@ async function findDownloadTarget({ signal }: { signal: AbortSignal }): Promise<
   // .ready can remain pending forever when no worker is registered (e.g. dev).
   // getRegistration is a local lookup, not register/update or a network request.
   const registration = await waitForDownloadOperation({
-    operation: () => navigator.serviceWorker.getRegistration(), signal, timeoutMs: DOWNLOAD_SETUP_TIMEOUT_MS,
+    operation: () => navigator.serviceWorker.getRegistration(),
+    signal,
+    timeoutMs: DOWNLOAD_SETUP_TIMEOUT_MS,
   });
   signal.throwIfAborted();
   const worker = registration?.active;
@@ -90,14 +92,18 @@ async function findDownloadTarget({ signal }: { signal: AbortSignal }): Promise<
   // navigation. This lookup is local too and contains no token or metadata.
   const destination = new URL(DOWNLOAD_FRAGMENT_PATH, base);
   const target = await waitForDownloadOperation({
-    operation: () => navigator.serviceWorker.getRegistration(destination.href), signal, timeoutMs: DOWNLOAD_SETUP_TIMEOUT_MS,
+    operation: () => navigator.serviceWorker.getRegistration(destination.href),
+    signal,
+    timeoutMs: DOWNLOAD_SETUP_TIMEOUT_MS,
   });
   if (!target || target.scope !== registration.scope || target.active !== worker) return;
   // A preload can contact the host before the fetch handler runs. Do not enable,
   // disable or otherwise modify the app's registration; use Blob saving instead.
   if (target.navigationPreload) {
     const state = await waitForDownloadOperation({
-      operation: () => target.navigationPreload.getState(), signal, timeoutMs: DOWNLOAD_SETUP_TIMEOUT_MS,
+      operation: () => target.navigationPreload.getState(),
+      signal,
+      timeoutMs: DOWNLOAD_SETUP_TIMEOUT_MS,
     });
     if (navigationPreloadStateSchema.parse(state).enabled) return;
   }
@@ -115,17 +121,21 @@ async function downloadBufferedStream({ openStream, filename, size, signal }: {
   const chunks: BlobPart[] = [];
   let written = 0;
   try {
-    const stream = await waitForDownloadOperation({ signal, timeoutMs: undefined, operation: async () => {
-      const opened = await openStream();
-      // Retain ownership before resolving the setup race: abort can win after
-      // this callback returns but before its caller receives the stream.
-      openedStream = opened;
-      if (signal.aborted) {
-        if (!opened.locked) void opened.cancel(signal.reason).catch(() => undefined);
-        signal.throwIfAborted();
-      }
-      return opened;
-    } });
+    const stream = await waitForDownloadOperation({
+      signal,
+      timeoutMs: undefined,
+      operation: async () => {
+        const opened = await openStream();
+        // Retain ownership before resolving the setup race: abort can win after
+        // this callback returns but before its caller receives the stream.
+        openedStream = opened;
+        if (signal.aborted) {
+          if (!opened.locked) void opened.cancel(signal.reason).catch(() => undefined);
+          signal.throwIfAborted();
+        }
+        return opened;
+      },
+    });
     // Do not let a producer's never-settling cancel hook hold the UI open.
     await createAbortableByteStream({ stream, signal, onCancel: undefined }).pipeTo(new WritableStream<Uint8Array>({
       write(chunk) {
@@ -158,9 +168,7 @@ async function downloadBufferedStream({ openStream, filename, size, signal }: {
  * Neither cancellation nor a partly consumed one-shot source is retried.
  * Completion is stream EOF / Blob-link dispatch, NOT a durable disk-write event.
  */
-export async function downloadStream({ openStream, filename, size, signal }: StreamDownloadOptions & {
-  openStream: StreamFactory,
-}): Promise<void> {
+export async function downloadStream({ openStream, filename, size, signal }: { openStream: StreamFactory, filename: StreamDownloadOptions['filename'], size: StreamDownloadOptions['size'], signal: StreamDownloadOptions['signal'] }): Promise<void> {
   await downloadSource({ openStream, filename, size, signal, fallbackFile: undefined });
 }
 
@@ -175,10 +183,7 @@ export async function downloadFile({ file, filename, signal }: {
   await downloadSource({ openStream: async () => file.stream(), filename, size: file.size, signal, fallbackFile: file });
 }
 
-async function downloadSource({ openStream, filename, size, signal, fallbackFile }: StreamDownloadOptions & {
-  openStream: StreamFactory,
-  fallbackFile: Blob | undefined,
-}): Promise<void> {
+async function downloadSource({ openStream, filename, size, signal, fallbackFile }: { openStream: StreamFactory, filename: StreamDownloadOptions['filename'], size: StreamDownloadOptions['size'], signal: StreamDownloadOptions['signal'], fallbackFile: Blob | undefined }): Promise<void> {
   signal?.throwIfAborted();
   const metadata = downloadMetadataSchema.parse({ filename: normalizeDownloadFilename({ filename }), size });
   const lifecycle = new AbortController();
@@ -192,7 +197,10 @@ async function downloadSource({ openStream, filename, size, signal, fallbackFile
     try {
       const target = await findDownloadTarget({ signal: lifecycle.signal });
       if (target) {
-        await downloadWithWorker({ target, metadata, signal: lifecycle.signal,
+        await downloadWithWorker({
+          target,
+          metadata,
+          signal: lifecycle.signal,
           openStream: async () => {
             // Set BEFORE awaiting: a rejected factory must never be run twice.
             sourceOpened = true;
@@ -273,15 +281,21 @@ async function downloadWithWorker({ target: { registration, worker, base }, meta
   try {
     signal.throwIfAborted();
     data = new MessageChannel();
-    source = serveByteStream({ port: data.port1, signal: abort.signal, openStream: async () => {
-      signal.throwIfAborted();
-      // A broken/outdated peer must not consume the input during negotiation.
-      if (phase !== 'ready' && phase !== 'claimed') throw new Error('Download was not prepared');
-      return openStream();
-    } });
+    source = serveByteStream({
+      port: data.port1,
+      signal: abort.signal,
+      openStream: async () => {
+        signal.throwIfAborted();
+        // A broken/outdated peer must not consume the input during negotiation.
+        if (phase !== 'ready' && phase !== 'claimed') throw new Error('Download was not prepared');
+        return openStream();
+      },
+    });
     void source.completed.catch(reason => fail({ reason }));
     channel = createValidatedMessagePort({
-      port: control.port1, incomingSchema: downloadStatusSchema, outgoingSchema: downloadControlSchema,
+      port: control.port1,
+      incomingSchema: downloadStatusSchema,
+      outgoingSchema: downloadControlSchema,
       onError: fail,
       onMessage({ message }) {
         if (isFinished()) return;
@@ -374,9 +388,7 @@ async function downloadWithWorker({ target: { registration, worker, base }, meta
 }
 
 /** Takes ownership of stream immediately, including failures before negotiation. */
-export async function downloadReadableStream({ stream, ...options }: StreamDownloadOptions & {
-  stream: ReadableStream<Uint8Array>,
-}): Promise<void> {
+export async function downloadReadableStream({ stream, ...options }: { stream: ReadableStream<Uint8Array>, filename: StreamDownloadOptions['filename'], size: StreamDownloadOptions['size'], signal: StreamDownloadOptions['signal'] }): Promise<void> {
   try {
     await downloadStream({ ...options, openStream: async () => stream });
   } catch (reason) {

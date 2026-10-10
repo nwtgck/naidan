@@ -199,7 +199,8 @@ export function buildCompactRequestMessages({
   let raw = 'compact_instruction';
   while (ids.has(raw)) raw += '_';
   messages.push({
-    id: toMessageId({ raw }), role: 'user',
+    id: toMessageId({ raw }),
+    role: 'user',
     parts: [{ type: 'text', text: instructionContent ?? createCompactInstruction({ promptMode }), completeness: 'complete' }],
   });
   return messages;
@@ -227,6 +228,8 @@ export async function createProviderForCompact({
       endpoint: endpoint.url,
       headers: endpoint.httpHeaders,
     });
+  case 'naidan_rpc':
+    return new (await import('@/features/naidan-rpc-integration/adapters/lm-provider')).NaidanRpcLmProvider({ registrationId: endpoint.registrationId });
   case 'transformers_js':
     return new (await import('@/features/transformers-js/provider')).TransformersJsProvider();
   case 'llama_cpp_browser':

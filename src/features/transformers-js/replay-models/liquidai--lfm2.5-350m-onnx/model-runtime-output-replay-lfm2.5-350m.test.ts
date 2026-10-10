@@ -17,9 +17,11 @@ import type * as Tjs from '@huggingface/transformers';
 type Context = Parameters<GenerationStrategy['generate']>[0];
 const modelId = "LiquidAI/LFM2.5-350M-ONNX";
 installRawReplay({ evidence: undefined });
+
 afterEach(() => {
   vi.doUnmock('@huggingface/transformers'); vi.resetModules();
 });
+
 function assistant(): AssistantMessageNode {
   return { id: toMessageId({ raw: 'a' }), role: 'assistant', parts: [], createdAt: 1, modelId, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
 }
@@ -47,27 +49,48 @@ describe("LFM2.5 350M original tokenizer and structured standard generation", ()
       if (shape === 'native_failure') throw fault;
       return { past_key_values: null };
     });
-    const model = { config: jsonBody({ archive, path: 'config.json' }), configs: { generation_config: jsonBody({ archive, path: 'generation_config.json' }) },
-      _prepare_generation_config: native.PreTrainedModel.prototype._prepare_generation_config, generate,
+    const model = {
+      config: jsonBody({ archive, path: 'config.json' }),
+      configs: { generation_config: jsonBody({ archive, path: 'generation_config.json' }) },
+      _prepare_generation_config: native.PreTrainedModel.prototype._prepare_generation_config,
+      generate,
     } as unknown as Context['model'];
     const onChunk = vi.fn(); const onToolCalls = vi.fn(); const controller = new AbortController(); const node = assistant();
     const input = await prepareInferenceRequest({ messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'Hel', completeness: 'complete' }, { type: 'text', text: 'lo', completeness: 'complete' }] }], parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined });
     const { createInferenceEventDelivery } = await import('@/features/transformers-js/worker/inference-event-delivery');
-    const operation = consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: controller, onChange: () => {}, items: createInferenceGeneration({ signal: controller.signal,
-      generate: async ({ onEvent }) => {
-        const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
-        try {
-          const strategy = selectGenerationStrategy({ modelType: "lfm2", activeModelId: modelId }); expect(strategy.kind).toBe('standard');
-          await strategy.generate({ model, tokenizer, messages: input.messages, params: undefined, tools: undefined,
-            onChunk, onToolCalls, onRawChunk: () => {}, debugLog: () => {}, observationSink: undefined, generationCapture: undefined,
-            runtimeState: { activeModelId: modelId, gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, qwen3_5SequenceCache: undefined, generationStateOwner: {} },
-            stoppingCriteria: { reset: () => {}, interrupt: () => {} }, onGenerationEvent: ({ event }) => queue.enqueue({ event }),
-          });
-        } finally {
-          await queue.finish();
-        }
-      },
-    }) });
+    const operation = consumeChatGeneration({
+      onToolCallDraftsChange: undefined,
+      node,
+      abortController: controller,
+      onChange: () => {},
+      items: createInferenceGeneration({
+        signal: controller.signal,
+        generate: async ({ onEvent }) => {
+          const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
+          try {
+            const strategy = selectGenerationStrategy({ modelType: "lfm2", activeModelId: modelId }); expect(strategy.kind).toBe('standard');
+            await strategy.generate({
+              model,
+              tokenizer,
+              messages: input.messages,
+              params: undefined,
+              tools: undefined,
+              onChunk,
+              onToolCalls,
+              onRawChunk: () => {},
+              debugLog: () => {},
+              observationSink: undefined,
+              generationCapture: undefined,
+              runtimeState: { activeModelId: modelId, gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, qwen3_5SequenceCache: undefined, generationStateOwner: {} },
+              stoppingCriteria: { reset: () => {}, interrupt: () => {} },
+              onGenerationEvent: ({ event }) => queue.enqueue({ event }),
+            });
+          } finally {
+            await queue.finish();
+          }
+        },
+      }),
+    });
     let settled = false; void operation.then(() => {
       settled = true;
     });
@@ -116,6 +139,7 @@ Next<|im_end|>
     }
     expect(harness.sessions).not.toHaveBeenCalled(); expect(harness.transport).not.toHaveBeenCalled(); expect(harness.bodyReads).toEqual([]);
   }, 20_000);
+
   it('records an admitted native tool frame and reuses the same original history route after storage', async () => {
     const archive = await archiveFor({ modelId }); const { harness } = await start({ archive, bodyPaths: [] });
     const native = harness.runtime as unknown as typeof Tjs;
@@ -134,39 +158,66 @@ Next<|im_end|>
       streamer.put([receivedInputs.length === 1 ? ids : tokenizer.encode('Result<|im_end|>', { add_special_tokens: false }).map(BigInt)]);
       streamer.end(); return { past_key_values: null };
     });
-    const model = { config: jsonBody({ archive, path: 'config.json' }), configs: { generation_config: jsonBody({ archive, path: 'generation_config.json' }) },
-      _prepare_generation_config: native.PreTrainedModel.prototype._prepare_generation_config, generate,
+    const model = {
+      config: jsonBody({ archive, path: 'config.json' }),
+      configs: { generation_config: jsonBody({ archive, path: 'generation_config.json' }) },
+      _prepare_generation_config: native.PreTrainedModel.prototype._prepare_generation_config,
+      generate,
     } as unknown as Context['model'];
     const node = assistant(); const user: UserMessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }], createdAt: 0, modelId: undefined, lmParameters: undefined, replies: { items: [node] } };
     const controller = new AbortController();
     async function run({ request, node }: { request: Awaited<ReturnType<typeof prepareInferenceRequest>>, node: AssistantMessageNode }) {
-      return consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: controller, onChange: () => {}, items: createInferenceGeneration({ signal: controller.signal,
-        generate: async ({ onEvent }) => {
-          const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
-          try {
-            await selectGenerationStrategy({ modelType: 'lfm2', activeModelId: modelId }).generate({
-              model, tokenizer, messages: request.messages, tools: request.tools, params: undefined,
-              onChunk: () => {
-                throw new Error('Legacy output must not be used');
-              }, onToolCalls: () => {
-                throw new Error('Legacy calls must not be used');
-              }, onRawChunk: () => {}, debugLog: () => {}, observationSink: undefined, generationCapture: undefined,
-              runtimeState: { activeModelId: modelId, gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, qwen3_5SequenceCache: undefined, generationStateOwner: {} },
-              stoppingCriteria: { reset: () => {}, interrupt: () => {} }, onGenerationEvent: ({ event }) => queue.enqueue({ event }),
-            });
-          } finally {
-            await queue.finish();
-          }
-        },
-      }) });
+      return consumeChatGeneration({
+        onToolCallDraftsChange: undefined,
+        node,
+        abortController: controller,
+        onChange: () => {},
+        items: createInferenceGeneration({
+          signal: controller.signal,
+          generate: async ({ onEvent }) => {
+            const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
+            try {
+              await selectGenerationStrategy({ modelType: 'lfm2', activeModelId: modelId }).generate({
+                model,
+                tokenizer,
+                messages: request.messages,
+                tools: request.tools,
+                params: undefined,
+                onChunk: () => {
+                  throw new Error('Legacy output must not be used');
+                },
+                onToolCalls: () => {
+                  throw new Error('Legacy calls must not be used');
+                },
+                onRawChunk: () => {},
+                debugLog: () => {},
+                observationSink: undefined,
+                generationCapture: undefined,
+                runtimeState: { activeModelId: modelId, gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, qwen3_5SequenceCache: undefined, generationStateOwner: {} },
+                stoppingCriteria: { reset: () => {}, interrupt: () => {} },
+                onGenerationEvent: ({ event }) => queue.enqueue({ event }),
+              });
+            } finally {
+              await queue.finish();
+            }
+          },
+        }),
+      });
     }
     const request = await prepareInferenceRequest({ messages: [{ id: user.id, role: 'user', parts: user.parts }], parameters: undefined, tools: [{ name: 'f', description: '', parameters: { type: 'object' } }], readBinaryObject: undefined, signal: undefined });
     expect(await run({ request, node })).toEqual({ type: 'finished', next: 'tool_results' });
     expect(node.parts).toHaveLength(1); const part = node.parts[0]!;
     if (part.type !== 'tool_call') throw new Error('Expected a complete call');
     expect(part.toolCall.function).toEqual({ name: 'f', arguments: '{"x":" a "}' });
-    const result: ToolMessageNode = { id: toMessageId({ raw: 'result' }), role: 'tool', createdAt: 2, modelId: undefined, lmParameters: undefined,
-      parts: [{ type: 'tool_result', result: { toolCallId: part.toolCall.id, status: 'success', content: { type: 'text', text: 'tool reply' } } }], replies: { items: [] } };
+    const result: ToolMessageNode = {
+      id: toMessageId({ raw: 'result' }),
+      role: 'tool',
+      createdAt: 2,
+      modelId: undefined,
+      lmParameters: undefined,
+      parts: [{ type: 'tool_result', result: { toolCallId: part.toolCall.id, status: 'success', content: { type: 'text', text: 'tool reply' } } }],
+      replies: { items: [] },
+    };
     node.replies.items.push(result);
     const content: ChatContent = { root: { items: [user] }, currentLeafId: result.id };
     const storage = new MemoryStorageProvider(); const chatId = toChatId({ raw: 'standard-tool-roundtrip' });
@@ -192,5 +243,4 @@ tool reply<|im_end|>
     }
     expect(harness.sessions).not.toHaveBeenCalled(); expect(harness.transport).not.toHaveBeenCalled(); expect(harness.bodyReads).toEqual([]);
   }, 20_000);
-
 });

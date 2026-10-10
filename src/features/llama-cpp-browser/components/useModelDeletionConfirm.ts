@@ -1,6 +1,7 @@
 import { onUnmounted, shallowRef } from 'vue';
 import { prepareModelRemoval, type ModelRemovalRequest } from '@/features/llama-cpp-browser/runtime/model-store';
 import type { DeletionPlan } from '@/features/llama-cpp-browser/runtime/deletion-plan';
+
 export function useModelDeletionConfirm() {
   const request = shallowRef<ModelRemovalRequest>(); let disposed = false;
   let resolve: ReturnType<typeof Promise.withResolvers<DeletionPlan | undefined>>['resolve'] | undefined;
@@ -20,5 +21,6 @@ export function useModelDeletionConfirm() {
   }
   return { request, finish, confirmRemoval, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }
+
 export const TEST_ONLY = {
 };

@@ -24,7 +24,8 @@ vi.mock('../00-storage/service', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatMeta: vi.fn(),
+    loadChatMeta: vi.fn(),
     updateChatContent: vi.fn(),
     updateHierarchy: vi.fn(),
     loadHierarchy: vi.fn(),
@@ -105,7 +106,6 @@ vi.mock('../features/tools/composables/useChatWeshPreferences', () => ({
   }),
 }));
 
-
 describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction Tool Chaining', () => {
   const chatStore = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
   const {
@@ -168,14 +168,22 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       .mockImplementationOnce(({ signal }) => createChatGenerationStream({
         signal,
         run: async ({ writer }) => {
-          await writer.call({ key: 0, toolCall: {
-            id: toToolCallId({ raw: 'call-1' }), type: 'function',
-            function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
-          } });
-          await writer.call({ key: 1, toolCall: {
-            id: toToolCallId({ raw: 'call-2' }), type: 'function',
-            function: { name: 'calculator', arguments: '{"expression":"2+2"}' },
-          } });
+          await writer.call({
+            key: 0,
+            toolCall: {
+              id: toToolCallId({ raw: 'call-1' }),
+              type: 'function',
+              function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
+            },
+          });
+          await writer.call({
+            key: 1,
+            toolCall: {
+              id: toToolCallId({ raw: 'call-2' }),
+              type: 'function',
+              function: { name: 'calculator', arguments: '{"expression":"2+2"}' },
+            },
+          });
           return { type: 'finished', next: 'tool_results' };
         },
       }))
@@ -248,17 +256,23 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     __testOnlySetCurrentChat({ chat });
 
     mockToolExecute.mockResolvedValueOnce({
-      status: 'error', code: 'invalid_arguments', message: 'Invalid arguments: test fixture',
+      status: 'error',
+      code: 'invalid_arguments',
+      message: 'Invalid arguments: test fixture',
     });
     mockLmChat
       .mockImplementationOnce(({ signal }) => createChatGenerationStream({
         signal,
         run: async ({ writer }) => {
           await writer.text({ type: 'text', text: '<think>tool-call reasoning</think>' });
-          await writer.call({ key: 0, toolCall: {
-            id: toToolCallId({ raw: 'call-invalid' }), type: 'function',
-            function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
-          } });
+          await writer.call({
+            key: 0,
+            toolCall: {
+              id: toToolCallId({ raw: 'call-invalid' }),
+              type: 'function',
+              function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
+            },
+          });
           return { type: 'finished', next: 'tool_results' };
         },
       }))
@@ -287,28 +301,56 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const secondTurnMessages = mockLmChat.mock.calls[2]![0].messages;
     expect(secondTurnMessages.slice(0, continuationMessages.length)).toEqual(continuationMessages);
     expect(secondTurnMessages).toEqual([
-      { id: expect.any(String), role: 'user', parts: [
-        { type: 'text', text: 'First request', completeness: 'complete' },
-      ] },
-      { id: expect.any(String), role: 'assistant', parts: [
-        { type: 'text', text: '<think>tool-call reasoning</think>', completeness: 'complete' },
-        { type: 'tool_call', toolCall: {
-          id: 'call-invalid', type: 'function',
-          function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
-        } },
-      ] },
-      { id: expect.any(String), role: 'tool', parts: [
-        { type: 'tool_result', result: {
-          toolCallId: 'call-invalid', status: 'error',
-          error: { code: 'invalid_arguments', message: { type: 'text', text: 'Invalid arguments: test fixture' } },
-        } },
-      ] },
-      { id: expect.any(String), role: 'assistant', parts: [
-        { type: 'text', text: 'Recovered from the tool error.', completeness: 'complete' },
-      ] },
-      { id: expect.any(String), role: 'user', parts: [
-        { type: 'text', text: 'Second request', completeness: 'complete' },
-      ] },
+      {
+        id: expect.any(String),
+        role: 'user',
+        parts: [
+          { type: 'text', text: 'First request', completeness: 'complete' },
+        ],
+      },
+      {
+        id: expect.any(String),
+        role: 'assistant',
+        parts: [
+          { type: 'text', text: '<think>tool-call reasoning</think>', completeness: 'complete' },
+          {
+            type: 'tool_call',
+            toolCall: {
+              id: 'call-invalid',
+              type: 'function',
+              function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
+            },
+          },
+        ],
+      },
+      {
+        id: expect.any(String),
+        role: 'tool',
+        parts: [
+          {
+            type: 'tool_result',
+            result: {
+              toolCallId: 'call-invalid',
+              status: 'error',
+              error: { code: 'invalid_arguments', message: { type: 'text', text: 'Invalid arguments: test fixture' } },
+            },
+          },
+        ],
+      },
+      {
+        id: expect.any(String),
+        role: 'assistant',
+        parts: [
+          { type: 'text', text: 'Recovered from the tool error.', completeness: 'complete' },
+        ],
+      },
+      {
+        id: expect.any(String),
+        role: 'user',
+        parts: [
+          { type: 'text', text: 'Second request', completeness: 'complete' },
+        ],
+      },
     ]);
   });
 
@@ -373,10 +415,14 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       .mockImplementationOnce(({ signal }) => createChatGenerationStream({
         signal,
         run: async ({ writer }) => {
-          await writer.call({ key: 0, toolCall: {
-            id: toToolCallId({ raw: 'call-large-result' }), type: 'function',
-            function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
-          } });
+          await writer.call({
+            key: 0,
+            toolCall: {
+              id: toToolCallId({ raw: 'call-large-result' }),
+              type: 'function',
+              function: { name: 'calculator', arguments: '{"expression":"1+1"}' },
+            },
+          });
           return { type: 'finished', next: 'tool_results' };
         },
       }))
@@ -406,5 +452,4 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     if (result?.status !== 'success') throw new Error('Expected a successful Tool Result.');
     expect(result.content.type).toBe('binary_object');
   });
-
 });

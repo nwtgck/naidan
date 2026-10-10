@@ -1,8 +1,10 @@
+import { observeMeasurementMemory } from './memory-observation';
+import { observeWorkerMemory } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { audioGenerationResultSchema, audioPreviewEventSchema, type AudioPreviewEvent } from '@/features/audio-generation/types';
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
-import { workerProxy, type WorkerProxy, type WorkerRemote } from '@/utils/worker-transport';
+import { workerProxy, type WorkerRemote } from '@/utils/worker-transport';
 import { errorCode, generationEventSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema, type LocalModel, type Progress } from '@/features/llama-cpp-browser/types';
 import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
 
@@ -10,9 +12,10 @@ import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchem
 export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTransport, getAssetBaseURL }: {
   worker: Worker,
   remote: WorkerRemote<LlamaCppWorkerApi>,
-  disposeTransport: ({ active }: { active: boolean }) => void,
+  disposeTransport: ({ active }: { active: boolean }) => void | Promise<void>,
   getAssetBaseURL: () => string | undefined,
 }): LlamaCppWorkerClient {
+  const stopObservingMemory = observeWorkerMemory({ worker });
   let disposed = false;
   const disposeListeners = new Set<() => void>();
   let lastOperation: Diagnostic | undefined;
@@ -53,26 +56,49 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
   };
   let nextGenerationId = 0;
   let rejectActive: (() => void) | undefined;
-  const dispose = (): void => {
-    if (disposed) return;
+  let disposal: Promise<void> | undefined;
+  const dispose = (): Promise<void> => {
+    if (disposal) return disposal;
+    const completion = Promise.withResolvers<void>();
+    disposal = completion.promise;
+    stopObservingMemory();
     disposed = true; debugEnabled = false; stopWaiting(); pendingOperations.clear();
     const active = rejectActive !== undefined;
     rejectActive?.();
     worker.removeEventListener('error', onError);
     worker.removeEventListener('messageerror', onMessageError);
-    disposeTransport({ active });
+    // Preserve synchronous hosted termination; expose completion of bounded
+    // standalone teardown so a measured model cannot overlap the next Worker.
+    try {
+      void Promise.resolve(disposeTransport({ active })).catch(error => {
+        logFailure({ stage: 'cleanup', error });
+      }).finally(completion.resolve);
+    } catch (error) {
+      logFailure({ stage: 'cleanup', error }); completion.resolve();
+    }
     for (const listener of disposeListeners) {
       try {
         listener();
       } catch { /* Disposal observers cannot interrupt cleanup. */ }
     }
     disposeListeners.clear();
+    return disposal;
   };
   // eslint-disable-next-line local-rules-named-args/require-named-args -- DOM Worker error listener signature.
   const onError = (event: ErrorEvent): void => {
     const failureKind = lastNativeFailure?.failureKind ?? classifyFailure({ error: event.error instanceof Error ? event.error : event.message });
-    logDiagnostic({ diagnostic: { ...lastOperation, ...dispatchLimitDetails({ message: event.message }), ...lastNativeFailure, event: 'failed', stage: 'worker-error', failureKind,
-      lastStage: lastOperation?.stage, lastEvent: lastOperation?.event } });
+    logDiagnostic({
+      diagnostic: {
+        ...lastOperation,
+        ...dispatchLimitDetails({ message: event.message }),
+        ...lastNativeFailure,
+        event: 'failed',
+        stage: 'worker-error',
+        failureKind,
+        lastStage: lastOperation?.stage,
+        lastEvent: lastOperation?.event,
+      },
+    });
     event.preventDefault(); dispose();
   };
   const onMessageError = (): void => {
@@ -117,7 +143,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     }
   }
   async function importWithCancellation({ call, onProgress, signal }: {
-    call: ({ generationId, report }: { generationId: number, report: WorkerProxy<({ phase, completed, total }: Progress) => void> }) => Promise<LocalModel>,
+    call: ({ generationId, report }: { generationId: number, report: Parameters<LlamaCppWorkerApi['importModel']>[1] }) => Promise<LocalModel>,
     onProgress: ({ progress }: { progress: Progress }) => void,
     signal: AbortSignal | undefined,
   }): Promise<LocalModel> {
@@ -125,11 +151,20 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     let acceptingProgress = true;
     try {
       return modelSchema.parse(await invoke({
-        call: () => call({ generationId, report: workerProxy({ value: ({ ...event }: Progress) => {
-          if (acceptingProgress && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-        } }) }), signal, onAbort: () => {
+        call: () => call({
+          generationId,
+          report: workerProxy({
+            // eslint-disable-next-line local-rules-named-args/require-named-args -- This proxy receives a Progress value as a top-level Comlink argument.
+            value: (progress: Progress) => {
+              if (acceptingProgress && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(progress) });
+            },
+          }),
+        }),
+        signal,
+        onAbort: () => {
           void remote.cancelGeneration({ generationId }).catch(dispose);
-        }, abortTimeoutMs: undefined,
+        },
+        abortTimeoutMs: undefined,
       }));
     } finally {
       acceptingProgress = false;
@@ -144,12 +179,30 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         disposeListeners.delete(listener);
       };
     },
+    async releaseRuntime({ signal }) {
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      signal?.addEventListener('abort', abort, { once: true });
+      if (signal?.aborted) abort();
+      // Release is serialized with inference. A wedged cleanup retires the
+      // transport instead of handing a still-active runtime to another model.
+      const timer = setTimeout(abort, 10000);
+      try {
+        await invoke({ call: () => remote.release(), signal: controller.signal, onAbort: undefined, abortTimeoutMs: undefined });
+      } finally {
+        clearTimeout(timer); signal?.removeEventListener('abort', abort);
+      }
+    },
     probeProfiles: async ({ signal }) => profileCapabilitiesSchema.parse(await invoke({ call: () => remote.probeProfiles(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
     listModels: async ({ signal }) => modelsSchema.parse(await invoke({ call: () => remote.listModels(), signal, onAbort: undefined, abortTimeoutMs: undefined })),
-    importModel: ({ file, onProgress, signal }) => importWithCancellation({ signal, onProgress,
+    importModel: ({ file, onProgress, signal }) => importWithCancellation({
+      signal,
+      onProgress,
       call: ({ generationId, report }) => remote.importModel({ file, generationId }, report),
     }),
-    importDirectory: ({ directory, onProgress, signal }) => importWithCancellation({ signal, onProgress,
+    importDirectory: ({ directory, onProgress, signal }) => importWithCancellation({
+      signal,
+      onProgress,
       call: ({ generationId, report }) => remote.importDirectory({ directory, generationId }, report),
     }),
     removeModel: async ({ plan, signal }) => {
@@ -159,42 +212,83 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       const accepted = workerPrepareCallSchema.parse({ ...request, generationId: ++nextGenerationId, assetBaseURL: getAssetBaseURL() });
       let acceptingEvents = true;
       try {
-        await invoke({ call: () => remote.prepareModel(accepted, workerProxy({ value: ({ ...event }) => {
-          if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-        } })), signal, onAbort: () => {
-          void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
-        }, abortTimeoutMs: 5000 });
+        await invoke({
+          call: () => remote.prepareModel(accepted, workerProxy({
+            value: ({ ...event }) => {
+              if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+            },
+          })),
+          signal,
+          onAbort: () => {
+            void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
+          },
+          abortTimeoutMs: 5000,
+        });
       } finally {
         acceptingEvents = false;
       }
     },
-    generate: async ({ request, onEvent, onProgress, signal }) => {
-      const accepted = workerGenerateCallSchema.parse({ ...request, generationId: ++nextGenerationId,
+    generate: async ({ request, onEvent, onProgress, signal, onSummary, onMemoryDiagnostics }) => {
+      const accepted = workerGenerateCallSchema.parse({
+        ...request,
+        generationId: ++nextGenerationId,
         assetBaseURL: getAssetBaseURL(),
       });
       let acceptingEvents = true;
+      const started = accepted.measurement ? performance.now() : undefined;
+      const memory = started === undefined ? undefined : observeMeasurementMemory({ worker, now: () => performance.now() - started });
       try {
-        const result = await invoke({ call: () => remote.generate(accepted,
-          workerProxy({ value: async ({ event }) => {
-            if (acceptingEvents && !disposed) await onEvent({ event: generationEventSchema.parse(event) });
-          } }),
-          workerProxy({ value: ({ ...event }) => {
-            if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-          } }),
-          workerProxy({ value: ({ diagnostic }: { diagnostic: unknown }) => {
-            if (!acceptingEvents || disposed || signal?.aborted) return;
-            debugEnabled = accepted.debug === 'on';
-            const checkpoint = diagnosticSchema.parse(diagnostic);
-            if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
-            if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
-            if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
-            if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
-          } })), signal, onAbort: () => {
-          void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
-        }, abortTimeoutMs: 5000 });
+        const result = await invoke({
+          call: () => remote.generate(accepted,
+            workerProxy({
+              value: async ({ event }) => {
+                if (acceptingEvents && !disposed) await onEvent({ event: generationEventSchema.parse(event) });
+              },
+            }),
+            workerProxy({
+              value: ({ ...event }) => {
+                if (acceptingEvents && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+              },
+            }),
+            workerProxy({
+              value: ({ diagnostic }: { diagnostic: unknown }) => {
+                if (!acceptingEvents || disposed) return;
+                if (memory) {
+                  const observed = diagnosticSchema.safeParse(diagnostic);
+                  if (observed.success) memory.record({ diagnostic: observed.data });
+                }
+                if (signal?.aborted) return;
+                debugEnabled = accepted.debug === 'on';
+                const checkpoint = diagnosticSchema.parse(diagnostic);
+                if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
+                if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
+                if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
+                if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
+              },
+            }),
+            workerProxy({
+              value: ({ diagnostic }: { diagnostic: unknown }) => {
+                // A cooperative Stop still owns its terminal summary. Late callbacks
+                // after this call has settled must never reach the next trial.
+                if (!acceptingEvents || disposed || !accepted.measurement) return;
+                const summary = diagnosticSchema.parse(diagnostic);
+                if (summary.event !== 'generation-performance' || !summary.performance) throw new Error('Invalid generation summary');
+                onSummary?.({ diagnostic: summary });
+              },
+            })),
+          signal,
+          onAbort: () => {
+            void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
+          },
+          abortTimeoutMs: 5000,
+        });
         return generationResultSchema.parse(result);
       } finally {
         acceptingEvents = false;
+        const observed = memory?.finish();
+        try {
+          if (observed) onMemoryDiagnostics?.({ memory: observed });
+        } catch { /* Observation must not replace inference success or failure. */ }
       }
     },
     generateAudio: async ({ request, onProgress, cancellationSignal, completionSignal, preview }) => {
@@ -223,34 +317,46 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
       };
       const unsubscribePreview = preview?.requests.subscribe({ listener: requestPreview });
       try {
-        const result = await invoke({ call: () => {
-          const pending = remote.generateAudio(accepted,
-            workerProxy({ value: ({ ...event }) => {
-              if (acceptingEvents && !disposed && !cancellationSignal?.aborted) onProgress({ progress: progressSchema.parse(event) });
-            } }),
-            workerProxy({ value: ({ diagnostic }: { diagnostic: unknown }) => {
-              if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
-              debugEnabled = accepted.debug === 'on';
-              const checkpoint = diagnosticSchema.parse(diagnostic);
-              if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
-              if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
-              if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
-              if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
-            } }), preview ? workerProxy({ value: async ({ ...event }: AudioPreviewEvent) => {
-              if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
-              const acceptedEvent = audioPreviewEventSchema.parse(event);
-              if (acceptedEvent.requestVersion <= deliveredVersion) return;
-              if (acceptedEvent.requestVersion > sentVersion) throw new LlamaCppBrowserError({ code: 'worker-failed' });
-              deliveredVersion = acceptedEvent.requestVersion;
-              await preview.onPreview(acceptedEvent);
-            } }) : undefined);
-          started = true;
-          if (completionSignal?.aborted) finish();
-          requestPreview();
-          return pending;
-        }, signal: cancellationSignal, onAbort: () => {
-          void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
-        }, abortTimeoutMs: 5000 });
+        const result = await invoke({
+          call: () => {
+            const pending = remote.generateAudio(accepted,
+              workerProxy({
+                value: ({ ...event }) => {
+                  if (acceptingEvents && !disposed && !cancellationSignal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+                },
+              }),
+              workerProxy({
+                value: ({ diagnostic }: { diagnostic: unknown }) => {
+                  if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
+                  debugEnabled = accepted.debug === 'on';
+                  const checkpoint = diagnosticSchema.parse(diagnostic);
+                  if (checkpoint.event === 'operation-start' || checkpoint.event === 'operation-complete') recordOperation({ diagnostic: { ...checkpoint, event: checkpoint.event } });
+                  if (checkpoint.event === 'native-info' && checkpoint.nativeOperation !== undefined) lastOperation = { ...lastOperation, ...checkpoint };
+                  if (checkpoint.event === 'native-node-start' || checkpoint.event === 'native-node-complete') lastOperation = checkpoint;
+                  if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
+                },
+              }), preview ? workerProxy({
+                // eslint-disable-next-line local-rules-named-args/require-named-args -- This proxy receives an AudioPreviewEvent as a top-level Comlink argument.
+                value: async (event: AudioPreviewEvent) => {
+                  if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
+                  const acceptedEvent = audioPreviewEventSchema.parse(event);
+                  if (acceptedEvent.requestVersion <= deliveredVersion) return;
+                  if (acceptedEvent.requestVersion > sentVersion) throw new LlamaCppBrowserError({ code: 'worker-failed' });
+                  deliveredVersion = acceptedEvent.requestVersion;
+                  await preview.onPreview({ event: acceptedEvent });
+                },
+              }) : undefined);
+            started = true;
+            if (completionSignal?.aborted) finish();
+            requestPreview();
+            return pending;
+          },
+          signal: cancellationSignal,
+          onAbort: () => {
+            void remote.cancelGeneration({ generationId: accepted.generationId }).catch(dispose);
+          },
+          abortTimeoutMs: 5000,
+        });
         return audioGenerationResultSchema.parse(result);
       } finally {
         acceptingEvents = false;
@@ -262,5 +368,6 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     dispose,
   };
 }
+
 export const TEST_ONLY = {
 };

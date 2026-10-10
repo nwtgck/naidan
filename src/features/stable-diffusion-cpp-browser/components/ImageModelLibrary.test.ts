@@ -5,9 +5,11 @@ import { mount } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { createDisabledImageLibrary } from '@/features/stable-diffusion-cpp-browser/library-standalone';
 import ImageModelLibrary from './ImageModelLibrary.vue';
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 it('shows inspection phase/path/progress and offers cancel while inspecting', async () => {
   const view = createDisabledImageLibrary();
   view.scanState.value = 'scanning';

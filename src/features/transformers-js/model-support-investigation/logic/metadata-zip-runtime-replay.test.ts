@@ -14,18 +14,25 @@ import corpusJson from '@/features/transformers-js/replay-models/support/model-p
 
 const REVISION = 'a'.repeat(40);
 const MODEL_ID = 'fixture/replay';
-const corpus = z.object({ models: z.array(z.object({
-  modelId: z.string(), revision: z.string(),
-  declarations: z.array(z.object({ path: z.string(), value: z.record(z.string(), z.unknown()) })),
-})) }).parse(corpusJson).models;
+const corpus = z.object({
+  models: z.array(z.object({
+    modelId: z.string(),
+    revision: z.string(),
+    declarations: z.array(z.object({ path: z.string(), value: z.record(z.string(), z.unknown()) })),
+  })),
+}).parse(corpusJson).models;
 
 // Entirely synthetic, deliberately tiny. This proves the ZIP-to-runtime
 // connection, not any public model's tokenizer outputs or model compatibility.
 const toyBodies = {
   'tokenizer_config.json': JSON.stringify({ tokenizer_class: 'PreTrainedTokenizer', unk_token: '[UNK]', chat_template: "{% for message in messages %}{{ message['content'] }}{% endfor %}" }),
   'tokenizer.json': JSON.stringify({
-    version: '1.0', added_tokens: [], normalizer: null,
-    pre_tokenizer: { type: 'WhitespaceSplit' }, post_processor: null, decoder: null,
+    version: '1.0',
+    added_tokens: [],
+    normalizer: null,
+    pre_tokenizer: { type: 'WhitespaceSplit' },
+    post_processor: null,
+    decoder: null,
     model: { type: 'WordLevel', vocab: { '[UNK]': 0, hello: 1, world: 2 }, unk_token: '[UNK]' },
   }),
   'preprocessor_config.json': '{ "processor_class": "Gemma4Processor" }',
@@ -38,6 +45,7 @@ beforeEach(() => {
   // Native Blob/streams remain untouched throughout collection and ZIP export.
   vi.stubGlobal('self', { location: new URL('http://localhost/assets/replay-worker.js') });
 });
+
 afterEach(() => vi.unstubAllGlobals());
 
 async function capture({ modelId, revision, bodies }: { modelId: string, revision: string, bodies: Record<string, string> }): Promise<InvestigationReplayMetadataSnapshot> {
@@ -47,18 +55,27 @@ async function capture({ modelId, revision, bodies }: { modelId: string, revisio
     return [path, blob] as const;
   }));
   return await collectReplayMetadata({
-    modelId, revision, files: [...files].map(([path, blob]) => ({ path, size: blob.size })),
-    budgetBytes: 1024 * 1024, fileTimeoutMs: 5000, modelAccess: 'public-request',
-    localRead: async ({ path }) => files.get(path), remoteFetch: undefined, onSnapshot: () => undefined,
+    modelId,
+    revision,
+    files: [...files].map(([path, blob]) => ({ path, size: blob.size })),
+    budgetBytes: 1024 * 1024,
+    fileTimeoutMs: 5000,
+    modelAccess: 'public-request',
+    localRead: async ({ path }) => files.get(path),
+    remoteFetch: undefined,
+    onSnapshot: () => undefined,
   });
 }
 
 function evidenceItem({ capture }: { capture: InvestigationReplayMetadataSnapshot }) {
   const checkpoint = createInitialInvestigationCheckpoint({ modelId: capture.summary.modelId, runId: `replay-${capture.summary.modelId}`, now: () => '2026-09-08T00:00:00.000Z' });
   return {
-    target: capture.summary.modelId, status: 'failed' as const,
-    run: { ...checkpoint.run, replayMetadata: capture.summary }, recovery: checkpoint.recovery,
-    replayMetadata: capture.sidecars, error: undefined,
+    target: capture.summary.modelId,
+    status: 'failed' as const,
+    run: { ...checkpoint.run, replayMetadata: capture.summary },
+    recovery: checkpoint.recovery,
+    replayMetadata: capture.sidecars,
+    error: undefined,
   };
 }
 
@@ -68,7 +85,8 @@ async function restore({ zip, prefix }: { zip: JSZip, prefix: string }) {
   const index = zip.file(`${prefix}replay-metadata/index.json`);
   if (index === null) throw new Error('Missing replay index');
   const { replayScope: _replayScope, files, ...fields } = z.object({
-    replayScope: z.string(), files: z.array(z.object({ archived: z.boolean() }).passthrough()),
+    replayScope: z.string(),
+    files: z.array(z.object({ archived: z.boolean() }).passthrough()),
   }).passthrough().parse(JSON.parse(await index.async('string')));
   const summary = replayMetadataSummarySchema.parse({ ...fields, files: files.map(({ archived: _archived, ...file }) => file) });
   const restored = new Map<string, Blob>();
@@ -105,8 +123,11 @@ async function runtimeFromArchive({ archive }: { archive: Awaited<ReturnType<typ
     throw new Error('Internet access forbidden in runtime replay');
   });
   const guardedFetch = vi.fn(createDownloadedModelWorkerFetch({
-    originalFetch: forbiddenFetch, workerLocationUrl: 'http://localhost/assets/worker.js',
-    environment: 'production', userAgent: 'Vitest', vendor: '',
+    originalFetch: forbiddenFetch,
+    workerLocationUrl: 'http://localhost/assets/worker.js',
+    environment: 'production',
+    userAgent: 'Vitest',
+    vendor: '',
   }));
   vi.stubGlobal('fetch', guardedFetch);
   const blobs = new Map<string, Blob>();
@@ -132,9 +153,12 @@ async function runtimeFromArchive({ archive }: { archive: Awaited<ReturnType<typ
       reads.push(path);
       const blob = blobs.get(path);
       if (blob === undefined) throw new DOMException('Missing fixture file', 'NotFoundError');
-      return { getFile: async () => blob, createWritable: () => {
-        mutations(); throw new Error('Writes forbidden');
-      } };
+      return {
+        getFile: async () => blob,
+        createWritable: () => {
+          mutations(); throw new Error('Writes forbidden');
+        },
+      };
     },
     removeEntry: () => {
       mutations(); throw new Error('Deletes forbidden');
@@ -146,10 +170,15 @@ async function runtimeFromArchive({ archive }: { archive: Awaited<ReturnType<typ
   const runtime = await importProductionTransformersArtifact({ moduleUrl: url.href }) as Runtime;
   const observations: OpfsModelCacheMatchObservation[] = [];
   Object.assign(runtime.env, {
-    allowLocalModels: true, allowRemoteModels: false, useBrowserCache: false,
-    useCustomCache: true, useWasmCache: false, fetch: guardedFetch,
+    allowLocalModels: true,
+    allowRemoteModels: false,
+    useBrowserCache: false,
+    useCustomCache: true,
+    useWasmCache: false,
+    fetch: guardedFetch,
     customCache: createDownloadedModelReadOnlyCache({
-      modelId: archive.summary.modelId, revision: archive.summary.revision,
+      modelId: archive.summary.modelId,
+      revision: archive.summary.revision,
       onMatchObservation: ({ observation }) => observations.push(observation),
     }),
   });
@@ -229,7 +258,8 @@ describe('Evidence ZIP metadata through actual Transformers.js and Naidan read-o
     modelType: z.string().parse(fixture.declarations.find(file => file.path === 'config.json')!.value.model_type),
   }) !== 'tokenizer'))('reaches missing tokenizer bytes through the actual Production processor selection for $modelId', async fixture => {
     const captured = await capture({
-      modelId: fixture.modelId, revision: fixture.revision,
+      modelId: fixture.modelId,
+      revision: fixture.revision,
       bodies: Object.fromEntries(fixture.declarations.map(file => [file.path, JSON.stringify(file.value)])),
     });
     const evidence = await createPartialModelSupportEvidence(evidenceItem({ capture: captured }));
@@ -237,7 +267,8 @@ describe('Evidence ZIP metadata through actual Transformers.js and Naidan read-o
     const h = await runtimeFromArchive({ archive });
     await expect(h.runtime.AutoProcessor.from_pretrained(fixture.modelId, { revision: fixture.revision, local_files_only: true })).rejects.toThrow(/tokenizer\.json/u);
     expect(h.observations).toEqual(expect.arrayContaining([expect.objectContaining({
-      result: 'miss', requestedPath: `huggingface.co/${fixture.modelId}/resolve/${fixture.revision}/tokenizer.json`,
+      result: 'miss',
+      requestedPath: `huggingface.co/${fixture.modelId}/resolve/${fixture.revision}/tokenizer.json`,
     })]));
     expect(h.reads).toContain(`models/huggingface.co/${fixture.modelId}/resolve/${fixture.revision}/preprocessor_config.json`);
     expect(h.mutations).not.toHaveBeenCalled();

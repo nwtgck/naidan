@@ -5,6 +5,7 @@ import { usePWAUpdate } from './usePWAUpdate';
 const { status, setUpdateState, update } = usePWAUpdate();
 
 beforeEach(() => setUpdateState({ next: { kind: 'idle' } }));
+
 afterEach(() => setUpdateState({ next: { kind: 'idle' } }));
 
 describe('usePWAUpdate', () => {
@@ -72,10 +73,15 @@ describe('usePWAUpdate', () => {
 
   it('does not restore an obsolete action after state changed during failure', async () => {
     const error = new Error('obsolete');
-    setUpdateState({ next: { kind: 'ready', handler: async () => {
-      setUpdateState({ next: { kind: 'preparing' } });
-      throw error;
-    } } });
+    setUpdateState({
+      next: {
+        kind: 'ready',
+        handler: async () => {
+          setUpdateState({ next: { kind: 'preparing' } });
+          throw error;
+        },
+      },
+    });
     await expect(update()).rejects.toBe(error);
     expect(status.value).toBe('preparing');
   });
@@ -97,7 +103,7 @@ describe('usePWAUpdate', () => {
     await update(); expect(second).toHaveBeenCalledOnce();
   });
 
-  it('clears the action together with availability' , async () => {
+  it('clears the action together with availability', async () => {
     const handler = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     setUpdateState({ next: { kind: 'ready', handler } });
     setUpdateState({ next: { kind: 'idle' } });

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import vm from 'node:vm';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
@@ -13,18 +14,22 @@ export async function buildPWAFixture({ root, buildId }: { root: string; buildId
   const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
   await mkdir(path.join(root, 'public'), { recursive: true });
   await writeFile(path.join(root, 'index.html'), `<!doctype html><title>${buildId}</title><script type="module" src="/entry.js"></script>`);
-  await writeFile(path.join(root, 'entry.js'), `console.info(${JSON.stringify(buildId)});`);
+  await writeFile(path.join(root, 'entry.js'), `console.info(__PWA_BUILD_ID__);`);
   for (const name of [
     'future-format.arbitrary', 'runtime.wasm.gz', 'naidan-standalone.zip', 'favicon.svg', 'ignored.map',
     ...UI_LOCALES.map(locale => `naidan-standalone-${locale}.zip`),
   ]) await writeFile(path.join(root, 'public', name), `${buildId}:${name}`);
   await writeFile(path.join(root, 'public', 'worker.js'), `// ${buildId}: fixed-name script fixture`);
-  const { options } = createPWABuild({ buildId });
+  const { options, define } = createPWABuild({ buildId });
   const outDir = path.join(root, 'dist');
   await build({
-    root, configFile: false, logLevel: 'silent', base: './',
+    root,
+    configFile: false,
+    define,
+    logLevel: 'silent',
+    base: './',
     plugins: [VitePWA({ ...options, srcDir: path.join(projectRoot, 'pwa') })],
-    build: { outDir, emptyOutDir: true },
+    build: { outDir, emptyOutDir: true, modulePreload: false },
   });
   const files = new Map<string, Buffer>();
   async function collect({ directory }: { directory: string }): Promise<void> {
@@ -35,7 +40,19 @@ export async function buildPWAFixture({ root, buildId }: { root: string; buildId
     }
   }
   await collect({ directory: outDir });
-  return { outDir, files, script: (await readFile(path.join(outDir, 'sw.js'), 'utf8')) };
+  const entry = [...files].find(([name]) => name.startsWith('assets/') && name.endsWith('.js'))?.[1];
+  if (!entry) throw new Error('Missing compiled page entry');
+  let pageBuildId: unknown;
+  vm.runInNewContext(entry.toString(), {
+    console: {
+      info(value: unknown) {
+        pageBuildId = value;
+      },
+    },
+  });
+  if (typeof pageBuildId !== 'string') throw new Error('Page build identity was not injected');
+  return { outDir, files, pageBuildId, script: (await readFile(path.join(outDir, 'sw.js'), 'utf8')) };
 }
 
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

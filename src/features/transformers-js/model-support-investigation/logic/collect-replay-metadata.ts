@@ -58,6 +58,7 @@ export type InvestigationReplayMetadataSnapshot = {
 class CollectionFailure extends Error {
   readonly status: Exclude<z.infer<typeof outcomeSchema>, 'collected'>;
   readonly httpStatus: number | undefined;
+
   constructor({ status, httpStatus }: { status: Exclude<z.infer<typeof outcomeSchema>, 'collected'>, httpStatus: number | undefined }) {
     super(status);
     this.status = status;
@@ -194,7 +195,9 @@ export async function collectReplayMetadata({ modelId, revision, files, budgetBy
           if (remoteFetch === undefined) throw new CollectionFailure({ status: 'local-missing', httpStatus: undefined });
           source = 'remote-exact';
           const response = await remoteFetch(`https://huggingface.co/${modelId}/resolve/${exactRevision}/${path}`, {
-            credentials: 'omit', referrerPolicy: 'no-referrer', signal: controller.signal,
+            credentials: 'omit',
+            referrerPolicy: 'no-referrer',
+            signal: controller.signal,
             headers: { Accept: path.endsWith('.json') ? 'application/json' : 'text/plain' },
           });
           if (stopped) {

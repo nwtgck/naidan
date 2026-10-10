@@ -185,9 +185,11 @@ export async function runStatus({ context, args }: {
   case 'porcelain-v1':
     if (branch)
       await text.print({ text: `## ${formatPorcelainV1Branch({ status })}${separator}` });
-    await text.print({ text: format === 'short' && !nul
-      ? renderShortStatus({ context, repository: status.repository, entries: status.entries, quoteNonAscii: status.quoteNonAscii })
-      : renderPorcelainV1({ entries: status.entries, nul, quoteNonAscii: status.quoteNonAscii }) });
+    await text.print({
+      text: format === 'short' && !nul
+        ? renderShortStatus({ context, repository: status.repository, entries: status.entries, quoteNonAscii: status.quoteNonAscii })
+        : renderPorcelainV1({ entries: status.entries, nul, quoteNonAscii: status.quoteNonAscii }),
+    });
     return { exitCode: 0 };
   case 'porcelain-v2':
     if (branch) {

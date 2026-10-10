@@ -6,6 +6,7 @@ import { applyTransformersJsFixes } from './transform';
 const original = readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8');
 const transformed = applyTransformersJsFixes({ code: original, version: '4.2.0' }).code;
 type Session = { release(): Promise<void>; config?: object };
+
 function fixture({ code, create, isWeb = true }: { code: string; create: () => Promise<Session>; isWeb?: boolean }) {
   const start = code.indexOf('async function createInferenceSession(');
   const end = code.indexOf('\nvar webInferenceChain', start);

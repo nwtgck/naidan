@@ -22,10 +22,14 @@ describe('versioned fixed Provider capture inputs', () => {
     const provider = captureProviderMessages({ input });
     expect(provider).toEqual([
       { id: 'capture_input_0', role: 'user', parts: [{ type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' }] },
-      { id: 'capture_input_1', role: 'assistant', parts: [
-        { type: 'text', text: '', completeness: 'complete' },
-        { type: 'tool_call', toolCall: { id: 'call_model_support_probe_1', type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
-      ] },
+      {
+        id: 'capture_input_1',
+        role: 'assistant',
+        parts: [
+          { type: 'text', text: '', completeness: 'complete' },
+          { type: 'tool_call', toolCall: { id: 'call_model_support_probe_1', type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+        ],
+      },
       { id: 'capture_input_2', role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: 'call_model_support_probe_1', status: 'success', content: { type: 'text', text: MODEL_SUPPORT_TOOL_RESULT_CONTENT } } }] },
     ]);
     const first = provider[0]?.parts[0];
@@ -38,10 +42,13 @@ describe('versioned fixed Provider capture inputs', () => {
 
   it('uses only the existing fixed PNG in public content parts with an independent one-token request', async () => {
     const input = captureScenarioInput({ scenario: 'image', firstSettled: undefined });
-    expect(input.messages).toEqual([{ role: 'user', content: [
-      { type: 'text', text: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.prompt },
-      { type: 'image_url', image_url: { url: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.dataUrl } },
-    ] }]);
+    expect(input.messages).toEqual([{
+      role: 'user',
+      content: [
+        { type: 'text', text: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.prompt },
+        { type: 'image_url', image_url: { url: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.dataUrl } },
+      ],
+    }]);
     expect(input.parameters.maxCompletionTokens).toBe(1);
     const messages = captureProviderMessages({ input });
     expect(messages[0]?.parts[0]).toEqual({ type: 'text', text: MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE.prompt, completeness: 'complete' });

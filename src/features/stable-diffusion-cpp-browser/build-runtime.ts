@@ -11,10 +11,14 @@ const fileSchema = z.object({ path: z.string(), bytes: z.number().int().nonnegat
 const rootManifestSchema = z.object({ formatVersion: z.literal(3), sourceCommit: z.string().regex(/^[0-9a-f]{40}$/), files: z.array(fileSchema) });
 const provenanceSchema = z.object({ sourceCommit: z.string(), sourceDirty: z.literal(false), profile: profileSchema, variant: z.literal('browser'), configuration: z.object({ memory64: z.boolean(), jspi: z.boolean(), asyncify: z.boolean(), webgpu: z.literal(true), pthreads: z.literal(false) }), validation: z.object({ compiled: z.literal(true), browserSmoke: z.literal(true) }) });
 const imageManifestSchema = z.object({
-  formatVersion: z.literal(2), runtime: z.literal('stable-diffusion-cpp'), abiVersion: z.literal(2),
+  formatVersion: z.literal(2),
+  runtime: z.literal('stable-diffusion-cpp'),
+  abiVersion: z.literal(2),
   schemaSha256: z.string().regex(/^[0-9a-f]{64}$/),
   capabilities: z.object({ ggufFileOffsetBits: z.literal(64), callerOwnedRandomAccess: z.literal(true), upstreamApi: z.literal(true) }),
-  sourceCommit: z.string(), experimental: z.literal(true), files: z.array(fileSchema),
+  sourceCommit: z.string(),
+  experimental: z.literal(true),
+  files: z.array(fileSchema),
   profiles: z.record(z.string(), z.object({ variants: z.object({ browser: provenanceSchema }) })),
 });
 
@@ -106,28 +110,22 @@ export function readImageArtifacts({ rootDir, mode, artifactDir }: {
 }
 
 const standaloneUiFiles = new Set([
-  'components/ImageGenerationTranslationUnavailable.vue',
-  'components/ImageGenerationCopyButton.vue', 'components/ImageGenerationUnavailable.vue', 'components/ImageGenerationSidebar.vue', 'components/ImageGenerationPromptApprovalPreview.vue',
-  'session/navigation.ts', 'session/assistant-registry.ts',
+  // Shared schemas and local-only form observers do not load a native engine.
+  'types.ts', 'diagnostics.ts', 'logic/model-path.ts', 'use-image-preferences.ts',
+  'use-image-engine-state.ts', 'lora-form.ts', 'recommendations.ts',
   'components/ImageBenchmark.vue', 'components/ImageBenchmarkParameters.vue', 'components/ImageBenchmarkResult.vue', 'benchmark-form.ts', 'use-image-benchmark-standalone.ts',
-  'components/ImageGenerationEditor.vue', 'components/ImageGenerationHistory.vue', 'components/ImageGenerationLab.vue', 'components/ImageGenerationResults.vue', 'components/ImageGenerationViewer.vue', 'components/ImageGenerationPreview.vue', 'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'library-standalone.ts',
-  'components/ImageModelCatalog.vue', 'components/ImageHistoryImage.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageRepositoryImport.vue', 'model-recipes.ts', 'lora-catalog.ts',
-  'components/ImageLoraControls.vue', 'components/ImageDownloadMenu.vue', 'components/ImageSettingsSection.vue', 'components/ImageModelConfiguration.vue',
-  'components/ImageInputControls.vue', 'image-input-form.ts',
+  'components/ImageModelLibrary.vue', 'components/ImageModelPicker.vue', 'library-standalone.ts',
+  'components/ImageModelCatalog.vue', 'components/ImageHostModelDirectories.vue', 'components/ImageCatalogDownloadStatus.vue', 'components/ImageRepositoryImport.vue', 'model-recipes.ts', 'lora-catalog.ts',
+  'components/ImageLoraControls.vue', 'components/ImageModelConfiguration.vue',
   // Local presentation helpers only. Disabled standalone inputs never invoke
   // clipboard access; these modules do not load native code or open storage.
-  'image-input-clipboard.ts', 'dialog-keyboard.ts',
   // This component only renders caller-owned progress and pixels; its runtime
   // type import is erased and it never starts inference or creates a Worker.
-  'components/ImageGenerationProgress.vue',
   // The engine panel only renders the supplied observer facade. Standalone's
   // facade never loads a runtime or performs native observations.
   'components/ImageEngineState.vue',
-  'form.ts',
   'form-options.ts',
   'component-label.ts',
-  'preview-presentation.ts',
-  'use-image-generation-standalone.ts',
   'worker/client-standalone.ts',
 ]);
 
@@ -193,5 +191,6 @@ export function createStableDiffusionCppBrowserBuild({ rootDir, mode }: { rootDi
     },
   };
 }
+
 export const TEST_ONLY = {
 };

@@ -1,0 +1,1 @@
+export const ImagePendingRuns__save_without_generating_again = (): string => "Erneut im ursprünglichen Speicher speichern, ohne neu zu generieren. Nicht gespeicherte Daten gehen beim Schließen dieses Tabs verloren.";

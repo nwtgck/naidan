@@ -167,7 +167,6 @@ afterEach(async () => {
 });
 
 describe('createLicenseModulePlugins', () => {
-
   it('serves installed production licenses from the virtual module during development', async () => {
     const root = await createDevelopmentFixture();
     const server = await createViteServer({

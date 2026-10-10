@@ -7,15 +7,19 @@ export class ReferenceAudioError extends Error {
   constructor({ code }: { code: ReferenceAudioErrorCode }) {
     super(`Reference audio: ${code}`); this.name = 'ReferenceAudioError'; this.code = code;
   }
+
   readonly code: ReferenceAudioErrorCode;
 }
+
 export function checkReferenceFile({ file }: { file: Blob }): void {
   if (!file.size) throw new ReferenceAudioError({ code: 'empty' });
   if (file.size > MAX_REFERENCE_BYTES) throw new ReferenceAudioError({ code: 'too-large' });
 }
+
 function checkCancelled({ signal }: { signal: AbortSignal | undefined }): void {
   signal?.throwIfAborted();
 }
+
 function wavHeader({ samples }: { samples: number }): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(44); const view = new DataView(bytes.buffer);
   const text = ({ offset, value }: { offset: number, value: string }) => bytes.set(new TextEncoder().encode(value), offset);
@@ -25,6 +29,7 @@ function wavHeader({ samples }: { samples: number }): Uint8Array<ArrayBuffer> {
   view.setUint32(28, REFERENCE_SAMPLE_RATE * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
   text({ offset: 36, value: 'data' }); view.setUint32(40, samples * 2, true); return bytes;
 }
+
 /** Browser decoding supports recording containers that miniaudio cannot read.
  * OfflineAudioContext resamples to 24 kHz without opening an audio output device.
  * Decode one file at a time. Browser decoding allocates before duration can be
@@ -58,6 +63,7 @@ export async function normalizeReferenceAudio({ source, signal, durationPolicy }
   checkCancelled({ signal });
   return { wav: new Blob([wavHeader({ samples }), pcm], { type: 'audio/wav' }), samples, trimmed: length > samples };
 }
+
 /** Concatenate in the displayed selection order, never mix speakers on top of
  * each other or silently trim. The native helper accepts ONE speaker bitmap.
  * A single native-format file retains the old path/quality and does not require
@@ -79,5 +85,6 @@ export async function prepareReferenceAudio({ sources, signal }: { sources: read
   checkCancelled({ signal });
   return new Blob([wavHeader({ samples }), ...parts], { type: 'audio/wav' });
 }
+
 export const TEST_ONLY = {
 };

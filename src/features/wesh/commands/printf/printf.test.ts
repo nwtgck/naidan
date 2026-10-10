@@ -381,6 +381,7 @@ printf '%s-' a b c`,
     expect(missing.stderr.text).toContain('usage: printf [-v var] FORMAT [ARGUMENT]...');
     expect(missing.result.exitCode).toBe(1);
   });
+
   it('uses round-to-nearest-even for halfway floating-point values', async () => {
     const { result, stdout, stderr } = await execute({
       script: `printf '%.1f %.1e %.2g\n' 1.25 12.5 12.5`,
@@ -464,5 +465,4 @@ printf '<%q>|<%.3q>|<%q>\n' '~a#b!c' 'a b c' "$value"`,
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
 });

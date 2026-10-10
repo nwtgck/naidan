@@ -4,7 +4,8 @@ import { selectTransformersJsProductionAutoClass } from '@/features/transformers
 import { getProductionTransformersArtifact, importProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 
 export const parsedMetadataFixtureSchema = z.object({
-  modelId: z.string(), revision: z.string().regex(/^[a-f0-9]{40}$/u),
+  modelId: z.string(),
+  revision: z.string().regex(/^[a-f0-9]{40}$/u),
   repositoryFiles: z.array(z.object({ path: z.string(), size: z.number().int().nonnegative() }).strict()),
   declarations: z.array(z.object({ path: z.string(), originalByteLength: z.number().int().nonnegative(), value: z.record(z.string(), z.unknown()) }).strict()),
 }).strict();
@@ -40,6 +41,7 @@ async function disposeSuccessfulReplayModel({ result }: {
 }
 
 const cleanups: Array<() => void> = [];
+
 export function cleanupParsedMetadataRequests() {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();
   vi.unstubAllGlobals();
@@ -66,7 +68,9 @@ async function harness({ fixture, dtype }: { fixture: Fixture, dtype: Dtype }) {
   const ort = await import(/* @vite-ignore */ ortUrl) as { InferenceSession: { create(...args: unknown[]): Promise<unknown> } };
   const sessionRelease = vi.fn(async () => undefined);
   const sessionCreate = vi.spyOn(ort.InferenceSession, 'create').mockImplementation(async () => ({
-    inputNames: [], outputNames: [], release: sessionRelease,
+    inputNames: [],
+    outputNames: [],
+    release: sessionRelease,
   }));
   cleanups.push(() => sessionCreate.mockRestore());
   url.searchParams.set('metadata-model-replay', crypto.randomUUID());
@@ -86,8 +90,12 @@ async function harness({ fixture, dtype }: { fixture: Fixture, dtype: Dtype }) {
     vi.stubGlobal('process', originalProcess);
   }
   Object.assign(runtime.env, {
-    allowLocalModels: true, allowRemoteModels: false, useBrowserCache: false,
-    useCustomCache: true, useWasmCache: false, fetch: forbiddenFetch,
+    allowLocalModels: true,
+    allowRemoteModels: false,
+    useBrowserCache: false,
+    useCustomCache: true,
+    useWasmCache: false,
+    fetch: forbiddenFetch,
   });
   const gate = Promise.withResolvers<void>();
   const requests: Array<{ request: string; path: string }> = [];

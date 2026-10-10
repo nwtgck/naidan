@@ -273,12 +273,13 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost'  }}),
+    settings: ref({ endpoint: { type: 'openai', url: 'http://localhost' } }),
   }),
 }));
 
 describe('ChatPane Draft Maintenance', () => {
   let wrapper: VueWrapper<any>;
+
   beforeEach(() => {
     setupScrollToMock();
     const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();

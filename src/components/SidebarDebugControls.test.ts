@@ -9,18 +9,24 @@ vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ erro
 vi.mock('@/features/file-explorer/composables/useFileExplorerModal', () => ({ useFileExplorerModal: () => ({ openFileExplorer: vi.fn() }) }));
 vi.mock('@/composables/useRecentChats', () => ({ useRecentChats: () => ({ openRecent: vi.fn() }) }));
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
 });
+
 it('opens the independent audio workspace from Quick Access and closes the menu', async () => {
-  const router = createRouter({ history: createMemoryHistory(), routes: [
-    { path: '/', component: { template: '<div />' } },
-    { path: '/audio-generation', component: { template: '<div />' } },
-    { path: '/image-generation', component: { template: '<div />' } },
-  ] });
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: { template: '<div />' } },
+      { path: '/audio-generation', component: { template: '<div />' } },
+      { path: '/image-generation', component: { template: '<div />' } },
+    ],
+  });
   await router.push('/'); await router.isReady();
   wrapper = mount(SidebarDebugControls, { props: { isSidebarOpen: true }, global: { plugins: [router], stubs: { MessageActionsMenu: { template: '<div><slot /></div>' } } } });
   await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');
@@ -30,11 +36,14 @@ it('opens the independent audio workspace from Quick Access and closes the menu'
 });
 
 it('opens the independent image workspace from Quick Access and closes the menu', async () => {
-  const router = createRouter({ history: createMemoryHistory(), routes: [
-    { path: '/', component: { template: '<div />' } },
-    { path: '/audio-generation', component: { template: '<div />' } },
-    { path: '/image-generation', component: { template: '<div />' } },
-  ] });
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: { template: '<div />' } },
+      { path: '/audio-generation', component: { template: '<div />' } },
+      { path: '/image-generation', component: { template: '<div />' } },
+    ],
+  });
   await router.push('/'); await router.isReady();
   wrapper = mount(SidebarDebugControls, { props: { isSidebarOpen: true }, global: { plugins: [router], stubs: { MessageActionsMenu: { template: '<div><slot /></div>' } } } });
   await wrapper.get('[data-testid="sidebar-opfs-menu-button"]').trigger('click');

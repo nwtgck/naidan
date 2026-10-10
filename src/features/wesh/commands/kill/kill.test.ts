@@ -285,5 +285,4 @@ INT
     expect(executed.stderr.text).toBe('');
     expect(executed.result.exitCode).toBe(0);
   });
-
 });

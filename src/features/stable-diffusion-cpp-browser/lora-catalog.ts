@@ -8,10 +8,15 @@ export type ImageCatalogLora = {
   usage: 'style-reference'; source: ImageFileIdentity;
 };
 export const imageCatalogLoras: readonly ImageCatalogLora[] = [{
-  id: 'krea2-style-reference', recipeId: 'krea2-turbo', title: 'Krea2 Style Reference', usage: 'style-reference',
+  id: 'krea2-style-reference',
+  recipeId: 'krea2-turbo',
+  title: 'Krea2 Style Reference',
+  usage: 'style-reference',
   source: {
-    repository: 'ostris/krea2_turbo_style_reference', revision: '4a268dbb75d196182b200e9e1ce89cde314f7b65',
-    path: 'krea2_style_reference.safetensors', size: 457111760,
+    repository: 'ostris/krea2_turbo_style_reference',
+    revision: '4a268dbb75d196182b200e9e1ce89cde314f7b65',
+    path: 'krea2_style_reference.safetensors',
+    size: 457111760,
     sha256: 'f50df5a9e62e4be8aa926a63dd5bb1a64770c4004f763c1208007ae13daa82b8',
   },
 }];

@@ -28,8 +28,6 @@ describe('fakeLmFetch', () => {
     });
   });
 
-
-
   it('returns an empty Ollama running model list', async () => {
     const response = await fakeLmFetch('https://fake-lm.invalid/api/ps');
 
@@ -120,7 +118,6 @@ describe('fakeLmFetch', () => {
     expect(text).toContain('"done":true');
   });
 
-
   it('supports native Request inputs with request body and lowercase method override', async () => {
     const request = new Request('https://fake-lm.invalid/v1/chat/completions', {
       method: 'post',
@@ -136,5 +133,4 @@ describe('fakeLmFetch', () => {
     expect(response.ok).toBe(true);
     expect(await response.text()).toContain('data: [DONE]');
   });
-
 });

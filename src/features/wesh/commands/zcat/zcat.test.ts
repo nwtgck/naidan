@@ -20,7 +20,6 @@ async function gzipBytes({
       }
       controller.close();
     },
-
   }).pipeThrough(new CompressionStream('gzip') as any);
   const response = new Response(compressedStream);
   return new Uint8Array(await response.arrayBuffer());
@@ -120,7 +119,6 @@ describe('wesh zcat', () => {
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
 
   it('accepts gzip compatibility flags and force-copies plain input', async () => {
     await writeBinaryFile({
@@ -232,5 +230,4 @@ describe('wesh zcat', () => {
     expect(stderr.text).not.toBe('');
     expect(result.exitCode).toBe(1);
   });
-
 });

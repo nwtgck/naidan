@@ -12,7 +12,9 @@ vi.setConfig({ testTimeout: 60_000 });
 // Independently fixed from this model's original metadata and ONNX inventory.
 const expectedSessions = [
   {
-    phase: 'load', modelId: 'HuggingFaceTB/SmolLM2-1.7B-Instruct', revision: '31b70e2e869a7173562077fd711b654946d38674',
+    phase: 'load',
+    modelId: 'HuggingFaceTB/SmolLM2-1.7B-Instruct',
+    revision: '31b70e2e869a7173562077fd711b654946d38674',
     corePath: 'onnx/model_q4f16.onnx',
     externalData: [],
     executionProviders: ['webgpu'],
@@ -462,7 +464,8 @@ describe('SmolLM2 1.7B Download replay', () => {
         expect(outcome.error).toBeInstanceOf(Error);
         if (!(outcome.error instanceof Error)) throw new Error('Expected the original metadata I/O cause to remain diagnosable');
         expect(outcome.error).toMatchObject({
-          name: 'RequiredDownloadedModelResourceError', failure: 'io',
+          name: 'RequiredDownloadedModelResourceError',
+          failure: 'io',
           url: `https://huggingface.co/${modelId}/resolve/${revision}/generation_config.json`,
           cause: failure,
         });
@@ -507,12 +510,17 @@ describe('SmolLM2 1.7B Download replay', () => {
         // Common metadata preparation has completed; callbacks delegate to the
         // real observer, prefetcher, and offline acceptance Worker entry.
         const result = await runCandidateDownloadOrchestration({
-          candidates: [firstCandidate, secondCandidate], signal: undefined,
+          candidates: [firstCandidate, secondCandidate],
+          signal: undefined,
           prepareCandidate: async ({ candidate }) => {
             preparedCandidates.push(candidate);
             return prepareProductionModelCandidate({
-              modelId, revision, candidate, requiredModelPaths: pathsByDtype[candidate.dtype],
-              progressCallback: () => undefined, signal: undefined,
+              modelId,
+              revision,
+              candidate,
+              requiredModelPaths: pathsByDtype[candidate.dtype],
+              progressCallback: () => undefined,
+              signal: undefined,
             });
           },
           acceptCandidate: async ({ candidate }) => {
@@ -520,8 +528,12 @@ describe('SmolLM2 1.7B Download replay', () => {
             const filesBefore = [...h.fs.files].map(([path, bytes]) => [path, digest({ bytes })]);
             const writesBefore = h.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation));
             const accepted = await acceptDownloadedProductionCandidate({
-              modelId, resolvedRevision: revision, loadRevision: revision, candidate,
-              progressCallback: ({ info }) => acceptancePhases.push(info.status), signal: undefined,
+              modelId,
+              resolvedRevision: revision,
+              loadRevision: revision,
+              candidate,
+              progressCallback: ({ info }) => acceptancePhases.push(info.status),
+              signal: undefined,
             });
             expect([...h.fs.files].map(([path, bytes]) => [path, digest({ bytes })])).toEqual(filesBefore);
             expect(h.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual(writesBefore);

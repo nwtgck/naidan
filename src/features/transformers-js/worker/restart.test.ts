@@ -13,6 +13,7 @@ class MockWorker extends EventTarget {
   });
   postMessage = vi.fn((message: unknown) => this.startup.acceptHostMessage({ message }));
   static constructorCount = 0;
+
   constructor() {
     super();
     workers.push(this);
@@ -227,7 +228,8 @@ describe('transformersJsService worker restart', () => {
       return new Promise<never>(() => undefined);
     });
     vi.mocked(Comlink.wrap).mockImplementation(() => ({
-      loadDownloadedModel: load, generateText: generate,
+      loadDownloadedModel: load,
+      generateText: generate,
       [Comlink.releaseProxy]: vi.fn(),
       [Comlink.createEndpoint]: vi.fn(),
     }));

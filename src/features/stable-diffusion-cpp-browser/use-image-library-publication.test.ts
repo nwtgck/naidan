@@ -11,33 +11,46 @@ vi.mock('./download-worker/client', () => ({ downloadImageRecipeInWorker: (...ar
 vi.mock('./inventory-worker/client', () => ({ inspectImageInventory: (...args: unknown[]) => mocks.inspect(...args) }));
 vi.mock('./composables/use-host-model-directories', async () => {
   const { createDisabledImageLibrary } = await import('./library-standalone');
-  return { useHostModelDirectories({ changed, stopDownload }: { changed: () => Promise<void>, stopDownload: ({ id }: { id: string }) => Promise<void> }) {
-    mocks.change.mockImplementation(changed);
-    mocks.stopDownload.mockImplementation(stopDownload);
-    const view = createDisabledImageLibrary().hostDirectories;
-    view.destination.value = 'linked-models';
-    return { view, registrations: () => [{ id: 'linked-models', name: 'weights' }], refresh: () => mocks.refresh(), downloadDestination: async () => ({ kind: 'host', directoryId: 'linked-models' }) };
-  } };
+  return {
+    useHostModelDirectories({ changed, stopDownload }: { changed: () => Promise<void>, stopDownload: ({ id }: { id: string }) => Promise<void> }) {
+      mocks.change.mockImplementation(changed);
+      mocks.stopDownload.mockImplementation(stopDownload);
+      const view = createDisabledImageLibrary().hostDirectories;
+      view.destination.value = 'linked-models';
+      return { view, registrations: () => [{ id: 'linked-models', name: 'weights' }], refresh: () => mocks.refresh(), downloadDestination: async () => ({ kind: 'host', directoryId: 'linked-models' }) };
+    },
+  };
 });
 const scopes: ReturnType<typeof effectScope>[] = [];
+
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.refresh.mockResolvedValue(undefined);
   mocks.download.mockResolvedValue(undefined);
   mocks.inspect.mockResolvedValue({ candidates: [], issues: [] });
 });
+
 afterEach(() => {
   for (const scope of scopes.splice(0)) scope.stop();
 });
+
 function harness() {
   const blocked = ref(false), scope = effectScope(); scopes.push(scope);
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection() {}, dependencies: undefined }))!;
   return { blocked, scope, library };
 }
+
 async function inventory(): Promise<ModelInventory> {
   const file = ggufFixture({ name: 'z-image.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file;
-  return scanImageRepositories({ repositories: [{ id: 'host/linked-models/org/repo', name: 'linked weights',
-    hostSource: { directoryId: 'linked-models', directoryName: 'weights', repository: 'org/repo' }, files: [{ path: file.name, file }] }], signal: undefined });
+  return scanImageRepositories({
+    repositories: [{
+      id: 'host/linked-models/org/repo',
+      name: 'linked weights',
+      hostSource: { directoryId: 'linked-models', directoryName: 'weights', repository: 'org/repo' },
+      files: [{ path: file.name, file }],
+    }],
+    signal: undefined,
+  });
 }
 
 it('releases cancellation while the final host permission refresh is pending and ignores its late failure', async () => {

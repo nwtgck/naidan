@@ -221,10 +221,17 @@ function partialRunWithProbeDownloadEvidence({ exactRevision = "a".repeat(40) }:
       finishedAt: planning.completedAt,
     },
     modelArtifactObservations: [{
-      modelId: 'org/model', revision: exactRevision, autoClass: 'AutoModelForCausalLM',
-      candidate: { device: 'webgpu', dtype: 'q4f16' }, status: 'observed',
-      observationMethod: 'held-model-artifact-fetch-quiescence', quiescenceMs: 1, timeoutMs: 100,
-      paths: ['onnx/model_q4f16.onnx'], requests: [], error: undefined,
+      modelId: 'org/model',
+      revision: exactRevision,
+      autoClass: 'AutoModelForCausalLM',
+      candidate: { device: 'webgpu', dtype: 'q4f16' },
+      status: 'observed',
+      observationMethod: 'held-model-artifact-fetch-quiescence',
+      quiescenceMs: 1,
+      timeoutMs: 100,
+      paths: ['onnx/model_q4f16.onnx'],
+      requests: [],
+      error: undefined,
     }],
     modelArtifactObservationError: undefined,
     cacheBefore: undefined,
@@ -339,7 +346,9 @@ function ordinaryProductionRemote() {
       await completeProductionReply({ onGenerationEvent });
     }),
     takeGenerationCapture: vi.fn(async () => ({ status: 'not-started' as const })),
-    interrupt: vi.fn(async () => undefined), unloadModel: vi.fn(async () => undefined), resetCache: vi.fn(async () => undefined),
+    interrupt: vi.fn(async () => undefined),
+    unloadModel: vi.fn(async () => undefined),
+    resetCache: vi.fn(async () => undefined),
     [mocks.releaseProxy]: vi.fn(async () => undefined),
   };
 }
@@ -439,8 +448,13 @@ describe("createModelSupportInvestigationWorkerClient", () => {
   it('connects fresh acquisition to a separately owned Worker and publishes its HTTP progress', async () => {
     const request = { modelId: 'org/model', revision: 'a'.repeat(40), maximumBytes: 1024, repositoryFiles: [{ path: 'config.json', size: 3 }] };
     const summary: FreshMetadataSummary = {
-      schemaVersion: 1, modelId: request.modelId, revision: request.revision,
-      source: 'fresh-network-memory', status: 'prepared', maximumBytes: 1024, receivedBytes: 3,
+      schemaVersion: 1,
+      modelId: request.modelId,
+      revision: request.revision,
+      source: 'fresh-network-memory',
+      status: 'prepared',
+      maximumBytes: 1024,
+      receivedBytes: 3,
       requests: [{ consumer: 'runtime-preparation', path: 'config.json', request: 'full', status: 'complete', httpStatus: 200, receivedBytes: 3 }],
       preparation: { processor: 'tokenizer', resourcePlansByCandidate: { 'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx'] } } },
     };
@@ -449,10 +463,12 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       // This tests the Worker ownership/transport boundary, not metadata contents.
       return { summary, files: [] };
     });
-    const planning = remote({ runPartialInvestigation: vi.fn<IModelSupportInvestigationWorker['runPartialInvestigation']>(async (_request, _onEvent, _onCheckpoint, collect) => {
-      const result = await collect({ request });
-      return toPlanningWorkerRun({ run: { ...partialRun(), freshMetadata: result.summary } });
-    }) });
+    const planning = remote({
+      runPartialInvestigation: vi.fn<IModelSupportInvestigationWorker['runPartialInvestigation']>(async (_request, _onEvent, _onCheckpoint, collect) => {
+        const result = await collect({ request });
+        return toPlanningWorkerRun({ run: { ...partialRun(), freshMetadata: result.summary } });
+      }),
+    });
     mocks.wrap.mockReturnValueOnce(planning).mockReturnValueOnce({ run: freshRun, [mocks.releaseProxy]: vi.fn() });
     const onEvent = vi.fn();
     const onCheckpoint = vi.fn();
@@ -475,12 +491,18 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const firstStarted = Promise.withResolvers<void>();
     const lateResult = Promise.withResolvers<FreshMetadataResult>();
     const firstSummary: FreshMetadataSummary = {
-      schemaVersion: 1, modelId: 'org/first', revision, source: 'fresh-network-memory',
-      status: 'running', maximumBytes: 1024, receivedBytes: 3,
+      schemaVersion: 1,
+      modelId: 'org/first',
+      revision,
+      source: 'fresh-network-memory',
+      status: 'running',
+      maximumBytes: 1024,
+      receivedBytes: 3,
       requests: [{ consumer: 'runtime-preparation', path: 'tokenizer.json', request: 'full', status: 'reading', httpStatus: 200, receivedBytes: 3 }],
     };
     const completedLateSummary: FreshMetadataSummary = {
-      ...firstSummary, status: 'prepared',
+      ...firstSummary,
+      status: 'prepared',
       preparation: { processor: 'tokenizer', resourcePlansByCandidate: {} },
     };
     let lateObservation: Parameters<WorkerServerApi<FreshMetadataWorker>['run']>[1] | undefined;
@@ -508,7 +530,10 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const checkpoints = vi.fn();
     const clients: ReturnType<typeof createModelSupportInvestigationWorkerClient>[] = [];
     const flow = runInvestigationTargetsSequentially({
-      targets: ['org/first', 'org/second'], shouldInterrupt: () => false, takeSkipRequest: () => false, onUpdate: () => undefined,
+      targets: ['org/first', 'org/second'],
+      shouldInterrupt: () => false,
+      takeSkipRequest: () => false,
+      onUpdate: () => undefined,
       runTarget: async ({ target }) => {
         const client = createModelSupportInvestigationWorkerClient({ planningTimeoutMs: FRESH_METADATA_TIMEOUT_MS * 2 });
         clients.push(client);
@@ -547,8 +572,13 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const started = Promise.withResolvers<void>();
     const held = Promise.withResolvers<FreshMetadataResult>();
     const summary: FreshMetadataSummary = {
-      schemaVersion: 1, modelId: request.modelId, revision: request.revision,
-      source: 'fresh-network-memory', status: 'running', maximumBytes: 1024, receivedBytes: 3,
+      schemaVersion: 1,
+      modelId: request.modelId,
+      revision: request.revision,
+      source: 'fresh-network-memory',
+      status: 'running',
+      maximumBytes: 1024,
+      receivedBytes: 3,
       requests: [{ consumer: 'runtime-preparation', path: 'tokenizer.json', request: 'full', status: 'reading', httpStatus: 200, receivedBytes: 3 }],
     };
     const completed: FreshMetadataSummary = { ...summary, status: 'prepared', preparation: { processor: 'tokenizer', resourcePlansByCandidate: {} } };
@@ -559,10 +589,12 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       started.resolve();
       return held.promise;
     });
-    const planning = remote({ runPartialInvestigation: vi.fn<IModelSupportInvestigationWorker['runPartialInvestigation']>(async (_request, _onEvent, _onCheckpoint, collect) => {
-      const result = await collect({ request });
-      return toPlanningWorkerRun({ run: { ...partialRun(), freshMetadata: result.summary } });
-    }) });
+    const planning = remote({
+      runPartialInvestigation: vi.fn<IModelSupportInvestigationWorker['runPartialInvestigation']>(async (_request, _onEvent, _onCheckpoint, collect) => {
+        const result = await collect({ request });
+        return toPlanningWorkerRun({ run: { ...partialRun(), freshMetadata: result.summary } });
+      }),
+    });
     mocks.wrap.mockReturnValueOnce(planning).mockReturnValueOnce({ run: fresh, [mocks.releaseProxy]: vi.fn() });
     const onCheckpoint = vi.fn();
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
@@ -573,10 +605,12 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       await started.promise;
       await client.interrupt();
       expect(await outcome).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
-      expect(onCheckpoint).toHaveBeenLastCalledWith({ checkpoint: expect.objectContaining({
-        recovery: expect.objectContaining({ status: 'interrupted' }),
-        run: expect.objectContaining({ freshMetadata: expect.objectContaining({ status: 'interrupted', receivedBytes: 3, requests: summary.requests }) }),
-      }) });
+      expect(onCheckpoint).toHaveBeenLastCalledWith({
+        checkpoint: expect.objectContaining({
+          recovery: expect.objectContaining({ status: 'interrupted' }),
+          run: expect.objectContaining({ freshMetadata: expect.objectContaining({ status: 'interrupted', receivedBytes: 3, requests: summary.requests }) }),
+        }),
+      });
       expect(mocks.workerInstances).toHaveLength(2);
       expect(mocks.workerInstances.every(worker => worker.terminate.mock.calls.length === 1)).toBe(true);
       const checkpointCount = onCheckpoint.mock.calls.length;
@@ -594,16 +628,20 @@ describe("createModelSupportInvestigationWorkerClient", () => {
   });
 
   it('rejects a fresh-acquisition request from offline planning before creating a network Worker', async () => {
-    const planning = remote({ runPartialInvestigation: vi.fn<IModelSupportInvestigationWorker['runPartialInvestigation']>(async (_request, _onEvent, _onCheckpoint, collect) => {
-      await expect(collect({ request: { modelId: 'org/model', revision: 'a'.repeat(40), maximumBytes: 1024, repositoryFiles: [] } })).rejects.toThrow('authority');
-      return planningRun();
-    }) });
+    const planning = remote({
+      runPartialInvestigation: vi.fn<IModelSupportInvestigationWorker['runPartialInvestigation']>(async (_request, _onEvent, _onCheckpoint, collect) => {
+        await expect(collect({ request: { modelId: 'org/model', revision: 'a'.repeat(40), maximumBytes: 1024, repositoryFiles: [] } })).rejects.toThrow('authority');
+        return planningRun();
+      }),
+    });
     mocks.wrap.mockReturnValueOnce(planning);
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
     const client = createModelSupportInvestigationWorkerClient();
     await client.runPartialInvestigation({
-      modelId: 'org/model', configuration: { ...configurationForPreset({ preset: 'download-focused' }), externalNetworkPolicy: 'deny' },
-      onEvent: vi.fn(), onCheckpoint: vi.fn(),
+      modelId: 'org/model',
+      configuration: { ...configurationForPreset({ preset: 'download-focused' }), externalNetworkPolicy: 'deny' },
+      onEvent: vi.fn(),
+      onCheckpoint: vi.fn(),
     });
     expect(mocks.workerInstances).toHaveLength(1);
     expect(mocks.completeRuntimeEvidence).not.toHaveBeenCalled();
@@ -615,11 +653,13 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       summary: { schemaVersion: 1, modelId: request.modelId, revision: request.revision, source: 'fresh-network-memory', status: 'failed', maximumBytes: 1024, receivedBytes: 0, requests: [] },
       files: [],
     }));
-    const planning = remote({ runPartialInvestigation: vi.fn<IModelSupportInvestigationWorker['runPartialInvestigation']>(async (_request, _onEvent, _onCheckpoint, collect) => {
-      await collect({ request });
-      await expect(collect({ request })).rejects.toThrow('already started');
-      return planningRun();
-    }) });
+    const planning = remote({
+      runPartialInvestigation: vi.fn<IModelSupportInvestigationWorker['runPartialInvestigation']>(async (_request, _onEvent, _onCheckpoint, collect) => {
+        await collect({ request });
+        await expect(collect({ request })).rejects.toThrow('already started');
+        return planningRun();
+      }),
+    });
     mocks.wrap.mockReturnValueOnce(planning).mockReturnValue({ run: freshRun, [mocks.releaseProxy]: vi.fn() });
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
     const client = createModelSupportInvestigationWorkerClient();
@@ -783,6 +823,7 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     await client.dispose();
     expect(mocks.workerInstances).toHaveLength(3);
   });
+
   it("treats settled Worker release failures as best-effort cleanup", async () => {
     const planningRemote = remote({
       runPartialInvestigation: vi.fn(async () => planningRun()),
@@ -822,11 +863,13 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       const blob = new Blob(['{}']);
       const sidecars = [{ path: 'config.json', blob }];
       const planning = planningRun();
-      const planningRemote = remote({ runPartialInvestigation: vi.fn(async (request, _onEvent, onRunCheckpoint) => {
-        expect(request.replayMetadataBudgetBytes).toBe(123);
-        onRunCheckpoint({ run: planning, replayMetadata: sidecars });
-        return planning;
-      }) });
+      const planningRemote = remote({
+        runPartialInvestigation: vi.fn(async (request, _onEvent, onRunCheckpoint) => {
+          expect(request.replayMetadataBudgetBytes).toBe(123);
+          onRunCheckpoint({ run: planning, replayMetadata: sidecars });
+          return planning;
+        }),
+      });
       planningRemote[mocks.releaseProxy] = vi.fn(() => new Promise<void>(() => undefined));
       mocks.wrap.mockReturnValueOnce(planningRemote);
       const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
@@ -848,11 +891,13 @@ describe("createModelSupportInvestigationWorkerClient", () => {
   it('keeps completed replay sidecars after interrupt and rejects late Worker checkpoints', async () => {
     const sidecars = [{ path: 'config.json', blob: new Blob(['{}']) }];
     let lateCheckpoint: Parameters<IModelSupportInvestigationWorker['runPartialInvestigation']>[2] | undefined;
-    const planningRemote = remote({ runPartialInvestigation: vi.fn(async (_request, _event, onRunCheckpoint) => {
-      lateCheckpoint = onRunCheckpoint;
-      onRunCheckpoint({ run: planningRun(), replayMetadata: sidecars });
-      return await new Promise<ModelSupportInvestigationPlanningWorkerRun>(() => undefined);
-    }) });
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn(async (_request, _event, onRunCheckpoint) => {
+        lateCheckpoint = onRunCheckpoint;
+        onRunCheckpoint({ run: planningRun(), replayMetadata: sidecars });
+        return await new Promise<ModelSupportInvestigationPlanningWorkerRun>(() => undefined);
+      }),
+    });
     mocks.wrap.mockReturnValueOnce(planningRemote);
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
     const client = createModelSupportInvestigationWorkerClient();
@@ -872,7 +917,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const configuration = createDefaultInvestigationConfiguration();
     configuration.externalNetworkPolicy = 'deny';
     const { client, operation, planningRemote } = await startPublicProviderHost({
-      production, configuration, planning: localPlanningRun({ complete: true }), onCheckpoint: vi.fn(), productionLaneTimeoutMs: undefined,
+      production,
+      configuration,
+      planning: localPlanningRun({ complete: true }),
+      onCheckpoint: vi.fn(),
+      productionLaneTimeoutMs: undefined,
     });
     const result = await operation;
     expect(planningRemote.runPartialInvestigation).toHaveBeenCalledWith(
@@ -895,8 +944,13 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const planning = localPlanningRun({ complete: true });
     planning.steps = planning.steps.map(step => step.id === 'runtime-assets' ? { ...step, status: 'running', detail: 'Synthetic unclosed owner' } : step);
     const onCheckpoint = vi.fn();
-    const { client, operation } = await startPublicProviderHost({ production: ordinaryProductionRemote(), configuration: createDefaultInvestigationConfiguration(),
-      planning, onCheckpoint, productionLaneTimeoutMs: undefined });
+    const { client, operation } = await startPublicProviderHost({
+      production: ordinaryProductionRemote(),
+      configuration: createDefaultInvestigationConfiguration(),
+      planning,
+      onCheckpoint,
+      productionLaneTimeoutMs: undefined,
+    });
     const result = await operation;
     const final = onCheckpoint.mock.calls.at(-1)![0].checkpoint;
     expect(result).toEqual(final.run);
@@ -1092,7 +1146,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     configuration.externalNetworkPolicy = 'deny';
     configuration.scope = { 'repository-download': 'not-selected', 'model-load': 'not-selected', generation: 'selected', continuity: 'not-selected', 'capability-probes': 'not-selected' };
     const { client, operation, planningRemote } = await startPublicProviderHost({
-      production, configuration, planning: localPlanningRun({ complete: true }), onCheckpoint: vi.fn(), productionLaneTimeoutMs: undefined,
+      production,
+      configuration,
+      planning: localPlanningRun({ complete: true }),
+      onCheckpoint: vi.fn(),
+      productionLaneTimeoutMs: undefined,
     });
     const result = await operation;
     expect(planningRemote.runPartialInvestigation).toHaveBeenCalledWith(
@@ -1132,20 +1190,29 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const configuration = createDefaultInvestigationConfiguration();
     configuration.externalNetworkPolicy = 'deny';
     configuration.scope = {
-      'repository-download': 'not-selected', 'model-load': 'not-selected', generation: 'not-selected',
+      'repository-download': 'not-selected',
+      'model-load': 'not-selected',
+      generation: 'not-selected',
       continuity: selectedScope === 'continuity' ? 'selected' : 'not-selected',
       'capability-probes': selectedScope === 'capability-probes' ? 'selected' : 'not-selected',
     };
     const { client, operation } = await startPublicProviderHost({
-      production, configuration, planning: localPlanningRun({ complete: true }), onCheckpoint: vi.fn(), productionLaneTimeoutMs: undefined,
+      production,
+      configuration,
+      planning: localPlanningRun({ complete: true }),
+      onCheckpoint: vi.fn(),
+      productionLaneTimeoutMs: undefined,
     });
     const result = await operation;
     expect(production.loadDownloadedModel).toHaveBeenCalledOnce();
     expect(production.generateText).toHaveBeenCalledTimes(expectedContinuity ? 5 : 11);
     expect(result.productionProviderCapture?.plan).toBe(expectedContinuity ? 'generation-continuity-v2' : 'generation-capabilities-v2');
     expect(result.executionPlan).toEqual({
-      repositoryDownload: false, modelLoad: true, generation: true,
-      continuity: expectedContinuity, capabilityProbes: expectedCapabilityProbes,
+      repositoryDownload: false,
+      modelLoad: true,
+      generation: true,
+      continuity: expectedContinuity,
+      capabilityProbes: expectedCapabilityProbes,
     });
     expect(mocks.runProductionScenario).not.toHaveBeenCalled();
     await client.dispose();
@@ -1191,7 +1258,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const production = ordinaryProductionRemote();
     production.generateText.mockRejectedValueOnce(new Error('Synthetic request failure'));
     const { client, operation } = await startPublicProviderHost({
-      production, configuration: createDefaultInvestigationConfiguration(), planning: planningRun(), onCheckpoint: vi.fn(), productionLaneTimeoutMs: undefined,
+      production,
+      configuration: createDefaultInvestigationConfiguration(),
+      planning: planningRun(),
+      onCheckpoint: vi.fn(),
+      productionLaneTimeoutMs: undefined,
     });
     const result = await operation;
     expect(production.loadDownloadedModel).toHaveBeenCalledOnce();
@@ -1208,7 +1279,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const production = ordinaryProductionRemote();
     production.loadDownloadedModel.mockRejectedValue(new Error('Synthetic model load failure'));
     const { client, operation } = await startPublicProviderHost({
-      production, configuration: createDefaultInvestigationConfiguration(), planning: planningRun(), onCheckpoint: vi.fn(), productionLaneTimeoutMs: undefined,
+      production,
+      configuration: createDefaultInvestigationConfiguration(),
+      planning: planningRun(),
+      onCheckpoint: vi.fn(),
+      productionLaneTimeoutMs: undefined,
     });
     const result = await operation;
     expect(production.loadDownloadedModel).toHaveBeenCalledOnce();
@@ -1226,9 +1301,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     let latePlanningEvent: PlanningArgs[1] | undefined;
     let latePlanningCheckpoint: PlanningArgs[2] | undefined;
     let lateGenerationEvent: Parameters<WorkerServerApi<ITransformersJsWorker>['generateText']>[7];
-    const planning = remote({ runPartialInvestigation: vi.fn(async (_request, event, checkpoint) => {
-      latePlanningEvent = event; latePlanningCheckpoint = checkpoint; return planningRun();
-    }) });
+    const planning = remote({
+      runPartialInvestigation: vi.fn(async (_request, event, checkpoint) => {
+        latePlanningEvent = event; latePlanningCheckpoint = checkpoint; return planningRun();
+      }),
+    });
     const production = ordinaryProductionRemote();
     production.generateText.mockImplementation(async (_messages, _onChunk, _onToolCalls, _params, _tools, _capture, _continuationOwner, onGenerationEvent) => {
       lateGenerationEvent = onGenerationEvent;
@@ -1255,11 +1332,13 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     let lateEvent: CandidateArgs[6] | undefined;
     let lateCheckpoint: CandidateArgs[7] | undefined;
     const planning = remote({ runPartialInvestigation: vi.fn(async () => planningRun()) });
-    const candidate = remote({ runCandidateAttempt: vi.fn(async (_target, _declarations, _template, _candidate, _options, _event, event, checkpoint) => {
-      lateEvent = event;
-      lateCheckpoint = checkpoint;
-      return attempt({ candidateId: 'webgpu-q4f16', status: 'passed' });
-    }) });
+    const candidate = remote({
+      runCandidateAttempt: vi.fn(async (_target, _declarations, _template, _candidate, _options, _event, event, checkpoint) => {
+        lateEvent = event;
+        lateCheckpoint = checkpoint;
+        return attempt({ candidateId: 'webgpu-q4f16', status: 'passed' });
+      }),
+    });
     mocks.wrap.mockReturnValueOnce(planning).mockReturnValueOnce(candidate);
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
     const client = createModelSupportInvestigationWorkerClient();
@@ -1280,7 +1359,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const production = ordinaryProductionRemote();
     const onCheckpoint = vi.fn();
     const { client, operation } = await startPublicProviderHost({
-      production, configuration: createDefaultInvestigationConfiguration(), planning: planningRun(), onCheckpoint, productionLaneTimeoutMs: undefined,
+      production,
+      configuration: createDefaultInvestigationConfiguration(),
+      planning: planningRun(),
+      onCheckpoint,
+      productionLaneTimeoutMs: undefined,
     });
     const outcome = operation.then(run => ({ run, error: undefined }), error => ({ run: undefined, error }));
     try {
@@ -1331,7 +1414,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     mocks.productionAutoReady = false;
     const production = ordinaryProductionRemote();
     const { client, operation } = await startPublicProviderHost({
-      production, configuration: createDefaultInvestigationConfiguration(), planning: planningRun(), onCheckpoint: vi.fn(), productionLaneTimeoutMs: 10,
+      production,
+      configuration: createDefaultInvestigationConfiguration(),
+      planning: planningRun(),
+      onCheckpoint: vi.fn(),
+      productionLaneTimeoutMs: 10,
     });
     try {
       await vi.waitFor(() => expect(mocks.workerInstances).toHaveLength(2));
@@ -1357,7 +1444,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       entered.resolve(); return new Promise(() => undefined);
     });
     const { client, operation } = await startPublicProviderHost({
-      production, configuration: createDefaultInvestigationConfiguration(), planning: planningRun(), onCheckpoint: vi.fn(), productionLaneTimeoutMs: 10,
+      production,
+      configuration: createDefaultInvestigationConfiguration(),
+      planning: planningRun(),
+      onCheckpoint: vi.fn(),
+      productionLaneTimeoutMs: 10,
     });
     try {
       await entered.promise;
@@ -1381,7 +1472,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     });
     const onCheckpoint = vi.fn();
     const { client, operation } = await startPublicProviderHost({
-      production, configuration: createDefaultInvestigationConfiguration(), planning: planningRun(), onCheckpoint, productionLaneTimeoutMs: undefined,
+      production,
+      configuration: createDefaultInvestigationConfiguration(),
+      planning: planningRun(),
+      onCheckpoint,
+      productionLaneTimeoutMs: undefined,
     });
     const outcome = operation.catch(error => error);
     await entered.promise;
@@ -1402,7 +1497,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     });
     const onCheckpoint = vi.fn();
     const { client, operation } = await startPublicProviderHost({
-      production, configuration: createDefaultInvestigationConfiguration(), planning: planningRun(), onCheckpoint, productionLaneTimeoutMs: undefined,
+      production,
+      configuration: createDefaultInvestigationConfiguration(),
+      planning: planningRun(),
+      onCheckpoint,
+      productionLaneTimeoutMs: undefined,
     });
     const outcome = operation.catch(error => error);
     await entered.promise;
@@ -1410,10 +1509,12 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     expect(await outcome).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
     expect(mocks.workerInstances[1]?.terminate).toHaveBeenCalledOnce();
     expect(production[mocks.releaseProxy]).not.toHaveBeenCalled();
-    expect(onCheckpoint).toHaveBeenLastCalledWith({ checkpoint: expect.objectContaining({
-      recovery: expect.objectContaining({ status: 'interrupted' }),
-      run: expect.objectContaining({ productionProviderCapture: expect.objectContaining({ requests: expect.arrayContaining([expect.objectContaining({ status: 'awaiting-settlement' })]) }) }),
-    }) });
+    expect(onCheckpoint).toHaveBeenLastCalledWith({
+      checkpoint: expect.objectContaining({
+        recovery: expect.objectContaining({ status: 'interrupted' }),
+        run: expect.objectContaining({ productionProviderCapture: expect.objectContaining({ requests: expect.arrayContaining([expect.objectContaining({ status: 'awaiting-settlement' })]) }) }),
+      }),
+    });
     await client.waitForEvidenceRelease();
   });
 
@@ -1428,7 +1529,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     });
     const onCheckpoint = vi.fn();
     const { client, operation } = await startPublicProviderHost({
-      production, configuration: createDefaultInvestigationConfiguration(), planning: planningRun(), onCheckpoint, productionLaneTimeoutMs: undefined,
+      production,
+      configuration: createDefaultInvestigationConfiguration(),
+      planning: planningRun(),
+      onCheckpoint,
+      productionLaneTimeoutMs: undefined,
     });
     const outcome = operation.catch(error => error);
     await entered.promise;
@@ -1454,7 +1559,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     });
     const onCheckpoint = vi.fn();
     const { client, operation } = await startPublicProviderHost({
-      production, configuration: createDefaultInvestigationConfiguration(), planning: planningRun(), onCheckpoint, productionLaneTimeoutMs: undefined,
+      production,
+      configuration: createDefaultInvestigationConfiguration(),
+      planning: planningRun(),
+      onCheckpoint,
+      productionLaneTimeoutMs: undefined,
     });
     const outcome = operation.catch(error => error);
     await entered.promise;
@@ -1571,23 +1680,29 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     expect(planningRemote[mocks.releaseProxy]).toHaveBeenCalledTimes(1);
   });
 
-
   it('does not start redundant accepted-cache template work before continuing to the next target', async () => {
     const planning = partialRunWithProbeDownloadEvidence({ exactRevision: 'b'.repeat(40) });
-    const planningRemote = remote({ runPartialInvestigation: vi.fn(async () => planning),
-      inspectDownloadedTemplateBehavior: vi.fn(() => new Promise<NonNullable<ModelSupportInvestigationRun['templateBehavior']>>(() => undefined)) });
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn(async () => planning),
+      inspectDownloadedTemplateBehavior: vi.fn(() => new Promise<NonNullable<ModelSupportInvestigationRun['templateBehavior']>>(() => undefined)),
+    });
     const production = ordinaryProductionRemote();
     mocks.wrap.mockReturnValueOnce(planningRemote).mockReturnValueOnce(production);
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
     const client = createModelSupportInvestigationWorkerClient();
     const visited: string[] = [];
     const executions = await runInvestigationTargetsSequentially({
-      targets: ['org/model', 'org/next'], shouldInterrupt: () => false,
-      takeSkipRequest: () => false, onUpdate: () => undefined,
+      targets: ['org/model', 'org/next'],
+      shouldInterrupt: () => false,
+      takeSkipRequest: () => false,
+      onUpdate: () => undefined,
       runTarget: async ({ target }) => {
         visited.push(target);
         if (target === 'org/model') return client.runPartialInvestigation({
-          modelId: target, configuration: createDefaultInvestigationConfiguration(), onEvent: vi.fn(), onCheckpoint: vi.fn(),
+          modelId: target,
+          configuration: createDefaultInvestigationConfiguration(),
+          onEvent: vi.fn(),
+          onCheckpoint: vi.fn(),
         });
         expect(mocks.workerInstances[1]?.terminate).toHaveBeenCalledOnce();
         return { ...partialRun(), modelId: target };
@@ -1608,16 +1723,32 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const planning = partialRunWithProbeDownloadEvidence({ exactRevision });
     const production = ordinaryProductionRemote();
     const { client, operation, planningRemote } = await startPublicProviderHost({
-      production, configuration: createDefaultInvestigationConfiguration(), planning, onCheckpoint: vi.fn(), productionLaneTimeoutMs: undefined,
+      production,
+      configuration: createDefaultInvestigationConfiguration(),
+      planning,
+      onCheckpoint: vi.fn(),
+      productionLaneTimeoutMs: undefined,
     });
     const result = await operation;
     expect(result.repository?.resolvedRevision).toBe(exactRevision);
-    expect(result.downloadEvidence).toEqual({ ...planning.downloadEvidence, mode: 'runtime-complete', runtimeCompletion: {
-      schemaVersion: 1, source: 'ordinary-provider-load', status: 'exhausted', repositoryResolvedRevision: exactRevision,
-      cacheRevision: null, loaderRevisionOption: null, selectedCandidate: undefined,
-      cacheReuse: undefined, preparation: undefined, cacheAfter: undefined, cacheInspectionError: undefined,
-      error: { name: 'ProductionLoadReceiptUnavailable', message: 'Ordinary Provider Load status=ready; receipt=not-observed. No independent acceptance Load was run.' },
-    } });
+    expect(result.downloadEvidence).toEqual({
+      ...planning.downloadEvidence,
+      mode: 'runtime-complete',
+      runtimeCompletion: {
+        schemaVersion: 1,
+        source: 'ordinary-provider-load',
+        status: 'exhausted',
+        repositoryResolvedRevision: exactRevision,
+        cacheRevision: null,
+        loaderRevisionOption: null,
+        selectedCandidate: undefined,
+        cacheReuse: undefined,
+        preparation: undefined,
+        cacheAfter: undefined,
+        cacheInspectionError: undefined,
+        error: { name: 'ProductionLoadReceiptUnavailable', message: 'Ordinary Provider Load status=ready; receipt=not-observed. No independent acceptance Load was run.' },
+      },
+    });
     // Planning provenance is evidence, not authority to silently change the
     // ordinary Provider's requested Load revision or preferred candidate.
     expect(production.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith('org/model', { kind: 'discover-cached' }, expect.any(Function), { runId: 'run-1', workerEpoch: 1 });
@@ -1757,10 +1888,12 @@ describe("createModelSupportInvestigationWorkerClient", () => {
   it("bounds cache acceptance separately from later model-load budgets and retains a timeout checkpoint", async () => {
     const planning = partialRunWithProbeDownloadEvidence({ exactRevision: "d".repeat(40) });
     const sidecars = [{ path: 'config.json', blob: new Blob(['{}']) }];
-    mocks.wrap.mockReturnValueOnce(remote({ runPartialInvestigation: vi.fn(async (_request, _event, checkpoint) => {
-      checkpoint({ run: planning, replayMetadata: sidecars });
-      return planning;
-    }) }));
+    mocks.wrap.mockReturnValueOnce(remote({
+      runPartialInvestigation: vi.fn(async (_request, _event, checkpoint) => {
+        checkpoint({ run: planning, replayMetadata: sidecars });
+        return planning;
+      }),
+    }));
     let runtimeSignal: AbortSignal | undefined;
     let lateProgress: RuntimeAcceptanceProgressCallback | undefined;
     mocks.completeRuntimeEvidence.mockImplementation(({ signal, onProgress }: { signal?: AbortSignal; onProgress?: RuntimeAcceptanceProgressCallback }) => {
@@ -1778,16 +1911,21 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
     const client = createModelSupportInvestigationWorkerClient({ cacheAcceptanceTimeoutMs: 25 });
     const result = await client.runPartialInvestigation({
-      modelId: "org/model", configuration: modelLoadOnlyConfiguration(), onEvent, onCheckpoint,
+      modelId: "org/model",
+      configuration: modelLoadOnlyConfiguration(),
+      onEvent,
+      onCheckpoint,
     }).catch(error => error);
     expect(result).toMatchObject({ name: 'CacheAcceptanceTimeoutError' });
     expect(runtimeSignal?.aborted).toBe(true);
     expect(runtimeSignal?.reason).toBe(result);
-    expect(onCheckpoint).toHaveBeenLastCalledWith({ checkpoint: expect.objectContaining({
-      recovery: expect.objectContaining({ status: 'interrupted' }),
-      run: expect.objectContaining({ downloadEvidence: planning.downloadEvidence }),
-      replayMetadata: sidecars,
-    }) });
+    expect(onCheckpoint).toHaveBeenLastCalledWith({
+      checkpoint: expect.objectContaining({
+        recovery: expect.objectContaining({ status: 'interrupted' }),
+        run: expect.objectContaining({ downloadEvidence: planning.downloadEvidence }),
+        replayMetadata: sidecars,
+      }),
+    });
     const finalCheckpoint = onCheckpoint.mock.calls.at(-1)![0].checkpoint;
     const event = onEvent.mock.calls.at(-1)![0].event;
     expect(event).toMatchObject({
@@ -1806,10 +1944,12 @@ describe("createModelSupportInvestigationWorkerClient", () => {
   it('disposes cache acceptance through its abort owner and rejects late callbacks without a prior interrupt', async () => {
     const planning = partialRunWithProbeDownloadEvidence({ exactRevision: 'd'.repeat(40) });
     const sidecars = [{ path: 'config.json', blob: new Blob(['{}']) }];
-    mocks.wrap.mockReturnValueOnce(remote({ runPartialInvestigation: vi.fn(async (_request, _event, checkpoint) => {
-      checkpoint({ run: planning, replayMetadata: sidecars });
-      return planning;
-    }) }));
+    mocks.wrap.mockReturnValueOnce(remote({
+      runPartialInvestigation: vi.fn(async (_request, _event, checkpoint) => {
+        checkpoint({ run: planning, replayMetadata: sidecars });
+        return planning;
+      }),
+    }));
     let runtimeSignal: AbortSignal | undefined;
     let lateProgress: RuntimeAcceptanceProgressCallback | undefined;
     mocks.completeRuntimeEvidence.mockImplementation(({ signal, onProgress }: { signal?: AbortSignal; onProgress?: RuntimeAcceptanceProgressCallback }) => {
@@ -1828,9 +1968,12 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       await client.dispose();
       expect(runtimeSignal?.aborted).toBe(true);
       expect(await outcome).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
-      expect(onCheckpoint).toHaveBeenLastCalledWith({ checkpoint: expect.objectContaining({
-        recovery: expect.objectContaining({ status: 'interrupted' }), replayMetadata: sidecars,
-      }) });
+      expect(onCheckpoint).toHaveBeenLastCalledWith({
+        checkpoint: expect.objectContaining({
+          recovery: expect.objectContaining({ status: 'interrupted' }),
+          replayMetadata: sidecars,
+        }),
+      });
       const events = onEvent.mock.calls.length;
       const checkpoints = onCheckpoint.mock.calls.length;
       lateProgress?.({ progress: { phase: 'runtime', revision: 'd'.repeat(40), candidate: undefined, info: { status: 'ready' } } });
@@ -1871,5 +2014,4 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     });
     expect(mocks.runProductionScenario).not.toHaveBeenCalled();
   });
-
 });

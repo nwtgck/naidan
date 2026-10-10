@@ -21,6 +21,7 @@ function matchesBranchPatterns({ name, matchers }: {
     return true;
   return matchers.some(matcher => matcher.matches({ value: name }));
 }
+
 function isBranchDeleteMode({ mode }: {
     mode: BranchDeleteMode;
 }): boolean {
@@ -36,6 +37,7 @@ function isBranchDeleteMode({ mode }: {
   }
   }
 }
+
 function requiresMergedBranch({ mode }: {
     mode: BranchDeleteMode;
 }): boolean {
@@ -51,6 +53,7 @@ function requiresMergedBranch({ mode }: {
   }
   }
 }
+
 async function deleteBranchReflog({ context, repository, refName }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
@@ -60,8 +63,10 @@ async function deleteBranchReflog({ context, repository, refName }: {
   if (await pathExists({ files: context.files, path }))
     await context.files.unlink({ path });
 }
+
 import { parseBranchArguments } from "./arguments";
 import type { BranchDeleteMode } from "./arguments";
+
 export async function runBranch({ context, args }: {
     context: WeshCommandContext;
     args: readonly string[];
@@ -134,10 +139,22 @@ export async function runBranch({ context, args }: {
       if (logAllRefUpdates || await pathExists({ files: context.files, path: headLogPath })) {
         const zero = '0000000000000000000000000000000000000000';
         await appendReflog({
-          files: context.files, path: headLogPath, oldObjectId: objectId, newObjectId: zero, identity, timestamp, message,
+          files: context.files,
+          path: headLogPath,
+          oldObjectId: objectId,
+          newObjectId: zero,
+          identity,
+          timestamp,
+          message,
         });
         await appendReflog({
-          files: context.files, path: headLogPath, oldObjectId: zero, newObjectId: objectId, identity, timestamp, message,
+          files: context.files,
+          path: headLogPath,
+          oldObjectId: zero,
+          newObjectId: objectId,
+          identity,
+          timestamp,
+          message,
         });
       }
     }

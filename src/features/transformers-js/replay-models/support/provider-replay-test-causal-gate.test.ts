@@ -5,27 +5,36 @@ import { parseProviderReplayTextEvidence, replayRecordedText } from './provider-
 
 // Synthetic mechanics only; these tests are not model compatibility coverage.
 function recording() {
-  return parseProviderReplayTextEvidence({ value: {
-    schemaVersion: 1,
-    identity: { modelId: 'example/model', resolvedRevision: 'a'.repeat(40), investigationRunId: 'synthetic', transformersJsVersion: 'test-fixture' },
-    scenario: {
-      id: 'synthetic-prefix', messages: [{ role: 'user', content: 'Synthetic' }], tools: [],
-      lmParameters: { temperature: 0, topP: 1, maxCompletionTokens: 2 },
-      boundary: { kind: 'natural-prefix', lengthRelation: 'equals-requested-budget', stopCause: 'not-recorded' },
+  return parseProviderReplayTextEvidence({
+    value: {
+      schemaVersion: 1,
+      identity: { modelId: 'example/model', resolvedRevision: 'a'.repeat(40), investigationRunId: 'synthetic', transformersJsVersion: 'test-fixture' },
+      scenario: {
+        id: 'synthetic-prefix',
+        messages: [{ role: 'user', content: 'Synthetic' }],
+        tools: [],
+        lmParameters: { temperature: 0, topP: 1, maxCompletionTokens: 2 },
+        boundary: { kind: 'natural-prefix', lengthRelation: 'equals-requested-budget', stopCause: 'not-recorded' },
+      },
+      inputContract: {
+        inputTokenIds: [10, 20],
+        inputTensorFacts: [
+          { name: 'attention_mask', dtype: 'int64', dims: [1, 2], location: 'cpu' },
+          { name: 'input_ids', dtype: 'int64', dims: [1, 2], location: 'cpu' },
+        ],
+        effectiveGenerationConfig: { maxNewTokens: 2, temperature: 0, topP: 1, doSample: false },
+      },
+      modelReplay: {
+        source: 'production-lane',
+        sourceInputTokenIds: [10, 20],
+        sourceInputSha256: createHash('sha256').update('[10,20]').digest('hex'),
+        generatedTokenIds: [30, 40],
+        generatedSequenceTokenIds: [10, 20, 30, 40],
+        generatedText: 'Synthetic output',
+      },
+      expectedProviderSemantic: { basis: 'production-positive-control', captureScope: 'prefix', visibleContent: 'Synthetic output' },
     },
-    inputContract: {
-      inputTokenIds: [10, 20], inputTensorFacts: [
-        { name: 'attention_mask', dtype: 'int64', dims: [1, 2], location: 'cpu' },
-        { name: 'input_ids', dtype: 'int64', dims: [1, 2], location: 'cpu' },
-      ], effectiveGenerationConfig: { maxNewTokens: 2, temperature: 0, topP: 1, doSample: false },
-    },
-    modelReplay: {
-      source: 'production-lane', sourceInputTokenIds: [10, 20],
-      sourceInputSha256: createHash('sha256').update('[10,20]').digest('hex'),
-      generatedTokenIds: [30, 40], generatedSequenceTokenIds: [10, 20, 30, 40], generatedText: 'Synthetic output',
-    },
-    expectedProviderSemantic: { basis: 'production-positive-control', captureScope: 'prefix', visibleContent: 'Synthetic output' },
-  } });
+  });
 }
 
 function nativeOptions() {
@@ -34,8 +43,13 @@ function nativeOptions() {
   const options: Record<string, unknown> = {
     input_ids: { type: 'int64', dims: [1, 2], data: BigInt64Array.of(10n, 20n), location: 'cpu' },
     attention_mask: { type: 'int64', dims: [1, 2], data: BigInt64Array.of(1n, 1n), location: 'cpu' },
-    max_new_tokens: 2, temperature: 0, top_p: 1, do_sample: false,
-    past_key_values: undefined, return_dict_in_generate: true, streamer: { put, end },
+    max_new_tokens: 2,
+    temperature: 0,
+    top_p: 1,
+    do_sample: false,
+    past_key_values: undefined,
+    return_dict_in_generate: true,
+    streamer: { put, end },
     stopping_criteria: () => [false],
   };
   return { options, put, end };
@@ -43,15 +57,18 @@ function nativeOptions() {
 
 function endedRecording() {
   const evidence = recording();
-  return parseProviderReplayTextEvidence({ value: {
-    ...evidence,
-    scenario: {
-      ...evidence.scenario, lmParameters: { ...evidence.scenario.lmParameters, maxCompletionTokens: 3 },
-      boundary: { kind: 'recorded-ending', lengthRelation: 'below-requested-budget', lastTokenId: 40, stopCause: 'not-recorded' },
+  return parseProviderReplayTextEvidence({
+    value: {
+      ...evidence,
+      scenario: {
+        ...evidence.scenario,
+        lmParameters: { ...evidence.scenario.lmParameters, maxCompletionTokens: 3 },
+        boundary: { kind: 'recorded-ending', lengthRelation: 'below-requested-budget', lastTokenId: 40, stopCause: 'not-recorded' },
+      },
+      inputContract: { ...evidence.inputContract, effectiveGenerationConfig: { ...evidence.inputContract.effectiveGenerationConfig, maxNewTokens: 3 } },
+      expectedProviderSemantic: { ...evidence.expectedProviderSemantic, captureScope: 'recorded-output' },
     },
-    inputContract: { ...evidence.inputContract, effectiveGenerationConfig: { ...evidence.inputContract.effectiveGenerationConfig, maxNewTokens: 3 } },
-    expectedProviderSemantic: { ...evidence.expectedProviderSemantic, captureScope: 'recorded-output' },
-  } });
+  });
 }
 
 describe('Captured text causal gate mechanics', () => {
@@ -124,17 +141,23 @@ describe('Captured text causal gate mechanics', () => {
 
   it('does not turn a prefix into an unsupported complete capture', () => {
     const evidence = recording();
-    expect(() => parseProviderReplayTextEvidence({ value: {
-      ...evidence, scenario: { ...evidence.scenario, boundary: { kind: 'natural-complete', termination: 'eos' } },
-    } })).toThrow();
+    expect(() => parseProviderReplayTextEvidence({
+      value: {
+        ...evidence,
+        scenario: { ...evidence.scenario, boundary: { kind: 'natural-complete', termination: 'eos' } },
+      },
+    })).toThrow();
   });
 
   it('does not infer a native stop cause from a prefix whose length equals the request budget', () => {
     const evidence = recording();
     expect(evidence.modelReplay.generatedTokenIds).toHaveLength(evidence.scenario.lmParameters.maxCompletionTokens);
-    expect(() => parseProviderReplayTextEvidence({ value: {
-      ...evidence, scenario: { ...evidence.scenario, boundary: { ...evidence.scenario.boundary, stopCause: 'max-new-tokens' } },
-    } })).toThrow();
+    expect(() => parseProviderReplayTextEvidence({
+      value: {
+        ...evidence,
+        scenario: { ...evidence.scenario, boundary: { ...evidence.scenario.boundary, stopCause: 'max-new-tokens' } },
+      },
+    })).toThrow();
   });
 
   it('stops token release when the supplied Production criterion interrupts', () => {

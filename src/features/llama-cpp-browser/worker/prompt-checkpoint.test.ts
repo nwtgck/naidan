@@ -14,7 +14,8 @@ function fixture() {
     llama_tokenize: vi.fn(async () => 3),
   };
   const core = {
-    api, pointerBytes: 4 as const,
+    api,
+    pointerBytes: 4 as const,
     tryAlloc: vi.fn((): bigint | undefined => 100n),
     bytes: vi.fn(() => storage),
     free: vi.fn(),
@@ -40,17 +41,20 @@ describe('owned host prompt checkpoints', () => {
     disposePromptCheckpoint({ core, checkpoint });
     expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer: 100n });
   });
+
   it.each([0n, -1n, 1n << 32n, BigInt(Number.MAX_SAFE_INTEGER) + 1n])('declines an unsafe snapshot size %s before allocating', async size => {
     const { core, api } = fixture();
     api.llama_state_seq_get_size_ext.mockResolvedValue(size);
     await expect(capturePromptCheckpoint({ core, context: 20n, tokens: [1, 2, 3, 4] })).resolves.toBeUndefined();
     expect(core.tryAlloc).not.toHaveBeenCalled(); expect(api.llama_state_seq_get_data_ext).not.toHaveBeenCalled();
   });
+
   it('declines a null allocation without calling the native writer', async () => {
     const { core, api } = fixture(); core.tryAlloc.mockReturnValue(undefined);
     await expect(capturePromptCheckpoint({ core, context: 20n, tokens: [1, 2, 3, 4] })).resolves.toBeUndefined();
     expect(api.llama_state_seq_get_data_ext).not.toHaveBeenCalled(); expect(core.free).not.toHaveBeenCalled();
   });
+
   it.each(['short-write', 'write-trap', 'invalid-range'] as const)('frees an unpublished buffer after %s', async failure => {
     const { core, api } = fixture();
     switch (failure) {
@@ -66,6 +70,7 @@ describe('owned host prompt checkpoints', () => {
     else await expect(pending).rejects.toThrow();
     expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer: 100n });
   });
+
   it('keeps local ownership until an asynchronous native writer has settled', async () => {
     const { core, api } = fixture();
     const writer = Promise.withResolvers<bigint>();
@@ -79,6 +84,7 @@ describe('owned host prompt checkpoints', () => {
     disposePromptCheckpoint({ core, checkpoint });
     expect(core.free).toHaveBeenCalledOnce();
   });
+
   it.each(['short-read', 'refused-trim', 'lost-window', 'wrong-frontier'] as const)('rejects an unverifiable restored state: %s', async failure => {
     const { core, api } = fixture();
     const checkpoint = await capturePromptCheckpoint({ core, context: 20n, tokens: [1, 2, 3, 4] });
@@ -93,6 +99,7 @@ describe('owned host prompt checkpoints', () => {
     await expect(restorePromptCheckpoint({ core, context: 20n, checkpoint })).resolves.toBe(false);
     disposePromptCheckpoint({ core, checkpoint });
   });
+
   it.each([
     { suffix: 'GG', tokenized: [1, 2, 3], expected: 3 },
     { suffix: 'GG', tokenized: [1, 2, 99], expected: 2 },
@@ -109,55 +116,96 @@ describe('owned host prompt checkpoints', () => {
       expect(core.free).toHaveBeenCalledOnce();
     } else expect(api.llama_tokenize).not.toHaveBeenCalled();
   });
+
   it('does not invent a checkpoint boundary for a one-token prompt', async () => {
     const { core } = fixture();
     expect(await promptCheckpointBoundary({ core, vocab: 30n, prompt: '', promptPointer: 40n, generationPrompt: '', tokens: [1], onTokenize: () => {} })).toBe(0);
     expect(core.tryAlloc).not.toHaveBeenCalled();
   });
+
   it('uses one native call for an optional generation boundary', async () => {
     const { core, api, storage } = fixture();
     new DataView(storage.buffer).setInt32(0, 1, true);
     api.llama_tokenize.mockResolvedValue(1);
     const onTokenize = vi.fn();
-    expect(await promptCheckpointBoundary({ core, vocab: 30n, prompt: 'abcGG', promptPointer: 40n,
-      generationPrompt: 'GG', tokens: [1, 2, 3], onTokenize })).toBe(1);
+    expect(await promptCheckpointBoundary({
+      core,
+      vocab: 30n,
+      prompt: 'abcGG',
+      promptPointer: 40n,
+      generationPrompt: 'GG',
+      tokens: [1, 2, 3],
+      onTokenize,
+    })).toBe(1);
     expect(api.llama_tokenize).toHaveBeenCalledExactlyOnceWith(30n, 40n, 3, 100n, 2, 1, 1);
     expect(onTokenize).toHaveBeenCalledOnce();
     expect(core.free).toHaveBeenCalledOnce();
   });
+
   it.each([0, -2, -2147483648, 4, NaN, 0.5])('falls back safely from optional native count %s', async count => {
     const { core, api } = fixture();
     api.llama_tokenize.mockResolvedValue(count);
-    expect(await promptCheckpointBoundary({ core, vocab: 30n, prompt: 'abcGG', promptPointer: 40n,
-      generationPrompt: 'GG', tokens: [1, 2, 3], onTokenize: () => {} })).toBe(2);
+    expect(await promptCheckpointBoundary({
+      core,
+      vocab: 30n,
+      prompt: 'abcGG',
+      promptPointer: 40n,
+      generationPrompt: 'GG',
+      tokens: [1, 2, 3],
+      onTokenize: () => {},
+    })).toBe(2);
     expect(core.tryAlloc).toHaveBeenCalledOnce();
     expect(core.free).toHaveBeenCalledOnce();
   });
+
   it('does not tokenize an optional boundary when allocation fails', async () => {
     const { core, api } = fixture(); core.tryAlloc.mockReturnValue(undefined);
-    expect(await promptCheckpointBoundary({ core, vocab: 30n, prompt: 'abcGG', promptPointer: 40n,
-      generationPrompt: 'GG', tokens: [1, 2, 3], onTokenize: () => {} })).toBe(2);
+    expect(await promptCheckpointBoundary({
+      core,
+      vocab: 30n,
+      prompt: 'abcGG',
+      promptPointer: 40n,
+      generationPrompt: 'GG',
+      tokens: [1, 2, 3],
+      onTokenize: () => {},
+    })).toBe(2);
     expect(api.llama_tokenize).not.toHaveBeenCalled(); expect(core.free).not.toHaveBeenCalled();
   });
+
   it('keeps the optional buffer owned until native failure has settled', async () => {
     const { core, api } = fixture();
     const native = Promise.withResolvers<number>(); api.llama_tokenize.mockReturnValue(native.promise);
-    const pending = promptCheckpointBoundary({ core, vocab: 30n, prompt: 'abcGG', promptPointer: 40n,
-      generationPrompt: 'GG', tokens: [1, 2, 3], onTokenize: () => {} });
+    const pending = promptCheckpointBoundary({
+      core,
+      vocab: 30n,
+      prompt: 'abcGG',
+      promptPointer: 40n,
+      generationPrompt: 'GG',
+      tokens: [1, 2, 3],
+      onTokenize: () => {},
+    });
     const rejected = expect(pending).rejects.toThrow('native failure');
     expect(core.free).not.toHaveBeenCalled();
     native.reject(new Error('native failure'));
     await rejected;
     expect(core.free).toHaveBeenCalledOnce();
   });
+
   it('bounds speculation and retries a larger optional prefix exactly once', async () => {
     const { core, api } = fixture();
     const tokens = Array.from({ length: 70000 }, (_, index) => index);
     core.bytes.mockImplementation(() => new Uint8Array(70000 * 4));
     api.llama_tokenize.mockResolvedValueOnce(-66000).mockResolvedValueOnce(66000);
     // The second token differs, so the existing common-prefix proof stops at 1.
-    expect(await promptCheckpointBoundary({ core, vocab: 30n, prompt: 'abcGG', promptPointer: 40n,
-      generationPrompt: 'GG', tokens, onTokenize: () => {} })).toBe(1);
+    expect(await promptCheckpointBoundary({
+      core,
+      vocab: 30n,
+      prompt: 'abcGG',
+      promptPointer: 40n,
+      generationPrompt: 'GG',
+      tokens,
+      onTokenize: () => {},
+    })).toBe(1);
     expect(core.tryAlloc.mock.calls).toEqual([[{ bytes: 262144 }], [{ bytes: 264000 }]]);
     expect(api.llama_tokenize).toHaveBeenCalledTimes(2); expect(core.free).toHaveBeenCalledTimes(2);
   });
@@ -169,15 +217,19 @@ describe('owned host prompt checkpoints', () => {
     core.free.mockImplementationOnce(() => {
       throw failure;
     });
-    await expect(promptCheckpointBoundary({ core, vocab: 30n, prompt: 'abcGG', promptPointer: 40n,
-      generationPrompt: 'GG', tokens: Array.from({ length: 70000 }, (_, index) => index), onTokenize: () => {},
+    await expect(promptCheckpointBoundary({
+      core,
+      vocab: 30n,
+      prompt: 'abcGG',
+      promptPointer: 40n,
+      generationPrompt: 'GG',
+      tokens: Array.from({ length: 70000 }, (_, index) => index),
+      onTokenize: () => {},
     })).rejects.toBe(failure);
     expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer: 100n });
     expect(core.tryAlloc).toHaveBeenCalledOnce(); expect(api.llama_tokenize).toHaveBeenCalledOnce();
   });
-
 });
-
 
 describe('checkpoint boundary deallocation failure', () => {
   it('does not free a discarded speculative pointer twice', async () => {
@@ -187,8 +239,15 @@ describe('checkpoint boundary deallocation failure', () => {
     core.free.mockImplementationOnce(() => {
       throw failure;
     });
-    await expect(promptCheckpointBoundary({ core, vocab: 1n, prompt: 'prefix suffix', promptPointer: 1n,
-      generationPrompt: 'suffix', tokens: Array.from({ length: 70000 }, () => 1), onTokenize: () => {} })).rejects.toBe(failure);
+    await expect(promptCheckpointBoundary({
+      core,
+      vocab: 1n,
+      prompt: 'prefix suffix',
+      promptPointer: 1n,
+      generationPrompt: 'suffix',
+      tokens: Array.from({ length: 70000 }, () => 1),
+      onTokenize: () => {},
+    })).rejects.toBe(failure);
     expect(core.free).toHaveBeenCalledOnce();
     expect(core.tryAlloc).toHaveBeenCalledOnce();
   });

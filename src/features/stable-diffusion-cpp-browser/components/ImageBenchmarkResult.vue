@@ -6,10 +6,12 @@ import type { BenchmarkRunRecord } from '@/features/stable-diffusion-cpp-browser
 
 const props = defineProps<{ runId: string, png: Blob | undefined, imageStatus: BenchmarkRunRecord['image']['status'] }>();
 const open = ref(false), url = ref<string>();
+
 function release(): void {
   if (url.value) URL.revokeObjectURL(url.value);
   url.value = undefined;
 }
+
 watch([open, () => props.png], ([expanded, png]) => {
   release();
   // Retention itself does not decode or copy pixels for display. The browser
@@ -25,9 +27,11 @@ const unavailable = computed(() => {
   default: { const exhaustive: never = props.imageStatus; throw new Error(String(exhaustive)); }
   }
 });
+
 function toggle({ event }: { event: Event }): void {
   if (event.target instanceof HTMLDetailsElement) open.value = event.target.open;
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 

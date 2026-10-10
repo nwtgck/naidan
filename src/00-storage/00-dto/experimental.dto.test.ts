@@ -31,6 +31,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       fakeLm: 'enabled',
       sidebarSendMessageReorder: 'move_sent_chat',
       globalSearch: undefined,
+      llamaCppBrowser: undefined,
       browserImageGeneration: undefined,
     });
     expect(parsed?.unreadable).toEqual({
@@ -52,6 +53,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       fakeLm: undefined,
       sidebarSendMessageReorder: undefined,
       globalSearch: undefined,
+      llamaCppBrowser: undefined,
       browserImageGeneration: undefined,
     });
     expect(parsed?.unreadable).toEqual({
@@ -72,6 +74,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       fakeLm: undefined,
       sidebarSendMessageReorder: 'disabled',
       globalSearch: undefined,
+      llamaCppBrowser: undefined,
       browserImageGeneration: undefined,
     });
     expect(parsed?.unreadable).toEqual({
@@ -89,6 +92,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
       fakeLm: undefined,
       sidebarSendMessageReorder: undefined,
       globalSearch: undefined,
+      llamaCppBrowser: undefined,
       browserImageGeneration: undefined,
     });
     expect(parsed?.unreadable).toEqual({
@@ -158,7 +162,6 @@ describe('optionalExperimentalFieldSchemaDto', () => {
     });
   });
 });
-
 
 describe('ExperimentalExperimentalTypeEndpointSchemaDto', () => {
   const schema = ExperimentalExperimentalTypeEndpointSchemaDto;

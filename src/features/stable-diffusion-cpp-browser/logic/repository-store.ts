@@ -22,9 +22,11 @@ export type HostImageRepositorySource = { directoryId: string, directoryName: st
 export type HostImageDirectory = { id: string, name: string };
 export type LocalImageRepository = { id: string, name: string, files: RepositoryFile[], issues?: { path: string, message: string }[], hostSource?: HostImageRepositorySource };
 export type ImportProgress = { completed: number, total: number, path: string };
+
 function missing({ error }: { error: unknown }): boolean {
   return error instanceof DOMException && error.name === 'NotFoundError';
 }
+
 function unreadableRepository({ error, signal }: { error: unknown, signal: AbortSignal | undefined }): Pick<LocalImageRepository, 'files' | 'issues'> {
   signal?.throwIfAborted();
   if ((error instanceof Error || error instanceof DOMException) && error.name === 'AbortError') throw error;
@@ -32,6 +34,7 @@ function unreadableRepository({ error, signal }: { error: unknown, signal: Abort
   // independent repositories remain available and the failure stays visible.
   return { files: [], issues: [{ path: '', message: error instanceof Error ? error.message : String(error) }] };
 }
+
 async function optionalDirectory({ parent, name }: { parent: FileSystemDirectoryHandle, name: string }): Promise<FileSystemDirectoryHandle | undefined> {
   try {
     return await parent.getDirectoryHandle(name);
@@ -39,6 +42,7 @@ async function optionalDirectory({ parent, name }: { parent: FileSystemDirectory
     if (missing({ error })) return undefined; throw error;
   }
 }
+
 async function pending({ folder }: { folder: FileSystemDirectoryHandle }): Promise<boolean> {
   try {
     await folder.getFileHandle(pendingName); return true;
@@ -49,6 +53,7 @@ async function pending({ folder }: { folder: FileSystemDirectoryHandle }): Promi
     throw error;
   }
 }
+
 async function readTree({ folder, id, hidden, signal, onProgress, publication }: { folder: FileSystemDirectoryHandle, id: string, hidden: Set<string>, signal: AbortSignal | undefined, onProgress?: InspectionReport, publication: 'opfs-user' | 'opfs-hugging-face' | 'host' }): Promise<Pick<LocalImageRepository, 'files' | 'issues'>> {
   const files: RepositoryFile[] = [], issues: { path: string, message: string }[] = [];
   const requiresReceipt = (() => {
@@ -97,8 +102,9 @@ async function readTree({ folder, id, hidden, signal, onProgress, publication }:
   await walk({ directory: folder, prefix: '', depth: 0 });
   return { files: files.sort((a, b) => a.path.localeCompare(b.path)), issues };
 }
+
 /** Read the existing model tree only. No Hugging Face/network requests. */
-export async function listImageRepositories({ signal, onProgress }: { signal: AbortSignal | undefined, onProgress?: InspectionReport }): Promise<LocalImageRepository[]> {
+export async function listImageRepositories({ signal, onProgress, repositoryIds }: { signal: AbortSignal | undefined, onProgress?: InspectionReport, repositoryIds?: readonly string[] }): Promise<LocalImageRepository[]> {
   signal?.throwIfAborted();
   if (!navigator.storage?.getDirectory) throw new Error('Local model storage is unavailable');
   const root = await optionalDirectory({ parent: await navigator.storage.getDirectory(), name: 'models' });
@@ -106,6 +112,9 @@ export async function listImageRepositories({ signal, onProgress }: { signal: Ab
   const result: LocalImageRepository[] = [];
   async function append({ folder, id }: { folder: FileSystemDirectoryHandle, id: string }): Promise<void> {
     signal?.throwIfAborted();
+    // A known publication invalidates only its repository. Do not acquire new
+    // File snapshots (or reread headers) for unrelated retained model sources.
+    if (repositoryIds && !repositoryIds.includes(id)) return;
     onProgress?.({ progress: { phase: 'listing', completed: result.length, total: 0, path: id.slice(0, 2048) } });
     try {
       const hidden = new Set<string>();
@@ -190,8 +199,12 @@ export async function listHostImageRepositories({ directories, signal, onProgres
           } catch (error) {
             content = unreadableRepository({ error, signal });
           }
-          if (content.files.length || content.issues?.length) result.push({ id, name: `${directory.name}/${repository}`, ...content,
-            hostSource: { directoryId: directory.id, directoryName: directory.name, repository } });
+          if (content.files.length || content.issues?.length) result.push({
+            id,
+            name: `${directory.name}/${repository}`,
+            ...content,
+            hostSource: { directoryId: directory.id, directoryName: directory.name, repository },
+          });
         }
       }
     } catch (error) {
@@ -316,5 +329,6 @@ export async function importImageRepository({ input, signal, onProgress }: {
     }
   });
 }
+
 export const TEST_ONLY = {
 };

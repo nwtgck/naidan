@@ -1,4 +1,7 @@
+import { imageInferenceLocationToDomain, imageInferenceLocationToDto, remoteImageModelEditorPreferenceToDomain, remoteImageModelEditorPreferenceToDto } from './image-generation-editor';
+import { toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
+import { llamaCppBrowserSettingsToDomain, llamaCppBrowserSettingsToDto } from './llama-cpp-browser-settings';
 /**
  * Mappers
  */
@@ -867,6 +870,15 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
     unhandledExperimental satisfies Record<PropertyKey, never>;
     if (endpoint !== undefined) {
       switch (endpoint.type) {
+      case 'naidan_rpc': {
+        const { type, registrationId, ...rest } = endpoint;
+        rest satisfies Record<PropertyKey, never>;
+        if (registrationId !== undefined && !/^[A-Za-z0-9_-]{8,128}$/.test(registrationId)) return { type: 'unsupported_experimental_endpoint', persistedType: type };
+        return exactObject<Extract<Endpoint, { type: 'naidan_rpc' }>>()({
+          type,
+          registrationId: registrationId === undefined ? undefined : toNaidanRpcRegistrationId({ raw: registrationId }),
+        });
+      }
       case 'browser_provided_lm': {
         const { type, ...unhandledEndpoint } = endpoint;
         unhandledEndpoint satisfies Record<PropertyKey, never>;
@@ -901,6 +913,18 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
 
 export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto => {
   switch (endpoint.type) {
+  case 'naidan_rpc': {
+    const { type, registrationId, ...rest } = endpoint;
+    rest satisfies Record<PropertyKey, never>;
+    const payload = exactObject<Extract<NonNullable<ExperimentalEndpointDto['endpoint']>, { type: 'naidan_rpc' }>>()({
+      type,
+      registrationId: registrationId === undefined ? undefined : idToRaw({ id: registrationId }),
+    });
+    return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({
+      type: 'experimental_type',
+      experimental: { endpoint: payload, unreadable: undefined },
+    });
+  }
   case 'openai':
   case 'ollama': {
     const {
@@ -1403,7 +1427,10 @@ const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageN
     parts.push({ type: 'text', text: content, completeness: 'complete' });
     attachments?.forEach(attachment => parts.push({ type: 'attachment', attachment: attachmentToDomain({ dto: attachment }) }));
     return exactObject<UserMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt: timestamp,
+      parts,
       modelId: undefined,
       lmParameters: lmParametersToDomain({ dto: lmParameters }),
       replies: messageNodeRepliesToDomain({ replies }),
@@ -1417,7 +1444,10 @@ const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageN
     parts.push({ type: 'text', text: content, completeness: 'complete' });
     toolCalls?.forEach(call => parts.push({ type: 'tool_call', toolCall: toolCallToDomain({ dto: call }) }));
     return exactObject<AssistantMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt: timestamp,
+      parts,
       modelId: modelId,
       lmParameters: lmParametersToDomain({ dto: lmParameters }),
       interruption: undefined,
@@ -1430,7 +1460,10 @@ const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageN
     const parts: SystemMessageNode['parts'] = [];
     parts.push({ type: 'text', text: content, completeness: 'complete' });
     return exactObject<SystemMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt: timestamp,
+      parts,
       modelId: undefined,
       lmParameters: undefined,
       replies: messageNodeRepliesToDomain({ replies }),
@@ -1442,7 +1475,10 @@ const legacyMessageNodeToDomain = ({ dto }: { dto: MessageNodeDtoV1 }): MessageN
     const parts: ToolMessageNode['parts'] = [];
     results.forEach(result => parts.push({ type: 'tool_result', result: toolExecutionResultToDomain({ dto: result }) }));
     return exactObject<ToolMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt: timestamp, parts,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt: timestamp,
+      parts,
       modelId: undefined,
       lmParameters: undefined,
       replies: messageNodeRepliesToDomain({ replies }),
@@ -1463,7 +1499,9 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
     const { id, role, createdAt, modelId: _modelId, lmParameters, parts, replies, experimental: _experimental, ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<UserMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt,
       modelId: undefined,
       lmParameters: lmParametersToDomain({ dto: lmParameters }),
       parts: parts.map((part): UserMessageNode['parts'][number] => {
@@ -1512,7 +1550,9 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       }
     }
     return exactObject<AssistantMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt,
       modelId: modelId,
       lmParameters: lmParametersToDomain({ dto: lmParameters }),
       interruption: recordedInterruption,
@@ -1546,7 +1586,9 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
     const { id, role, createdAt, modelId: _modelId, lmParameters: _lmParameters, parts, replies, experimental: _experimental, ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<SystemMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt,
       modelId: undefined,
       lmParameters: undefined,
       parts: parts.map((part): SystemMessageNode['parts'][number] => {
@@ -1569,7 +1611,9 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
     const { id, role, createdAt, modelId: _modelId, lmParameters: _lmParameters, parts, replies, experimental: _experimental, ...unhandled } = dto;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<ToolMessageNode>()({
-      id: toMessageId({ raw: id }), role, createdAt,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt,
       modelId: undefined,
       lmParameters: undefined,
       parts: parts.map((part): ToolMessageNode['parts'][number] => {
@@ -1615,7 +1659,9 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
     const { id, role, createdAt, modelId: _modelId, lmParameters, parts, replies, ...unhandled } = domain;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<MessageNodeDtoV2, { role: 'user' }>>()({
-      id: idToRaw({ id }), role, createdAt,
+      id: idToRaw({ id }),
+      role,
+      createdAt,
       modelId: undefined,
       lmParameters: lmParametersToDto({ domain: lmParameters }),
       parts: parts.map((part): Extract<MessageNodeDtoV2, { role: 'user' }>['parts'][number] => {
@@ -1666,7 +1712,9 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
       }
     }
     return exactObject<Extract<MessageNodeDtoV2, { role: 'assistant' }>>()({
-      id: idToRaw({ id }), role, createdAt,
+      id: idToRaw({ id }),
+      role,
+      createdAt,
       modelId: modelId,
       lmParameters: lmParametersToDto({ domain: lmParameters }),
       interruption: recordedInterruption,
@@ -1701,7 +1749,9 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
     const { id, role, createdAt, modelId: _modelId, lmParameters: _lmParameters, parts, replies, ...unhandled } = domain;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<MessageNodeDtoV2, { role: 'system' }>>()({
-      id: idToRaw({ id }), role, createdAt,
+      id: idToRaw({ id }),
+      role,
+      createdAt,
       modelId: undefined,
       lmParameters: undefined,
       parts: parts.map((part): Extract<MessageNodeDtoV2, { role: 'system' }>['parts'][number] => {
@@ -1725,7 +1775,9 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
     const { id, role, createdAt, modelId: _modelId, lmParameters: _lmParameters, parts, replies, ...unhandled } = domain;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<MessageNodeDtoV2, { role: 'tool' }>>()({
-      id: idToRaw({ id }), role, createdAt,
+      id: idToRaw({ id }),
+      role,
+      createdAt,
       modelId: undefined,
       lmParameters: undefined,
       parts: parts.map((part): Extract<MessageNodeDtoV2, { role: 'tool' }>['parts'][number] => {
@@ -2065,9 +2117,10 @@ export const buildSidebarItemsFromHierarchy = (
 };
 
 type BrowserImageGenerationDto = NonNullable<NonNullable<SettingsDto['experimental']>['browserImageGeneration']>;
+
 const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDto | undefined }): BrowserImageGenerationSettings | undefined => {
   if (dto === undefined) return undefined;
-  const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection,
+  const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection, inferenceLocation, remoteModelEditors,
     preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = dto;
   unhandled satisfies Record<PropertyKey, never>;
   const destination: BrowserImageGenerationSettings['modelDownloadDestination'] = (() => {
@@ -2098,14 +2151,31 @@ const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDt
     unhandledPreview satisfies Record<PropertyKey, never>;
     return exactObject<NonNullable<BrowserImageGenerationSettings['preview']>>()({ enabled, mode, interval, startStep, maxEdge });
   })();
-  return exactObject<BrowserImageGenerationSettings>()({ width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination: destination,
-    imageDownload: mappedDownload, modelSelection: modelSelection && browserImageModelSelectionToDomain({ dto: modelSelection }), preview: mappedPreview,
-    keepPreviews, maxPreviews, maxResults, bf16WeightType });
+  return exactObject<BrowserImageGenerationSettings>()({
+    width,
+    height,
+    seedMode,
+    seed,
+    debug,
+    historyPersistence,
+    modelDownloadDestination: destination,
+    imageDownload: mappedDownload,
+    modelSelection: modelSelection && browserImageModelSelectionToDomain({ dto: modelSelection }),
+    preview: mappedPreview,
+    inferenceLocation: inferenceLocation && imageInferenceLocationToDomain({ dto: inferenceLocation }),
+    remoteModelEditors: remoteModelEditors?.flatMap(dto => {
+      const value = remoteImageModelEditorPreferenceToDomain({ dto }); return value === undefined ? [] : [value];
+    }),
+    keepPreviews,
+    maxPreviews,
+    maxResults,
+    bf16WeightType,
+  });
 };
 
 const browserImageGenerationToDto = ({ domain }: { domain: BrowserImageGenerationSettings | undefined }): BrowserImageGenerationDto | undefined => {
   if (domain === undefined) return undefined;
-  const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection,
+  const { width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination, imageDownload, modelSelection, inferenceLocation, remoteModelEditors,
     preview, keepPreviews, maxPreviews, maxResults, bf16WeightType, ...unhandled } = domain;
   unhandled satisfies Record<PropertyKey, never>;
   const destination: BrowserImageGenerationDto['modelDownloadDestination'] = (() => {
@@ -2136,9 +2206,24 @@ const browserImageGenerationToDto = ({ domain }: { domain: BrowserImageGeneratio
     unhandledPreview satisfies Record<PropertyKey, never>;
     return exactObject<NonNullable<BrowserImageGenerationDto['preview']>>()({ enabled, mode, interval, startStep, maxEdge });
   })();
-  return exactObject<BrowserImageGenerationDto>()({ width, height, seedMode, seed, debug, historyPersistence, modelDownloadDestination: destination,
-    imageDownload: mappedDownload, modelSelection: modelSelection && browserImageModelSelectionToDto({ domain: modelSelection }), preview: mappedPreview,
-    keepPreviews, maxPreviews, maxResults, bf16WeightType });
+  return exactObject<BrowserImageGenerationDto>()({
+    width,
+    height,
+    seedMode,
+    seed,
+    debug,
+    historyPersistence,
+    modelDownloadDestination: destination,
+    imageDownload: mappedDownload,
+    modelSelection: modelSelection && browserImageModelSelectionToDto({ domain: modelSelection }),
+    preview: mappedPreview,
+    inferenceLocation: inferenceLocation && imageInferenceLocationToDto({ location: inferenceLocation }),
+    remoteModelEditors: remoteModelEditors?.map(preference => remoteImageModelEditorPreferenceToDto({ preference })),
+    keepPreviews,
+    maxPreviews,
+    maxResults,
+    bf16WeightType,
+  });
 };
 
 export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
@@ -2173,8 +2258,10 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       toolConfigPersistence,
       toolConfigs,
       fakeLm,
+      naidanRpc,
       sidebarSendMessageReorder,
       globalSearch,
+      llamaCppBrowser,
       browserImageGeneration,
       unreadable,
       hostModelDirectories,
@@ -2210,9 +2297,15 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       toolConfigPersistence: toolConfigPersistence ?? 'disabled',
       toolConfigs: toolConfigsToDomain({ toolConfigs }),
       fakeLm: fakeLm ?? 'disabled',
+      naidanRpc: naidanRpc ?? 'disabled',
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDomain,
-      browserImageGeneration: browserImageGenerationToDomain({ dto: browserImageGeneration }),
+      llamaCppBrowser: llamaCppBrowserSettingsToDomain({ dto: llamaCppBrowser }),
+      // A structurally unreadable saved image block is not an absent location.
+      // Preserve only the non-executable state, never its unknown raw fields.
+      browserImageGeneration: browserImageGeneration === undefined && typeof unreadable?.browserImageGeneration === 'object' && unreadable.browserImageGeneration !== null && Object.hasOwn(unreadable.browserImageGeneration, 'inferenceLocation')
+        ? { inferenceLocation: { kind: 'unavailable' } }
+        : browserImageGenerationToDomain({ dto: browserImageGeneration }),
       unreadable,
       hostModelDirectories: hostModelDirectories?.map(({ id, name, ...unhandledDirectory }) => {
         unhandledDirectory satisfies Record<PropertyKey, never>;
@@ -2288,8 +2381,10 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       toolConfigPersistence,
       toolConfigs,
       fakeLm,
+      naidanRpc,
       sidebarSendMessageReorder,
       globalSearch,
+      llamaCppBrowser,
       browserImageGeneration,
       unreadable: _unreadable,
       hostModelDirectories,
@@ -2326,11 +2421,19 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
         persistence: toolConfigPersistence,
       }),
       toolConfigs: toolConfigs?.map(domain => toolConfigToDto({ domain })),
+      naidanRpc: (() => {
+        switch (naidanRpc) {
+        case 'enabled': return 'enabled';
+        case 'disabled': case undefined: return undefined;
+        default: { const exhaustive: never = naidanRpc; return exhaustive; }
+        }
+      })(),
       fakeLm: fakeLmToExperimentalDto({
         status: fakeLm,
       }),
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDto,
+      llamaCppBrowser: llamaCppBrowserSettingsToDto({ domain: llamaCppBrowser }),
       browserImageGeneration: browserImageGenerationToDto({ domain: browserImageGeneration }),
       unreadable: undefined,
       hostModelDirectories: hostModelDirectories?.map(({ id, name, ...unhandledDirectory }) => {

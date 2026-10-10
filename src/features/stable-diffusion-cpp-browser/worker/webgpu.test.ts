@@ -8,6 +8,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) 
   let index = gid.x + grid.x * 64u * gid.y;
 }
 `;
+
 function fixture() {
   const draws: { counts: number[], constants: Record<string, number> | undefined }[] = [];
   let current: GPUComputePipelineDescriptor | undefined;
@@ -22,13 +23,17 @@ function fixture() {
     },
   };
   const device = Object.assign(new EventTarget(), {
-    limits: { maxComputeWorkgroupsPerDimension: 65535 }, features: new Set(), lost: new Promise(() => {}),
+    limits: { maxComputeWorkgroupsPerDimension: 65535 },
+    features: new Set(),
+    lost: new Promise(() => {}),
     createShaderModule: vi.fn(() => ({})),
     createComputePipeline: vi.fn((descriptor: GPUComputePipelineDescriptor) => {
       const pipeline = {} as GPUComputePipeline; descriptors.set(pipeline, descriptor); return pipeline;
     }),
     createCommandEncoder: vi.fn(() => ({ beginComputePass: () => pass })),
-    createBuffer: vi.fn(), createComputePipelineAsync: vi.fn(), popErrorScope: vi.fn(),
+    createBuffer: vi.fn(),
+    createComputePipelineAsync: vi.fn(),
+    popErrorScope: vi.fn(),
     queue: { writeBuffer: vi.fn(), submit: vi.fn(), onSubmittedWorkDone: vi.fn() },
   });
   const adapter = { requestDevice: vi.fn(async () => device) };
@@ -36,6 +41,7 @@ function fixture() {
   vi.stubGlobal('navigator', { gpu });
   return { gpu: gpu as unknown as GPU, adapter, device, draws, original: gpu.requestAdapter, originalDevice: adapter.requestDevice };
 }
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -66,12 +72,14 @@ it.each(['off', 'on'] as const)('splits 65536 through the published factory acqu
   }
   expect(f.gpu.requestAdapter).toBe(f.original); expect(f.adapter.requestDevice).toBe(f.originalDevice);
 });
+
 it('refuses to start with a non-configurable acquisition method rather than running unprotected', () => {
   const f = fixture();
   Object.defineProperty(f.gpu, 'requestAdapter', { value: f.original, configurable: false, writable: false });
   expect(() => installImageWebGpu({ gpu: f.gpu, emit: vi.fn() })).toThrow();
   expect(f.original).not.toHaveBeenCalled();
 });
+
 it('propagates adapter denial and exceptions without retrying or changing the device', async () => {
   const f = fixture(), boundary = installImageWebGpu({ gpu: f.gpu, emit: vi.fn() });
   const error = new Error('Adapter denied'); f.original.mockRejectedValueOnce(error);
@@ -82,6 +90,7 @@ it('propagates adapter denial and exceptions without retrying or changing the de
   }
   expect(f.original).toHaveBeenCalledOnce(); expect(f.gpu.requestAdapter).toBe(f.original);
 });
+
 it('restores inherited acquisition methods without leaving an own property behind', () => {
   const f = fixture(); const gpu = Object.create(f.gpu) as GPU;
   expect(Object.hasOwn(gpu, 'requestAdapter')).toBe(false);

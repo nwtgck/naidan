@@ -3,8 +3,15 @@ import type { LlamaCppProfile } from '@/features/llama-cpp-browser/types';
 
 type PerformanceSummary = NonNullable<Diagnostic['performance']>;
 
-/** One bounded summary per request, only when debugging is enabled. No native
- * callbacks, per-token diagnostics, prompt bytes, token IDs or model names. */
+function sampleRate({ sampledTokens, elapsedMs }: { sampledTokens: number, elapsedMs: number }): NonNullable<PerformanceSummary['postFirstSample']> {
+  const rate = sampledTokens > 0 && elapsedMs > 0 ? sampledTokens * 1000 / elapsedMs : undefined;
+  // No rate exists without a post-first sample or a measurable interval.
+  return { unit: 't/s', sampledTokens, elapsedMs, tokensPerSecond: rate !== undefined && Number.isFinite(rate) ? rate : undefined };
+}
+
+/** Bounded request-local counters; debug-only progress after 100 total samples
+ * and at most every 3 seconds on a new sample, plus one final summary. No timer, native callbacks, token
+ * histories, prompt bytes, token IDs or model names. */
 export function createGenerationPerformance({ enabled, now }: { enabled: boolean, now: () => number }) {
   const started = enabled ? now() : 0;
   let since = started;
@@ -13,12 +20,21 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
   const stages = new Map<DiagnosticStage, { stage: DiagnosticStage, visits: number, elapsedMs: number }>();
   if (enabled) stages.set(stage, { stage, visits: 1, elapsedMs: 0 });
   const counters = {
+    checkpoint: undefined as PerformanceSummary['checkpoint'],
+    backendCensus: undefined as PerformanceSummary['backendCensus'],
+    memoryObservation: undefined as PerformanceSummary['memoryObservation'],
+    sampleWindows: enabled ? [] as NonNullable<PerformanceSummary['sampleWindows']> : undefined,
     input: 'unknown' as PerformanceSummary['input'],
     sessionPreparation: undefined as PerformanceSummary['sessionPreparation'],
     contextTokens: undefined as number | undefined,
     maximumTokens: undefined as number | undefined,
     sampling: undefined as PerformanceSummary['sampling'],
     sampledTokens: 0,
+    nonEogTokens: 0,
+    firstNonEogSampleMs: undefined as number | undefined,
+    lastNonEogSampleMs: undefined as number | undefined,
+    prefillBatchTokens: undefined as number | undefined,
+    runtimeAssetBaseURL: undefined as string | undefined,
     decodedTokens: 0,
     prefillDecodedTokens: 0,
     prefillDecodeCalls: 0,
@@ -36,12 +52,19 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
     deliveryDecode: undefined as PerformanceSummary['deliveryDecode'],
   };
   let firstSampleMs: number | undefined;
+  let lastSampleMs: number | undefined;
+  let progressSampleMs: number | undefined;
+  let progressSampledTokens = 0;
   let firstDeliveryMs: number | undefined;
   const settle = ({ at }: { at: number }): void => {
     const current = stages.get(stage);
     if (current) current.elapsedMs += Math.max(0, at - since);
     since = at;
   };
+  const postFirstSample = (): NonNullable<PerformanceSummary['postFirstSample']> => sampleRate({
+    sampledTokens: Math.max(0, counters.sampledTokens - 1),
+    elapsedMs: firstSampleMs === undefined || lastSampleMs === undefined ? 0 : Math.max(0, lastSampleMs - firstSampleMs),
+  });
   return {
     counters,
     enter({ next }: { next: DiagnosticStage }): void {
@@ -52,9 +75,44 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
       if (current) current.visits++;
       else stages.set(stage, { stage, visits: 1, elapsedMs: 0 });
     },
-    sampled(): void {
+    sampled(): Diagnostic | undefined {
+      if (finished) return undefined;
       counters.sampledTokens++;
-      if (enabled && !finished && firstSampleMs === undefined) firstSampleMs = Math.max(0, now() - started);
+      if (!enabled) return undefined;
+      lastSampleMs = Math.max(0, now() - started);
+      firstSampleMs ??= lastSampleMs;
+      if (progressSampleMs === undefined) {
+        progressSampleMs = lastSampleMs;
+        progressSampledTokens = counters.sampledTokens;
+      }
+      if (counters.sampledTokens < 100 || lastSampleMs - progressSampleMs < 3000) return undefined;
+      const interval = sampleRate({ sampledTokens: counters.sampledTokens - progressSampledTokens, elapsedMs: lastSampleMs - progressSampleMs });
+      progressSampleMs = lastSampleMs;
+      progressSampledTokens = counters.sampledTokens;
+      return {
+        event: 'generation-progress',
+        generationThroughput: {
+          sampledTokens: counters.sampledTokens,
+          firstSampleMs,
+          postFirstSample: postFirstSample(),
+          interval,
+        },
+      };
+    },
+    rendered({ endOfGeneration }: { endOfGeneration: boolean }): void {
+      if (endOfGeneration || !enabled || finished) return;
+      counters.nonEogTokens++;
+      counters.firstNonEogSampleMs ??= lastSampleMs;
+      counters.lastNonEogSampleMs = lastSampleMs;
+      const windows = counters.sampleWindows;
+      if (windows && lastSampleMs !== undefined) {
+        const current = windows.at(-1);
+        if (!current || current.lastSample - current.firstSample >= 15) {
+          if (windows.length < 256) windows.push({ firstSample: counters.nonEogTokens, lastSample: counters.nonEogTokens, firstMs: lastSampleMs, lastMs: lastSampleMs });
+        } else {
+          current.lastSample = counters.nonEogTokens; current.lastMs = lastSampleMs;
+        }
+      }
     },
     delivered(): void {
       if (enabled && !finished && firstDeliveryMs === undefined) firstDeliveryMs = Math.max(0, now() - started);
@@ -64,16 +122,30 @@ export function createGenerationPerformance({ enabled, now }: { enabled: boolean
       finished = true;
       const ended = now();
       settle({ at: ended });
-      return { event: 'generation-performance', profile, elapsedMs: Math.max(0, ended - started),
-        performance: { version: 1, outcome, ...counters, sampling: counters.sampling ? { ...counters.sampling } : undefined,
+      return {
+        event: 'generation-performance',
+        profile,
+        elapsedMs: Math.max(0, ended - started),
+        performance: {
+          version: 1,
+          outcome,
+          ...counters,
+          postFirstSample: postFirstSample(),
+          memoryObservation: counters.memoryObservation ? { ...counters.memoryObservation } : undefined,
+          sampleWindows: counters.sampleWindows?.map(window => ({ ...window })),
+          sampling: counters.sampling ? { ...counters.sampling } : undefined,
           sessionPreparation: counters.sessionPreparation ? { ...counters.sessionPreparation } : undefined,
           streaming: counters.streaming ? { ...counters.streaming } : undefined,
           tokenRendering: counters.tokenRendering ? { ...counters.tokenRendering } : undefined,
           memoryReset: counters.memoryReset ? { ...counters.memoryReset } : undefined,
           deliveryDecode: counters.deliveryDecode ? { ...counters.deliveryDecode } : undefined,
           prefillOutputs: counters.prefillOutputs ? { ...counters.prefillOutputs } : undefined,
-          generationYield: counters.generationYield ? { ...counters.generationYield } : undefined, firstSampleMs, firstDeliveryMs,
-          stages: Array.from(stages.values(), entry => ({ ...entry })) } };
+          generationYield: counters.generationYield ? { ...counters.generationYield } : undefined,
+          firstSampleMs,
+          firstDeliveryMs,
+          stages: Array.from(stages.values(), entry => ({ ...entry })),
+        },
+      };
     },
   };
 }

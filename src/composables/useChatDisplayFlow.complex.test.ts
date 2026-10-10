@@ -97,7 +97,8 @@ describe('useChatDisplayFlow complex scenario', () => {
 
     const expected = [
       {
-        type: 'message', key: expect.any(String),
+        type: 'message',
+        key: expect.any(String),
         node: expect.objectContaining({ id: 'u1' }),
         mode: 'content',
         partContent: 'Calc',
@@ -127,7 +128,8 @@ describe('useChatDisplayFlow complex scenario', () => {
         flow: { position: 'start', nesting: 'none' },
       },
       {
-        type: 'message', key: expect.any(String),
+        type: 'message',
+        key: expect.any(String),
         node: expect.objectContaining({ id: 'am' }),
         mode: 'content',
         partContent: 'Body',
@@ -156,7 +158,8 @@ describe('useChatDisplayFlow complex scenario', () => {
         flow: { position: 'middle', nesting: 'none' },
       },
       {
-        type: 'message', key: expect.any(String),
+        type: 'message',
+        key: expect.any(String),
         node: expect.objectContaining({ id: 'al' }),
         mode: 'content',
         partContent: 'End',
@@ -220,7 +223,8 @@ describe('useChatDisplayFlow complex scenario', () => {
 
     const expected = [
       {
-        type: 'message', key: expect.any(String),
+        type: 'message',
+        key: expect.any(String),
         node: expect.objectContaining({ id: 'u1' }),
         mode: 'content',
         partContent: 'Hi',
@@ -230,7 +234,8 @@ describe('useChatDisplayFlow complex scenario', () => {
         flow: { position: 'standalone', nesting: 'none' },
       },
       {
-        type: 'message', key: expect.any(String),
+        type: 'message',
+        key: expect.any(String),
         node: expect.objectContaining({ id: 'a1' }),
         mode: 'content',
         partContent: 'Answer',
@@ -240,7 +245,8 @@ describe('useChatDisplayFlow complex scenario', () => {
         flow: { position: 'start', nesting: 'none' },
       },
       {
-        type: 'message', key: expect.any(String),
+        type: 'message',
+        key: expect.any(String),
         node: expect.objectContaining({ id: 'a1' }),
         mode: 'thinking',
         partContent: 'Active',

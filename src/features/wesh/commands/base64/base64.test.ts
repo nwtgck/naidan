@@ -309,7 +309,6 @@ A
     }
   });
 
-
   it('accepts an explicit positive sign in wrap widths', async () => {
     const execution = await execute({
       script: 'base64 -w +1',
@@ -325,5 +324,4 @@ A
     expect(execution.stderr.text).toBe('');
     expect(execution.result.exitCode).toBe(0);
   });
-
 });

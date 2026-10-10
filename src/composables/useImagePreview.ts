@@ -13,7 +13,7 @@ interface PreviewState {
 
 interface ImagePreviewApi {
   state: Ref<PreviewState | null>,
-  openPreview: ({ objects, initialId }: PreviewState) => void,
+  openPreview: ({ objects, initialId }: { objects: PreviewState['objects'], initialId: PreviewState['initialId'] }) => void,
   closePreview: () => void,
   TEST_ONLY: Record<never, never>,
 }
@@ -24,7 +24,7 @@ export const MESSAGE_CONTEXTUAL_PREVIEW_KEY: InjectionKey<ContextualPreviewHandl
 
 const PREVIEW_KEY: InjectionKey<{
   state: Ref<PreviewState | null>,
-  openPreview: ({ objects, initialId }: PreviewState) => void,
+  openPreview: ({ objects, initialId }: { objects: PreviewState['objects'], initialId: PreviewState['initialId'] }) => void,
   closePreview: () => void,
 }> = Symbol('ImagePreview');
 
@@ -38,7 +38,7 @@ export function useImagePreview({ scoped = false }: { scoped?: boolean } = {}): 
     const state = ref<PreviewState | null>(null);
     const api = {
       state,
-      openPreview: ({ objects, initialId }: PreviewState) => {
+      openPreview: ({ objects, initialId }: { objects: PreviewState['objects'], initialId: PreviewState['initialId'] }) => {
         state.value = { objects: objects.map(object => ({ ...object })), initialId };
       },
       closePreview: () => {
@@ -53,15 +53,18 @@ export function useImagePreview({ scoped = false }: { scoped?: boolean } = {}): 
   }
 
   const injected = inject(PREVIEW_KEY, null);
-  if (injected) return { ...injected, ...((__BUILD_MODE_IS_TEST__ && {
-    TEST_ONLY: {},
-  }) || {}) };
+  if (injected) return {
+    ...injected,
+    ...((__BUILD_MODE_IS_TEST__ && {
+      TEST_ONLY: {},
+    }) || {}),
+  };
 
   // Fallback to local ref if not provided (allows simple local use in a component)
   const state = ref<PreviewState | null>(null);
   return {
     state,
-    openPreview: ({ objects, initialId }: PreviewState) => {
+    openPreview: ({ objects, initialId }: { objects: PreviewState['objects'], initialId: PreviewState['initialId'] }) => {
       state.value = { objects: objects.map(object => ({ ...object })), initialId };
     },
     closePreview: () => {

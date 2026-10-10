@@ -41,9 +41,11 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
   // 1. Settings (minimal)
   const currentSettings = await storageService.loadSettings();
   if (currentSettings) {
-    await memoryProvider.saveSettings({ settings: {
-      ...currentSettings,
-    } satisfies Settings });
+    await memoryProvider.saveSettings({
+      settings: {
+        ...currentSettings,
+      } satisfies Settings,
+    });
   }
 
   // 2. Chat Data
@@ -51,9 +53,13 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
   await memoryProvider.saveChatContent({ id: chat.id, content: chat });
 
   // 3. Hierarchy (minimal)
-  await memoryProvider.saveHierarchy({ hierarchy: hierarchyToDto({ domain: {
-    items: [{ type: 'chat', id: chat.id }],
-  } }) });
+  await memoryProvider.saveHierarchy({
+    hierarchy: hierarchyToDto({
+      domain: {
+        items: [{ type: 'chat', id: chat.id }],
+      },
+    }),
+  });
 
   // 4. Copy binaries referenced anywhere in the exported tree. Model text and
   // reasoning stay unchanged; only known image markers describe binary references.

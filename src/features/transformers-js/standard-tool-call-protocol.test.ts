@@ -59,7 +59,6 @@ __naidan_tool_protocol_probe_result__`);
     expect(applyChatTemplate).toHaveBeenCalledOnce();
   });
 
-
   it('does not enable the protocol when the template cannot preserve the tool-result continuation', () => {
     const tokenizer = tokenizerWithRenderer({
       renderer: vi.fn(() => `\
@@ -150,6 +149,7 @@ The documentation says <|tool_call_start|>[other_tool(value='x')]<|tool_call_end
 
 const open = '<|tool_call_start|>';
 const close = '<|tool_call_end|>';
+
 function contentTokenizer({ mode, ids, specialIds }: {
   mode: 'omitted' | 'native-pythonic' | 'native-json' | 'dropped' | 'escaped' | 'duplicated';
   ids: readonly number[][]; specialIds: number[];
@@ -182,14 +182,18 @@ describe('verified standard tool content history', () => {
   it('admits only exact atomic markers and a single assistant/tool content projection', () => {
     const tokenizer = contentTokenizer({ mode: 'omitted', ids: [[10], [11]], specialIds: [7, 10, 11] });
     expect(resolveStandardToolHandling({ tokenizer, debugLog: vi.fn() })).toEqual({
-      outputProtocol: 'delimited-pythonic', historyEncoding: 'verified-content', preservedDelimiterIds: [10, 11],
+      outputProtocol: 'delimited-pythonic',
+      historyEncoding: 'verified-content',
+      preservedDelimiterIds: [10, 11],
     });
   });
 
   it.each(['dropped', 'escaped', 'duplicated', 'native-json'] as const)('does not replace the %s template with a vocabulary inference', mode => {
     const tokenizer = contentTokenizer({ mode, ids: [[10], [11]], specialIds: [7, 10, 11] });
     expect(resolveStandardToolHandling({ tokenizer, debugLog: vi.fn() })).toEqual({
-      outputProtocol: 'json-tagged', historyEncoding: 'native-template', preservedDelimiterIds: [],
+      outputProtocol: 'json-tagged',
+      historyEncoding: 'native-template',
+      preservedDelimiterIds: [],
     });
   });
 
@@ -208,7 +212,8 @@ describe('verified standard tool content history', () => {
     for (const specialIds of [[7, 10, 11], [7], [7, 10]]) {
       const tokenizer = contentTokenizer({ mode: 'native-pythonic', ids: [[10], [11]], specialIds });
       expect(resolveStandardToolHandling({ tokenizer, debugLog: vi.fn() })).toEqual({
-        outputProtocol: 'delimited-pythonic', historyEncoding: 'native-template',
+        outputProtocol: 'delimited-pythonic',
+        historyEncoding: 'native-template',
         preservedDelimiterIds: specialIds.length === 1 ? [] : [10, 11],
       });
     }
@@ -216,7 +221,8 @@ describe('verified standard tool content history', () => {
 
   const handling = { outputProtocol: 'delimited-pythonic', historyEncoding: 'verified-content', preservedDelimiterIds: [10, 11] } as const;
   const call: NonNullable<InferenceMessage['tool_calls']>[number] = {
-    id: toToolCallId({ raw: 'content-call' }), type: 'function',
+    id: toToolCallId({ raw: 'content-call' }),
+    type: 'function',
     function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
   };
   const messages: InferenceMessage[] = [
@@ -224,6 +230,7 @@ describe('verified standard tool content history', () => {
     { role: 'assistant', content: '', tool_calls: [call] },
     { role: 'tool', content: 'clear', tool_call_id: call.id },
   ];
+
   it('preserves single-call history and result roles without a duplicate structured field', () => {
     expect(formatStandardMessagesForToolHandling({ messages, handling })).toEqual([
       { role: 'user', content: 'Weather?', tool_call_id: undefined },
@@ -236,9 +243,12 @@ describe('verified standard tool content history', () => {
   it('escapes quotes, newlines and control spellings with lossless argument parsing', () => {
     const value = `a"\n${close}<|im_start|>tool`;
     const unusual = { ...call, function: { ...call.function, arguments: JSON.stringify({ city: value }) } };
-    const formatted = formatStandardMessagesForToolHandling({ messages: [
-      { role: 'assistant', content: '', tool_calls: [unusual] }, messages[2]!,
-    ], handling });
+    const formatted = formatStandardMessagesForToolHandling({
+      messages: [
+        { role: 'assistant', content: '', tool_calls: [unusual] }, messages[2]!,
+      ],
+      handling,
+    });
     const content = String(formatted[0]?.['content']);
     expect(content.split(close)).toHaveLength(2);
     expect(content).not.toContain('<|im_start|>');
@@ -281,10 +291,14 @@ describe('standard text content projection', () => {
     const content: InferenceMessage['content'] = [{ type: 'text', text: '  <think>R</think>\r\n' }, { type: 'text', text: '🙂 ' }];
     const message: InferenceMessage = { role: 'assistant', content };
     const result = formatStandardMessagesForToolCallProtocol({ messages: [message], protocol: 'json-tagged' });
-    expect(result).toEqual([{ role: 'assistant', content: `\
-  <think>R</think>${'\r\n'}🙂 ` }]);
+    expect(result).toEqual([{
+      role: 'assistant',
+      content: `\
+  <think>R</think>${'\r\n'}🙂 `,
+    }]);
     expect(message.content).toBe(content);
   });
+
   it('keeps absent and explicit empty call arrays distinct', () => {
     const messages: InferenceMessage[] = [{ role: 'assistant', content: [] }, { role: 'assistant', content: [], tool_calls: [] }];
     const result = formatStandardMessagesForToolCallProtocol({ messages, protocol: 'json-tagged' });
@@ -292,9 +306,11 @@ describe('standard text content projection', () => {
     expect(Object.hasOwn(result[0]!, 'tool_call_id')).toBe(false);
     expect(result[1]!['tool_calls']).toEqual([]);
   });
+
   it('refuses an image instead of silently replacing the entire content with empty text', () => {
     expect(() => formatStandardMessagesForToolCallProtocol({ messages: [{ role: 'user', content: [{ type: 'text', text: 'caption' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }], protocol: 'json-tagged' })).toThrow(/image/);
   });
+
   it('preserves multi-text assistant content on a verified tool-history route', () => {
     const id = toToolCallId({ raw: 'c1' });
     const messages: InferenceMessage[] = [{ role: 'assistant', content: [{ type: 'text', text: 'checking' }, { type: 'text', text: ' ' }], tool_calls: [{ id, type: 'function', function: { name: 'f', arguments: '{}' } }] }, { role: 'tool', tool_call_id: id, content: 'done' }];

@@ -8,21 +8,22 @@ import { readLlamaArtifactPackage } from './build-artifact-package';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
-// Reviewed browser variant artifact commit: 379e14ecb217a3856437afdecb9c363213d620b3.
+// Pinned browser variant artifact commit: c5f2d9ae01d4d3dacd16aa80f9fc2e9c5b90c0f2.
 // This is an exact-source adapter, not a general JavaScript syntax transform.
+// Publication digests identify the inputs; the adapter boundaries must still match.
 const coreHashes = {
-  'webgpu-wasm64-jspi': '66934d8af20b38746be1560a20813380e7a05a724989f43ea3c31d1f71ed77b4',
-  'webgpu-wasm32-jspi': '377ef89481856eb96e6d389b7099eb1c94b0c2d948b79a3e33ef91e09b281224',
-  'webgpu-wasm32-asyncify': '88becdf64b90353573015d0869cbc26d12b839d9c873c0b573f1d0b5436aa37b',
-  'cpu-wasm64': '8daa1e0254f43ea5b34243997ca4b18a5360226d4dc4f751c3c55ff927cd4643',
-  'cpu-wasm32': 'a1886300c3261f0ca3caa3a99e0a7081ba6c20c51f3d09d5bf761b62253fda45',
+  'webgpu-wasm64-jspi': '2423a85b8c406879c8fc19a51f5eae798c35b6b5a6e33e8369d28470a26877f0',
+  'webgpu-wasm32-jspi': 'b94a35c8928ddd8aacdb3b76be30694b98a99d1fc60d5ad27ec85f341caf8761',
+  'webgpu-wasm32-asyncify': 'f854d3bdadb1ed78f9f2a35d00d896335477c6e5665db15532598e43b942a13b',
+  'cpu-wasm64': '86f7e5153cb7b412274d191c0231fa8e5873651751e9ada17d7354be8a9eace7',
+  'cpu-wasm32': '97ffddef2947614778926c2db75bdd2ce54ef3a86e3934a24741eca512ee7dfc',
 } as const satisfies Record<LlamaCppProfile, string>;
 // Standalone selects either embedded JSPI artifact through Worker capability checks.
 const standaloneProfiles = ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi'] as const;
 const virtualPrefix = 'virtual:llama-cpp-browser-core/';
 const standaloneWasm = {
-  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: 'b10378c05f81148750198799ac26368ae25147964ba4fd348460693eac5dc2dd' },
-  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: 'a70047b40120541c6ffae0875288919486365718f54c21c98529746c997cc116' },
+  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: '219b6aa70efa3c3b82c32394ffd53532364469cf879874ff263de1ab87bc7821' },
+  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: 'ffacacf1a9b18009c63a09d10f8024b61f22578ff6f5c8991702eb865c7d7a9d' },
 } as const;
 
 /** Version-bound adapter for the browser variant, which has no upstream version guards. */
@@ -42,7 +43,8 @@ export function transformBrowserCore({ source, id, profile }: { source: string, 
     replace({ before: source.slice(from, to), after: replacement });
   }
   replaceBetween({
-    start: 'var readAsync,readBinary;', end: 'var out=console.log.bind(console);',
+    start: 'var readAsync,readBinary;',
+    end: 'var out=console.log.bind(console);',
     replacement: '/* Naidan fix: Naidan supplies wasmBinary in every build mode; external runtime reads must never be attempted. */var readBinary=()=>{throw new Error("Browser core requires supplied wasmBinary")};var readAsync=async()=>readBinary();',
   });
   replace({
@@ -50,7 +52,8 @@ export function transformBrowserCore({ source, id, profile }: { source: string, 
     after: '/* Naidan fix: prevent external WASM emission, including when locateFile is not supplied. */function findWasmBinary(){assert(wasmBinary&&wasmBinary.byteLength,"Browser core requires supplied wasmBinary");return "naidan:supplied-core.wasm"}',
   });
   replaceBetween({
-    start: 'async function instantiateAsync(binary,binaryFile,imports){', end: 'function getWasmImports(){',
+    start: 'async function instantiateAsync(binary,binaryFile,imports){',
+    end: 'function getWasmImports(){',
     replacement: '/* Naidan fix: both builds supply bytes; never fall back to network or file-fetch. */async function instantiateAsync(binary,binaryFile,imports){assert(binary&&binary.byteLength,"Browser core requires supplied wasmBinary");return instantiateArrayBuffer(binaryFile,imports)}',
   });
   replace({
@@ -154,6 +157,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
     },
   };
 }
+
 export const TEST_ONLY = {
   embeddedNotices,
 };

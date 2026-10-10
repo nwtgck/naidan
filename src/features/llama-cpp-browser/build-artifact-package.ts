@@ -9,7 +9,8 @@ const sourceCommit = z.string().regex(/^[0-9a-f]{40}$/);
 const artifactManifestFormatVersion = 3;
 const llamaManifestFormatVersion = 2;
 const rootManifestSchema = z.object({
-  formatVersion: z.literal(artifactManifestFormatVersion), sourceCommit,
+  formatVersion: z.literal(artifactManifestFormatVersion),
+  sourceCommit,
   runtimes: z.object({ 'llama-cpp': z.object({ manifest: z.literal('llama-cpp-browser-core/manifest.json'), manifestFormatVersion: z.literal(llamaManifestFormatVersion) }) }),
   files: z.array(fileSchema),
 });

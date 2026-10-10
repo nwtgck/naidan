@@ -82,7 +82,6 @@ describe('runInvestigationTargetsSequentially', () => {
     expect(executions.map(({ status }) => status)).toEqual(['interrupted', 'pending']);
   });
 
-
   it('marks only the current model as skipped and continues with the next model', async () => {
     let skippedTarget: string | undefined = 'owner/b';
     const runTarget = vi.fn(async ({ target }: { target: string }) => {

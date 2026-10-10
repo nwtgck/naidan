@@ -10,6 +10,7 @@ vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: mocks.loadProv
 vi.mock('@/utils/idle-task', () => ({ scheduleIdleTask: vi.fn(() => ({ cancel: vi.fn() })) }));
 const original: Settings = { ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'ollama', url: 'http://localhost:11434', httpHeaders: [['X-Test', 'value']] }, defaultModelId: 'old-model', systemPrompt: 'Keep this setting' };
 const target = 'hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M';
+
 beforeEach(async () => {
   vi.clearAllMocks();
   useSettings().TEST_ONLY.__testOnlyReset();
@@ -21,9 +22,11 @@ beforeEach(async () => {
   mocks.loadProvider.mockResolvedValue({ listModels: mocks.listModels });
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(async () => {
   await flushPromises(); useSettings().TEST_ONLY.__testOnlyReset();
 });
+
 describe('atomic default model and endpoint selection', () => {
   it('persists both fields in one update before publishing them and preserves unrelated settings', async () => {
     const gate = Promise.withResolvers<void>();
@@ -39,6 +42,7 @@ describe('atomic default model and endpoint selection', () => {
     expect(mocks.stored).toMatchObject({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: target, systemPrompt: 'Keep this setting' });
     await flushPromises(); expect(mocks.loadProvider).toHaveBeenCalledWith(expect.objectContaining({ endpoint: { type: 'llama_cpp_browser' } }));
   });
+
   it('does not publish a half-change when storage fails', async () => {
     mocks.update.mockRejectedValueOnce(new Error('Storage unavailable'));
     const { settings, updateGlobalModelAndEndpoint } = useSettings();
@@ -46,6 +50,7 @@ describe('atomic default model and endpoint selection', () => {
     expect(settings.value.endpoint).toEqual(original.endpoint); expect(settings.value.defaultModelId).toBe('old-model');
     expect(mocks.loadProvider).not.toHaveBeenCalled();
   });
+
   it('detects an intervening persisted default and updates the confirmation context without overwriting it', async () => {
     mocks.stored = { ...original, defaultModelId: 'newer-model' };
     const { settings, updateGlobalModelAndEndpoint } = useSettings();
@@ -55,18 +60,19 @@ describe('atomic default model and endpoint selection', () => {
   });
 });
 
-
 describe('model launch global initialization', () => {
   function useBlankSettings() {
     const blank: Settings = { ...original, endpoint: { type: 'openai', url: '' }, defaultModelId: undefined };
     useSettings().TEST_ONLY.__testOnlySetSettings({ newSettings: blank }); mocks.stored = structuredClone(blank);
     return useSettings();
   }
+
   it('initializes a genuinely empty pair after a captured authorization', async () => {
     const api = useBlankSettings(); const expected = await api.captureModelLaunchDefaults();
     expect(await api.initializeModelLaunchDefaults({ modelId: target, expected })).toBe('applied');
     expect(mocks.stored).toMatchObject({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: target });
   });
+
   it('preserves an existing endpoint even when its default model is empty', async () => {
     const api = useBlankSettings();
     const partial = { ...mocks.stored!, endpoint: original.endpoint };
@@ -74,23 +80,27 @@ describe('model launch global initialization', () => {
     expect(await api.initializeModelLaunchDefaults({ modelId: target, expected: await api.captureModelLaunchDefaults() })).toBe('changed');
     expect(mocks.update).not.toHaveBeenCalled();
   });
+
   it('detects local change-and-revert rather than relying only on equal final values', async () => {
     const api = useBlankSettings(); const expected = await api.captureModelLaunchDefaults(); const blank = { ...mocks.stored! };
     api.TEST_ONLY.__testOnlySetSettings({ newSettings: { ...blank, defaultModelId: 'manual' } });
     api.TEST_ONLY.__testOnlySetSettings({ newSettings: blank });
     expect(await api.initializeModelLaunchDefaults({ modelId: target, expected })).toBe('changed');
   });
+
   it('preserves a different current default selected in another tab', async () => {
     const api = useBlankSettings(); const expected = await api.captureModelLaunchDefaults();
     mocks.stored = { ...mocks.stored!, defaultModelId: 'other-tab' };
     expect(await api.initializeModelLaunchDefaults({ modelId: target, expected })).toBe('changed');
     expect(mocks.stored.defaultModelId).toBe('other-tab');
   });
+
   it('does not publish defaults if their save fails', async () => {
     const api = useBlankSettings(); const expected = await api.captureModelLaunchDefaults(); mocks.update.mockRejectedValueOnce(new Error('quota'));
     await expect(api.initializeModelLaunchDefaults({ modelId: target, expected })).rejects.toThrow('quota');
     expect(api.settings.value.endpoint).toEqual({ type: 'openai', url: '' }); expect(api.settings.value.defaultModelId).toBeUndefined();
   });
+
   it('rejects a snapshot whose original storage provider is no longer active', async () => {
     const api = useBlankSettings(); const expected = { ...await api.captureModelLaunchDefaults(), isStorageCurrent: () => false };
     expect(await api.initializeModelLaunchDefaults({ modelId: target, expected })).toBe('changed'); expect(mocks.update).not.toHaveBeenCalled();

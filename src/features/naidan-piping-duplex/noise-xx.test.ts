@@ -22,57 +22,72 @@ const vector = {
   "messages": [
     {
       "payload": "4c756477696720766f6e204d69736573",
-      "ciphertext": "ca35def5ae56cec33dc2036731ab14896bc4c75dbb07a61f879f8e3afa4c79444c756477696720766f6e204d69736573"
+      "ciphertext": "ca35def5ae56cec33dc2036731ab14896bc4c75dbb07a61f879f8e3afa4c79444c756477696720766f6e204d69736573",
     },
     {
       "payload": "4d757272617920526f746862617264",
-      "ciphertext": "95ebc60d2b1fa672c1f46a8aa265ef51bfe38e7ccb39ec5be34069f144808843757117acceb05bd7a45733bc22015c97a9d0cbaf41b80446d5988ff5127235d76b79eade70f473d6a4ef521fdcbeda5340d01e028ba793fc059f2724a83af05f12dda0448a7621a926b379a92477fd"
+      "ciphertext": "95ebc60d2b1fa672c1f46a8aa265ef51bfe38e7ccb39ec5be34069f144808843757117acceb05bd7a45733bc22015c97a9d0cbaf41b80446d5988ff5127235d76b79eade70f473d6a4ef521fdcbeda5340d01e028ba793fc059f2724a83af05f12dda0448a7621a926b379a92477fd",
     },
     {
       "payload": "462e20412e20486179656b",
-      "ciphertext": "c90f1cf77eba4e50edb038991565e36c9758943a989229b6051244dc4fbecb6946744b401af2ee1a5881b65fbb87fd07cb6a328ececc9ce6ce84c399dc332d4fd521fa4bb7f467ce909395"
+      "ciphertext": "c90f1cf77eba4e50edb038991565e36c9758943a989229b6051244dc4fbecb6946744b401af2ee1a5881b65fbb87fd07cb6a328ececc9ce6ce84c399dc332d4fd521fa4bb7f467ce909395",
     },
     {
       "payload": "4361726c204d656e676572",
-      "ciphertext": "bc3fa77f6aca3e8466d7dc6bea10013e88a6a29add5132b461806c"
+      "ciphertext": "bc3fa77f6aca3e8466d7dc6bea10013e88a6a29add5132b461806c",
     },
     {
       "payload": "4a65616e2d426170746973746520536179",
-      "ciphertext": "250b01074cdfe0df2ecf8ccbf1737b15a2ddb5b52fd9a396604e9c793cee3b3bb9"
+      "ciphertext": "250b01074cdfe0df2ecf8ccbf1737b15a2ddb5b52fd9a396604e9c793cee3b3bb9",
     },
     {
       "payload": "457567656e2042f6686d20766f6e2042617765726b",
-      "ciphertext": "449d4d433b3cdc3d02bf6fc881774b9df54366ebcffb9689bb13f14709822cd7ef42bcdb4d"
+      "ciphertext": "449d4d433b3cdc3d02bf6fc881774b9df54366ebcffb9689bb13f14709822cd7ef42bcdb4d",
     }
-  ]
+  ],
 };
 
 function fromHex({ text }: { text: string }): Uint8Array<ArrayBuffer> {
   return new Uint8Array(Buffer.from(text, 'hex'));
 }
+
 async function testIdentity({ secret }: { secret: string }): Promise<NaidanPipingIdentity> {
   const der = Buffer.concat([Buffer.from('302e020100300506032b656e04220420', 'hex'), Buffer.from(secret, 'hex')]);
   const key = createPrivateKey({ key: der, format: 'der', type: 'pkcs8' });
   const publicDer = createPublicKey(key).export({ format: 'der', type: 'spki' });
-  return { privateKey: await crypto.subtle.importKey('pkcs8', der, 'X25519', false, ['deriveBits']),
-    publicKey: new Uint8Array(publicDer.subarray(-32)) };
+  return {
+    privateKey: await crypto.subtle.importKey('pkcs8', der, 'X25519', false, ['deriveBits']),
+    publicKey: new Uint8Array(publicDer.subarray(-32)),
+  };
 }
+
 async function pair() {
   const identities = await promiseAllKeyed({
-    identityA: testIdentity({ secret: vector.init_static }), ephemeralA: testIdentity({ secret: vector.init_ephemeral }),
-    identityB: testIdentity({ secret: vector.resp_static }), ephemeralB: testIdentity({ secret: vector.resp_ephemeral }),
+    identityA: testIdentity({ secret: vector.init_static }),
+    ephemeralA: testIdentity({ secret: vector.init_ephemeral }),
+    identityB: testIdentity({ secret: vector.resp_static }),
+    ephemeralB: testIdentity({ secret: vector.resp_ephemeral }),
   });
   const states = await promiseAllKeyed({
-    a: NoiseXX.create({ role: 'initiator', identity: identities.identityA, ephemeral: identities.ephemeralA,
-      prologue: fromHex({ text: vector.init_prologue }) }),
-    b: NoiseXX.create({ role: 'responder', identity: identities.identityB, ephemeral: identities.ephemeralB,
-      prologue: fromHex({ text: vector.resp_prologue }) }),
+    a: NoiseXX.create({
+      role: 'initiator',
+      identity: identities.identityA,
+      ephemeral: identities.ephemeralA,
+      prologue: fromHex({ text: vector.init_prologue }),
+    }),
+    b: NoiseXX.create({
+      role: 'responder',
+      identity: identities.identityB,
+      ephemeral: identities.ephemeralB,
+      prologue: fromHex({ text: vector.resp_prologue }),
+    }),
   });
   onTestFinished(() => {
     states.a.dispose(); states.b.dispose();
   });
   return states;
 }
+
 async function handshake({ a, b }: { a: NoiseXX; b: NoiseXX }): Promise<void> {
   for (let index = 0; index < 3; index++) {
     const sender = index % 2 ? b : a, receiver = index % 2 ? a : b;

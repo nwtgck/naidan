@@ -242,7 +242,6 @@ describe("evaluateEvidenceReadiness", () => {
     expect(renderEvidenceReadinessMarkdown({ report })).toContain("Evidence: load-attempts/index.json");
   });
 
-
   it("ties Download Evidence readiness to the same frozen repository revision", () => {
     const value = run();
     value.downloadEvidence = {
@@ -257,24 +256,44 @@ describe("evaluateEvidenceReadiness", () => {
         repositoryFileCount: 1,
         repositoryFiles: [{ path: "onnx/model_q4.onnx", size: 100, blobId: undefined, lfsOid: undefined, lfsSha256: undefined, lfsSize: undefined }],
         transportObservations: [{
-          path: "onnx/model_q4.onnx", method: "HEAD", status: 200, redirected: false,
+          path: "onnx/model_q4.onnx",
+          method: "HEAD",
+          status: 200,
+          redirected: false,
           finalUrl: "https://huggingface.co/org/model/resolve/revision/onnx/model_q4.onnx",
-          finalOrigin: "https://huggingface.co", contentLength: 100, contentRange: undefined,
-          acceptRanges: "bytes", contentType: "application/octet-stream", etag: undefined,
-          rangeHonored: undefined, bytesConsumed: 0, abortedByByteBudget: false, error: undefined,
+          finalOrigin: "https://huggingface.co",
+          contentLength: 100,
+          contentRange: undefined,
+          acceptRanges: "bytes",
+          contentType: "application/octet-stream",
+          etag: undefined,
+          rangeHonored: undefined,
+          bytesConsumed: 0,
+          abortedByByteBudget: false,
+          error: undefined,
         }],
-        skippedModelArtifactCount: 0, bytesConsumed: 0, maximumBytes: 2 * 1024 * 1024,
-        startedAt: "2026-09-04T00:00:00.000Z", finishedAt: "2026-09-04T00:00:01.000Z",
+        skippedModelArtifactCount: 0,
+        bytesConsumed: 0,
+        maximumBytes: 2 * 1024 * 1024,
+        startedAt: "2026-09-04T00:00:00.000Z",
+        finishedAt: "2026-09-04T00:00:01.000Z",
       },
       modelArtifactObservations: [{
-        modelId: "org/model", revision: "a".repeat(40), autoClass: "AutoModelForCausalLM",
-        candidate: { device: "webgpu", dtype: "q4" }, status: "observed",
-        observationMethod: "held-model-artifact-fetch-quiescence", quiescenceMs: 100, timeoutMs: 1000,
+        modelId: "org/model",
+        revision: "a".repeat(40),
+        autoClass: "AutoModelForCausalLM",
+        candidate: { device: "webgpu", dtype: "q4" },
+        status: "observed",
+        observationMethod: "held-model-artifact-fetch-quiescence",
+        quiescenceMs: 100,
+        timeoutMs: 1000,
         paths: ["onnx/model_q4.onnx"],
         requests: [{ path: "onnx/model_q4.onnx", url: "https://huggingface.co/org/model/resolve/revision/onnx/model_q4.onnx" }],
         error: undefined,
       }],
-      modelArtifactObservationError: undefined, cacheBefore: undefined, cacheInspectionError: undefined,
+      modelArtifactObservationError: undefined,
+      cacheBefore: undefined,
+      cacheInspectionError: undefined,
     };
 
     const ready = evaluateEvidenceReadiness({ run: value }).domains.find(item => item.domainId === "download");
@@ -288,12 +307,17 @@ describe("evaluateEvidenceReadiness", () => {
       status: "accepted",
       source: "production-download-preparation",
       receipt: {
-        format: 'production-offline-load-receipt-v1', modelId: 'org/model',
+        format: 'production-offline-load-receipt-v1',
+        modelId: 'org/model',
         loaderRevisionOption: { status: 'provided', value: 'a'.repeat(40) },
-        autoClass: 'AutoModelForCausalLM', processor: 'tokenizer', candidate: { device: 'webgpu', dtype: 'q4' },
+        autoClass: 'AutoModelForCausalLM',
+        processor: 'tokenizer',
+        candidate: { device: 'webgpu', dtype: 'q4' },
         plannedRequiredPaths: ['config.json', 'onnx/model_q4.onnx'],
         cacheLookup: { source: 'read-only-opfs-scoped-match', revision: 'a'.repeat(40), hitPaths: ['config.json', 'onnx/model_q4.onnx'] },
-        completion: 'model-session-and-tokenizer-processor-ready', resourceHealth: 'healthy-after-close', accessBoundary: 'production-offline-read-only',
+        completion: 'model-session-and-tokenizer-processor-ready',
+        resourceHealth: 'healthy-after-close',
+        accessBoundary: 'production-offline-read-only',
         limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
       },
       repositoryResolvedRevision: "a".repeat(40),
@@ -316,8 +340,11 @@ describe("evaluateEvidenceReadiness", () => {
       source: "reused-production-cache",
       cacheRevision: "main",
       loaderRevisionOption: null,
-      receipt: { ...value.downloadEvidence.runtimeCompletion.receipt!, loaderRevisionOption: { status: 'omitted' },
-        cacheLookup: { ...value.downloadEvidence.runtimeCompletion.receipt!.cacheLookup, revision: 'main' } },
+      receipt: {
+        ...value.downloadEvidence.runtimeCompletion.receipt!,
+        loaderRevisionOption: { status: 'omitted' },
+        cacheLookup: { ...value.downloadEvidence.runtimeCompletion.receipt!.cacheLookup, revision: 'main' },
+      },
     };
     const legacyMainReport = evaluateEvidenceReadiness({ run: value });
     const legacyDownload = legacyMainReport.domains.find(item => item.domainId === "download");
@@ -346,7 +373,6 @@ describe("evaluateEvidenceReadiness", () => {
     expect(mismatch?.status).toBe("insufficient");
     expect(mismatch?.summary).toContain("same frozen repository revision");
   });
-
 
   it("treats intentional offline repository skipping as partial when an immutable local runtime target is available", () => {
     const value = run();
@@ -447,7 +473,6 @@ describe("evaluateEvidenceReadiness", () => {
     expect(runtimeLoad?.questions[0]?.answer).toContain("model loaded");
     expect(report.domains.find(item => item.domainId === "plain-text")?.status).toBe("not-observed");
   });
-
 
   it("keeps Production plain-text evidence when all Reference input strategies fail", () => {
     const value = run();
@@ -670,6 +695,7 @@ TypeError: fixture inspection failed
     expect(report.overall).toBe("insufficient");
     expect(report.domains.find(item => item.domainId === "runtime-assets")?.status).toBe("insufficient");
   });
+
   it("marks missing core runtime evidence insufficient rather than partial", () => {
     const value = run();
     value.runtimeAssets = undefined;
@@ -731,15 +757,18 @@ TypeError: fixture inspection failed
       firstMismatchIndex: undefined,
     };
     value.productionLane = {
-      status: 'running', observation: undefined,
+      status: 'running',
+      observation: undefined,
       partialObservation: {
         route: { autoClass: 'AutoModelForCausalLM', processor: 'processor', strategy: 'qwen3_5', modelType: 'qwen3_5' },
         continuity: {
           status: 'passed',
           secondTurn: { pastKeyValuesProvided: false, cacheDecision: { status: 'not-reused', reason: 'qwen3_5-message-count-mismatch' } },
           prefixComparison: {
-            mode: 'full-input-prefix', comparisonInputSource: 'reconstructed-full-conversation',
-            exactPrefixMatch: true, firstMismatchIndex: undefined,
+            mode: 'full-input-prefix',
+            comparisonInputSource: 'reconstructed-full-conversation',
+            exactPrefixMatch: true,
+            firstMismatchIndex: undefined,
           },
         },
       } as never,
@@ -815,15 +844,18 @@ TypeError: fixture inspection failed
       firstMismatchIndex: 0,
     };
     value.productionLane = {
-      status: 'running', observation: undefined,
+      status: 'running',
+      observation: undefined,
       partialObservation: {
         route: { autoClass: 'AutoModelForCausalLM', processor: 'processor', strategy: 'qwen3_5', modelType: 'qwen3_5' },
         continuity: {
           status: 'passed',
           secondTurn: { pastKeyValuesProvided: false, cacheDecision: { status: 'not-reused', reason: 'qwen3_5-message-count-mismatch' } },
           prefixComparison: {
-            mode: 'full-input-prefix', comparisonInputSource: 'reconstructed-full-conversation',
-            exactPrefixMatch: true, firstMismatchIndex: undefined,
+            mode: 'full-input-prefix',
+            comparisonInputSource: 'reconstructed-full-conversation',
+            exactPrefixMatch: true,
+            firstMismatchIndex: undefined,
           },
         },
       } as never,
@@ -1114,5 +1146,4 @@ TypeError: fixture inspection failed
     expect(multimodal).toMatchObject({ status: "not-observed" });
     expect(multimodal?.questions[0]?.answer).toContain("unavailable");
   });
-
 });

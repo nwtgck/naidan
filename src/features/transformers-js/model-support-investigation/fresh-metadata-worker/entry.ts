@@ -34,8 +34,14 @@ const api: WorkerServerApi<FreshMetadataWorker> = {
     const abort = new AbortController();
     const timer = setTimeout(() => abort.abort(new Error('Fresh metadata deadline exceeded')), FRESH_METADATA_TIMEOUT_MS);
     let summary: FreshMetadataSummary = {
-      schemaVersion: 1, modelId, revision, source: 'fresh-network-memory', status: 'running',
-      maximumBytes, receivedBytes: 0, requests: [],
+      schemaVersion: 1,
+      modelId,
+      revision,
+      source: 'fresh-network-memory',
+      status: 'running',
+      maximumBytes,
+      receivedBytes: 0,
+      requests: [],
       preparationStage: 'worker-initialization',
     };
     let publishedBytes = 0;
@@ -43,7 +49,11 @@ const api: WorkerServerApi<FreshMetadataWorker> = {
     // This transport sits below the same model-fetch adapter as Download, so
     // fallback HTTP requests count against the budget too.
     const transport = createFreshMetadataTransport({
-      modelId, revision, maximumBytes, originalFetch, signal: abort.signal,
+      modelId,
+      revision,
+      maximumBytes,
+      originalFetch,
+      signal: abort.signal,
       onObservation: () => {
         summary = { ...summary, ...transport.snapshot() };
         // Report every phase transition, but bound callback volume when fetch
@@ -60,9 +70,14 @@ const api: WorkerServerApi<FreshMetadataWorker> = {
     let downloadFetch: typeof fetch | undefined;
     try {
       const { runtimeFetch } = configureHostedTransformersRuntime({
-        env, workerLocationUrl: self.location.href, environment: import.meta.env.DEV ? 'development' : 'production',
-        userAgent: navigator.userAgent, vendor: navigator.vendor, hardwareConcurrency: navigator.hardwareConcurrency,
-        originalFetch: transport.fetch, createDecompressionStream: () => new DecompressionStream('gzip'),
+        env,
+        workerLocationUrl: self.location.href,
+        environment: import.meta.env.DEV ? 'development' : 'production',
+        userAgent: navigator.userAgent,
+        vendor: navigator.vendor,
+        hardwareConcurrency: navigator.hardwareConcurrency,
+        originalFetch: transport.fetch,
+        createDecompressionStream: () => new DecompressionStream('gzip'),
       });
       downloadFetch = createHostedTransformersModelFetch({ runtimeFetch });
       self.fetch = transport.fetch;
@@ -71,8 +86,12 @@ const api: WorkerServerApi<FreshMetadataWorker> = {
       env.useBrowserCache = false;
       env.useCustomCache = true;
       const preparation = await prepareRuntimeMetadata({
-        modelId, revision, runtime: { AutoConfig, AutoProcessor, AutoTokenizer, env }, downloadFetch,
-        storage: memory.storage, maximumByteLength: 32 * 1024 * 1024,
+        modelId,
+        revision,
+        runtime: { AutoConfig, AutoProcessor, AutoTokenizer, env },
+        downloadFetch,
+        storage: memory.storage,
+        maximumByteLength: 32 * 1024 * 1024,
         progressCallback: () => undefined,
         onStage: ({ stage }) => {
           summary = { ...summary, ...transport.snapshot(), preparationStage: stage };
@@ -109,24 +128,31 @@ const api: WorkerServerApi<FreshMetadataWorker> = {
         }
       })();
       await collectReplayMetadata({
-        modelId, revision, files: repositoryFiles.map(({ path, size }) => ({ path, size })),
-        budgetBytes: maximumBytes, fileTimeoutMs: 15_000, modelAccess: 'public-request',
+        modelId,
+        revision,
+        files: repositoryFiles.map(({ path, size }) => ({ path, size })),
+        budgetBytes: maximumBytes,
+        fileTimeoutMs: 15_000,
+        modelAccess: 'public-request',
         localRead: async ({ path }) => collected.get(`${prefix}${path}`),
         remoteFetch: supplementFetch,
         onSnapshot: ({ snapshot }) => {
           // "local" here is this operation's fresh in-memory acquisition, not
           // OPFS. Preserve remote provenance when adapting the shared collector.
-          replayMetadata = { ...snapshot.summary, files: snapshot.summary.files.map(file => {
-            switch (file.source) {
-            case 'local-exact': return { ...file, source: 'remote-exact' as const };
-            case 'remote-exact':
-            case 'not-read': return file;
-            default: {
-              const _ex: never = file.source;
-              throw new Error(`Unknown replay metadata source: ${_ex}`);
-            }
-            }
-          }) };
+          replayMetadata = {
+            ...snapshot.summary,
+            files: snapshot.summary.files.map(file => {
+              switch (file.source) {
+              case 'local-exact': return { ...file, source: 'remote-exact' as const };
+              case 'remote-exact':
+              case 'not-read': return file;
+              default: {
+                const _ex: never = file.source;
+                throw new Error(`Unknown replay metadata source: ${_ex}`);
+              }
+              }
+            }),
+          };
           files = snapshot.sidecars;
         },
       });

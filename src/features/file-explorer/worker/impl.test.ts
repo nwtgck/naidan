@@ -25,7 +25,6 @@ describe('file-explorer.worker.impl', () => {
     worker = createFileExplorerWorker();
   });
 
-
   it.each(['opfs-root', 'native-directory', 'wesh-mounts'] as const)('prepares a native File without reading its bytes from %s', async kind => {
     const root = new MockFileSystemDirectoryHandle({ name: 'download-root' });
     const handle = await root.getFileHandle('model.gguf', { create: true });
@@ -65,9 +64,15 @@ describe('file-explorer.worker.impl', () => {
     const root = new MockFileSystemDirectoryHandle({ name: 'virtual' });
     const handle = await root.getFileHandle('file', { create: true });
     handle.content = new Uint8Array([1, 2, 3]);
-    const { sessionId } = await worker.prepareSession({ request: { root: { kind: 'wesh-mounts', rootName: 'Files',
-      mounts: [{ type: 'directory', path: '/mount', handle: root as unknown as FileSystemDirectoryHandle, readOnly: false }],
-    } } });
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'wesh-mounts',
+          rootName: 'Files',
+          mounts: [{ type: 'directory', path: '/mount', handle: root as unknown as FileSystemDirectoryHandle, readOnly: false }],
+        },
+      },
+    });
     vi.spyOn(WeshVFS.prototype, 'getNativeHandle').mockResolvedValue(null);
     const open = vi.spyOn(WeshVFS.prototype, 'open');
     try {
@@ -289,7 +294,6 @@ describe('file-explorer.worker.impl', () => {
     expect(Object.keys(zip.files).some(path => path.startsWith('my-project/dist/'))).toBe(false);
   });
 
-
   it('lists exclusion suggestions without reading file metadata', async () => {
     const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     const projectHandle = await rootHandle.getDirectoryHandle('project', { create: true });
@@ -349,7 +353,6 @@ describe('file-explorer.worker.impl', () => {
       resultState: 'complete',
     });
   });
-
 
   it('does not traverse a directory that is already excluded', async () => {
     const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
@@ -487,10 +490,20 @@ describe('file-explorer.worker.impl', () => {
       const file = await root.getFileHandle(name, { create: true });
       file.content = new Uint8Array(TEXT_PREVIEW_SIZE_LIMIT + 1024 * 1024);
     }
-    const { sessionId } = await worker.prepareSession({ request: { root: {
-      kind: 'wesh-mounts', rootName: 'Files', mounts: [{ type: 'directory', path: '/preview',
-        handle: root as unknown as FileSystemDirectoryHandle, readOnly: true }],
-    } } });
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'wesh-mounts',
+          rootName: 'Files',
+          mounts: [{
+            type: 'directory',
+            path: '/preview',
+            handle: root as unknown as FileSystemDirectoryHandle,
+            readOnly: true,
+          }],
+        },
+      },
+    });
     const nativeHandle = vi.spyOn(WeshVFS.prototype, 'getNativeHandle').mockResolvedValue(null);
     const originalOpen = WeshVFS.prototype.open;
     let bytesRead = 0;
@@ -586,7 +599,7 @@ describe('file-explorer.worker.impl', () => {
         httpHeaders: [['Authorization', 'secret-token']],
       },
       modelId: 'gpt-5',
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       originChatId: undefined,
       originMessageId: undefined,
       systemPrompt: undefined,
@@ -630,7 +643,7 @@ describe('file-explorer.worker.impl', () => {
         httpHeaders: [['Authorization', 'group-secret-token']],
       },
       modelId: 'gpt-5',
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       systemPrompt: undefined,
       lmParameters: undefined,
       items: [
@@ -649,13 +662,15 @@ describe('file-explorer.worker.impl', () => {
     await provider.saveChatMeta({ meta: chatMeta });
     await provider.saveChatContent({ id: chatMeta.id, content: chatContent });
     await provider.saveChatGroup({ chatGroup });
-    await provider.saveHierarchy({ hierarchy: {
-      items: [{
-        type: 'chat_group',
-        id: 'chat-group-1',
-        chat_ids: ['chat-1'],
-      }],
-    } });
+    await provider.saveHierarchy({
+      hierarchy: {
+        items: [{
+          type: 'chat_group',
+          id: 'chat-group-1',
+          chat_ids: ['chat-1'],
+        }],
+      },
+    });
     const storedChatMeta = await provider.loadChatMeta({ id: toChatId({ raw: 'chat-1' }) });
 
     const { sessionId } = await worker.prepareSession({
@@ -756,7 +771,7 @@ describe('file-explorer.worker.impl', () => {
         httpHeaders: [['Authorization', 'secret-token']],
       },
       modelId: 'gpt-5',
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'gpt-5-mini' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       originChatId: undefined,
       originMessageId: undefined,
       systemPrompt: undefined,

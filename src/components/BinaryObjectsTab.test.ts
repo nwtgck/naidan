@@ -70,6 +70,7 @@ class MockImage {
   src: string = '';
   width: number = 100;
   height: number = 100;
+
   constructor() {
     setTimeout(() => this.onload(), 0);
   }
@@ -85,6 +86,7 @@ class MockIntersectionObserver {
   });
   unobserve = vi.fn();
   disconnect = vi.fn();
+
   constructor(callback: IntersectionObserverCallback) {
     this.callback = callback;
     observerInstances.push(this);
@@ -139,9 +141,20 @@ async function* mockAsyncIterable(items: BinaryObject[]) {
 }
 
 const globalStubs = {
-  File: true, SearchIcon: true, ArrowUp: true, ArrowDownIcon: true, DownloadIcon: true,
-  EyeIcon: true, Calendar: true, HardDriveIcon: true, ChevronRightIcon: true,
-  Trash2Icon: true, RefreshCwIcon: true, LayoutGridIcon: true, ListIcon: true, XIcon: true,
+  File: true,
+  SearchIcon: true,
+  ArrowUp: true,
+  ArrowDownIcon: true,
+  DownloadIcon: true,
+  EyeIcon: true,
+  Calendar: true,
+  HardDriveIcon: true,
+  ChevronRightIcon: true,
+  Trash2Icon: true,
+  RefreshCwIcon: true,
+  LayoutGridIcon: true,
+  ListIcon: true,
+  XIcon: true,
   InfoIcon: true,
 };
 

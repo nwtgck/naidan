@@ -111,7 +111,9 @@ git tag same`,
     });
     expect(result.exitCode).toBe(128);
     expect(stderr.text).toContain("fatal: tag 'same' already exists");
-  });it('keeps rev-parse raw while commit-ish operations peel annotated tag chains', async () => {
+  });
+
+  it('keeps rev-parse raw while commit-ish operations peel annotated tag chains', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}
@@ -143,7 +145,9 @@ git rev-parse HEAD`,
     expect(lines[5]).toBe(lines[0]);
     expect(lines[6]).toBe(lines[0]);
     expect(lines[7]).toBe(lines[0]);
-  });it('shows annotated tag metadata before the peeled commit, including nested tag chains', async () => {
+  });
+
+  it('shows annotated tag metadata before the peeled commit, including nested tag chains', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
 ${setup}
@@ -220,7 +224,6 @@ two
 commit `);
   });
 
-
   it('preflights repository config before listing, deleting, or parsing tag options', async () => {
     const setup = await execute({
       script: `\
@@ -245,5 +248,4 @@ printf '\n[bad\n' >> /tag-malformed/.git/config`,
     const preserved = await execute({ script: 'test -e /tag-malformed/.git/refs/tags/one' });
     expect(preserved.result.exitCode).toBe(0);
   });
-
 });

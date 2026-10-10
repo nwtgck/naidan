@@ -13,6 +13,7 @@ import type { InferenceMessage } from '@/features/transformers-js/types';
 function historicalRetryDecision({ error, isQwen3_5ToolContinuation }: { error: unknown; isQwen3_5ToolContinuation: boolean }): boolean {
   return isQwen3_5ToolContinuation && error instanceof Error && error.message.includes("Cannot read properties of undefined (reading 'inputNames')");
 }
+
 function historicalToolContinuation({ promptHistory, messages }: { promptHistory: string; messages: InferenceMessage[] }): string {
   const history = promptHistory.endsWith('\n') ? promptHistory.slice(0, -1) : promptHistory;
   const results = messages.filter(message => message.role === 'tool').map(message => `<tool_response>\n${typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}\n</tool_response>`).join('\n');
@@ -79,21 +80,27 @@ describe('transformers-js-qwen3_5', () => {
   it('rejects adjacent users as a continuation rather than reusing an unrelated cache', () => {
     expect(assessQwen3_5NoToolContinuationEligibility({
       messages: [{ role: 'user', content: 'first' }, { role: 'user', content: 'next' }],
-      conversationState: { modelId: 'synthetic', messageCount: 1 }, activeModelId: 'synthetic',
+      conversationState: { modelId: 'synthetic', messageCount: 1 },
+      activeModelId: 'synthetic',
     })).toEqual({ status: 'ineligible', reason: 'message-count-mismatch' });
   });
 
   it('requires the inserted assistant role even when the message count matches', () => {
     expect(assessQwen3_5NoToolContinuationEligibility({
       messages: [{ role: 'user', content: 'first' }, { role: 'system', content: 'not an assistant' }, { role: 'user', content: 'next' }],
-      conversationState: { modelId: 'synthetic', messageCount: 1 }, activeModelId: 'synthetic',
+      conversationState: { modelId: 'synthetic', messageCount: 1 },
+      activeModelId: 'synthetic',
     })).toEqual({ status: 'ineligible', reason: 'preceding-message-is-not-assistant' });
   });
 
   it('preserves a JSON argument named __proto__ while normalizing native dictionaries', () => {
-    const normalized = normalizeQwen3_5ToolCallsForTemplate({ toolCalls: [{
-      id: toToolCallId({ raw: 'synthetic-proto' }), type: 'function', function: { name: 'lookup', arguments: '{"__proto__":{"city":"Tokyo"}}' },
-    }] });
+    const normalized = normalizeQwen3_5ToolCallsForTemplate({
+      toolCalls: [{
+        id: toToolCallId({ raw: 'synthetic-proto' }),
+        type: 'function',
+        function: { name: 'lookup', arguments: '{"__proto__":{"city":"Tokyo"}}' },
+      }],
+    });
     expect(JSON.stringify(normalized[0]!.function.arguments)).toBe('{"__proto__":{"city":"Tokyo"}}');
     expect(Object.getPrototypeOf(normalized[0]!.function.arguments)).toBe(Object.prototype);
   });

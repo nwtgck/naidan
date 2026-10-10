@@ -367,7 +367,6 @@ new
 `);
   });
 
-
   it('applies worktree patches through text attributes without changing the index', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -397,7 +396,6 @@ b25lDQpUV08NCnRocmVlDQo=
 CACHED
 `);
   });
-
 
   it('applies a path-changing unified patch to the worktree while preserving the index', async () => {
     const patch = `\
@@ -664,7 +662,6 @@ keep
 `);
   });
 
-
   it('reverses an applied rename patch for both index and worktree', async () => {
     const patch = `\
 diff --git a/f.txt b/renamed.txt
@@ -706,5 +703,4 @@ two
 three
 `);
   });
-
 });

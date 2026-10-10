@@ -110,13 +110,15 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
     await storageService.init({ type: 'local' });
 
     // Setup valid settings to avoid Zod validation errors during switchProvider
-    await storageService.updateSettings({ updater: () => ({
-      endpoint: { type: 'openai', url: 'http://localhost:11434' },
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
-      storageType: 'local',
-      providerProfiles: [],
-      mounts: [],
-    }) });
+    await storageService.updateSettings({
+      updater: () => ({
+        endpoint: { type: 'openai', url: 'http://localhost:11434' },
+        titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+        storageType: 'local',
+        providerProfiles: [],
+        mounts: [],
+      }),
+    });
 
 
     const mockBlob = new Blob(['binary-content'], { type: 'image/png' });
@@ -124,16 +126,27 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       id: '550e8400-e29b-41d4-a716-446655440000',
       title: 'Test',
       root: {
-        items: [{ id: '550e8400-e29b-41d4-a716-446655440001', role: 'user', createdAt: Date.now(), modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'text', completeness: 'complete' }, { type: 'attachment', attachment: {
-          id: '550e8400-e29b-41d4-a716-446655440002',
-          binaryObjectId: '550e8400-e29b-41d4-a716-446655440002',
-          originalName: 'test.png',
-          mimeType: 'image/png',
-          size: 100,
-          uploadedAt: Date.now(),
-          status: 'memory',
-          blob: mockBlob,
-        } }], replies: { items: [] } }],
+        items: [{
+          id: '550e8400-e29b-41d4-a716-446655440001',
+          role: 'user',
+          createdAt: Date.now(),
+          modelId: undefined,
+          lmParameters: undefined,
+          parts: [{ type: 'text', text: 'text', completeness: 'complete' }, {
+            type: 'attachment',
+            attachment: {
+              id: '550e8400-e29b-41d4-a716-446655440002',
+              binaryObjectId: '550e8400-e29b-41d4-a716-446655440002',
+              originalName: 'test.png',
+              mimeType: 'image/png',
+              size: 100,
+              uploadedAt: Date.now(),
+              status: 'memory',
+              blob: mockBlob,
+            },
+          }],
+          replies: { items: [] },
+        }],
       },
       modelId: 'm1',
       createdAt: Date.now(),
@@ -141,15 +154,20 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       debugEnabled: false,
     };
 
-    await storageService.updateChatContent({ id: toChatId({ raw: chat.id }), updater: () => ({
-      root: chat.root,
-      currentLeafId: undefined,
-    } as any) });
+    await storageService.updateChatContent({
+      id: toChatId({ raw: chat.id }),
+      updater: () => ({
+        root: chat.root,
+        currentLeafId: undefined,
+      } as any),
+    });
     await storageService.updateChatMeta({ id: toChatId({ raw: chat.id }), updater: () => chat as any });
-    await storageService.updateHierarchy({ updater: ({ current: curr }) => {
-      curr.items.push({ type: 'chat', id: toChatId({ raw: chat.id })});
-      return curr;
-    } });
+    await storageService.updateHierarchy({
+      updater: ({ current: curr }) => {
+        curr.items.push({ type: 'chat', id: toChatId({ raw: chat.id }) });
+        return curr;
+      },
+    });
     await storageService.switchProvider({ type: 'opfs' });
 
     const loadedChat = await storageService.loadChat({ id: toChatId({ raw: '550e8400-e29b-41d4-a716-446655440000' }) });

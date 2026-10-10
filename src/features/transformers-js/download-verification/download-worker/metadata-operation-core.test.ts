@@ -29,7 +29,8 @@ afterEach(() => vi.useRealTimers());
 it('rejects an oversized resource advertised by a one-byte size probe before runtime buffer allocation', async () => {
   const h = operationFixture();
   h.network.mockResolvedValue(new Response(Uint8Array.of(123), {
-    status: 206, headers: { 'Content-Length': '1', 'Content-Range': 'bytes 0-0/1000000000000' },
+    status: 206,
+    headers: { 'Content-Length': '1', 'Content-Range': 'bytes 0-0/1000000000000' },
   }));
   const outcome = await h.operation.fetch(`${base}config.json`, { headers: { Range: 'bytes=0-0' } })
     .then(response => response.body?.cancel(), (error: unknown) => error);
@@ -59,7 +60,8 @@ it('rejects a partial metadata cache put instead of silently declaring preparati
   const h = operationFixture();
   const cancel = vi.fn();
   const response = new Response(new ReadableStream({ cancel }, { highWaterMark: 0 }), {
-    status: 206, headers: { 'Content-Length': '2', 'Content-Range': 'bytes 0-1/100' },
+    status: 206,
+    headers: { 'Content-Length': '2', 'Content-Range': 'bytes 0-1/100' },
   });
   const outcome = await h.operation.cache.put(`${base}tokenizer.json`, response).then(() => undefined, (error: unknown) => error);
   await expect(h.operation.finish()).rejects.toBe(outcome);

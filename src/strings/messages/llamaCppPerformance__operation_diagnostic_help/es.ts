@@ -1,0 +1,1 @@
+export const llamaCppPerformance__operation_diagnostic_help = (): string => "Adds a separate two-token diagnostic. Records operation types and shapes; buffer location and WebGPU support require compatible bicore bindings. It does not measure kernel duration or exact CPU/GPU utilization. Instrumented runs are excluded from speed summaries.";

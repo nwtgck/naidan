@@ -74,7 +74,6 @@ git grep missing`,
     expect(stderr.text).toBe('');
   });
 
-
   it('reports usage errors for missing patterns, invalid context, and unknown options', async () => {
     const execute = await createGitTestExecutor();
     const missing = await execute({ script: 'git grep' });
@@ -102,5 +101,4 @@ git grep missing`,
     expect(stdout.text).toContain('-F');
     expect(stdout.text).toContain('-C <num>');
   });
-
 });

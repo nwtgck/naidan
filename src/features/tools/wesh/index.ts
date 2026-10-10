@@ -24,7 +24,7 @@ export function createWeshTool({
   description,
   defaultStdoutLimit,
   defaultStderrLimit,
-}: WeshToolOptions): Tool {
+}: { client: WeshToolOptions['client'], mounts: WeshToolOptions['mounts'], name: WeshToolOptions['name'], description: WeshToolOptions['description'], defaultStdoutLimit: WeshToolOptions['defaultStdoutLimit'], defaultStderrLimit: WeshToolOptions['defaultStderrLimit'] }): Tool {
   const createGenerationAbortedError = () => {
     const error = new Error('Generation aborted');
     error.name = 'AbortError';

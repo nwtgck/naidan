@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWeshTool } from '.';
 import type { WeshWorkerClient } from '@/features/wesh/worker/types';
+
 describe('createWeshTool', () => {
   let client: WeshWorkerClient;
   const encoder = new TextEncoder();

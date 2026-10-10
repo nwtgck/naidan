@@ -6,6 +6,7 @@ import type { IFileExplorerWorker } from './types';
 import { createFileExplorerStreamClient } from './stream-client';
 
 const cleanups: Array<() => void> = [];
+
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
@@ -19,7 +20,9 @@ function fixture() {
     cancelDirectoryArchive: vi.fn(async () => undefined),
   };
   const client = createFileExplorerStreamClient({
-    worker, remote: remote as unknown as WorkerRemote<IFileExplorerWorker>, sessionId: 'session',
+    worker,
+    remote: remote as unknown as WorkerRemote<IFileExplorerWorker>,
+    sessionId: 'session',
   });
   cleanups.push(client.disposeStreams);
   return { worker, remote, client };
@@ -56,9 +59,11 @@ describe('File Explorer stream client lifecycle', () => {
 
   it('does not read a single file before its consumer asks for bytes', async () => {
     const { remote, client } = fixture();
-    const opened = vi.fn(async () => new ReadableStream<Uint8Array>({ start(controller) {
-      controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
-    } }));
+    const opened = vi.fn(async () => new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
+      },
+    }));
     remote.streamFile.mockImplementation(({ port }: { port: MessagePort }) => {
       return serveByteStream({ port, openStream: opened, signal: undefined }).completed;
     });
@@ -75,6 +80,7 @@ describe('File Explorer stream client lifecycle', () => {
     client.disposeStreams();
     await rejected;
   });
+
   it('returns the same validated native snapshot without opening a byte stream', async () => {
     const { remote, client } = fixture();
     const file = new File(['data'], 'native');
@@ -108,5 +114,4 @@ describe('File Explorer stream client lifecycle', () => {
     await expect(client.prepareFileDownload({ path: '/later' })).rejects.toThrow();
     expect(remote.prepareFileDownload).toHaveBeenCalledOnce();
   });
-
 });

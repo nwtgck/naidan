@@ -7,7 +7,7 @@ import { useSettings } from '@/composables/useSettings';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
-import { EMPTY_LM_PARAMETERS, type Chat, type Endpoint, type LmParameters, type SettingsTitleGeneration } from '@/01-models/types';
+import { EMPTY_LM_PARAMETERS, type Chat, type Endpoint, type LmParameters, type SettingsTitleGeneration, type Settings } from '@/01-models/types';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 
@@ -42,6 +42,31 @@ vi.mock('../composables/useLayout', () => ({
 }));
 
 describe('ChatSettingsPanel.vue', () => {
+  it('hides disabled RPC choices while preserving existing chat and title references', async () => {
+    mockCurrentChat.value.endpoint = { type: 'naidan_rpc', registrationId: undefined };
+    mockCurrentChat.value.titleGeneration = { endpoint: { type: 'naidan_rpc', registrationId: undefined }, model: 'same_scope', lmParameters: { ...EMPTY_LM_PARAMETERS } };
+    const wrapper = mount(ChatSettingsPanel, { props: { show: true }, global: { stubs: globalStubs } });
+    try {
+      await flushPromises();
+      for (const name of ['chat-setting-endpoint-type-select', 'chat-setting-title-endpoint-type-select']) {
+        const select = wrapper.get(`[data-testid="${name}"]`);
+        expect(select.element).toHaveProperty('value', 'naidan_rpc');
+        expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', true);
+      }
+      mockSettings.value.experimental = { naidanRpc: 'enabled' }; await nextTick();
+      for (const name of ['chat-setting-endpoint-type-select', 'chat-setting-title-endpoint-type-select']) {
+        expect(wrapper.get(`[data-testid="${name}"]`).get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', false);
+      }
+      mockSettings.value.experimental = undefined;
+      mockCurrentChat.value.endpoint = undefined; mockCurrentChat.value.titleGeneration = 'inherit'; await nextTick();
+      for (const name of ['chat-setting-endpoint-type-select', 'chat-setting-title-endpoint-type-select']) {
+        expect(wrapper.get(`[data-testid="${name}"]`).find('option[value="naidan_rpc"]').exists()).toBe(false);
+      }
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   const mockFetchAvailableModels = vi.fn().mockResolvedValue(['model-1', 'model-2']);
   const mockUpdateChatSettings = vi.fn().mockImplementation(({ id, updates }) => {
     if (mockCurrentChat.value?.id === id) {
@@ -53,6 +78,7 @@ describe('ChatSettingsPanel.vue', () => {
   const mockSettings = reactive<{
     value: {
       endpoint: Endpoint,
+      experimental?: Settings['experimental'],
       defaultModelId: string,
       titleGeneration: SettingsTitleGeneration,
       lmParameters?: LmParameters,
@@ -84,6 +110,7 @@ describe('ChatSettingsPanel.vue', () => {
   });
 
   const globalStubs = {
+    RpcRegistrationSelect: true,
     XIcon: true,
     RefreshCwIcon: true,
     GlobeIcon: true,
@@ -376,7 +403,9 @@ describe('ChatSettingsPanel.vue', () => {
     await wrapper.get('[data-testid="chat-setting-endpoint-type-select"]').setValue('ollama');
     await flushPromises();
     expect(mockCurrentChat.value.titleGeneration).toMatchObject({
-      endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: 0.4, reasoning: { effort } },
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: { temperature: 0.4, reasoning: { effort } },
     });
     wrapper.unmount();
   });
@@ -495,7 +524,6 @@ describe('ChatSettingsPanel.vue', () => {
       model: { id: 'chat-title-model' },
     });
   });
-
 
   it('preserves inherited title settings when switching the chat to override if same scope would differ', async () => {
     mockCurrentChat.value.titleGeneration = undefined;
@@ -694,9 +722,12 @@ describe('ChatSettingsPanel.vue', () => {
       await urlInput.setValue('http://persisted-url:1234');
       await urlInput.trigger('blur');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ url: 'http://persisted-url:1234' }),
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: expect.objectContaining({ url: 'http://persisted-url:1234' }),
+        }),
+      });
     });
 
     it('triggers updateChatSettings when model override changes', async () => {
@@ -710,9 +741,12 @@ describe('ChatSettingsPanel.vue', () => {
       await selector.vm.$emit('update:modelValue', 'model-1');
       await flushPromises();
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        modelId: 'model-1',
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          modelId: 'model-1',
+        }),
+      });
     });
 
     it('triggers updateChatSettings and clears browser-provided model IDs when a preset is applied', async () => {
@@ -730,10 +764,13 @@ describe('ChatSettingsPanel.vue', () => {
 
       await ollamaBtn?.trigger('click');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: { type: 'ollama', url: 'http://localhost:11434' },
-        modelId: undefined,
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: { type: 'ollama', url: 'http://localhost:11434' },
+          modelId: undefined,
+        }),
+      });
     });
 
     it('triggers updateChatSettings when a provider profile is applied', async () => {
@@ -747,9 +784,12 @@ describe('ChatSettingsPanel.vue', () => {
       await select.setValue('profile-1');
       await select.trigger('change');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: { type: 'ollama', url: 'http://ollama:11434' },
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: { type: 'ollama', url: 'http://ollama:11434' },
+        }),
+      });
     });
   });
 
@@ -772,7 +812,7 @@ describe('ChatSettingsPanel.vue', () => {
           url: 'http://ollama:11434',
         },
         modelId: 'llama3',
-        titleGeneration: { endpoint: 'same_scope', model: { id: 'llama3-title' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+        titleGeneration: { endpoint: 'same_scope', model: { id: 'llama3-title' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       });
 
       // Should reset selection after apply
@@ -837,9 +877,12 @@ describe('ChatSettingsPanel.vue', () => {
       await select.setValue('p-h');
       await select.trigger('change');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ httpHeaders: [['X-Header', 'Value']] }),
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: expect.objectContaining({ httpHeaders: [['X-Header', 'Value']] }),
+        }),
+      });
     });
   });
 
@@ -862,18 +905,24 @@ describe('ChatSettingsPanel.vue', () => {
       await inputs[2]?.setValue('Val-Manual');
       await inputs[2]?.trigger('blur');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ httpHeaders: expect.arrayContaining([['X-Manual', 'Val-Manual']]) }),
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: expect.objectContaining({ httpHeaders: expect.arrayContaining([['X-Manual', 'Val-Manual']]) }),
+        }),
+      });
 
       // Remove
       const removeBtn = wrapper.findAll('button').find(b => b.html().includes('lucide-trash2') || b.findComponent({ name: 'Trash2' }).exists());
       await removeBtn?.trigger('click');
       await flushPromises();
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ httpHeaders: [] }),
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: expect.objectContaining({ httpHeaders: [] }),
+        }),
+      });
     });
   });
 
@@ -888,9 +937,12 @@ describe('ChatSettingsPanel.vue', () => {
 
       await ollamaBtn?.trigger('click');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: { type: 'ollama', url: 'http://localhost:11434' },
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: { type: 'ollama', url: 'http://localhost:11434' },
+        }),
+      });
     });
 
     it('applies LM Studio preset when clicked', async () => {
@@ -903,9 +955,12 @@ describe('ChatSettingsPanel.vue', () => {
 
       await lmStudioBtn?.trigger('click');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: { type: 'openai', url: 'http://localhost:1234/v1' },
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: { type: 'openai', url: 'http://localhost:1234/v1' },
+        }),
+      });
     });
   });
 
@@ -920,9 +975,12 @@ describe('ChatSettingsPanel.vue', () => {
 
       await typeSelect!.setValue('ollama');
       await typeSelect!.trigger('change');
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ type: 'ollama' }),
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: expect.objectContaining({ type: 'ollama' }),
+        }),
+      });
     });
 
     it('updates currentChat endpointUrl through text input', async () => {
@@ -935,9 +993,12 @@ describe('ChatSettingsPanel.vue', () => {
 
       await urlInput.setValue('http://custom-api:8000');
       await urlInput.trigger('blur');
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ url: 'http://custom-api:8000' }),
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: expect.objectContaining({ url: 'http://custom-api:8000' }),
+        }),
+      });
     });
 
     it('does not affect other chats when overriding settings', async () => {
@@ -952,9 +1013,12 @@ describe('ChatSettingsPanel.vue', () => {
       await urlInput.setValue('http://changed:8888');
       await urlInput.trigger('blur');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ url: 'http://changed:8888' }),
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: expect.objectContaining({ url: 'http://changed:8888' }),
+        }),
+      });
     });
 
     it('does not affect global settings when overriding chat settings', async () => {
@@ -995,9 +1059,12 @@ describe('ChatSettingsPanel.vue', () => {
       await nextTick();
       await flushPromises();
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ url: 'http://new-url-for-A' }),
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: expect.objectContaining({ url: 'http://new-url-for-A' }),
+        }),
+      });
     });
 
     it('uses the previous chat inherited endpoint type when saving during a chat switch', async () => {
@@ -1073,9 +1140,12 @@ describe('ChatSettingsPanel.vue', () => {
       await wrapper.setProps({ show: false });
       await nextTick();
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: expect.objectContaining({ url: 'http://closing-save' }),
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: expect.objectContaining({ url: 'http://closing-save' }),
+        }),
+      });
     });
 
     it('preserves a dirty LM parameter while synchronizing another parameter externally', async () => {
@@ -1157,9 +1227,12 @@ describe('ChatSettingsPanel.vue', () => {
 
       await restoreBtn.trigger('click');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: undefined,
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: undefined,
+        }),
+      });
     });
 
     it('triggers updateChatSettings when restoring to global settings', async () => {
@@ -1173,9 +1246,12 @@ describe('ChatSettingsPanel.vue', () => {
 
       await restoreBtn.trigger('click');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpoint: undefined,
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpoint: undefined,
+        }),
+      });
     });
   });
 
@@ -1234,9 +1310,12 @@ describe('ChatSettingsPanel.vue', () => {
       await textarea.setValue('Edited chat prompt');
       await textarea.trigger('blur');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        systemPrompt: { behavior: 'override', content: 'Edited chat prompt' },
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          systemPrompt: { behavior: 'override', content: 'Edited chat prompt' },
+        }),
+      });
     });
 
     it('keeps No Prompt editable and switches to override when typing', async () => {
@@ -1249,17 +1328,23 @@ describe('ChatSettingsPanel.vue', () => {
       await wrapper.get('[data-testid="chat-setting-system-prompt-no-prompt-button"]').trigger('click');
       await flushPromises();
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        systemPrompt: { behavior: 'override', content: null },
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          systemPrompt: { behavior: 'override', content: null },
+        }),
+      });
 
       const textarea = wrapper.get('[data-testid="chat-setting-system-prompt-textarea"]');
       await textarea.setValue('Prompt after none');
       await textarea.trigger('blur');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        systemPrompt: { behavior: 'override', content: 'Prompt after none' },
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          systemPrompt: { behavior: 'override', content: 'Prompt after none' },
+        }),
+      });
     });
 
     it('does not copy the chat group prompt into append mode', async () => {
@@ -1314,9 +1399,12 @@ describe('ChatSettingsPanel.vue', () => {
       const textarea = wrapper.get('[data-testid="chat-setting-system-prompt-textarea"]');
       expect((textarea.element as HTMLTextAreaElement).value).toBe('Inherited prompt');
       expect(textarea.attributes('placeholder')).toBe('Enter instructions for this chat...');
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        systemPrompt: { behavior: 'override', content: 'Inherited prompt' },
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          systemPrompt: { behavior: 'override', content: 'Inherited prompt' },
+        }),
+      });
     });
 
     it('saves append editor content as append-only chat prompt content', async () => {
@@ -1334,11 +1422,13 @@ describe('ChatSettingsPanel.vue', () => {
       await textarea.setValue('Append only prompt');
       await textarea.trigger('blur');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        systemPrompt: { behavior: 'append', content: 'Append only prompt' },
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          systemPrompt: { behavior: 'append', content: 'Append only prompt' },
+        }),
+      });
     });
-
 
     it('keeps editor text when switching through No Prompt while the panel is open', async () => {
       const wrapper = mount(ChatSettingsPanel, {
@@ -1533,9 +1623,12 @@ describe('ChatSettingsPanel.vue', () => {
       await wrapper.get('[data-testid="chat-setting-system-prompt-parent-button"]').trigger('click');
       await flushPromises();
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        systemPrompt: undefined,
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          systemPrompt: undefined,
+        }),
+      });
       expect(wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]').exists()).toBe(true);
       expect(wrapper.get('[data-testid="chat-setting-system-prompt-caption"]').text()).toBe('Chat Group: Not set');
     });
@@ -1695,9 +1788,12 @@ describe('ChatSettingsPanel.vue', () => {
       await urlInput.trigger('blur');
       await flushPromises();
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        modelId: undefined,
-      }) });
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          modelId: undefined,
+        }),
+      });
     });
   });
 
@@ -1777,5 +1873,4 @@ describe('ChatSettingsPanel.vue', () => {
       wrapper.unmount(); vi.unstubAllGlobals();
     }
   });
-
 });

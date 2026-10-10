@@ -1,0 +1,1 @@
+export const NaidanRpcTab__automatic_connection_help = (): string => "Diese Einstellung gilt nur beim Start von Naidan. Sie ändert weder die aktuelle Verbindung noch erneute Verbindungsversuche auf dieser Seite. Mit „Trennen“ beenden Sie die Verbindung und weitere Versuche für diese Seite.";

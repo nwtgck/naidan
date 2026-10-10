@@ -27,6 +27,7 @@ type EffortOption = {
 };
 
 const props = defineProps<{
+  defaultLabel?: string,
   selectedEffort: Reasoning['effort'],
   selectedValue?: ReasoningSettingsValue,
   leadingOptions?: readonly LeadingOption[],
@@ -70,7 +71,7 @@ const effortOptions = computed<EffortOption[]>(() => {
     ))
     .map((option): EffortOption => ({ ...option, width: 'wide' }));
   const options: Array<Omit<EffortOption, 'label' | 'shortLabel'> & { label: string | undefined, shortLabel: string | undefined }> = [
-    { label: lazyStrings.ReasoningSettings__default(), shortLabel: lazyStrings.ReasoningSettings__default(), testId: 'default', value: undefined, width: 'default' },
+    { label: props.defaultLabel ?? lazyStrings.ReasoningSettings__default(), shortLabel: props.defaultLabel ?? lazyStrings.ReasoningSettings__default(), testId: 'default', value: undefined, width: 'default' },
     { label: lazyStrings.ReasoningSettings__off(), shortLabel: lazyStrings.ReasoningSettings__off(), testId: 'off', value: 'none' as const, width: 'normal' },
     { label: lazyStrings.ReasoningSettings__low(), shortLabel: lazyStrings.ReasoningSettings__low(), testId: 'low', value: 'low' as const, width: 'normal' },
     { label: lazyStrings.ReasoningSettings__medium(), shortLabel: lazyStrings.ReasoningSettings__med(), testId: 'medium', value: 'medium' as const, width: 'normal' },

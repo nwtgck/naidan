@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, nextTick, ref, shallowRef, watch } from 'vue';
+import { type Component, computed, defineAsyncComponent, nextTick, ref, shallowRef, watch } from 'vue';
 import { useModelPresetCoordinator } from '@/features/llama-cpp-browser/model-preset';
 import { resolveInitialRoute } from '@/logic/startup/startup-route';
 import { START_LOCATION, useRoute, useRouter } from 'vue-router';
@@ -14,6 +14,7 @@ import { downloadTimingSnapshotSchema, parseDownloadTiming, type DownloadTimingS
 
 const PrintView = defineAsyncComponent(() => import('@/components/PrintView.vue'));
 const ChatPrintContent = defineAsyncComponent(() => import('@/components/ChatPrintContent.vue'));
+const LlamaCppBrowserPerformanceModal = shallowRef<Component>();
 const SettingsModal = defineAsyncComponent(() => import('@/components/SettingsModal.vue'));
 const DebugWeshTerminalModal = defineAsyncComponent(() => import('@/features/wesh-terminal/components/DebugWeshTerminalModal.vue'));
 const GlobalSearchModal = defineAsyncComponent(() => import('@/features/global-search/components/GlobalSearchModal.vue'));
@@ -46,6 +47,44 @@ watch(() => modelPreset?.value, preset => {
 }, { immediate: true });
 const isSettingsOpen = computed(() => route.path.startsWith('/settings') || !!route.query.settings);
 const modelSupportInvestigationModelId = ref<string | undefined>(undefined);
+const llamaPerformanceOpened = ref(false);
+const llamaPerformanceVisible = ref(false);
+const llamaPerformanceDefaultModel = ref<string>();
+const llamaPerformanceLoading = ref(false);
+const llamaPerformanceLoadError = ref('');
+let llamaPerformanceLoadEpoch = 0;
+let llamaPerformanceOpener: HTMLElement | undefined;
+
+async function openLlamaCppPerformance({ defaultModel }: { defaultModel: string | undefined }): Promise<void> {
+  if (llamaPerformanceLoading.value) return;
+  const epoch = ++llamaPerformanceLoadEpoch;
+  llamaPerformanceLoading.value = true; llamaPerformanceLoadError.value = '';
+  llamaPerformanceOpener = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+  try {
+    // Keep Settings visible until the lazy chunk is ready; a failed import must
+    // not replace the only usable screen with an empty overlay.
+    LlamaCppBrowserPerformanceModal.value ??= (await import('@/features/llama-cpp-browser/components/LlamaCppBrowserPerformanceModal.vue')).default;
+    if (epoch !== llamaPerformanceLoadEpoch || !isSettingsOpen.value) return;
+    llamaPerformanceDefaultModel.value = defaultModel;
+    llamaPerformanceOpened.value = true; llamaPerformanceVisible.value = true;
+  } catch (error) {
+    if (epoch === llamaPerformanceLoadEpoch) llamaPerformanceLoadError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    if (epoch === llamaPerformanceLoadEpoch) llamaPerformanceLoading.value = false;
+  }
+}
+
+function closeLlamaCppPerformance(): void {
+  llamaPerformanceVisible.value = false;
+  const opener = llamaPerformanceOpener; llamaPerformanceOpener = undefined;
+  void nextTick(() => opener?.focus());
+}
+
+watch(isSettingsOpen, open => {
+  if (!open) {
+    llamaPerformanceVisible.value = false; llamaPerformanceLoadEpoch++; llamaPerformanceLoading.value = false;
+  }
+});
 const ordinaryDownloadTiming = shallowRef<DownloadTimingSnapshot | undefined>(undefined);
 let modelSupportInvestigationOpener: HTMLElement | undefined;
 const lastNonSettingsLocation = ref(route.path.startsWith('/settings')
@@ -98,25 +137,38 @@ defineExpose({
     TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
       closeSettings,
+      openLlamaCppPerformance,
+      closeLlamaCppPerformance,
       openModelSupportInvestigation,
       closeModelSupportInvestigation,
     },
-  }) || {})
+  }) || {}),
 });
 </script>
 
 <template>
   <div
     v-if="isSettingsOpen"
-    v-show="modelSupportInvestigationModelId === undefined"
+    v-show="modelSupportInvestigationModelId === undefined && !llamaPerformanceVisible"
     data-testid="settings-modal-host"
   >
     <SettingsModal
       :is-open="true"
+      :suspended="llamaPerformanceVisible"
+      :performance-loading="llamaPerformanceLoading"
+      :performance-error="llamaPerformanceLoadError"
+      @open-llama-cpp-performance="openLlamaCppPerformance({ defaultModel: $event })"
       @close="closeSettings"
       @open-model-support-investigation="openModelSupportInvestigation({ modelId: $event })"
     />
   </div>
+
+  <LlamaCppBrowserPerformanceModal
+    v-if="llamaPerformanceOpened"
+    :is-open="llamaPerformanceVisible && isSettingsOpen"
+    :default-model="llamaPerformanceDefaultModel"
+    @close="closeLlamaCppPerformance"
+  />
 
   <ModelSupportInvestigationModal
     v-if="ModelSupportInvestigationModal !== undefined && modelSupportInvestigationModelId !== undefined"

@@ -204,7 +204,12 @@ describe("runCandidateLoadAttempt", () => {
         sessions: [{ name: "model", inputNames: ["input_ids"], outputNames: ["logits"] }],
         sessionFileCorrelations: [],
         effectiveMinimumGenerationConfig: {
-          maxNewTokens: 1, doSample: false, bosTokenId: 1, eosTokenId: 2, padTokenId: 0, decoderStartTokenId: undefined,
+          maxNewTokens: 1,
+          doSample: false,
+          bosTokenId: 1,
+          eosTokenId: 2,
+          padTokenId: 0,
+          decoderStartTokenId: undefined,
         },
       }),
       buildInput,
@@ -550,6 +555,7 @@ describe("runCandidateLoadAttempt", () => {
     expect(generateMinimumToken).toHaveBeenCalledTimes(2);
     expect(disposeInput).toHaveBeenCalledTimes(2);
   });
+
   it("aborts input-strategy fallback when a failed strategy input cannot be disposed", async () => {
     const model = { id: "model" };
     const firstInput = { strategy: "chat-template-tensor-dict" };
@@ -705,5 +711,4 @@ describe("runCandidateLoadAttempt", () => {
       ["tool-protocol-probe", "passed"],
     ]));
   });
-
 });

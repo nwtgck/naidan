@@ -58,6 +58,7 @@ async function finishRebase({ context, repository, reflogAction }: {
   await context.text().error({ text: `Successfully rebased and updated ${state.headRefName}.\n` });
   return { exitCode: 0 };
 }
+
 export async function executeRemainingRebaseSteps({ context, repository, reflogAction }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
@@ -115,6 +116,7 @@ export async function executeRemainingRebaseSteps({ context, repository, reflogA
     }
   }
 }
+
 export async function continueRebase({ context }: {
     context: WeshCommandContext;
 }): Promise<WeshCommandResult> {
@@ -127,10 +129,12 @@ export async function continueRebase({ context }: {
   const entries = await readIndex({ files: context.files, repository });
   const unmergedPaths = sortGitPaths({ paths: collectUnmergedPaths({ entries }) });
   if (unmergedPaths.length > 0) {
-    await context.text().error({ text: `\
+    await context.text().error({
+      text: `\
 You must edit all merge conflicts and then
 mark them as resolved using git add
-` });
+`,
+    });
     return { exitCode: 1 };
   }
   const created = await createReplayCommit({
@@ -145,6 +149,7 @@ mark them as resolved using git add
   await context.text().print({ text: `[detached HEAD ${created.objectId.slice(0, 7)}] ${created.subject}\n` });
   return executeRemainingRebaseSteps({ context, repository, reflogAction: 'rebase' });
 }
+
 export async function skipRebase({ context }: {
     context: WeshCommandContext;
 }): Promise<WeshCommandResult> {
@@ -169,6 +174,7 @@ export async function skipRebase({ context }: {
   await clearRebaseStoppedState({ files: context.files, repository });
   return executeRemainingRebaseSteps({ context, repository, reflogAction: 'rebase' });
 }
+
 export async function abortRebase({ context }: {
     context: WeshCommandContext;
 }): Promise<WeshCommandResult> {
@@ -201,6 +207,7 @@ export async function abortRebase({ context }: {
   await clearRebaseState({ files: context.files, repository });
   return { exitCode: 0 };
 }
+
 export async function validateRebaseStartWorktree({ context, repository, headObjectId }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
@@ -221,6 +228,7 @@ export async function validateRebaseStartWorktree({ context, repository, headObj
   }
   return undefined;
 }
+
 export async function checkoutRebaseTargetBranch({ context, repository, currentHeadObjectId, targetRefName, targetObjectId, branchDisplay }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
@@ -267,6 +275,7 @@ export async function checkoutRebaseTargetBranch({ context, repository, currentH
   });
   return undefined;
 }
+
 export async function startRebaseSequence({ context, repository, graphCache, headRefName, origHeadObjectId, checkoutHeadObjectId, ontoObjectId, replayBaseObjectId, ontoDisplay, reflogAction }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;

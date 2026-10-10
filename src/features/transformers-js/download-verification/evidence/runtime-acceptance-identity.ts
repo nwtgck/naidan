@@ -4,14 +4,23 @@ import { productionLoadReceiptSchema, productionLoadReceiptRevisionOption } from
 /** Identity-only projection; other evidence fields have separate owners. */
 export const downloadRuntimeAcceptanceIdentityInputSchema = z.object({
   run: z.object({ normalizedModelId: z.string(), resolvedRevision: z.string() }),
-  runtimeCompletion: z.object({ status: z.enum(['accepted', 'failed', 'exhausted']), repositoryResolvedRevision: z.string(),
-    cacheRevision: z.string().nullable(), loaderRevisionOption: z.string().nullable(),
-    selectedCandidate: productionLoadReceiptSchema.shape.candidate.optional(), receipt: z.unknown().optional(),
+  runtimeCompletion: z.object({
+    status: z.enum(['accepted', 'failed', 'exhausted']),
+    repositoryResolvedRevision: z.string(),
+    cacheRevision: z.string().nullable(),
+    loaderRevisionOption: z.string().nullable(),
+    selectedCandidate: productionLoadReceiptSchema.shape.candidate.optional(),
+    receipt: z.unknown().optional(),
   }).optional(),
   modelArtifactObservationError: z.string().optional(),
-  modelArtifactObservations: z.array(z.object({ status: z.enum(['observed', 'failed']), modelId: z.string(), revision: z.string(),
-    autoClass: productionLoadReceiptSchema.shape.autoClass, candidate: productionLoadReceiptSchema.shape.candidate,
-    paths: z.array(z.string()), error: z.object({ name: z.string(), message: z.string() }).optional(),
+  modelArtifactObservations: z.array(z.object({
+    status: z.enum(['observed', 'failed']),
+    modelId: z.string(),
+    revision: z.string(),
+    autoClass: productionLoadReceiptSchema.shape.autoClass,
+    candidate: productionLoadReceiptSchema.shape.candidate,
+    paths: z.array(z.string()),
+    error: z.object({ name: z.string(), message: z.string() }).optional(),
   })),
 });
 

@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom';
 
 import type { BuildLicenseDependency } from '../license-dependencies';
 const pluginName = 'file-protocol-standalone';
+
 export function readSystemJsLicenseDependency({ packageJsonPath }: {
   packageJsonPath: string,
 }): BuildLicenseDependency {

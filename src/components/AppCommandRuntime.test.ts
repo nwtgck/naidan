@@ -103,7 +103,6 @@ vi.mock('vue-router', () => ({
 }));
 
 describe('AppCommandRuntime', () => {
-
   const currentRoute = reactive<{ path: string; query: Record<string, string> }>({
     path: '/',
     query: {},
@@ -531,5 +530,4 @@ describe('AppCommandRuntime', () => {
     await nextTick();
     expect(mockToggleRecent).toHaveBeenCalled();
   });
-
 });

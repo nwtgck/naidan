@@ -53,12 +53,17 @@ export function createImageTrace({ debug, secrets, listener, now }: {
 }) {
   const began = now(); let stage: ImageDiagnostic['stage'] = 'worker';
   let nativeWindow = began, nativeCount = 0, dropped = 0;
-  function emit({ event, stage: next, message, fields }: ImageDiagnosticInput): void {
+  function emit({ event, stage: next, message, fields }: { event: ImageDiagnosticInput['event'], stage: ImageDiagnosticInput['stage'], message?: ImageDiagnosticInput['message'], fields: ImageDiagnosticInput['fields'] }): void {
     // GPU/file observations belong to the last native stage; they must not
     // turn a stalled model load into a misleading 'generation' report.
     if (event !== 'gpu' && event !== 'file-read' && event !== 'native' && event !== 'dropped') stage = next;
-    const entry = imageDiagnosticSchema.safeParse({ event, stage, elapsedMs: Math.max(0, now() - began),
-      message: message === undefined ? undefined : sanitizeImageLog({ message, secrets }), fields });
+    const entry = imageDiagnosticSchema.safeParse({
+      event,
+      stage,
+      elapsedMs: Math.max(0, now() - began),
+      message: message === undefined ? undefined : sanitizeImageLog({ message, secrets }),
+      fields,
+    });
     if (!entry.success) return;
     try {
       listener?.({ diagnostic: entry.data });
@@ -115,5 +120,6 @@ export function createImageDiagnosticBuffer() {
     },
   };
 }
+
 export const TEST_ONLY = {
 };

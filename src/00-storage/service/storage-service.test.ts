@@ -12,6 +12,8 @@ vi.mock('@/strings', () => ({
 const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
   mockLocalProvider: {
     init: vi.fn().mockResolvedValue(undefined),
+    loadNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
+    saveNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
     dump: vi.fn(),
     restore: vi.fn(),
     loadChat: vi.fn().mockResolvedValue(null),
@@ -23,6 +25,8 @@ const { mockLocalProvider, mockOpfsProvider } = vi.hoisted(() => ({
   },
   mockOpfsProvider: {
     init: vi.fn().mockResolvedValue(undefined),
+    loadNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
+    saveNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
     dump: vi.fn(),
     restore: vi.fn(),
     loadChat: vi.fn().mockResolvedValue(null),
@@ -202,16 +206,19 @@ describe('StorageService Migration', () => {
           lmParameters: undefined,
           parts: [
             { type: 'text', text: 'hello', completeness: 'complete' },
-            { type: 'attachment', attachment: {
-              id: 'att-1',
-              binaryObjectId: 'bin-1',
-              status: 'memory',
-              blob: mockBlob,
-              originalName: 'test.png',
-              mimeType: 'image/png',
-              size: 4,
-              uploadedAt: Date.now(),
-            } }],
+            {
+              type: 'attachment',
+              attachment: {
+                id: 'att-1',
+                binaryObjectId: 'bin-1',
+                status: 'memory',
+                blob: mockBlob,
+                originalName: 'test.png',
+                mimeType: 'image/png',
+                size: 4,
+                uploadedAt: Date.now(),
+              },
+            }],
           replies: { items: [] },
         }],
       },
@@ -258,18 +265,37 @@ describe('StorageService Migration', () => {
     const chat: any = {
       id: 'chat-recursive',
       root: {
-        items: [{ id: 'msg-1', role: 'user', createdAt: Date.now(), modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'msg 1', completeness: 'complete' }], replies: {
-          items: [{ id: 'msg-2', role: 'user', createdAt: Date.now(), modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'msg 2', completeness: 'complete' }, { type: 'attachment', attachment: {
-            id: 'att-nested',
-            binaryObjectId: 'bin-nested',
-            status: 'memory',
-            blob: mockBlob,
-            originalName: 'nested.png',
-            mimeType: 'image/png',
-            size: 6,
-            uploadedAt: Date.now(),
-          } }], replies: { items: [] } }],
-        } }],
+        items: [{
+          id: 'msg-1',
+          role: 'user',
+          createdAt: Date.now(),
+          modelId: undefined,
+          lmParameters: undefined,
+          parts: [{ type: 'text', text: 'msg 1', completeness: 'complete' }],
+          replies: {
+            items: [{
+              id: 'msg-2',
+              role: 'user',
+              createdAt: Date.now(),
+              modelId: undefined,
+              lmParameters: undefined,
+              parts: [{ type: 'text', text: 'msg 2', completeness: 'complete' }, {
+                type: 'attachment',
+                attachment: {
+                  id: 'att-nested',
+                  binaryObjectId: 'bin-nested',
+                  status: 'memory',
+                  blob: mockBlob,
+                  originalName: 'nested.png',
+                  mimeType: 'image/png',
+                  size: 6,
+                  uploadedAt: Date.now(),
+                },
+              }],
+              replies: { items: [] },
+            }],
+          },
+        }],
       },
     };
 

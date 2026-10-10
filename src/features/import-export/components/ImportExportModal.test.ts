@@ -13,13 +13,16 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/strings', async importOriginal => {
   const actual = await importOriginal<typeof import('@/strings')>();
-  return { ...actual, ensureStrings: new Proxy(actual.ensureStrings, {
-    get(target, property, receiver) {
-      if (property === 'ImportExportModal__compressing_data') return mocks.compressingData;
-      if (property === 'ImportExportModal__export_successful') return mocks.exportSuccessful;
-      return Reflect.get(target, property, receiver);
-    },
-  }) };
+  return {
+    ...actual,
+    ensureStrings: new Proxy(actual.ensureStrings, {
+      get(target, property, receiver) {
+        if (property === 'ImportExportModal__compressing_data') return mocks.compressingData;
+        if (property === 'ImportExportModal__export_successful') return mocks.exportSuccessful;
+        return Reflect.get(target, property, receiver);
+      },
+    }),
+  };
 });
 
 vi.mock('@/features/import-export/service', () => ({
@@ -81,9 +84,11 @@ describe('ImportExportModal.vue', () => {
     mocks.exportSuccessful.mockReset().mockResolvedValue('Export successful');
     mocks.exportData.mockImplementation(async () => ({
       filename: 'naidan-data-test.zip',
-      stream: new ReadableStream<Uint8Array>({ start(controller) {
-        controller.enqueue(new TextEncoder().encode('zip')); controller.close();
-      } }),
+      stream: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('zip')); controller.close();
+        },
+      }),
     }));
 
     Object.defineProperty(URL, 'createObjectURL', {

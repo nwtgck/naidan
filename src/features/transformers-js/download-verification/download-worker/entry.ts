@@ -188,8 +188,12 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
     let succeeded = false;
     try {
       const result = await prepareRuntimeMetadata({
-        modelId: cleanModelId, revision, runtime: { AutoConfig, AutoProcessor, AutoTokenizer, env }, downloadFetch,
-        storage: createRuntimeMetadataStorage(), maximumByteLength: 64 * 1024 * 1024,
+        modelId: cleanModelId,
+        revision,
+        runtime: { AutoConfig, AutoProcessor, AutoTokenizer, env },
+        downloadFetch,
+        storage: createRuntimeMetadataStorage(),
+        maximumByteLength: 64 * 1024 * 1024,
         progressCallback: (info => progress.publish({ info })) as TransformersProgressCallback,
         onStage: ({ stage }) => progress.publish({ info: { status: `download-metadata:${stage}` } }),
       });
@@ -262,12 +266,15 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
         files.push({ ...file, timing: fileTiming({ verified: false }) });
         // Report the existing failure without waiting for later files or any
         // observer. This does not change its classification or transfer result.
-        progress.publish({ info: {
-          status: 'error', file: fileNameFromUrl({ url: file.url }),
-          loaded: file.transferObservation?.receivedBytes,
-          total: file.transferObservation?.expectedBytes,
-          downloadCumulativeTiming: cumulativeTiming(),
-        } });
+        progress.publish({
+          info: {
+            status: 'error',
+            file: fileNameFromUrl({ url: file.url }),
+            loaded: file.transferObservation?.receivedBytes,
+            total: file.transferObservation?.expectedBytes,
+            downloadCumulativeTiming: cumulativeTiming(),
+          },
+        });
       }
       for (const url of urls) progress.publish({ info: { status: 'queued', file: fileNameFromUrl({ url }), loaded: 0 } });
       for (const originalUrl of urls) {
@@ -312,13 +319,15 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
           try {
             await assertFullResourceResponse({ response });
           } catch (error) {
-            recordFailure({ file: prefetchFailure({
-              url,
-              path,
-              failureStage: 'response-status',
-              httpStatus: response.status,
-              error,
-            }) });
+            recordFailure({
+              file: prefetchFailure({
+                url,
+                path,
+                failureStage: 'response-status',
+                httpStatus: response.status,
+                error,
+              }),
+            });
             return;
           }
           if (response.body === null) {
@@ -362,9 +371,15 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
           }));
           let written: number;
           try {
-            ({ byteLength: written } = await (lease.coordinated ? writeIncompleteOpfsFile : writeToOpfsWithStagingUnderLease)({ path, lease, response: new Response(body, {
-              status: response.status, statusText: response.statusText, headers: response.headers,
-            }) }));
+            ({ byteLength: written } = await (lease.coordinated ? writeIncompleteOpfsFile : writeToOpfsWithStagingUnderLease)({
+              path,
+              lease,
+              response: new Response(body, {
+                status: response.status,
+                statusText: response.statusText,
+                headers: response.headers,
+              }),
+            }));
           } catch (error) {
             recordFailure({ file: { ...prefetchFailure({ url, path, failureStage: 'write', httpStatus: response.status, error }), transferObservation: { receivedBytes: loaded, expectedBytes: expected } } });
             return;
@@ -382,11 +397,17 @@ const workerApi: WorkerServerApi<ITransformersJsDownloadWorker> = {
           }
         };
         try {
-          const completed = await withOpfsFileLease({ path, mode: 'shared', availability: 'wait', signal: undefined, run: async ({ lease }) => {
-            if (!lease.coordinated) return undefined;
-            saveMethod = 'direct';
-            return await readCompletedOpfsSnapshot({ path, lease });
-          } });
+          const completed = await withOpfsFileLease({
+            path,
+            mode: 'shared',
+            availability: 'wait',
+            signal: undefined,
+            run: async ({ lease }) => {
+              if (!lease.coordinated) return undefined;
+              saveMethod = 'direct';
+              return await readCompletedOpfsSnapshot({ path, lease });
+            },
+          });
           if (completed !== undefined) {
             const byteLength = completed.size;
             files.push({ status: 'cached', url, path, byteLength, expectedByteLength: undefined, timing: fileTiming({ verified: false }) });

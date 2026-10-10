@@ -14,17 +14,24 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
   let starting: Promise<LlamaCppWorkerClient> | undefined;
   let startupFailure: LlamaCppBrowserError | undefined;
   const lifetime = new AbortController();
-  const dispose = (): void => {
-    if (disposed) return;
+  let disposal: Promise<void> | undefined;
+  const dispose = (): Promise<void> => {
+    if (disposal) return disposal;
+    const completion = Promise.withResolvers<void>();
+    disposal = completion.promise;
     disposed = true;
     lifetime.abort();
-    client?.dispose();
+    // A factory already in flight may materialize after cancellation. Its start
+    // path disposes that late Worker before rejecting; include it in retirement.
+    void Promise.resolve(client ? client.dispose() : starting?.then(ready => ready.dispose(), () => {}))
+      .catch(error => logFailure({ stage: 'cleanup', error })).finally(completion.resolve);
     for (const listener of disposeListeners) {
       try {
         listener();
       } catch { /* Disposal observers cannot interrupt cleanup. */ }
     }
     disposeListeners.clear();
+    return disposal;
   };
   const start = async (): Promise<LlamaCppWorkerClient> => {
     if (typeof Worker === 'undefined') throw new LlamaCppBrowserError({ code: 'unavailable' });
@@ -33,7 +40,7 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
       ...session,
       getAssetBaseURL: () => undefined,
       disposeTransport({ active }) {
-        void disposeStandaloneWorkerSession({
+        return disposeStandaloneWorkerSession({
           session,
           // Busy native work cannot service another request. The transport
           // release is bounded even when the worker is no longer responding.
@@ -43,7 +50,7 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
       },
     });
     if (disposed) {
-      ready.dispose();
+      await ready.dispose();
       throw new LlamaCppBrowserError({ code: 'worker-failed' });
     }
     client = ready;
@@ -97,9 +104,10 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
       parseRuntimeOptions({ options: request.options });
       return (await getClient({ signal })).prepareModel({ request, onProgress, signal });
     },
-    generate: async ({ request, onEvent, onProgress, signal }) => {
+    releaseRuntime: async ({ signal }) => (await getClient({ signal })).releaseRuntime({ signal }),
+    generate: async ({ request, onEvent, onProgress, onSummary, onMemoryDiagnostics, signal }) => {
       parseRuntimeOptions({ options: request.options });
-      return (await getClient({ signal })).generate({ request, onEvent, onProgress, signal });
+      return (await getClient({ signal })).generate({ request, onEvent, onProgress, onSummary, onMemoryDiagnostics, signal });
     },
     generateAudio: async ({ request, onProgress, cancellationSignal, completionSignal, preview }) => {
       parseRuntimeOptions({ options: request.options });
@@ -109,5 +117,6 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
     dispose,
   };
 }
+
 export const TEST_ONLY = {
 };

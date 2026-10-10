@@ -4,6 +4,7 @@ import { checkReferenceFile, ReferenceAudioError } from '@/features/audio-genera
 export const MAX_REFERENCE_ENTRIES = 32;
 export const MAX_REFERENCE_LIBRARY_BYTES = 64 * 1024 * 1024;
 export type AudioReferenceEntry = { id: number, file: File, url: string };
+
 /** Page-local ownership only. Deselect does not delete; delete never selects
  * another voice implicitly. Latest successful input becomes the sole selection.
  */
@@ -43,5 +44,6 @@ export function useAudioReferences() {
   });
   return { entries, selected, sources, totalBytes, add, select, deselectAll, remove, clear, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }
+
 export const TEST_ONLY = {
 };

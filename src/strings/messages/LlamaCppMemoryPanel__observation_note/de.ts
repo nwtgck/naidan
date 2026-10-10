@@ -1,0 +1,1 @@
+export const LlamaCppMemoryPanel__observation_note = (): string => "Messungen erfolgen beim Laden und bei der Inferenz, auch bei geschlossenem Panel. Kapazität ist nicht die Heap-, RAM- oder GPU-Speichernutzung. Spitzen können fehlen. Dieses Panel startet keinen Worker.";

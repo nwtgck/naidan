@@ -347,7 +347,6 @@ a
     expect(result.exitCode).toBe(0);
   });
 
-
   it('preserves CR bytes and invalid UTF-8 while comparing in byte order', async () => {
     await writeFile({
       path: 'left-crlf.bin',
@@ -386,5 +385,4 @@ a
       0x61, 0xff, 0x0a,
     ]));
   });
-
 });

@@ -136,17 +136,23 @@ describe('wesh diff', () => {
   });
 
   it('emits normal diffs and reports identical files', async () => {
-    await writeFile({ path: 'left.txt', data: `\
+    await writeFile({
+      path: 'left.txt',
+      data: `\
 alpha
 beta
 gamma
-` });
-    await writeFile({ path: 'right.txt', data: `\
+`,
+    });
+    await writeFile({
+      path: 'right.txt',
+      data: `\
 alpha
 BETA
 delta
 gamma
-` });
+`,
+    });
 
     const different = await execute({ script: 'diff left.txt right.txt' });
     expect(different.result.exitCode).toBe(1);
@@ -189,16 +195,22 @@ gamma
   });
 
   it('emits unified and context output with deterministic labels', async () => {
-    await writeFile({ path: 'a', data: `\
+    await writeFile({
+      path: 'a',
+      data: `\
 a
 b
 c
-` });
-    await writeFile({ path: 'b', data: `\
+`,
+    });
+    await writeFile({
+      path: 'b',
+      data: `\
 a
 x
 c
-` });
+`,
+    });
 
     const unified = await execute({ script: "diff -U0 --label=old --label=new a b" });
     expect(unified.result.exitCode).toBe(1);
@@ -248,7 +260,9 @@ c
   });
 
   it('adds function headings to unified and context hunks', async () => {
-    await writeFile({ path: 'old.c', data: `\
+    await writeFile({
+      path: 'old.c',
+      data: `\
 int foo(void)
 {
   int a=0;
@@ -257,8 +271,11 @@ int foo(void)
   int d=0;
   return 1;
 }
-` });
-    await writeFile({ path: 'new.c', data: `\
+`,
+    });
+    await writeFile({
+      path: 'new.c',
+      data: `\
 int foo(void)
 {
   int a=0;
@@ -267,7 +284,8 @@ int foo(void)
   int d=0;
   return 2;
 }
-` });
+`,
+    });
 
     const unified = await execute({
       script: 'diff -u -p -U1 --label old --label new old.c new.c',
@@ -345,10 +363,13 @@ int foo(void)
     await writeFile({ path: 'empty', data: '' });
     await writeFile({ path: 'one', data: 'x\n' });
     await writeFile({ path: 'a', data: 'a\n' });
-    await writeFile({ path: 'ab', data: `\
+    await writeFile({
+      path: 'ab',
+      data: `\
 a
 b
-` });
+`,
+    });
 
     const addToEmpty = await execute({ script: 'diff -U0 --label old --label new empty one' });
     expect(addToEmpty.stdout.text).toBe(`\
@@ -394,17 +415,23 @@ b
 --- 0 ----
 `);
 
-    await writeFile({ path: 'ambiguous-left', data: `\
+    await writeFile({
+      path: 'ambiguous-left',
+      data: `\
 b
 
 x
-` });
-    await writeFile({ path: 'ambiguous-right', data: `\
+`,
+    });
+    await writeFile({
+      path: 'ambiguous-right',
+      data: `\
 a
 a
 c
 x
-` });
+`,
+    });
     const orderedChanges = await execute({
       script: 'diff -U1 --label old --label new ambiguous-left ambiguous-right',
     });
@@ -511,22 +538,28 @@ x
   });
 
   it('ignores isolated matching and blank-line changes without hiding real changes', async () => {
-    await writeFile({ path: 'left', data: `\
+    await writeFile({
+      path: 'left',
+      data: `\
 keep
 IGNORE old
 mid
 real old
 
 end
-` });
-    await writeFile({ path: 'right', data: `\
+`,
+    });
+    await writeFile({
+      path: 'right',
+      data: `\
 keep
 IGNORE new
 mid
 real new
 ${' '}
 end
-` });
+`,
+    });
 
     const matching = await execute({ script: "diff -I '^IGNORE' left right" });
     expect(matching.result.exitCode).toBe(1);
@@ -548,14 +581,20 @@ end
     expect(literalBom.result.exitCode).toBe(0);
     expect(literalBom.stdout.text).toBe('');
 
-    await writeFile({ path: 'mixed-ignore-a', data: `\
+    await writeFile({
+      path: 'mixed-ignore-a',
+      data: `\
 VERSION=1
 Alpha
-` });
-    await writeFile({ path: 'mixed-ignore-b', data: `\
+`,
+    });
+    await writeFile({
+      path: 'mixed-ignore-b',
+      data: `\
 VERSION=2
 alpha
-` });
+`,
+    });
     const mixedIgnorePatterns = await execute({
       script: "diff -I '^VERSION=' -I '^[Aa]lpha$' mixed-ignore-a mixed-ignore-b",
     });
@@ -563,16 +602,22 @@ alpha
     expect(mixedIgnorePatterns.stdout.text).toContain('< VERSION=1');
     expect(mixedIgnorePatterns.stdout.text).toContain('> VERSION=2');
 
-    await writeFile({ path: 'blank-a', data: `\
+    await writeFile({
+      path: 'blank-a',
+      data: `\
 a
 
 end
-` });
-    await writeFile({ path: 'blank-b', data: `\
+`,
+    });
+    await writeFile({
+      path: 'blank-b',
+      data: `\
 a
 ${' '}
 end
-` });
+`,
+    });
     const blank = await execute({ script: 'diff -B blank-a blank-b' });
     expect(blank.result.exitCode).toBe(0);
     expect(blank.stdout.text).toBe('');
@@ -616,15 +661,21 @@ end
   });
 
   it('supports ed, RCS, ifdef, and side-by-side output modes', async () => {
-    await writeFile({ path: 'a', data: `\
+    await writeFile({
+      path: 'a',
+      data: `\
 a
 b
-` });
-    await writeFile({ path: 'b', data: `\
+`,
+    });
+    await writeFile({
+      path: 'b',
+      data: `\
 a
 x
 y
-` });
+`,
+    });
 
     const ed = await execute({ script: 'diff -e a b' });
     expect(ed.stdout.text).toBe(`\
@@ -690,10 +741,13 @@ b
 `);
 
     await writeFile({ path: 'base', data: 'a\n' });
-    await writeFile({ path: 'with-dot', data: `\
+    await writeFile({
+      path: 'with-dot',
+      data: `\
 a
 .
-` });
+`,
+    });
     const edDot = await execute({ script: 'diff -e base with-dot' });
     expect(edDot.result.exitCode).toBe(1);
     expect(edDot.stdout.text).toBe(`\
@@ -703,9 +757,12 @@ a
 s/.//
 `);
 
-    await writeFile({ path: 'incomplete', data: `\
+    await writeFile({
+      path: 'incomplete',
+      data: `\
 a
-b` });
+b`,
+    });
     const rcsIncomplete = await execute({ script: 'diff -n base incomplete' });
     expect(rcsIncomplete.result.exitCode).toBe(1);
     expect(rcsIncomplete.stdout.text).toBe(`\
@@ -733,14 +790,20 @@ b
   });
 
   it('matches GNU side-by-side width layout at narrow boundaries', async () => {
-    await writeFile({ path: 'side-a', data: `\
+    await writeFile({
+      path: 'side-a',
+      data: `\
 a
 old
-` });
-    await writeFile({ path: 'side-b', data: `\
+`,
+    });
+    await writeFile({
+      path: 'side-b',
+      data: `\
 a
 new
-` });
+`,
+    });
 
     expect((await execute({ script: 'diff -y -W1 side-a side-b' })).stdout.text).toBe(' \n|\n');
     expect((await execute({ script: 'diff -y -W8 side-a side-b' })).stdout.text).toBe('\t\n   |\t\n');
@@ -768,16 +831,22 @@ old   <
   });
 
   it('renders identical and blank common lines in side-by-side mode', async () => {
-    await writeFile({ path: 'side-identical-a', data: `\
+    await writeFile({
+      path: 'side-identical-a',
+      data: `\
 alpha
 
 omega
-` });
-    await writeFile({ path: 'side-identical-b', data: `\
+`,
+    });
+    await writeFile({
+      path: 'side-identical-b',
+      data: `\
 alpha
 
 omega
-` });
+`,
+    });
 
     const identical = await execute({
       script: 'diff -y -W20 side-identical-a side-identical-b',
@@ -883,12 +952,15 @@ omega (
 
   it('uses locale-aware display columns in side-by-side output', async () => {
     await writeFile({ path: 'unicode-left', data: 'é\n😀\ne\u0301\n漢\n' });
-    await writeFile({ path: 'unicode-right', data: `\
+    await writeFile({
+      path: 'unicode-right',
+      data: `\
 X
 Y
 Z
 Q
-` });
+`,
+    });
 
     const cLocale = await execute({
       script: 'export LC_ALL=C; diff -y -t -W20 unicode-left unicode-right',
@@ -948,16 +1020,22 @@ Q
     expect(ignoredBlank.result.exitCode).toBe(0);
     expect(ignoredBlank.stdout.text).toBe('a\n\n');
 
-    await writeFile({ path: 'ignored-mixed-a', data: `\
+    await writeFile({
+      path: 'ignored-mixed-a',
+      data: `\
 IGNORE old
 keep
 real old
-` });
-    await writeFile({ path: 'ignored-mixed-b', data: `\
+`,
+    });
+    await writeFile({
+      path: 'ignored-mixed-b',
+      data: `\
 IGNORE new
 keep
 real new
-` });
+`,
+    });
     const mixedSideBySide = await execute({
       script: "diff -y -W50 -I '^IGNORE' ignored-mixed-a ignored-mixed-b",
     });
@@ -988,17 +1066,23 @@ real new
     expect(allIgnoredSideBySide.result.exitCode).toBe(0);
     expect(allIgnoredSideBySide.stdout.text).toBe('# old\t\t\t# new\n');
 
-    await writeFile({ path: 'ignored-left-extra-a', data: `\
+    await writeFile({
+      path: 'ignored-left-extra-a',
+      data: `\
 IGNORE a
 IGNORE b
 keep
 real old
-` });
-    await writeFile({ path: 'ignored-left-extra-b', data: `\
+`,
+    });
+    await writeFile({
+      path: 'ignored-left-extra-b',
+      data: `\
 IGNORE c
 keep
 real new
-` });
+`,
+    });
     const ignoredLeftExtra = await execute({
       script: "diff -y -W50 -I '^IGNORE' ignored-left-extra-a ignored-left-extra-b",
     });
@@ -1010,17 +1094,23 @@ real new
       + 'real old\t      |\treal new\n',
     );
 
-    await writeFile({ path: 'ignored-right-extra-a', data: `\
+    await writeFile({
+      path: 'ignored-right-extra-a',
+      data: `\
 IGNORE a
 keep
 real old
-` });
-    await writeFile({ path: 'ignored-right-extra-b', data: `\
+`,
+    });
+    await writeFile({
+      path: 'ignored-right-extra-b',
+      data: `\
 IGNORE c
 IGNORE d
 keep
 real new
-` });
+`,
+    });
     const ignoredRightExtra = await execute({
       script: "diff -y -W50 -I '^IGNORE' ignored-right-extra-a ignored-right-extra-b",
     });
@@ -1270,18 +1360,24 @@ real new
   });
 
   it('uses GNU basic regular expressions for ignored matching lines', async () => {
-    await writeFile({ path: 'left', data: `\
+    await writeFile({
+      path: 'left',
+      data: `\
 keep
 111
 xx
 end
-` });
-    await writeFile({ path: 'right', data: `\
+`,
+    });
+    await writeFile({
+      path: 'right',
+      data: `\
 keep
 222
 xxx
 end
-` });
+`,
+    });
 
     const posixClass = await execute({
       script: String.raw`diff -I '[[:digit:]]\+' left right`,
@@ -1321,17 +1417,23 @@ end
   });
 
   it('formats zero-context insertions and preserves recursive short-option bundles', async () => {
-    await writeFile({ path: 'left', data: `\
+    await writeFile({
+      path: 'left',
+      data: `\
 alpha
 beta
 gamma
-` });
-    await writeFile({ path: 'right', data: `\
+`,
+    });
+    await writeFile({
+      path: 'right',
+      data: `\
 alpha
 BETA
 gamma
 delta
-` });
+`,
+    });
 
     const context = await execute({
       script: 'diff -C0 --label LEFT --label RIGHT left right',
@@ -1355,8 +1457,6 @@ delta
     expect(bundled.result.exitCode).toBe(1);
     expect(separate.result.exitCode).toBe(1);
   });
-
-
 
   it('accepts explicit positive signs in numeric options', async () => {
     await writeFile({ path: 'plus-left.txt', data: 'alpha\n' });
@@ -1456,5 +1556,4 @@ x y
       expect(execution.stdout.text).toBe(testCase.expected);
     }
   });
-
 });

@@ -135,5 +135,4 @@ describe('command semantic and parser diagnostic ordering', () => {
         .toContain(orderingCase.fragment);
     }
   });
-
 });

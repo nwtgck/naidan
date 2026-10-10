@@ -70,7 +70,6 @@ describe('DeveloperTab', () => {
     expect(wrapper.find('[data-testid="fake-lm-debug-mode-toggle"]').exists()).toBe(false);
   });
 
-
   it('requests the app-level model support investigation host with an empty target', async () => {
     const wrapper = mountDeveloperTab();
 

@@ -5,48 +5,55 @@ import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { routes } from 'vue-router/auto-routes';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { idToRaw } from '@/01-models/ids';
-import type { ImageGenerationView } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
-import type { ImageGenerationDraft } from '@/features/stable-diffusion-cpp-browser/generation-draft';
+import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
+import type { ImageGenerationDraft } from '@/features/image-generation/generation-draft';
 import { createImageGenerationStorageHarness, generationSessionFixture, generationDraftFixture } from '@/00-storage/service/image-generation/test-support';
 import * as persistence from '@/00-storage/service/image-generation';
 import type { storageService } from '@/00-storage/service';
-import { useImageGenerationWorkspaceNavigation } from '@/features/stable-diffusion-cpp-browser/session/navigation';
-import ImageGenerationSidebar from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationSidebar.vue';
-import { createImageGenerationQueryWorker } from '@/features/stable-diffusion-cpp-browser/session/query-worker/impl';
-import { generationQueryResultSchema } from '@/features/stable-diffusion-cpp-browser/session/query-worker/types';
+import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
+import ImageGenerationSidebar from '@/features/image-generation/components/ImageGenerationSidebar.vue';
+import { createImageGenerationQueryWorker } from '@/features/image-generation/session/query-worker/impl';
+import { generationQueryResultSchema } from '@/features/image-generation/session/query-worker/types';
 // Compile the actual surfaces during module collection, like other component
 // integration tests. A route's first lazy import must not charge the whole UI
 // transform graph to the first session-navigation test's 5-second deadline.
 // Keep the generated routes and the real workspace/storage/controller below.
 import ImageGenerationPage from './image-generation.vue';
-import ImageGenerationWorkspace from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationWorkspace.vue';
+import ImageGenerationWorkspace from '@/features/image-generation/components/ImageGenerationWorkspace.vue';
 const mocks = vi.hoisted(() => ({ query: vi.fn(), publish: vi.fn(), restore: vi.fn(), confirm: vi.fn(), owners: 0, disposed: 0 }));
 vi.mock('@/00-storage/service', () => ({ storageService: { getCurrentType: () => 'opfs', subscribeToChanges: () => () => {}, publishImageGeneration: mocks.publish } }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.confirm }) }));
-vi.mock('@/features/stable-diffusion-cpp-browser/session/query-worker/client', () => ({ createImageGenerationQueryClient: () => ({ query: mocks.query, async dispose() {} }) }));
-vi.mock('@/features/stable-diffusion-cpp-browser/use-image-generation', async () => {
-  const { useImageGeneration } = await import('@/features/stable-diffusion-cpp-browser/use-image-generation-standalone');
-  return { useImageGeneration(): ImageGenerationView {
-    mocks.owners++; onScopeDispose(() => {
-      mocks.disposed++;
-    });
-    const form = useImageGeneration();
-    const base = generationDraftFixture({ sessionId: generationSessionFixture({ id: 'session-aa' }).id });
-    return { ...form, supported: computed(() => true), formDisabled: computed(() => false), draftDisabled: computed(() => false),
-      captureDraft(): ImageGenerationDraft {
-        return { ...base, request: { ...base.request, parameters: { ...form.parameters.value } }, files: [], modelFiles: [] };
-      },
-      async restoreDraft({ draft }) {
-        await mocks.restore({ draft }); form.parameters.value = { ...draft.request.parameters };
-      },
-      resetDraft() {
-        form.parameters.value = { ...form.parameters.value, prompt: '', negativePrompt: '' };
-      },
-    };
-  } };
+vi.mock('@/features/image-generation/session/query-worker/client', () => ({ createImageGenerationQueryClient: () => ({ query: mocks.query, async dispose() {} }) }));
+vi.mock('@/features/image-generation/use-image-generation', async () => {
+  const { useImageGeneration } = await import('@/features/image-generation/test-utils/unavailable-image-view');
+  return {
+    useImageGeneration(): ImageGenerationView {
+      mocks.owners++; onScopeDispose(() => {
+        mocks.disposed++;
+      });
+      const form = useImageGeneration();
+      const base = generationDraftFixture({ sessionId: generationSessionFixture({ id: 'session-aa' }).id });
+      return {
+        ...form,
+        supported: computed(() => true),
+        formDisabled: computed(() => false),
+        draftDisabled: computed(() => false),
+        captureDraft(): ImageGenerationDraft {
+          return { ...base, request: { ...base.request, parameters: { ...form.parameters.value } }, files: [], modelFiles: [] };
+        },
+        async restoreDraft({ draft }) {
+          await mocks.restore({ draft }); form.parameters.value = { ...form.parameters.value, ...draft.request.parameters };
+        },
+        resetDraft() {
+          form.parameters.value = { ...form.parameters.value, prompt: '', negativePrompt: '' };
+        },
+      };
+    },
+  };
 });
 const a = generationSessionFixture({ id: 'session-aa' }), b = { ...generationSessionFixture({ id: 'session-bb' }), title: 'Second purpose', updatedAt: 10 };
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   vi.resetAllMocks(); mocks.owners = 0; mocks.disposed = 0; mocks.confirm.mockResolvedValue(true); mocks.restore.mockResolvedValue(undefined);
   createImageGenerationStorageHarness(); await ensureAllStringsForTest({ locale: 'en' });
@@ -63,22 +70,27 @@ beforeEach(async () => {
     await persistence.saveImageGenerationDraft({ store, draft: publication.draft, expectedRevision: publication.expectedRevision, writeInputs: async () => {} });
   });
 });
+
 afterEach(async () => {
   await useImageGenerationWorkspaceNavigation().active.value?.view?.flushDraft();
   wrapper?.unmount(); wrapper = undefined; await flushPromises(); vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
+
 async function open({ path }: { path: string }) {
   const router = createRouter({ history: createMemoryHistory(), routes: [...routes.filter(route => route.path === '/image-generation'), { path: '/', component: { template: '<div />' } }] });
   await router.push(path); await router.isReady();
-  wrapper = mount(defineComponent({ setup() {
-    const { active } = useImageGenerationWorkspaceNavigation();
-    return () => h('div', [active.value ? h(ImageGenerationSidebar, { navigation: active.value }) : undefined, h(RouterView)]);
-  } }), { global: { plugins: [router], stubs: { SidebarDebugControls: true } } });
+  wrapper = mount(defineComponent({
+    setup() {
+      const { active } = useImageGenerationWorkspaceNavigation();
+      return () => h('div', [active.value ? h(ImageGenerationSidebar, { navigation: active.value }) : undefined, h(RouterView)]);
+    },
+  }), { global: { plugins: [router], stubs: { SidebarDebugControls: true } } });
   await vi.dynamicImportSettled(); await flushPromises();
   const view = useImageGenerationWorkspaceNavigation().active.value?.view;
   if (!view) throw new Error('Missing workspace owner.');
   return { router, view, page: wrapper.getComponent(ImageGenerationPage).vm, workspace: wrapper.getComponent(ImageGenerationWorkspace).vm };
 }
+
 it('opens an exact session URL, preserves one owner through models and gives new sessions their own URL', async () => {
   const { router, view, page, workspace } = await open({ path: '/image-generation/session/session-aa' });
   await vi.waitFor(() => expect(view.currentSession.value?.id).toBe(a.id));
@@ -94,6 +106,7 @@ it('opens an exact session URL, preserves one owner through models and gives new
   expect(wrapper!.getComponent(ImageGenerationWorkspace).vm.$.uid).toBe(workspace.$.uid);
   expect(mocks.owners).toBe(1); expect(mocks.disposed).toBe(0);
 });
+
 it('loads the explicit session on reload and never redirects a missing session to unrelated work', async () => {
   const { router, view } = await open({ path: '/image-generation/session/session-aa' });
   expect(view.currentSession.value?.id).toBe(a.id);
@@ -102,6 +115,7 @@ it('loads the explicit session on reload and never redirects a missing session t
   expect(router.currentRoute.value.path).toBe('/image-generation/session/missing-aa');
   expect(view.editor.draftDisabled.value).toBe(true); expect(mocks.owners).toBe(1);
 });
+
 it('keeps only the latest route while an earlier draft restore is pending', async () => {
   const gate = Promise.withResolvers<void>(); mocks.restore.mockImplementationOnce(() => gate.promise);
   const { router, view } = await open({ path: '/image-generation/session/session-aa' });
@@ -111,6 +125,7 @@ it('keeps only the latest route while an earlier draft restore is pending', asyn
   expect(view.editor.parameters.value.prompt).toBe('second draft'); expect(router.currentRoute.value.path).toBe('/image-generation/session/session-bb');
   expect(mocks.owners).toBe(1);
 });
+
 it('replaces only the entry URL with the selected session and returns to the entry after deletion', async () => {
   const { router, view } = await open({ path: '/image-generation' });
   await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/image-generation/session/session-bb'));
@@ -120,7 +135,6 @@ it('replaces only the entry URL with the selected session and returns to the ent
   expect(view.sessions.value.map(session => session.id)).toEqual([a.id]);
   expect(mocks.confirm.mock.calls[0]![0].message).toContain('Image files');
 });
-
 
 it('restores each draft through browser back and forward without replacing the runtime owner', async () => {
   const { router, view } = await open({ path: '/image-generation/session/session-aa' });

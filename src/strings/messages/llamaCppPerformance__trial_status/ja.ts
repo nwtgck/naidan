@@ -1,0 +1,1 @@
+export const llamaCppPerformance__trial_status = ({ value }: { value: 'running' | 'succeeded' | 'failed' | 'cancelled' | 'skipped' }): string => ({ "running": "実行中", "succeeded": "成功", "failed": "失敗", "cancelled": "中止", "skipped": "未実行" }[value]);

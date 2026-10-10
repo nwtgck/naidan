@@ -104,11 +104,15 @@ export function useModelLaunchChat({ chat, resolved }: {
     const isStorageCurrent = storageService.captureModelLaunchStorage();
     warmup.value = 'loading';
     warmupProgress.value = undefined;
-    void llamaCppBrowserService.prepareModel({ model: target.modelId, signal: controller.signal, onProgress: ({ progress }) => {
+    void llamaCppBrowserService.prepareModel({
+      model: target.modelId,
+      signal: controller.signal,
+      onProgress: ({ progress }) => {
       // Operation-local, not the engine's global progress: another chat may own
       // the lane, or this card may already have changed target/storage.
-      if (!disposed && !controller.signal.aborted && isStorageCurrent() && warmupKey === key && warmup.value === 'loading') warmupProgress.value = progress;
-    } }).then(result => {
+        if (!disposed && !controller.signal.aborted && isStorageCurrent() && warmupKey === key && warmup.value === 'loading') warmupProgress.value = progress;
+      },
+    }).then(result => {
       if (disposed || controller.signal.aborted || !isStorageCurrent() || warmupKey !== key) return;
       switch (result) {
       case 'ready': warmup.value = 'ready'; break;
@@ -240,11 +244,20 @@ export function useModelLaunchChat({ chat, resolved }: {
     const controller = new AbortController(); controllers.add(controller);
     operation.value = 'adopting'; error.value = false;
     try {
-      const updated = await storageService.prepareModelLaunchChat({ signal: controller.signal, request: {
-        chatId: current.id, newChatGroupId: saved.chatGroupId, chatGroupName: modelLaunchChatGroupName({ target: saved.target }),
-        input: saved.input, requestedVariant: saved.requestedVariant, target: saved.target,
-        titleGeneration: settingsApi.settings.value.titleGeneration, mode: 'create-or-resume', expectedTarget: undefined,
-      } });
+      const updated = await storageService.prepareModelLaunchChat({
+        signal: controller.signal,
+        request: {
+          chatId: current.id,
+          newChatGroupId: saved.chatGroupId,
+          chatGroupName: modelLaunchChatGroupName({ target: saved.target }),
+          input: saved.input,
+          requestedVariant: saved.requestedVariant,
+          target: saved.target,
+          titleGeneration: settingsApi.settings.value.titleGeneration,
+          mode: 'create-or-resume',
+          expectedTarget: undefined,
+        },
+      });
       if (disposed || chat.value?.id !== current.id || controller.signal.aborted) return;
       registerLiveInstance({ chat: updated }); synchronize(); await loadData(); await refresh();
     } catch {
@@ -271,11 +284,20 @@ export function useModelLaunchChat({ chat, resolved }: {
     operation.value = 'adopting'; error.value = false;
     try {
       if (selectionChanged.value) {
-        const updated = await storageService.prepareModelLaunchChat({ signal: controller.signal, request: {
-          chatId: current.id, newChatGroupId: generateId<ChatGroupId>(), chatGroupName: modelLaunchChatGroupName({ target }),
-          input: saved.input, requestedVariant: saved.requestedVariant, target, titleGeneration: settingsApi.settings.value.titleGeneration,
-          mode: 'retarget', expectedTarget: saved.target,
-        } });
+        const updated = await storageService.prepareModelLaunchChat({
+          signal: controller.signal,
+          request: {
+            chatId: current.id,
+            newChatGroupId: generateId<ChatGroupId>(),
+            chatGroupName: modelLaunchChatGroupName({ target }),
+            input: saved.input,
+            requestedVariant: saved.requestedVariant,
+            target,
+            titleGeneration: settingsApi.settings.value.titleGeneration,
+            mode: 'retarget',
+            expectedTarget: saved.target,
+          },
+        });
         if (disposed || chat.value?.id !== current.id) return;
         registerLiveInstance({ chat: updated }); synchronize(); await loadData();
       }
@@ -314,12 +336,16 @@ export function useModelLaunchChat({ chat, resolved }: {
       selectedPath.value = path; error.value = false;
     }
   }
-  const unsubscribeState = llamaCppBrowserService.subscribe({ listener: ({ state }) => {
-    runtimeState.value = state;
-  } });
-  const unsubscribeModels = llamaCppBrowserService.subscribeModelList({ listener: () => {
-    if (launch.value !== undefined) void refresh();
-  } });
+  const unsubscribeState = llamaCppBrowserService.subscribe({
+    listener: ({ state }) => {
+      runtimeState.value = state;
+    },
+  });
+  const unsubscribeModels = llamaCppBrowserService.subscribeModelList({
+    listener: () => {
+      if (launch.value !== undefined) void refresh();
+    },
+  });
   function onFocus(): void {
     if (launch.value !== undefined) {
       void refresh(); prepareWhenIdle();
@@ -334,14 +360,46 @@ export function useModelLaunchChat({ chat, resolved }: {
     if (typeof window !== 'undefined') window.removeEventListener('focus', onFocus);
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onFocus);
   });
-  return { launch, visible, presentation, warmup, warmupProgress, restoration, retryRestoration, selectedTarget, selectedPath, choices, selectionChanged, readiness, verification, operation, composerVisibility, busy, error, defaultWarning, hasPausedDownload, runtimeUnavailable, job, isActive, needsRecovery, maySend, label, refresh, refreshChoices, adoptAndDownload, recover, selectPath,
+  return {
+    launch,
+    visible,
+    presentation,
+    warmup,
+    warmupProgress,
+    restoration,
+    retryRestoration,
+    selectedTarget,
+    selectedPath,
+    choices,
+    selectionChanged,
+    readiness,
+    verification,
+    operation,
+    composerVisibility,
+    busy,
+    error,
+    defaultWarning,
+    hasPausedDownload,
+    runtimeUnavailable,
+    job,
+    isActive,
+    needsRecovery,
+    maySend,
+    label,
+    refresh,
+    refreshChoices,
+    adoptAndDownload,
+    recover,
+    selectPath,
     ...((__BUILD_MODE_IS_TEST__ && {
       TEST_ONLY: {
         // Export internal state and logic used only for testing here. Do not reference these in production logic.
         // ESLint-required for useXxx return objects.
       },
-    }) || {}), };
+    }) || {}),
+  };
 }
+
 export type ModelLaunchChatUi = ReturnType<typeof useModelLaunchChat>;
 export const TEST_ONLY = {
 };

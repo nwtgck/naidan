@@ -42,6 +42,10 @@ const localeCatalogExportName = 'catalog';
 
 const messageKeyPattern = /^[A-Za-z][A-Za-z0-9]*__[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 
+export function isBoundaryStringMessageKey({ key }: { key: string }): boolean {
+  return messageKeyPattern.test(key);
+}
+
 function normalizeModulePath({ modulePath }: {
   modulePath: string;
 }): string {
@@ -388,7 +392,7 @@ export function readBoundaryStringMessageCatalog({ paths, root }: {
   validateMessageDirectories({ catalogKeys: englishKeys, paths });
 
   const messages = englishKeys.map((key): BoundaryStringMessageDefinition => {
-    if (!messageKeyPattern.test(key)) {
+    if (!isBoundaryStringMessageKey({ key })) {
       throw createBoundaryStringDiagnosticError({
         code: 'message-key-invalid',
         message: `[naidan-boundary-strings] Invalid message key "${key}". `

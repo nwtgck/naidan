@@ -129,7 +129,8 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
   const requestId = requestIdSchema.parse(inputRequestId);
   const { maximumEvents, maximumCharacters } = limitsSchema.parse(limits);
   const configuredLimits = Object.freeze({
-    maximumEvents, maximumCharacters,
+    maximumEvents,
+    maximumCharacters,
     maximumFieldCharacters: PRODUCTION_PROVIDER_TRACE_LIMITS.maximumFieldCharacters,
   });
   let events: readonly ProductionProviderTraceEvent[] = [];
@@ -176,45 +177,52 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
     onChunk: input => append({ project: ({ text }) => ({ kind: 'chunk', chunk: text({ value: ownData({ source: input, key: 'chunk' }) }) }) }),
     onAssistantMessageStart: () => append({ project: () => ({ kind: 'assistant-start' }) }),
     // eslint-disable-next-line local-rules-named-args/require-named-args -- External Provider callback payload is inspected without invoking accessors.
-    onToolCall: input => append({ project: ({ text }) => ({
-      kind: 'tool-call', toolCallId: text({ value: ownData({ source: input, key: 'id' }) }),
-      toolName: text({ value: ownData({ source: input, key: 'toolName' }) }),
-      modelVisibleArguments: text({ value: ownData({ source: input, key: 'modelVisibleArguments' }) }),
-    }) }),
+    onToolCall: input => append({
+      project: ({ text }) => ({
+        kind: 'tool-call',
+        toolCallId: text({ value: ownData({ source: input, key: 'id' }) }),
+        toolName: text({ value: ownData({ source: input, key: 'toolName' }) }),
+        modelVisibleArguments: text({ value: ownData({ source: input, key: 'modelVisibleArguments' }) }),
+      }),
+    }),
     // eslint-disable-next-line local-rules-named-args/require-named-args -- External Provider callback payload is inspected without invoking accessors.
-    onToolEvent: input => append({ project: ({ text }) => {
-      const toolCallId = text({ value: ownData({ source: input, key: 'id' }) });
-      const event = ownData({ source: input, key: 'event' });
-      const type = ownData({ source: event, key: 'type' });
-      switch (type) {
-      case 'started': return { kind: 'tool-started', toolCallId };
-      case 'output': {
-        const stream = ownData({ source: event, key: 'stream' });
-        if (stream !== 'stdout' && stream !== 'stderr') throw unreadableField;
-        return { kind: 'tool-output', toolCallId, stream, text: text({ value: ownData({ source: event, key: 'text' }) }) };
-      }
-      case 'exit': {
-        const exitCode = ownData({ source: event, key: 'exitCode' });
-        if (typeof exitCode !== 'number' || !Number.isSafeInteger(exitCode)) throw unreadableField;
-        return { kind: 'tool-exit', toolCallId, exitCode };
-      }
-      default: throw unreadableField;
-      }
-    } }),
+    onToolEvent: input => append({
+      project: ({ text }) => {
+        const toolCallId = text({ value: ownData({ source: input, key: 'id' }) });
+        const event = ownData({ source: input, key: 'event' });
+        const type = ownData({ source: event, key: 'type' });
+        switch (type) {
+        case 'started': return { kind: 'tool-started', toolCallId };
+        case 'output': {
+          const stream = ownData({ source: event, key: 'stream' });
+          if (stream !== 'stdout' && stream !== 'stderr') throw unreadableField;
+          return { kind: 'tool-output', toolCallId, stream, text: text({ value: ownData({ source: event, key: 'text' }) }) };
+        }
+        case 'exit': {
+          const exitCode = ownData({ source: event, key: 'exitCode' });
+          if (typeof exitCode !== 'number' || !Number.isSafeInteger(exitCode)) throw unreadableField;
+          return { kind: 'tool-exit', toolCallId, exitCode };
+        }
+        default: throw unreadableField;
+        }
+      },
+    }),
     // eslint-disable-next-line local-rules-named-args/require-named-args -- External Provider callback payload is inspected without invoking accessors.
-    onToolResult: input => append({ project: ({ text }) => {
-      const toolCallId = text({ value: ownData({ source: input, key: 'id' }) });
-      const result = ownData({ source: input, key: 'result' });
-      switch (ownData({ source: result, key: 'status' })) {
-      case 'success': return { kind: 'tool-success', toolCallId, content: text({ value: ownData({ source: result, key: 'content' }) }) };
-      case 'error': {
-        const code = ownData({ source: result, key: 'code' });
-        if (code !== 'invalid_arguments' && code !== 'execution_failed' && code !== 'timeout' && code !== 'other') throw unreadableField;
-        return { kind: 'tool-error', toolCallId, code, messageCapture: 'omitted-for-privacy' };
-      }
-      default: throw unreadableField;
-      }
-    } }),
+    onToolResult: input => append({
+      project: ({ text }) => {
+        const toolCallId = text({ value: ownData({ source: input, key: 'id' }) });
+        const result = ownData({ source: input, key: 'result' });
+        switch (ownData({ source: result, key: 'status' })) {
+        case 'success': return { kind: 'tool-success', toolCallId, content: text({ value: ownData({ source: result, key: 'content' }) }) };
+        case 'error': {
+          const code = ownData({ source: result, key: 'code' });
+          if (code !== 'invalid_arguments' && code !== 'execution_failed' && code !== 'timeout' && code !== 'other') throw unreadableField;
+          return { kind: 'tool-error', toolCallId, code, messageCapture: 'omitted-for-privacy' };
+        }
+        default: throw unreadableField;
+        }
+      },
+    }),
   };
 
   // Keep only the latest revision for each part. A text snapshot records the
@@ -254,8 +262,17 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
         const { name, arguments: args, ...restFunction } = fn; restFunction satisfies Record<PropertyKey, never>;
         const rawId = idToRaw({ id: callId });
         if (previous?.index === index && previous.part.type === type && previous.part.toolCall.id === rawId && previous.part.toolCall.function.name === name && previous.part.toolCall.function.arguments === args) break;
-        append({ project: ({ text }) => ({ kind: 'part_call', messageId: text({ value: messageId }), partId: text({ value: id }), index,
-          toolCallId: text({ value: rawId }), toolName: text({ value: name }), modelVisibleArguments: text({ value: args }) }) });
+        append({
+          project: ({ text }) => ({
+            kind: 'part_call',
+            messageId: text({ value: messageId }),
+            partId: text({ value: id }),
+            index,
+            toolCallId: text({ value: rawId }),
+            toolName: text({ value: name }),
+            modelVisibleArguments: text({ value: args }),
+          }),
+        });
         if (failure === undefined) partRevisions.set(part, { index, part: Object.freeze({ id, type, toolCall: Object.freeze({ id: rawId, type: callType, function: Object.freeze({ name, arguments: args }) }) }) });
         break;
       }
@@ -280,7 +297,8 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
 
   return {
     callbacks: Object.freeze(callbacks),
-    observeAssistant, observeResult,
+    observeAssistant,
+    observeResult,
     /** Call synchronously immediately after the caller's direct await or catch. */
     settle({ outcome: requestedOutcome, error }: { outcome: 'fulfilled'; error: undefined } | { outcome: 'rejected'; error: unknown }): ProductionProviderSettledSnapshot {
       if (settled !== undefined) {
@@ -306,10 +324,15 @@ function createTrace({ requestId: inputRequestId, limits, format }: {
     },
     snapshot(): ProductionProviderTraceSnapshot {
       return Object.freeze({
-        format, requestId, limits: configuredLimits,
-        completeness: failure === undefined ? 'complete' : 'incomplete', failure,
+        format,
+        requestId,
+        limits: configuredLimits,
+        completeness: failure === undefined ? 'complete' : 'incomplete',
+        failure,
         events: settled === undefined ? Object.freeze(pendingEvents.slice()) : events,
-        settled, lateEvents: Object.freeze(lateEvents.slice()), retainedCharacters,
+        settled,
+        lateEvents: Object.freeze(lateEvents.slice()),
+        retainedCharacters,
       });
     },
   };

@@ -39,7 +39,6 @@ const nestedValuePath: JqPath = {
   ],
 };
 
-
 describe('jq iterative branch cardinality proof', () => {
   const parsedFilter = ({ source }: { source: string }): JqFilter => {
     const parsed = parseJqProgram({ source });
@@ -163,9 +162,6 @@ describe('jq internal value safety and path updates', () => {
     expect(Object.hasOwn(deletedChanged, 'value')).toBe(false);
     expect(deletedChanged.retained).toBe(2);
   });
-
-
-
 
   it('rejects unsafe full case-fold expansion instead of silently narrowing matches', () => {
     const compiled = compileJqRegularExpression({
@@ -1760,7 +1756,6 @@ describe('jq internal value safety and path updates', () => {
     });
   });
 
-
   it('updates very deep paths without recursive stack growth', () => {
     const depth = 20_000;
     const path: JqPath = {
@@ -1782,7 +1777,6 @@ describe('jq internal value safety and path updates', () => {
     const readBack = readJqPathValue({ root: updated.value, path });
     expect(readBack).toEqual({ ok: true, value: 2, skipped: false });
   });
-
 
   it('deletes very deep paths without recursive stack growth', () => {
     const depth = 20_000;
@@ -1813,7 +1807,6 @@ describe('jq internal value safety and path updates', () => {
       skipped: false,
     });
   });
-
 
   it('deletes multiple very deep object paths without recursive stack growth', () => {
     const depth = 10_000;
@@ -1896,9 +1889,6 @@ describe('jq internal value safety and path updates', () => {
     expect(deleted.ok).toBe(true);
     expect(root).not.toBe(updated.value);
   });
-
-
-
 
   it('deletes multiple fields through very deep arrays without recursive stack growth', () => {
     const depth = 20_000;
@@ -2150,7 +2140,6 @@ describe('jq internal value safety and path updates', () => {
     expect(normalized).toBe(1);
   });
 
-
   it('serializes deeply nested values without recursive stack growth', () => {
     const depth = 5_000;
     let value: JsonValue = 1;
@@ -2237,7 +2226,6 @@ describe('jq internal value safety and path updates', () => {
       asciiOnly: false,
     })).toBe('{"second":2,"first":3}');
   });
-
 
   it('compares deeply nested values without recursive stack growth', () => {
     const depth = 5_000;
@@ -2355,7 +2343,6 @@ describe('jq internal value safety and path updates', () => {
     expect(rewrite({ source: deep })).toBe(deep);
   });
 
-
   it('replays bounded terminal capture history when the branch reference is external', () => {
     const compiled = compileJqRegularExpression({
       pattern: String.raw`(?<v>x)?(?:(a)?\1?|(?<v>b))*`,
@@ -2386,5 +2373,4 @@ describe('jq internal value safety and path updates', () => {
       text: 'a',
     });
   });
-
 });

@@ -317,6 +317,7 @@ git -C /repo config --get remote.origin.url || printf 'missing\n'`,
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe("fatal: cannot change to '/missing': No such file or directory\n");
   });
+
   it('treats valueless -c assignments as implicit true without changing raw config output', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -331,7 +332,6 @@ git -C /repo -c demo.flag config demo.flag`,
     expect(stderr.text).toBe('');
     expect(stdout.text).toBe('AM a\n\n');
   });
-
 
   it('keeps implicit and explicit-empty -c values distinct without a string sentinel', async () => {
     const { result, stdout, stderr } = await execute({
@@ -375,5 +375,4 @@ environment
 command
 `);
   });
-
 });

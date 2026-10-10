@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/RpcRegistrationSelect.vue';
+import type { NaidanRpcRegistrationId } from '@/01-models/ids';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { ensureStrings, lazyStrings } from '@/strings';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -83,6 +85,7 @@ const titleEndpointModels = ref<string[]>([]);
 const isFetchingTitleEndpointModels = ref(false);
 const sortedTitleEndpointModels = computed(() => naturalSort({ values: titleEndpointModels.value }));
 const { settings } = useSettings();
+const rpcEnabled = computed(() => settings.value.experimental?.naidanRpc === 'enabled');
 const { setActiveFocusArea } = useLayout();
 
 type ChatSettingsDraft = {
@@ -204,6 +207,7 @@ function scopedTitleGenerationFromDraft({
 }): ScopedTitleGeneration {
   return draft.titleGeneration ?? 'inherit';
 }
+
 function titleGenerationModeFromValue({
   titleGeneration,
 }: {
@@ -371,6 +375,7 @@ function titleReasoningLabel({
 // Keep select parsing exhaustive: adding an EndpointType must fail typechecking
 // until the UI value and label handling are reviewed.
 const endpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> = {
+  naidan_rpc: true,
   openai: true,
   ollama: true,
   transformers_js: true,
@@ -700,6 +705,7 @@ async function removeLocalTitleHeader({ index }: { index: number }): Promise<voi
   }
   await saveChangesFromUi();
 }
+
 const titleModelOptions = computed(() => {
   return localTitleEndpointUsesSameScope.value
     ? sortedAvailableModels.value
@@ -904,6 +910,16 @@ function setLocalTitleEndpointType({
       },
     });
     return;
+  case 'naidan_rpc': {
+    const nextEndpoint: Endpoint = { type: endpointType, registrationId: undefined };
+    setLocalTitleGeneration({
+      titleGeneration: {
+        endpoint: nextEndpoint,
+        model: explicitTitleModel({ modelId: preservedTitleModelIdForEndpoint({ nextEndpoint }) }),
+      },
+    });
+    return;
+  }
   case 'llama_cpp_browser':
   case 'transformers_js': {
     const nextEndpoint: Endpoint = { type: endpointType };
@@ -1073,6 +1089,7 @@ function setLocalTitleModelId({
     },
   });
 }
+
 const isPromptApiSupported = computed(() => getPromptApiLanguageModel() !== undefined);
 
 const localEndpointUrl = computed({
@@ -1420,6 +1437,7 @@ function clearBrowserProvidedLmModelOverrides(): void {
     setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
   }
 }
+
 function resetSameScopeTitleModelWhenEndpointNamespaceChanges({
   previousEndpoint,
   nextEndpoint,
@@ -1446,6 +1464,18 @@ function resetLocalModelsWhenEndpointNamespaceChanges({
 }
 
 
+async function changeRpcRegistration({ registrationId, title }: { registrationId: NaidanRpcRegistrationId | undefined, title: boolean }): Promise<void> {
+  const nextEndpoint: Endpoint = { type: 'naidan_rpc', registrationId };
+  if (title) {
+    setLocalTitleGeneration({ titleGeneration: { endpoint: nextEndpoint, model: explicitTitleModel({ modelId: undefined }) } });
+  } else {
+    const previousEndpoint = cloneEndpoint({ endpoint: effectiveEndpoint.value });
+    localSettings.value.endpoint = nextEndpoint;
+    resetLocalModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint });
+  }
+  await saveChangesFromUi();
+}
+
 async function updateEndpointType({
   endpointType,
 }: {
@@ -1455,6 +1485,11 @@ async function updateEndpointType({
   switch (endpointType) {
   case undefined:
     localSettings.value.endpoint = undefined;
+    clearBrowserProvidedLmModelOverrides();
+    resetLocalModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: effectiveEndpoint.value });
+    break;
+  case 'naidan_rpc':
+    localSettings.value.endpoint = { type: endpointType, registrationId: undefined };
     clearBrowserProvidedLmModelOverrides();
     resetLocalModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: effectiveEndpoint.value });
     break;
@@ -1721,6 +1756,8 @@ defineExpose({
                 <option value="global">{{ inheritedEndpointTypeLabel() }}</option>
                 <option value="openai">{{ lazyStrings.ChatSettingsPanel__openai_compatible() }}</option>
                 <option value="ollama">{{ lazyStrings.ChatSettingsPanel__ollama() }}</option>
+                <option v-if="rpcEnabled" value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
+                <option v-else-if="localSettings.endpoint?.type === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option>
                 <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
                 <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
                 <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">{{ lazyStrings.SHARED__browser_provided() }}</option>
@@ -1737,6 +1774,8 @@ defineExpose({
               </select>
             </div>
 
+            <RpcRegistrationSelect v-if="localSettings.endpoint?.type === 'naidan_rpc'" :model-value="localSettings.endpoint.registrationId"
+                                   @update:model-value="registrationId => changeRpcRegistration({ registrationId, title: false })" />
             <PromptApiStatus v-if="effectiveEndpointType === 'browser_provided_lm'" show-ready />
 
             <div tw-class="space-y-2" v-if="effectiveEndpoint && isHttpEndpoint(effectiveEndpoint)">
@@ -1882,6 +1921,8 @@ defineExpose({
                   <option value="same_scope">{{ sameScopeTitleEndpointTypeOptionLabel }}</option>
                   <option value="openai">{{ lazyStrings.ChatSettingsPanel__openai_compatible() }}</option>
                   <option value="ollama">{{ lazyStrings.ChatSettingsPanel__ollama() }}</option>
+                  <option v-if="rpcEnabled" value="naidan_rpc">{{ lazyStrings.naidanRpc__title() }}</option>
+                  <option v-else-if="localTitleEndpointSelectValue === 'naidan_rpc'" value="naidan_rpc" disabled>{{ lazyStrings.naidanRpc__disabled() }}</option>
                   <option value="llama_cpp_browser" :disabled="getEndpointBuildAvailability({ type: 'llama_cpp_browser' }) !== 'available'">{{ lazyStrings.llamaCppBrowser__endpoint_label() }}</option>
                   <option value="transformers_js" :disabled="getEndpointBuildAvailability({ type: 'transformers_js' }) !== 'available'">{{ lazyStrings.ChatSettingsPanel__transformers_js_experimental() }}</option>
                   <option value="browser_provided_lm" :tw-class="{ 'text-gray-400': !isPromptApiSupported }">{{ lazyStrings.SHARED__browser_provided() }}</option>
@@ -1891,6 +1932,8 @@ defineExpose({
                     disabled
                   >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
                 </select>
+                <RpcRegistrationSelect v-if="localTitleEndpoint !== 'inherit' && localTitleEndpoint !== 'same_scope' && localTitleEndpoint.type === 'naidan_rpc'"
+                                       :model-value="localTitleEndpoint.registrationId" @update:model-value="registrationId => changeRpcRegistration({ registrationId, title: true })" />
               </div>
 
               <div tw-class="space-y-2">

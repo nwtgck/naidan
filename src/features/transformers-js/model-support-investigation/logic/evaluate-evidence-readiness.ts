@@ -65,11 +65,7 @@ function domain({
   questionId,
   answer,
   evidencePaths,
-}: Omit<ModelSupportInvestigationEvidenceDomainReadiness, "questions"> & {
-  questionId: string,
-  answer: string,
-  evidencePaths: string[],
-}): ModelSupportInvestigationEvidenceDomainReadiness {
+}: { domainId: ModelSupportInvestigationEvidenceDomainReadiness['domainId'], status: ModelSupportInvestigationEvidenceDomainReadiness['status'], summary: ModelSupportInvestigationEvidenceDomainReadiness['summary'], questionId: string, answer: string, evidencePaths: string[] }): ModelSupportInvestigationEvidenceDomainReadiness {
   return {
     domainId,
     status,

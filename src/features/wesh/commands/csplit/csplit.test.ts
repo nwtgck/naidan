@@ -204,7 +204,6 @@ e
 `);
   });
 
-
   it('accepts leading C-locale whitespace in the suffix digit count', async () => {
     await writeFile({
       path: 'input.txt',
@@ -881,11 +880,14 @@ abc
   });
 
   it('uses locale-sensitive POSIX character classes in split patterns', async () => {
-    await writeFile({ path: 'locale-input.txt', data: `\
+    await writeFile({
+      path: 'locale-input.txt',
+      data: `\
 123
 é
 456
-` });
+`,
+    });
 
     const cLocale = await execute({
       script: "LC_ALL=C csplit -s -f c-locale- locale-input.txt '/[[:alpha:]]/'",
@@ -981,13 +983,16 @@ abc
   });
 
   it('rejects EOF boundaries, advances after skipped regex matches, and models directory read failures', async () => {
-    await writeFile({ path: 'input', data: `\
+    await writeFile({
+      path: 'input',
+      data: `\
 one
 two
 three
 four
 five
-` });
+`,
+    });
 
     const eof = await execute({ script: 'csplit input 6' });
     expect(eof.result.exitCode).toBe(1);
@@ -1028,16 +1033,17 @@ tail
     expect(await fileExists({ path: 'xx00' })).toBe(false);
   });
 
-
-
   it('accepts explicit positive signs in numeric operands', async () => {
-    await writeFile({ path: 'plus-input.txt', data: `\
+    await writeFile({
+      path: 'plus-input.txt',
+      data: `\
 a
 b
 c
 d
 e
-` });
+`,
+    });
 
     const execution = await execute({
       script: "csplit -s -n +3 plus-input.txt +2 '{+1}'",
@@ -1057,9 +1063,10 @@ e
 `);
   });
 
-
   it('validates absolute line-number order before creating output files', async () => {
-    await writeFile({ path: 'ordered-input', data: `\
+    await writeFile({
+      path: 'ordered-input',
+      data: `\
 a
 b
 MARK
@@ -1070,7 +1077,8 @@ f
 g
 h
 i
-` });
+`,
+    });
 
     const execution = await execute({
       script: "csplit ordered-input 8 '/^MARK$/' 3",
@@ -1085,14 +1093,17 @@ i
   });
 
   it('warns for equal absolute line numbers and preserves regex search progress', async () => {
-    await writeFile({ path: 'equal-input', data: `\
+    await writeFile({
+      path: 'equal-input',
+      data: `\
 x0
 a
 MARK
 b
 x1
 tail
-` });
+`,
+    });
 
     const equal = await execute({
       script: "csplit equal-input 3 '/^MARK$/' 3",
@@ -1121,15 +1132,17 @@ tail
 `);
   });
 
-
   it('does not replay buffered tail when a suppressed EOF regex is followed by an out-of-range line', async () => {
-    await writeFile({ path: 'suppressed-eof-input', data: `\
+    await writeFile({
+      path: 'suppressed-eof-input',
+      data: `\
 
 x0
 終
 b
 
-MARK` });
+MARK`,
+    });
 
     const execution = await execute({
       script: "csplit -k --suppress-matched suppressed-eof-input '/^MARK$/-2' 10",
@@ -1148,5 +1161,4 @@ x0
 `);
     expect(await readFile({ path: 'xx01' })).toBe('');
   });
-
 });

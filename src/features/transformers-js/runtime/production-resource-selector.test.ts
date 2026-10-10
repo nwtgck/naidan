@@ -7,6 +7,7 @@ import contract from './upstream-resource-contract.json';
 
 type Runtime = typeof import('@huggingface/transformers');
 const cleanup: Array<() => void> = [];
+
 afterEach(() => {
   for (const close of cleanup.splice(0).reverse()) close();
   vi.doUnmock('@huggingface/transformers');
@@ -93,7 +94,10 @@ it('keeps existing generic classes and explicitly records three missing upstream
   for (const modelType of ['ministral', 'ministral3', 'mistral3']) {
     const loader = modelType === 'mistral3' ? h.runtime.AutoModelForImageTextToText : h.runtime.AutoModelForCausalLM;
     await expect(loader.from_pretrained('fixture/missing-class', {
-      config: new h.runtime.PretrainedConfig({ ...textConfig(), model_type: modelType, text_config: textConfig() }), device: 'webgpu', dtype: 'q4', local_files_only: true,
+      config: new h.runtime.PretrainedConfig({ ...textConfig(), model_type: modelType, text_config: textConfig() }),
+      device: 'webgpu',
+      dtype: 'q4',
+      local_files_only: true,
     })).rejects.toThrow("Cannot read properties of undefined (reading 'from_pretrained')");
   }
   expect(h.session).not.toHaveBeenCalled();
@@ -143,10 +147,12 @@ it('offline planning preserves a complete first candidate when a later candidate
   const { planDownloadedModelCandidates } = await import('./plan-downloaded-model-candidates');
   const config = { ...textConfig(), 'transformers.js_config': { use_external_data_format: { 'model_q4f16.onnx': 1, 'model_q4.onnx': 101 } } };
   await expect(planDownloadedModelCandidates({
-    modelId: 'fixture/candidates', revision: 'a'.repeat(40),
+    modelId: 'fixture/candidates',
+    revision: 'a'.repeat(40),
     candidates: [{ device: 'webgpu', dtype: 'q4f16' }, { device: 'webgpu', dtype: 'q4' }],
     modelCache: { match: async () => new Response(new Uint8Array([1, 2, 3])) },
-    getRuntimeFiles: async () => [], workerLocationUrl: 'http://localhost/assets/worker.js',
+    getRuntimeFiles: async () => [],
+    workerLocationUrl: 'http://localhost/assets/worker.js',
     getModelFiles: async ({ candidate }) => h.selectProductionModelResources({ autoClass: 'AutoModelForCausalLM', config, candidate }).paths,
   })).resolves.toMatchObject([
     { complete: true, requiredModelPaths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'] },

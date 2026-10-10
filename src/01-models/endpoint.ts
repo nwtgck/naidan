@@ -5,6 +5,7 @@ export function isHttpEndpoint(endpoint: Endpoint): endpoint is HttpEndpoint {
   case 'openai':
   case 'ollama':
     return true;
+  case 'naidan_rpc':
   case 'transformers_js':
   case 'llama_cpp_browser':
   case 'browser_provided_lm':
@@ -19,6 +20,7 @@ export function isHttpEndpoint(endpoint: Endpoint): endpoint is HttpEndpoint {
 
 export function isSupportedEndpoint(endpoint: Endpoint): endpoint is SupportedEndpoint {
   switch (endpoint.type) {
+  case 'naidan_rpc':
   case 'openai':
   case 'ollama':
   case 'transformers_js':
@@ -44,6 +46,7 @@ export function getSupportedEndpointType({
 
 export function isConfiguredEndpoint({ endpoint }: { endpoint: Endpoint }): boolean {
   switch (endpoint.type) {
+  case 'naidan_rpc': return endpoint.registrationId !== undefined;
   case 'openai':
   case 'ollama':
     return endpoint.url !== '';
@@ -74,6 +77,7 @@ export function selectHttpEndpointSeed({
 
 export function cloneEndpoint({ endpoint }: { endpoint: Endpoint }): Endpoint {
   switch (endpoint.type) {
+  case 'naidan_rpc': return { type: 'naidan_rpc', registrationId: endpoint.registrationId };
   case 'openai':
   case 'ollama':
     return {
@@ -136,6 +140,13 @@ export function areEndpointModelNamespacesEqual({
   left: Endpoint,
   right: Endpoint,
 }): boolean {
+  if (left.type === 'naidan_rpc' || right.type === 'naidan_rpc') {
+    if (left.type !== 'naidan_rpc' || right.type !== 'naidan_rpc') return false;
+    const { type: _leftType, registrationId: leftId, ...leftRest } = left;
+    const { type: _rightType, registrationId: rightId, ...rightRest } = right;
+    leftRest satisfies Record<PropertyKey, never>; rightRest satisfies Record<PropertyKey, never>;
+    return leftId === rightId;
+  }
   switch (left.type) {
   case 'openai': {
     const { type: _leftType, url: leftUrl, httpHeaders: _leftHttpHeaders, ...unhandledLeft } = left;
@@ -262,6 +273,13 @@ export function areEndpointsEqual({
   left: Endpoint,
   right: Endpoint,
 }): boolean {
+  if (left.type === 'naidan_rpc' || right.type === 'naidan_rpc') {
+    if (left.type !== 'naidan_rpc' || right.type !== 'naidan_rpc') return false;
+    const { type: _leftType, registrationId: leftId, ...leftRest } = left;
+    const { type: _rightType, registrationId: rightId, ...rightRest } = right;
+    leftRest satisfies Record<PropertyKey, never>; rightRest satisfies Record<PropertyKey, never>;
+    return leftId === rightId;
+  }
   switch (left.type) {
   case 'openai': {
     const { type: _leftType, url: leftUrl, httpHeaders: leftHeaders, ...unhandledLeft } = left;

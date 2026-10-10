@@ -19,6 +19,7 @@ export type ModelLaunchChatRequest = {
 // No setup marker, source plan, or revision counter is written into DTOs.
 // A browser reload intentionally discards this session-local recovery state.
 const sessions = new WeakMap<IStorageProvider, Map<ChatId, ChatModelLaunch>>();
+
 function sessionFor({ provider }: { provider: IStorageProvider }): Map<ChatId, ChatModelLaunch> {
   let session = sessions.get(provider);
   if (session === undefined) {
@@ -27,10 +28,12 @@ function sessionFor({ provider }: { provider: IStorageProvider }): Map<ChatId, C
   }
   return session;
 }
+
 export function readModelLaunch({ provider, chatId }: { provider: IStorageProvider, chatId: ChatId }): ChatModelLaunch | undefined {
   const launch = sessions.get(provider)?.get(chatId);
   return launch === undefined ? undefined : structuredClone(launch);
 }
+
 function containsChat({ hierarchy, chatId, chatGroupId }: { hierarchy: Hierarchy, chatId: ChatId, chatGroupId: ChatGroupId | undefined }): boolean {
   return hierarchy.items.some(item => {
     switch (item.type) {
@@ -40,9 +43,11 @@ function containsChat({ hierarchy, chatId, chatGroupId }: { hierarchy: Hierarchy
     }
   });
 }
+
 function matchesModel({ chatGroup, modelId }: { chatGroup: ChatGroup, modelId: string }): boolean {
   return chatGroup.endpoint?.type === 'llama_cpp_browser' && chatGroup.modelId === modelId;
 }
+
 export async function restoreModelLaunch({ provider, chatId, input, requestedVariant, target }: {
   provider: IStorageProvider, chatId: ChatId, input: string, requestedVariant: string | undefined, target: ModelLaunchTarget,
 }): Promise<ChatModelLaunch | undefined> {
@@ -110,8 +115,13 @@ export async function prepareModelLaunchChat({ provider, request }: { provider: 
   case 'reserved': {
     const reserved = await provider.loadChatGroup({ id: launch.chatGroupId });
     chatGroup = reserved ?? {
-      id: launch.chatGroupId, name: chatGroupName, isCollapsed: false, items: [], updatedAt: Date.now(),
-      endpoint: { type: 'llama_cpp_browser' }, modelId: launch.target.modelId,
+      id: launch.chatGroupId,
+      name: chatGroupName,
+      isCollapsed: false,
+      items: [],
+      updatedAt: Date.now(),
+      endpoint: { type: 'llama_cpp_browser' },
+      modelId: launch.target.modelId,
       titleGeneration: retargetTitleGenerationToSameScope({ source: titleGeneration, model: 'same_scope' }),
     };
     createChatGroup = reserved === null;
@@ -145,8 +155,13 @@ export async function prepareModelLaunchChat({ provider, request }: { provider: 
     const id = primary == null ? primaryId : toChatGroupId({ raw: `${prefix}-${idToRaw({ id: newChatGroupId })}` });
     if (reusable === undefined && primary != null && await provider.loadChatGroup({ id }) !== null) throw new Error('The model chat group ID is already in use');
     chatGroup = reusable ?? {
-      id, name: chatGroupName, isCollapsed: false, items: [], updatedAt: Date.now(),
-      endpoint: { type: 'llama_cpp_browser' }, modelId: target.modelId,
+      id,
+      name: chatGroupName,
+      isCollapsed: false,
+      items: [],
+      updatedAt: Date.now(),
+      endpoint: { type: 'llama_cpp_browser' },
+      modelId: target.modelId,
       titleGeneration: retargetTitleGenerationToSameScope({ source: titleGeneration, model: 'same_scope' }),
     };
     createChatGroup = reusable === undefined;
@@ -196,6 +211,7 @@ export async function detachRemovedModelLaunchOwners({ provider, before: _before
     if (!containsChat({ hierarchy: after, chatId, chatGroupId: launch.chatGroupId })) session.set(chatId, { ...launch, phase: 'detached' });
   }
 }
+
 export const TEST_ONLY = {
   resetSession: ({ provider }: { provider: IStorageProvider }) => {
     sessions.delete(provider);

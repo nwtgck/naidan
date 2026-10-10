@@ -34,7 +34,11 @@ export interface DownloadWorkerScope {
 const clientSchema = z.object({ id: z.string().min(1), type: z.literal('window'), url: z.string().url() });
 const MAX_DOWNLOADS = 8;
 
-export function installStreamDownloadWorker({ scope }: { scope: DownloadWorkerScope }): void {
+export function installStreamDownloadWorker({ scope, canPrepare = () => true, onIdle = () => {} }: {
+  scope: DownloadWorkerScope;
+  canPrepare?: () => boolean;
+  onIdle?: () => void;
+}): { isIdle: () => boolean } {
   const base = new URL(scope.registration.scope);
   const root = new URL(DOWNLOAD_ROOT, base);
   type Session = {
@@ -79,7 +83,9 @@ export function installStreamDownloadWorker({ scope }: { scope: DownloadWorkerSc
     }
     let sessionForControl: Session | undefined = undefined;
     const channel = createValidatedMessagePort({
-      port: control, incomingSchema: downloadControlSchema, outgoingSchema: downloadStatusSchema,
+      port: control,
+      incomingSchema: downloadControlSchema,
+      outgoingSchema: downloadStatusSchema,
       onError({ reason }) {
         sessionForControl?.finish({ reason });
       },
@@ -96,7 +102,7 @@ export function installStreamDownloadWorker({ scope }: { scope: DownloadWorkerSc
       channel.close();
       data.close();
     };
-    if (!prepared.success || !owner.success || active.size >= MAX_DOWNLOADS) {
+    if (!prepared.success || !owner.success || active.size >= MAX_DOWNLOADS || !canPrepare()) {
       reject(); return;
     }
     const ownerUrl = new URL(owner.data.url);
@@ -116,7 +122,9 @@ export function installStreamDownloadWorker({ scope }: { scope: DownloadWorkerSc
     let responseReader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     let responseController: ReadableStreamDefaultController<Uint8Array> | undefined;
     const session: Session = {
-      url, token, version,
+      url,
+      token,
+      version,
       ownerId: owner.data.id,
       ownerUrl: ownerUrl.href,
       extendLifetime({ event }) {
@@ -162,6 +170,7 @@ export function installStreamDownloadWorker({ scope }: { scope: DownloadWorkerSc
         } else channel.send({ message: { type: 'consumed' }, transferables: [] });
         channel.close();
         releaseLease?.();
+        if (active.size === 0) onIdle();
       },
       response() {
         preparedLifetime.resolve();
@@ -229,7 +238,8 @@ export function installStreamDownloadWorker({ scope }: { scope: DownloadWorkerSc
     // They must never hit the network, precache or the SPA navigation fallback.
     event.stopImmediatePropagation();
     const unavailable = ({ status }: { status: number }) => new Response(null, {
-      status, headers: { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
+      status,
+      headers: { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
     });
     if (event.request.method !== 'GET') {
       event.respondWith(unavailable({ status: 405 })); return;
@@ -270,6 +280,7 @@ export function installStreamDownloadWorker({ scope }: { scope: DownloadWorkerSc
       event.respondWith(Response.error());
     }
   });
+  return { isIdle: () => active.size === 0 };
 }
 
 export const TEST_ONLY = {

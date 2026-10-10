@@ -18,29 +18,46 @@ type GenerationStrategyContext = Parameters<GenerationStrategy['generate']>[0];
 
 const modelId = 'onnx-community/gemma-4-E2B-it-ONNX';
 installRawReplay({ evidence: undefined });
+
 afterEach(() => {
   vi.doUnmock('@huggingface/transformers'); vi.resetModules();
 });
 
 function assistant(): AssistantMessageNode {
-  return { id: toMessageId({ raw: 'a1' }), role: 'assistant', parts: [], createdAt: 1,
-    modelId, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
+  return {
+    id: toMessageId({ raw: 'a1' }),
+    role: 'assistant',
+    parts: [],
+    createdAt: 1,
+    modelId,
+    lmParameters: undefined,
+    interruption: undefined,
+    replies: { items: [] },
+  };
 }
 
 describe('Gemma native output with the Production streamer and original tokenizer', () => {
   it.each(['single', 'batch'] as const)('uses native IDs rather than decoded marker spellings with %s delivery', async delivery => {
     const archive = await archiveFor({ modelId }); const { harness } = await start({ archive, bodyPaths: [] });
     const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(modelId, {
-      revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined,
+      revision: archive.summary.revision,
+      local_files_only: true,
+      progress_callback: () => undefined,
     });
     vi.doMock('@huggingface/transformers', () => harness.runtime);
     const { NativeProtocolStreamer } = await import('@/features/transformers-js/models/native-protocol-streamer');
     const events: InferenceGenerationEvent[] = [];
-    const decoder = createGemma4Generation({ toolCalls: 'disabled', emit: ({ event }) => {
-      events.push(event);
-    } });
-    const streamer = new NativeProtocolStreamer({ protocolTokens: undefined, tokenizer: tokenizer as unknown as ConstructorParameters<typeof NativeProtocolStreamer>[0]['tokenizer'],
-      onText: ({ text }) => decoder.text({ text }), onControl: ({ token }) => decoder.control({ token }),
+    const decoder = createGemma4Generation({
+      toolCalls: 'disabled',
+      emit: ({ event }) => {
+        events.push(event);
+      },
+    });
+    const streamer = new NativeProtocolStreamer({
+      protocolTokens: undefined,
+      tokenizer: tokenizer as unknown as ConstructorParameters<typeof NativeProtocolStreamer>[0]['tokenizer'],
+      onText: ({ text }) => decoder.text({ text }),
+      onControl: ({ token }) => decoder.control({ token }),
     });
     // Source-derived finite native output, not a newly recorded model run.
     const ids = tokenizer.encode(`<|channel>thought\n  確認🙂\n\n<channel|><think>literal</think>Answer  <turn|>`, { add_special_tokens: false }).map(BigInt);
@@ -63,7 +80,9 @@ describe('Gemma native output with the Production streamer and original tokenize
   it.each(['answer', 'calls', 'partial', 'native_failure'] as const)('connects the real generation strategy to local parts for %s', async shape => {
     const archive = await archiveFor({ modelId }); const { harness } = await start({ archive, bodyPaths: [] });
     const processor = await harness.runtime.AutoProcessor.from_pretrained(modelId, {
-      revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined,
+      revision: archive.summary.revision,
+      local_files_only: true,
+      progress_callback: () => undefined,
     });
     const tokenizer = processor.tokenizer;
     vi.doMock('@huggingface/transformers', () => harness.runtime);
@@ -97,31 +116,54 @@ describe('Gemma native output with the Production streamer and original tokenize
       return { past_key_values: null };
     });
     const state: GenerationStrategyContext['runtimeState'] = {
-      activeModelId: modelId, gemma4Processor: processor as unknown as GenerationStrategyContext['runtimeState']['gemma4Processor'],
-      qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5SequenceCache: undefined, qwen3_5ConversationState: undefined, generationStateOwner: {},
+      activeModelId: modelId,
+      gemma4Processor: processor as unknown as GenerationStrategyContext['runtimeState']['gemma4Processor'],
+      qwen3_5Processor: null,
+      gptOssPastKeyValues: null,
+      qwen3_5SequenceCache: undefined,
+      qwen3_5ConversationState: undefined,
+      generationStateOwner: {},
     };
     const events: InferenceGenerationEvent[] = [];
     const node = assistant(); const abortController = new AbortController();
     const delivery = await import('@/features/transformers-js/worker/inference-event-delivery');
-    const operation = consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController, onChange: () => {}, items: createInferenceGeneration({ signal: abortController.signal,
-      generate: async ({ onEvent }) => {
-        const queue = delivery.createInferenceEventDelivery({ onEvent: async ({ event }) => {
-          events.push(event); await onEvent({ event });
-        }, onFailure: () => {} });
-        try {
-          await selectGenerationStrategy({ modelType: 'gemma4', activeModelId: modelId }).generate({
-            model: { config: {}, generate: nativeGenerate } as unknown as GenerationStrategyContext['model'],
-            tokenizer: tokenizer as unknown as GenerationStrategyContext['tokenizer'],
-            messages: [{ role: 'user', content: 'Run the source-derived example.' }], onChunk, onToolCalls, onRawChunk: () => {},
-            params: undefined, tools: [{ type: 'function', function: { name: 'calculator', description: 'Arithmetic', parameters: { type: 'object', properties: { expression: { type: 'string' } } } } }],
-            stoppingCriteria: { reset: () => {}, interrupt: () => {} }, runtimeState: state, debugLog: () => {},
-            observationSink: undefined, generationCapture: undefined, onGenerationEvent: ({ event }) => queue.enqueue({ event }),
+    const operation = consumeChatGeneration({
+      onToolCallDraftsChange: undefined,
+      node,
+      abortController,
+      onChange: () => {},
+      items: createInferenceGeneration({
+        signal: abortController.signal,
+        generate: async ({ onEvent }) => {
+          const queue = delivery.createInferenceEventDelivery({
+            onEvent: async ({ event }) => {
+              events.push(event); await onEvent({ event });
+            },
+            onFailure: () => {},
           });
-        } finally {
-          await queue.finish();
-        }
-      },
-    }) });
+          try {
+            await selectGenerationStrategy({ modelType: 'gemma4', activeModelId: modelId }).generate({
+              model: { config: {}, generate: nativeGenerate } as unknown as GenerationStrategyContext['model'],
+              tokenizer: tokenizer as unknown as GenerationStrategyContext['tokenizer'],
+              messages: [{ role: 'user', content: 'Run the source-derived example.' }],
+              onChunk,
+              onToolCalls,
+              onRawChunk: () => {},
+              params: undefined,
+              tools: [{ type: 'function', function: { name: 'calculator', description: 'Arithmetic', parameters: { type: 'object', properties: { expression: { type: 'string' } } } } }],
+              stoppingCriteria: { reset: () => {}, interrupt: () => {} },
+              runtimeState: state,
+              debugLog: () => {},
+              observationSink: undefined,
+              generationCapture: undefined,
+              onGenerationEvent: ({ event }) => queue.enqueue({ event }),
+            });
+          } finally {
+            await queue.finish();
+          }
+        },
+      }),
+    });
     let settled = false; void operation.finally(() => {
       settled = true;
     });
@@ -159,22 +201,48 @@ describe('Gemma native output with the Production streamer and original tokenize
     const { NativeProtocolStreamer } = await import('@/features/transformers-js/models/native-protocol-streamer');
     const native = `<|channel>thought\n  R\n\n<channel|><|tool_call>call:calculator{expression:<|"|>17 * 23<|"|>}<tool_call|><|tool_response>`;
     const node = assistant();
-    const operation = consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: new AbortController(), onChange: () => {}, items: createInferenceGeneration({ signal: undefined, generate: async ({ onEvent }) => {
-      const events: InferenceGenerationEvent[] = [];
-      const decoder = createGemma4Generation({ toolCalls: 'enabled', emit: ({ event }) => {
-        events.push(event);
-      } });
-      const streamer = new NativeProtocolStreamer({ protocolTokens: undefined, tokenizer: tokenizer as unknown as ConstructorParameters<typeof NativeProtocolStreamer>[0]['tokenizer'], onText: ({ text }) => decoder.text({ text }), onControl: ({ token }) => decoder.control({ token }) });
-      streamer.put([[1n]]); streamer.put([tokenizer.encode(native, { add_special_tokens: false }).map(BigInt)]); streamer.end(); decoder.finish({ reason: 'unknown' });
-      for (const event of events) await onEvent({ event });
-    } }) });
+    const operation = consumeChatGeneration({
+      onToolCallDraftsChange: undefined,
+      node,
+      abortController: new AbortController(),
+      onChange: () => {},
+      items: createInferenceGeneration({
+        signal: undefined,
+        generate: async ({ onEvent }) => {
+          const events: InferenceGenerationEvent[] = [];
+          const decoder = createGemma4Generation({
+            toolCalls: 'enabled',
+            emit: ({ event }) => {
+              events.push(event);
+            },
+          });
+          const streamer = new NativeProtocolStreamer({ protocolTokens: undefined, tokenizer: tokenizer as unknown as ConstructorParameters<typeof NativeProtocolStreamer>[0]['tokenizer'], onText: ({ text }) => decoder.text({ text }), onControl: ({ token }) => decoder.control({ token }) });
+          streamer.put([[1n]]); streamer.put([tokenizer.encode(native, { add_special_tokens: false }).map(BigInt)]); streamer.end(); decoder.finish({ reason: 'unknown' });
+          for (const event of events) await onEvent({ event });
+        },
+      }),
+    });
     expect(await operation).toEqual({ type: 'finished', next: 'tool_results' });
     const callPart = node.parts.find(p => p.type === 'tool_call'); if (!callPart) throw new Error('Expected a completed call.');
-    const tool: ToolMessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 2, modelId: undefined, lmParameters: undefined,
-      parts: [{ type: 'tool_result', result: { toolCallId: callPart.toolCall.id, status: 'success', content: { type: 'text', text: '391' } } }], replies: { items: [] } };
+    const tool: ToolMessageNode = {
+      id: toMessageId({ raw: 'tool' }),
+      role: 'tool',
+      createdAt: 2,
+      modelId: undefined,
+      lmParameters: undefined,
+      parts: [{ type: 'tool_result', result: { toolCallId: callPart.toolCall.id, status: 'success', content: { type: 'text', text: '391' } } }],
+      replies: { items: [] },
+    };
     node.replies.items.push(tool);
-    const user: UserMessageNode = { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 0, modelId: undefined, lmParameters: undefined,
-      parts: [{ type: 'text', text: 'Calculate.', completeness: 'complete' }], replies: { items: [node] } };
+    const user: UserMessageNode = {
+      id: toMessageId({ raw: 'user' }),
+      role: 'user',
+      createdAt: 0,
+      modelId: undefined,
+      lmParameters: undefined,
+      parts: [{ type: 'text', text: 'Calculate.', completeness: 'complete' }],
+      replies: { items: [node] },
+    };
     const chat: ChatContent = { root: { items: [user] }, currentLeafId: tool.id };
     const chatId = toChatId({ raw: 'gemma-native' }); const storage = new MemoryStorageProvider();
     await storage.saveChatContent({ id: chatId, content: chat }); const restored = await storage.loadChatContent({ id: chatId }); if (!restored) throw new Error('Expected stored content.');

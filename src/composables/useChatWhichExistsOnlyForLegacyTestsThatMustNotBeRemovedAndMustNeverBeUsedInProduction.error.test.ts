@@ -17,7 +17,8 @@ vi.mock('../00-storage/service', () => ({
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatMeta: vi.fn(),
+    loadChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } }))),
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
@@ -61,15 +62,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     mockChat.mockReset();
     mockListModels.mockResolvedValue(['gpt-4']);
 
-    __testOnlySetSettings({ newSettings: {
-      endpoint: { type: 'openai', url: 'https://api.openai.com' },
-      defaultModelId: 'gpt-4',
-      titleGeneration: 'disabled',
-      storageType: 'local',
-      providerProfiles: [],
-      mounts: [],
-      heavyContentAlertDismissed: true,
-    } });
+    __testOnlySetSettings({
+      newSettings: {
+        endpoint: { type: 'openai', url: 'https://api.openai.com' },
+        defaultModelId: 'gpt-4',
+        titleGeneration: 'disabled',
+        storageType: 'local',
+        providerProfiles: [],
+        mounts: [],
+        heavyContentAlertDismissed: true,
+      },
+    });
   });
 
   it('should set error state on assistant node when generation fails', async () => {
@@ -78,9 +81,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
     // Setup failure
-    mockChat.mockImplementation(({ signal }) => createChatGenerationStream({ signal, run: async () => {
-      throw new Error('API Error');
-    } }));
+    mockChat.mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async () => {
+        throw new Error('API Error');
+      },
+    }));
 
     await sendMessage({ content: 'Hello' });
     // Wait for the background generation task to fail
@@ -98,9 +104,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
     // 1. Fail first
-    mockChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({ signal, run: async () => {
-      throw new Error('First Fail');
-    } }));
+    mockChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async () => {
+        throw new Error('First Fail');
+      },
+    }));
 
     await sendMessage({ content: 'Hello' });
     await vi.waitUntil(() => !chatStore.streaming.value); // Wait for first fail
@@ -109,10 +118,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // 2. Retry (Success)
     // The next call to mockChat (for retry) should succeed
-    mockChat.mockImplementation(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-      await writer.text({ type: 'text', text: 'Success' });
-      return { type: 'finished', next: 'user' };
-    } }));
+    mockChat.mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Success' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
 
     await regenerateMessage({ failedMessageId: idToRaw({ id: failedMsg!.id }) });
     await vi.waitUntil(() => !chatStore.streaming.value); // Wait for success retry

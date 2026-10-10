@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock }
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
-import { nextTick, ref, reactive, computed } from 'vue';
+import { nextTick, ref, reactive, computed, type ComputedRef } from 'vue';
+import WelcomeScreen from './WelcomeScreen.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '@/composables/useChatDraft';
 import { setupScrollToMock } from '@/utils/test-utils';
@@ -13,7 +14,8 @@ import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/01-
 
 const mockStreamDownload = vi.hoisted(() => vi.fn());
 vi.mock('@/utils/stream-download', async importOriginal => ({
-  ...await importOriginal<typeof import('@/utils/stream-download')>(), downloadStream: mockStreamDownload,
+  ...await importOriginal<typeof import('@/utils/stream-download')>(),
+  downloadStream: mockStreamDownload,
 }));
 
 // Mock router
@@ -50,12 +52,28 @@ const {
 // Test the real ChatPane/ChatInput wiring independently of the setup state
 // machine, which has deferred-file and download tests in useModelLaunchChat.
 const launchComposerOverride = ref<'visible' | 'hidden'>();
+const launchVisibilityOverride = ref<boolean>();
+// Browser/profile lifecycle is tested in useFirefoxWebGpuWarning. This suite
+// verifies the real pane's eligibility gate and shared notice-slot wiring.
+const firefoxWebGpuWarningCandidate = ref(false);
+vi.mock('@/features/llama-cpp-browser/composables/useFirefoxWebGpuWarning', () => ({
+  useFirefoxWebGpuWarning: ({ enabled }: { enabled: ComputedRef<boolean> }) => ({
+    visible: computed(() => enabled.value && firefoxWebGpuWarningCandidate.value),
+  }),
+}));
 vi.mock('@/features/llama-cpp-browser/composables/useModelLaunchChat', async importOriginal => {
   const original = await importOriginal<typeof import('@/features/llama-cpp-browser/composables/useModelLaunchChat')>();
-  return { ...original, useModelLaunchChat: (args: Parameters<typeof original.useModelLaunchChat>[0]) => {
-    const state = original.useModelLaunchChat(args);
-    return { ...state, composerVisibility: computed(() => launchComposerOverride.value ?? state.composerVisibility.value) };
-  } };
+  return {
+    ...original,
+    useModelLaunchChat: (args: Parameters<typeof original.useModelLaunchChat>[0]) => {
+      const state = original.useModelLaunchChat(args);
+      return {
+        ...state,
+        composerVisibility: computed(() => launchComposerOverride.value ?? state.composerVisibility.value),
+        visible: computed(() => launchVisibilityOverride.value ?? state.visible.value),
+      };
+    },
+  };
 });
 // Disk inspection/cancellation is exercised in useMissingLlamaCppBrowserModel.
 // This suite keeps that boundary controlled while testing the real pane/input
@@ -63,14 +81,18 @@ vi.mock('@/features/llama-cpp-browser/composables/useModelLaunchChat', async imp
 const recoveryAvailability = ref<'checking' | 'available' | 'missing' | 'unreadable'>('available');
 vi.mock('@/features/llama-cpp-browser/composables/useMissingLlamaCppBrowserModel', async importOriginal => {
   const original = await importOriginal<typeof import('@/features/llama-cpp-browser/composables/useMissingLlamaCppBrowserModel')>();
-  return { ...original, useMissingLlamaCppBrowserModel: (args: Parameters<typeof original.useMissingLlamaCppBrowserModel>[0]) => {
-    const state = original.useMissingLlamaCppBrowserModel(args);
-    return { ...state,
-      availability: recoveryAvailability,
-      visible: computed(() => state.modelId.value !== undefined && ['missing', 'unreadable'].includes(recoveryAvailability.value)),
-      maySend: computed(() => state.modelId.value === undefined || recoveryAvailability.value === 'available'),
-    };
-  } };
+  return {
+    ...original,
+    useMissingLlamaCppBrowserModel: (args: Parameters<typeof original.useMissingLlamaCppBrowserModel>[0]) => {
+      const state = original.useMissingLlamaCppBrowserModel(args);
+      return {
+        ...state,
+        availability: recoveryAvailability,
+        visible: computed(() => state.modelId.value !== undefined && ['missing', 'unreadable'].includes(recoveryAvailability.value)),
+        maySend: computed(() => state.modelId.value === undefined || recoveryAvailability.value === 'available'),
+      };
+    },
+  };
 });
 const mockSendMessage = vi.fn().mockResolvedValue(true);
 const mockAbortChat = vi.fn();
@@ -96,6 +118,7 @@ const mockRenameChat = vi.fn().mockImplementation(({ newTitle }) => {
   }
 });
 const mockSaveSettings = vi.fn().mockResolvedValue(undefined);
+const mockSetIsOnboardingDismissed = vi.fn();
 const mockActiveGenerations = reactive(new Map());
 const mockCurrentChat = ref<Chat | null>({
   id: toChatId({ raw: '1' }),
@@ -109,6 +132,7 @@ const mockCurrentChat = ref<Chat | null>({
   createdAt: Date.now(),
   updatedAt: Date.now(),
 });
+
 // Text-only fixtures keep the component contract current without migrating raw DTO data.
 function createTextNode({ id, role, text, createdAt }: {
   id: MessageId,
@@ -116,7 +140,12 @@ function createTextNode({ id, role, text, createdAt }: {
   text: string,
   createdAt: number,
 }) {
-  const common = { id, createdAt, modelId: undefined, lmParameters: undefined, replies: { items: [] },
+  const common = {
+    id,
+    createdAt,
+    modelId: undefined,
+    lmParameters: undefined,
+    replies: { items: [] },
     parts: [{ type: 'text' as const, text, completeness: 'complete' as const }],
   };
   switch (role) {
@@ -282,7 +311,8 @@ vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemoved
       }
     }),
     chatFlow: computed(() => mockChatFlowOverride.value ?? mockActiveMessages.value.map(m => ({
-      type: 'message', key: JSON.stringify([idToRaw({ id: m.id }), 'content']),
+      type: 'message',
+      key: JSON.stringify([idToRaw({ id: m.id }), 'content']),
       node: m,
       partContent: getMessageText({ message: m }),
       mode: 'content',
@@ -371,7 +401,8 @@ function mountChatPane({
 vi.mock('../composables/useChatDisplayFlow', () => ({
   useChatDisplayFlow: () => ({
     chatFlow: computed(() => mockChatFlowOverride.value ?? mockActiveMessages.value.map(m => ({
-      type: 'message', key: JSON.stringify([idToRaw({ id: m.id }), 'content']),
+      type: 'message',
+      key: JSON.stringify([idToRaw({ id: m.id }), 'content']),
       node: m,
       partContent: getMessageText({ message: m }),
       mode: 'content',
@@ -692,6 +723,7 @@ vi.mock('../composables/useSettings', () => ({
     isFetchingModels: mockFetchingModels,
     fetchModels: mockFetchAvailableModels,
     save: mockSaveSettings,
+    setIsOnboardingDismissed: mockSetIsOnboardingDismissed,
     setFakeLmDebugModeStatus: mockSetFakeLmDebugModeStatus,
   }),
 }));
@@ -766,6 +798,8 @@ let wrapper: VueWrapper<any> | null = null;
 
 function resetMocks() {
   launchComposerOverride.value = undefined;
+  launchVisibilityOverride.value = undefined;
+  firefoxWebGpuWarningCandidate.value = false;
   recoveryAvailability.value = 'available';
   const { TEST_ONLY: { clearAllDrafts } } = useChatDraft();
   clearAllDrafts();
@@ -818,7 +852,7 @@ function resetMocks() {
   mockResolvedSettings.value = {
     endpoint: { type: 'openai', url: 'http://localhost' },
     modelId: 'global-default-model',
-    sources: { modelId: 'global', titleModelId: 'global' },
+    sources: { endpoint: 'global', modelId: 'global', titleModelId: 'global' },
   };
   mockInheritedSettings.value = {
     endpoint: { type: 'openai', url: 'http://localhost' },
@@ -1339,7 +1373,7 @@ Question`,
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
     expect(mockSaveSettings).toHaveBeenCalledWith({
-      patch: { titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } } },
+      patch: { titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } } },
       modelRefresh: 'await',
     });
     expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }), signal: undefined, titleModelIdOverride: 'model-2' });
@@ -1450,12 +1484,12 @@ Question`,
     mockResolvedSettings.value = {
       endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'global-default-model',
-      titleGeneration: { endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'model-2' , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      titleGeneration: { endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'model-2', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       sources: { modelId: 'global', titleGeneration: 'chat' },
     };
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     };
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -1482,7 +1516,7 @@ Question`,
     mockResolvedSettings.value = {
       endpoint: { type: 'openai', url: 'http://localhost' },
       modelId: 'global-default-model',
-      titleGeneration: { endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'model-2' , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      titleGeneration: { endpoint: { type: 'openai', url: 'http://localhost' }, modelId: 'model-2', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       sources: { modelId: 'global', titleGeneration: 'chat_group' },
     };
     mockCurrentChat.value = {
@@ -1492,7 +1526,7 @@ Question`,
     mockCurrentChatGroup.value = {
       id: 'group-1',
       name: 'Group 1',
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'model-2' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
     };
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -1696,9 +1730,14 @@ Question`,
   });
 
   it('should keep the inspector closed when toggling debug and close it on chat navigation', async () => {
-    wrapper = mountChatPane({ global: { plugins: [router], stubs: {
-      ChatDebugInspector: { template: '<div data-testid="chat-inspector"></div>' },
-    } } });
+    wrapper = mountChatPane({
+      global: {
+        plugins: [router],
+        stubs: {
+          ChatDebugInspector: { template: '<div data-testid="chat-inspector"></div>' },
+        },
+      },
+    });
     await flushPromises();
     await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     await wrapper.find('[data-testid="toggle-debug-button"]').trigger('click');
@@ -1774,10 +1813,16 @@ Question`,
   describe('Custom Overrides Indicator', () => {
     it('shows indicator when endpoint is overridden', async () => {
       mockCurrentChat.value = reactive({
-        id: 'c1', title: 'T', root: { items: [] },
+        id: 'c1',
+        title: 'T',
+        root: { items: [] },
         endpoint: { type: 'ollama', url: 'http://localhost:11434' },
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
-        modelId: undefined, createdAt: 0, updatedAt: 0,
+        currentLeafId: undefined,
+        debugEnabled: false,
+        originChatId: undefined,
+        modelId: undefined,
+        createdAt: 0,
+        updatedAt: 0,
       }) as any;
       wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
@@ -1785,10 +1830,16 @@ Question`,
 
     it('shows indicator when systemPrompt is overridden', async () => {
       mockCurrentChat.value = reactive({
-        id: 'c1', title: 'T', root: { items: [] },
+        id: 'c1',
+        title: 'T',
+        root: { items: [] },
         systemPrompt: { content: 'test', behavior: 'override' },
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
-        modelId: undefined, createdAt: 0, updatedAt: 0,
+        currentLeafId: undefined,
+        debugEnabled: false,
+        originChatId: undefined,
+        modelId: undefined,
+        createdAt: 0,
+        updatedAt: 0,
       }) as any;
       wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
@@ -1796,10 +1847,16 @@ Question`,
 
     it('shows indicator when lmParameters are overridden', async () => {
       mockCurrentChat.value = reactive({
-        id: 'c1', title: 'T', root: { items: [] },
+        id: 'c1',
+        title: 'T',
+        root: { items: [] },
         lmParameters: { temperature: 0.5 },
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
-        modelId: undefined, createdAt: 0, updatedAt: 0,
+        currentLeafId: undefined,
+        debugEnabled: false,
+        originChatId: undefined,
+        modelId: undefined,
+        createdAt: 0,
+        updatedAt: 0,
       }) as any;
       wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
@@ -1807,9 +1864,15 @@ Question`,
 
     it('does not show indicator when no overrides are present', async () => {
       mockCurrentChat.value = reactive({
-        id: 'c1', title: 'T', root: { items: [] },
-        currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
-        modelId: undefined, createdAt: 0, updatedAt: 0,
+        id: 'c1',
+        title: 'T',
+        root: { items: [] },
+        currentLeafId: undefined,
+        debugEnabled: false,
+        originChatId: undefined,
+        modelId: undefined,
+        createdAt: 0,
+        updatedAt: 0,
       }) as any;
       wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(false);
@@ -1880,6 +1943,73 @@ describe.each([
       }
     },
   );
+
+  it.each([
+    {
+      label: 'endpoint only missing',
+      endpoint: { type: 'openai', url: '' },
+      modelId: 'global-default-model',
+    },
+    {
+      label: 'model only missing',
+      endpoint: { type: 'openai', url: 'http://localhost' },
+      modelId: '',
+    },
+    {
+      label: 'both missing',
+      endpoint: { type: 'openai', url: '' },
+      modelId: '',
+    },
+  ] satisfies { label: string, endpoint: Endpoint, modelId: string }[])(
+    'opens onboarding from the real send button when $label, preserving the draft',
+    async ({ endpoint, modelId }) => {
+      mockSettings.value = { ...mockSettings.value, endpoint, defaultModelId: modelId };
+      mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint, modelId };
+      wrapper = mountChatPane({ global: { plugins: [router] } });
+      await flushPromises();
+      const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+      await textarea.setValue('hello');
+      const sendButton = wrapper.get<HTMLButtonElement>('[data-testid="send-button"]');
+      expect(sendButton.element.disabled).toBe(false);
+      expect(wrapper.getComponent(ChatInput).props('textSubmissionAction')).toBe('open-onboarding');
+
+      await sendButton.trigger('click');
+      await flushPromises();
+      expect(mockSetIsOnboardingDismissed).toHaveBeenCalledExactlyOnceWith({ dismissed: false });
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect(textarea.element.value).toBe('hello');
+
+      // Closing the modal without completing setup must permit reopening.
+      await sendButton.trigger('click');
+      expect(mockSetIsOnboardingDismissed).toHaveBeenCalledTimes(2);
+      expect(mockSendMessage).not.toHaveBeenCalled();
+
+      mockSettings.value = { ...mockSettings.value, endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'model-1' };
+      mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: mockSettings.value.endpoint, modelId: 'model-1' };
+      await nextTick();
+      expect(wrapper.getComponent(ChatInput).props('textSubmissionAction')).toBe('send');
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      await sendButton.trigger('click');
+      await flushPromises();
+      expect(mockSendMessage).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('does not open global onboarding for a broken chat-scoped endpoint override', async () => {
+    mockSettings.value = { ...mockSettings.value, endpoint: { type: 'openai', url: '' }, defaultModelId: '' };
+    mockResolvedSettings.value = {
+      ...mockResolvedSettings.value,
+      endpoint: { type: 'openai', url: '' },
+      modelId: 'model-1',
+      sources: { ...mockResolvedSettings.value.sources, endpoint: 'chat', modelId: 'chat' },
+    };
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    await wrapper.get('[data-testid="chat-input"]').setValue('hello');
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="send-button"]').element.disabled).toBe(true);
+    expect(wrapper.getComponent(ChatInput).props('textSubmissionAction')).toBe('blocked');
+    expect(mockSetIsOnboardingDismissed).not.toHaveBeenCalled();
+  });
 
   it.each([
     { shortcut: 'Ctrl+Enter', ctrlKey: true, metaKey: false },
@@ -2198,7 +2328,8 @@ describe('ChatPane Scrolling Logic', () => {
     ];
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[0]!.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[0]!.id }), 'content']),
         node: mockActiveMessages.value[0]!,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2207,7 +2338,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[1]!.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[1]!.id }), 'content']),
         node: mockActiveMessages.value[1]!,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2249,7 +2381,8 @@ describe('ChatPane Scrolling Logic', () => {
     mockActiveMessages.value = [userMessage, assistantMessage];
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
         node: userMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2258,7 +2391,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: assistantMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: assistantMessage.id }), 'content']),
         node: assistantMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2281,7 +2415,8 @@ describe('ChatPane Scrolling Logic', () => {
     mockChatFlowOverride.value = [
       mockChatFlowOverride.value[0]!,
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: assistantMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: assistantMessage.id }), 'content']),
         node: assistantMessage,
         mode: 'content',
         partContent: assistantMessage.parts[0]!.text,
@@ -2319,7 +2454,8 @@ describe('ChatPane Scrolling Logic', () => {
       mockChatFlowOverride.value[0]!,
       mockChatFlowOverride.value[1]!,
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: secondUserMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: secondUserMessage.id }), 'content']),
         node: secondUserMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2328,7 +2464,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: secondAssistantMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: secondAssistantMessage.id }), 'content']),
         node: secondAssistantMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2396,7 +2533,8 @@ describe('ChatPane Scrolling Logic', () => {
     ];
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[0]!.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[0]!.id }), 'content']),
         node: mockActiveMessages.value[0]!,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2405,7 +2543,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[1]!.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[1]!.id }), 'content']),
         node: mockActiveMessages.value[1]!,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2414,7 +2553,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[2]!.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[2]!.id }), 'content']),
         node: mockActiveMessages.value[2]!,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2423,7 +2563,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[3]!.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[3]!.id }), 'content']),
         node: mockActiveMessages.value[3]!,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2467,7 +2608,8 @@ describe('ChatPane Scrolling Logic', () => {
     mockActiveMessages.value = [firstUser, abortedAssistant];
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: firstUser.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: firstUser.id }), 'content']),
         node: firstUser,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2476,7 +2618,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: abortedAssistant.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: abortedAssistant.id }), 'content']),
         node: abortedAssistant,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2497,7 +2640,8 @@ describe('ChatPane Scrolling Logic', () => {
     mockActiveMessages.value = [firstUser, abortedAssistant, retryUser, retryAssistant];
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: firstUser.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: firstUser.id }), 'content']),
         node: firstUser,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2506,7 +2650,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: abortedAssistant.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: abortedAssistant.id }), 'content']),
         node: abortedAssistant,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2515,7 +2660,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: retryUser.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: retryUser.id }), 'content']),
         node: retryUser,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2524,7 +2670,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: retryAssistant.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: retryAssistant.id }), 'content']),
         node: retryAssistant,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2563,7 +2710,8 @@ describe('ChatPane Scrolling Logic', () => {
     mockActiveMessages.value = [userMessage, firstAssistant];
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
         node: userMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2572,7 +2720,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: firstAssistant.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: firstAssistant.id }), 'content']),
         node: firstAssistant,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2593,7 +2742,8 @@ describe('ChatPane Scrolling Logic', () => {
     scrollTopSetterSpy.mockClear();
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
         node: userMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2602,7 +2752,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: firstAssistant.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: firstAssistant.id }), 'content']),
         node: firstAssistant,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2611,7 +2762,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: toolMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: toolMessage.id }), 'content']),
         node: toolMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2629,7 +2781,8 @@ describe('ChatPane Scrolling Logic', () => {
 
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: userMessage.id }), 'content']),
         node: userMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2638,7 +2791,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: firstAssistant.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: firstAssistant.id }), 'content']),
         node: firstAssistant,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2647,7 +2801,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: true,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: toolMessage.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: toolMessage.id }), 'content']),
         node: toolMessage,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2656,7 +2811,8 @@ describe('ChatPane Scrolling Logic', () => {
         isFirstInTurn: false,
       },
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: secondAssistant.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: secondAssistant.id }), 'content']),
         node: secondAssistant,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2724,7 +2880,8 @@ describe('ChatPane Scrolling Logic', () => {
     ];
     mockChatFlowOverride.value = [
       {
-        type: 'message', key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[0]!.id }), 'content']),
+        type: 'message',
+        key: JSON.stringify([idToRaw({ id: mockActiveMessages.value[0]!.id }), 'content']),
         node: mockActiveMessages.value[0]!,
         mode: 'content',
         flow: { position: 'standalone', nesting: 'none' },
@@ -2955,6 +3112,7 @@ describe('ChatPane Export Functionality', () => {
 
   // Mock browser APIs for file download
   const exported: Array<{ filename: string; text: string }> = [];
+
   beforeEach(() => {
     resetMocks();
     exported.length = 0;
@@ -2967,6 +3125,7 @@ describe('ChatPane Export Functionality', () => {
       exported.push({ filename, text: await new Response(await openStream()).text() });
     });
   });
+
   afterEach(() => {
     vi.restoreAllMocks();
     if (wrapper) {
@@ -3992,11 +4151,13 @@ describe('model-link composer visibility wiring', () => {
     document.body.innerHTML = '<div id="app"></div>';
     setupScrollToMock();
   });
+
   afterEach(() => {
     wrapper?.unmount(); wrapper = null;
     launchComposerOverride.value = undefined;
     document.body.innerHTML = '';
   });
+
   it('keeps the same input instance and draft while setup hides the composer and suggestions', async () => {
     wrapper = mountChatPane({ attachTo: document.body, global: { plugins: [router] } });
     await flushPromises();
@@ -4018,14 +4179,15 @@ describe('model-link composer visibility wiring', () => {
   });
 });
 
-
 describe('ordinary Chat missing browser model notice', () => {
   beforeEach(() => {
     resetMocks(); setupScrollToMock();
   });
+
   afterEach(() => {
     recoveryAvailability.value = 'available';
   });
+
   it('keeps the existing input and draft visible while an asynchronous absence notice appears', async () => {
     mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'hf.co/owner/Model:Model-Q4_K_M.gguf' };
     recoveryAvailability.value = 'checking';
@@ -4049,6 +4211,7 @@ describe('ordinary Chat missing browser model notice', () => {
     expect(mockSendMessage).not.toHaveBeenCalled();
     wrapper.unmount();
   });
+
   it('also offers recovery for a nonempty conversation without hiding messages or input', async () => {
     mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'user/original' };
     const node = createTextNode({ id: toMessageId({ raw: 'existing-user' }), role: 'user', text: 'Existing conversation', createdAt: 1 });
@@ -4061,5 +4224,106 @@ describe('ordinary Chat missing browser model notice', () => {
     expect(wrapper.findAll('[data-testid="model-recovery"]')).toHaveLength(1);
     expect(wrapper.get('textarea').isVisible()).toBe(true);
     wrapper.unmount();
+  });
+});
+
+describe('Welcome Screen Firefox WebGPU advisory wiring', () => {
+  beforeEach(() => {
+    resetMocks(); setupScrollToMock();
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' }, modelId: 'user/local-model' };
+    firefoxWebGpuWarningCandidate.value = true;
+  });
+
+  afterEach(() => {
+    wrapper?.unmount(); wrapper = null;
+  });
+
+  it.each(['privacy', 'model-launch'] as const)('supplements the %s welcome without replacing its primary content', async appearance => {
+    launchVisibilityOverride.value = appearance === 'model-launch';
+    wrapper = mountChatPane({
+      global: {
+        plugins: [router],
+        stubs: { LlamaCppBrowserModelLaunchCard: { template: '<section data-testid="model-launch-hero">Linked model</section>' } },
+      },
+    });
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="firefox-webgpu-warning"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="suggestions-container"]').exists()).toBe(true);
+    expect(wrapper.getComponent(WelcomeScreen).classes()).toContain('relative');
+    switch (appearance) {
+    case 'privacy': expect(wrapper.getComponent(WelcomeScreen).text()).toContain('All conversations are stored locally.'); break;
+    case 'model-launch': expect(wrapper.find('[data-testid="model-launch-hero"]').exists()).toBe(true); break;
+    default: { const exhaustive: never = appearance; throw new Error(String(exhaustive)); }
+    }
+  });
+
+  it('keeps the draft and submission policy intact when the advisory appears and disappears', async () => {
+    firefoxWebGpuWarningCandidate.value = false;
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    const textarea = wrapper.get<HTMLTextAreaElement>('textarea');
+    await textarea.setValue('Keep this draft while changing runtime options');
+    const input = wrapper.getComponent(ChatInput);
+    expect(input.props('isSubmissionEnabled')).toBe(true);
+    firefoxWebGpuWarningCandidate.value = true;
+    await nextTick();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(true);
+    expect(wrapper.get('textarea').element).toBe(textarea.element);
+    expect(textarea.element.value).toBe('Keep this draft while changing runtime options');
+    expect(input.isVisible()).toBe(true);
+    expect(input.props('isSubmissionEnabled')).toBe(true);
+    firefoxWebGpuWarningCandidate.value = false;
+    await nextTick();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(false);
+    // No empty named slot should change the ordinary wallpaper layout.
+    expect(wrapper.getComponent(WelcomeScreen).classes()).toContain('absolute');
+    expect(wrapper.get('textarea').element).toBe(textarea.element);
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('coexists with missing-model recovery and leaves recovery as the submission gate', async () => {
+    recoveryAvailability.value = 'missing';
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="firefox-webgpu-warning"]')).toHaveLength(1);
+    expect(wrapper.findAll('[data-testid="model-recovery"]')).toHaveLength(1);
+    expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(false);
+    recoveryAvailability.value = 'available';
+    await nextTick();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="model-recovery"]').exists()).toBe(false);
+    expect(wrapper.getComponent(ChatInput).props('isSubmissionEnabled')).toBe(true);
+  });
+
+  it('uses the resolved endpoint and removes the slot when the chat switches providers', async () => {
+    // A chat-local override can differ from the resolved inherited context.
+    mockCurrentChat.value!.endpoint = { type: 'openai', url: 'https://example.invalid' };
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(true);
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'transformers_js' } };
+    await flushPromises();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(false);
+    expect(wrapper.getComponent(WelcomeScreen).classes()).toContain('absolute');
+    mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: { type: 'llama_cpp_browser' } };
+    await flushPromises();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(true);
+  });
+
+  it('does not show the welcome advisory over an existing conversation', async () => {
+    const node = createTextNode({ id: toMessageId({ raw: 'warning-existing-user' }), role: 'user', text: 'Existing conversation', createdAt: 1 });
+    mockActiveMessages.value = [node];
+    mockCurrentChat.value!.root.items = [node];
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(false);
+    expect(wrapper.findComponent(WelcomeScreen).exists()).toBe(false);
+  });
+
+  it('does not create a warning for an unresolved chat', async () => {
+    mockCurrentChat.value = null;
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="firefox-webgpu-warning"]').exists()).toBe(false);
   });
 });

@@ -18,7 +18,9 @@ import request13 from './provider-content-tool-image.evidence.json';
 
 // One post-repair capture. Historical source/cases remain independently pinned.
 export const contentToolProviderReplayCatalog = {
-  context, provenance, sequence,
+  context,
+  provenance,
+  sequence,
   cases: {
     'first-turn': request1,
     'continuity': request2,

@@ -8,6 +8,7 @@ function cacheKey(input: RequestInfo | URL): string {
 
 class MemoryCache {
   readonly entries = new Map<string, Response>();
+
   async match(input: RequestInfo | URL, options?: CacheQueryOptions): Promise<Response | undefined> {
     const key = cacheKey(input);
     if (!options?.ignoreSearch) return this.entries.get(key)?.clone();
@@ -18,12 +19,15 @@ class MemoryCache {
     }
     return undefined;
   }
+
   async put(input: RequestInfo | URL, response: Response): Promise<void> {
     this.entries.set(cacheKey(input), response.clone());
   }
+
   async delete(input: RequestInfo | URL): Promise<boolean> {
     return this.entries.delete(cacheKey(input));
   }
+
   async keys(): Promise<Request[]> {
     return Array.from(this.entries.keys(), url => new Request(url));
   }
@@ -31,6 +35,7 @@ class MemoryCache {
 
 export class MemoryCacheStorage {
   readonly stores = new Map<string, MemoryCache>();
+
   async open(name: string): Promise<Cache> {
     let cache = this.stores.get(name);
     if (!cache) {
@@ -38,12 +43,15 @@ export class MemoryCacheStorage {
     }
     return cache as unknown as Cache;
   }
+
   async keys(): Promise<string[]> {
     return Array.from(this.stores.keys());
   }
+
   async delete(name: string): Promise<boolean> {
     return this.stores.delete(name);
   }
+
   async match(input: RequestInfo | URL, options?: MultiCacheQueryOptions): Promise<Response | undefined> {
     for (const [name, cache] of this.stores) {
       if (options?.cacheName && name !== options.cacheName) continue;
@@ -52,6 +60,7 @@ export class MemoryCacheStorage {
     }
     return undefined;
   }
+
   native(): CacheStorage {
     return this as unknown as CacheStorage;
   }
@@ -60,9 +69,11 @@ export class MemoryCacheStorage {
 export type TestClient = { id: string; type: 'window' | 'worker' | 'sharedworker'; url: string; postMessage?: (message: unknown) => void };
 export class TestClients {
   readonly clients = new Map<string, TestClient>();
+
   async get(id: string): Promise<TestClient | undefined> {
     return this.clients.get(id);
   }
+
   async matchAll(options?: { type?: string }): Promise<TestClient[]> {
     return Array.from(this.clients.values()).filter(client => !options?.type || options.type === 'all' || client.type === options.type);
   }
@@ -70,12 +81,14 @@ export class TestClients {
 
 class LifetimeEvent extends Event {
   readonly tasks: Promise<unknown>[] = [];
+
   waitUntil(promise: Promise<unknown>): void {
     this.tasks.push(promise);
     // Native waitUntil observes rejections immediately, including tasks added
     // while an earlier lifetime promise is pending.
     void promise.catch(() => {});
   }
+
   async finished(): Promise<void> {
     let count = -1;
     let failure: PromiseRejectedResult | undefined;
@@ -95,18 +108,22 @@ class RequestEvent extends LifetimeEvent {
   clientId = '';
   resultingClientId = '';
   readonly request: Request;
+
   constructor(request: Request) {
     super('fetch'); this.request = request;
   }
+
   respondWith(response: Promise<Response> | Response): void {
     if (this.response) throw new Error('respondWith called twice');
     this.response = Promise.resolve(response);
   }
 }
 
-export function createWorkerHarness({ script, scope, cacheStorage, clients, fetch }: {
+export function createWorkerHarness({ script, scope, cacheStorage, clients, fetch, registration = { scope }, skipWaiting = async () => {} }: {
   script: string;
   scope: string;
+  registration?: { scope: string; active?: ServiceWorker | null; installing?: ServiceWorker | null; waiting?: ServiceWorker | null };
+  skipWaiting?: () => Promise<void>;
   cacheStorage: MemoryCacheStorage;
   clients: TestClients;
   fetch: typeof globalThis.fetch;
@@ -115,7 +132,10 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
   const location = new URL('sw.js', scope);
   const listeners = new Map<EventListenerOrEventListenerObject, EventListener>();
   const global = {
-    location, registration: { scope }, caches: cacheStorage.native(), clients,
+    location,
+    registration,
+    caches: cacheStorage.native(),
+    clients,
     addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
       let wrapper = listeners.get(listener);
       if (!wrapper) {
@@ -134,18 +154,39 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
       const wrapper = listeners.get(listener);
       if (wrapper) target.removeEventListener(type, wrapper);
     },
-    skipWaiting: async () => {},
+    skipWaiting,
   };
   vm.runInNewContext(script, {
-    self: global, location, registration: global.registration,
-    navigator: { userAgent: 'Naidan worker test' }, caches: cacheStorage.native(), fetch,
+    self: global,
+    location,
+    registration: global.registration,
+    navigator: { userAgent: 'Naidan worker test' },
+    caches: cacheStorage.native(),
+    fetch,
     // Errors from the host-backed fetch/cache APIs belong to the worker realm
     // in browsers. Share their constructors so Workbox's instanceof checks match.
-    Error, TypeError, DOMException,
-    Request, Response, Headers, URL, URLSearchParams, console,
-    ExtendableEvent: LifetimeEvent, FetchEvent: RequestEvent,
-    setTimeout, clearTimeout, setInterval, clearInterval, performance, Promise,
-    ReadableStream, MessageChannel, MessagePort,
+    Error,
+    TypeError,
+    DOMException,
+    Request,
+    Response,
+    Headers,
+    URL,
+    URLSearchParams,
+    console,
+    ExtendableEvent: LifetimeEvent,
+    FetchEvent: RequestEvent,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+    performance,
+    Promise,
+    ReadableStream,
+    MessageChannel,
+    MessagePort,
+    AbortController,
+    AbortSignal,
   }, { filename: 'generated-sw.js' });
 
   function lifecycle(type: 'install' | 'activate'): Promise<void> {
@@ -181,9 +222,12 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
     return response;
   }
 
-  function messageWithPorts({ data, clientId, ports }: { data: unknown; clientId: string; ports: MessagePort[] }): Promise<void> {
+  function messageWithPorts({ data, clientId, ports, source = clients.clients.get(clientId) }: { data: unknown; clientId: string; ports: MessagePort[]; source?: unknown }): Promise<void> {
     const event = Object.assign(new LifetimeEvent('message'), {
-      data, origin: new URL(scope).origin, source: clients.clients.get(clientId), ports,
+      data,
+      origin: new URL(scope).origin,
+      source,
+      ports,
     });
     target.dispatchEvent(event);
     return event.finished();
@@ -192,10 +236,15 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
   async function message({ data, clientId, origin = new URL(scope).origin, replyPort = true }: { data: unknown; clientId: string; origin?: string; replyPort?: boolean }): Promise<unknown> {
     let reply: unknown;
     const event = Object.assign(new LifetimeEvent('message'), {
-      data, origin, source: clients.clients.get(clientId),
-      ports: replyPort ? [{ postMessage(value: unknown) {
-        reply = value;
-      }, close() {} }] : [],
+      data,
+      origin,
+      source: clients.clients.get(clientId),
+      ports: replyPort ? [{
+        postMessage(value: unknown) {
+          reply = value;
+        },
+        close() {},
+      }] : [],
     });
     target.dispatchEvent(event); await event.finished();
     return reply;
@@ -203,4 +252,5 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
   return { lifecycle, request, streamRequest, message, messageWithPorts };
 }
 
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

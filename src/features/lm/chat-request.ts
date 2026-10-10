@@ -10,7 +10,7 @@ import { exactObject } from '@/utils/exact-object';
 type BinaryReader = Parameters<LmProvider['chat']>[0]['readBinaryObject'];
 
 /** Snapshot plain model options without carrying reactive references into deferred work. */
-export function snapshotChatRequest({ messages, parameters, tools }: Pick<Parameters<LmProvider['chat']>[0], 'messages' | 'parameters' | 'tools'>) {
+export function snapshotChatRequest({ messages, parameters, tools }: { messages: Parameters<LmProvider['chat']>[0]['messages'], parameters: Parameters<LmProvider['chat']>[0]['parameters'], tools: Parameters<LmProvider['chat']>[0]['tools'] }) {
   const copy = messages.map(message => copyChatMessage({ message }));
   let settings: LmParameters | undefined;
   if (parameters !== undefined) {
@@ -20,11 +20,15 @@ export function snapshotChatRequest({ messages, parameters, tools }: Pick<Parame
     unhandledReasoning satisfies Record<PropertyKey, never>;
     settings = exactObject<LmParameters>()({ temperature, topP, maxCompletionTokens, presencePenalty, frequencyPenalty, stop: stop?.slice(), reasoning: { effort } });
   }
-  return { messages: copy, parameters: settings, tools: tools?.map(tool => {
-    const { name, description, parameters, ...unhandled } = tool;
+  return {
+    messages: copy,
+    parameters: settings,
+    tools: tools?.map(tool => {
+      const { name, description, parameters, ...unhandled } = tool;
     unhandled satisfies Record<PropertyKey, never>;
     return { name, description, parameters: z.record(z.string(), z.json()).parse(parameters) };
-  }) };
+    }),
+  };
 }
 
 export type ApiContentPart = { type: 'text', text: string } | { type: 'image_url', image_url: { url: string } };
@@ -97,13 +101,19 @@ export async function buildApiChatMessages({ messages, readBinaryObject, signal 
         }
       }
       // Without attachments this API has one text field. Keep absence distinct from empty text.
-      result.push({ role, content: content.some(part => part.type === 'image_url') ? content : content.map(part => {
-        switch (part.type) {
-        case 'text': return part.text;
-        case 'image_url': throw new Error('Expected text-only content.');
-        default: { const _ex: never = part; throw new Error(`Unhandled content: ${_ex}`); }
-        }
-      }).join(''), reasoning_content: undefined, tool_calls: undefined, tool_call_id: undefined });
+      result.push({
+        role,
+        content: content.some(part => part.type === 'image_url') ? content : content.map(part => {
+          switch (part.type) {
+          case 'text': return part.text;
+          case 'image_url': throw new Error('Expected text-only content.');
+          default: { const _ex: never = part; throw new Error(`Unhandled content: ${_ex}`); }
+          }
+        }).join(''),
+        reasoning_content: undefined,
+        tool_calls: undefined,
+        tool_call_id: undefined,
+      });
       break;
     }
     case 'assistant': {
@@ -193,6 +203,7 @@ async function resolveToolText({ content, readBinaryObject, signal }: { content:
   default: { const _ex: never = content; throw new Error(`Unhandled tool content: ${_ex}`); }
   }
 }
+
 async function toolText({ result, readBinaryObject, signal }: { result: ToolExecutionResult, readBinaryObject: BinaryReader, signal: AbortSignal | undefined }): Promise<string> {
   switch (result.status) {
   case 'executing': throw new Error('A tool result is still executing.');

@@ -2,6 +2,7 @@ import type { Core } from './core';
 
 type Stream = { flags: number, position: number };
 type Node = { id: number, mode: number, name: string, contents?: Record<string, Node>, node_ops: object, stream_ops: object };
+
 /** Adapt an OPFS reader to the generated Emscripten filesystem without copying the file. */
 export function mountReadOnlyFile({ core, path, source, maxChunkBytes }: {
   core: Core, path: string, source: { size: number, read: ({ destination, offset }: { destination: Uint8Array, offset: number }) => number }, maxChunkBytes: number,
@@ -21,8 +22,21 @@ export function mountReadOnlyFile({ core, path, source, maxChunkBytes }: {
   const timestamp = Date.now(); const size = source.size; let opens = 0; let removed = false;
   node.node_ops = {
     getattr() {
-      return { dev: 1, ino: node.id, mode: node.mode, nlink: 1, uid: 0, gid: 0, rdev: 0, size,
-        atime: new Date(timestamp), mtime: new Date(timestamp), ctime: new Date(timestamp), blksize: 4096, blocks: Math.ceil(size / 4096) };
+      return {
+        dev: 1,
+        ino: node.id,
+        mode: node.mode,
+        nlink: 1,
+        uid: 0,
+        gid: 0,
+        rdev: 0,
+        size,
+        atime: new Date(timestamp),
+        mtime: new Date(timestamp),
+        ctime: new Date(timestamp),
+        blksize: 4096,
+        blocks: Math.ceil(size / 4096),
+      };
     },
     setattr() {
       fail({ code: 'EROFS' });
@@ -64,7 +78,8 @@ export function mountReadOnlyFile({ core, path, source, maxChunkBytes }: {
     },
     write() {
       fail({ code: 'EROFS' });
-    }, mmap() {
+    },
+    mmap() {
       fail({ code: 'EINVAL' });
     },
   };
@@ -72,12 +87,16 @@ export function mountReadOnlyFile({ core, path, source, maxChunkBytes }: {
     FS.destroyNode(node); throw new Error('Expected MEMFS directory');
   }
   parent.contents[node.name] = node;
-  return { path, remove() {
-    if (opens !== 0) throw new Error('Close native file handles before unmounting');
-    if (!removed) {
-      FS.unlink(path); removed = true;
-    }
-  } };
+  return {
+    path,
+    remove() {
+      if (opens !== 0) throw new Error('Close native file handles before unmounting');
+      if (!removed) {
+        FS.unlink(path); removed = true;
+      }
+    },
+  };
 }
+
 export const TEST_ONLY = {
 };

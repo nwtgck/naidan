@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { VitePWAOptions } from 'vite-plugin-pwa';
 
-/** Worker-private generation ID: an online opt-in must not leak into the next worker. */
+/** One identity for the executing page and its offline worker, including redeploys. */
 export function createPWABuild({ buildId = randomUUID() }: { buildId?: string } = {}) {
   const define = { __PWA_BUILD_ID__: JSON.stringify(buildId) };
   const options: Partial<VitePWAOptions> = {
@@ -13,9 +13,11 @@ export function createPWABuild({ buildId = randomUUID() }: { buildId?: string } 
     registerType: 'prompt',
     includeAssets: ['favicon.svg', 'naidan-standalone.zip'],
     manifest: {
-      name: 'Naidan', short_name: 'Naidan',
+      name: 'Naidan',
+      short_name: 'Naidan',
       description: 'A privacy-focused, local-first AI interface',
-      theme_color: '#030712', background_color: '#030712',
+      theme_color: '#030712',
+      background_color: '#030712',
       icons: [{ src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }],
     },
     injectManifest: {
@@ -28,7 +30,8 @@ export function createPWABuild({ buildId = randomUUID() }: { buildId?: string } 
       buildPlugins: { vite: [{ name: 'naidan-pwa-build-identity', config: () => ({ define }) }] },
     },
   };
-  return { options };
+  return { options, define };
 }
 
-export const TEST_ONLY = {};
+export const TEST_ONLY = {
+};

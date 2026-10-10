@@ -111,14 +111,19 @@ export function createProductionLoadReceiptRecorder({ modelId, revision }: { mod
         refused = true;
       }
     },
-    finish({ autoClass, processor, candidate, plannedRequiredPaths }: Pick<ProductionLoadReceipt, 'autoClass' | 'processor' | 'candidate' | 'plannedRequiredPaths'>): ProductionLoadReceipt | undefined {
+    finish({ autoClass, processor, candidate, plannedRequiredPaths }: { autoClass: ProductionLoadReceipt['autoClass'], processor: ProductionLoadReceipt['processor'], candidate: ProductionLoadReceipt['candidate'], plannedRequiredPaths: ProductionLoadReceipt['plannedRequiredPaths'] }): ProductionLoadReceipt | undefined {
       if (refused || observedRevision === undefined) return undefined;
       const parsed = productionLoadReceiptSchema.safeParse({
-        format: 'production-offline-load-receipt-v1', modelId: cleanModelId,
+        format: 'production-offline-load-receipt-v1',
+        modelId: cleanModelId,
         loaderRevisionOption: revision === undefined ? { status: 'omitted' } : { status: 'provided', value: revision },
-        autoClass, processor, candidate, plannedRequiredPaths: [...new Set(plannedRequiredPaths)].sort(),
+        autoClass,
+        processor,
+        candidate,
+        plannedRequiredPaths: [...new Set(plannedRequiredPaths)].sort(),
         cacheLookup: { source: 'read-only-opfs-scoped-match', revision: observedRevision, hitPaths: [...hits].sort() },
-        completion: 'model-session-and-tokenizer-processor-ready', resourceHealth: 'healthy-after-close',
+        completion: 'model-session-and-tokenizer-processor-ready',
+        resourceHealth: 'healthy-after-close',
         accessBoundary: 'production-offline-read-only',
         limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
       });

@@ -62,7 +62,12 @@ describe('Sidebar DND Improvements', () => {
       if (typeof options.top === 'number') this.scrollTop = options.top;
     });
     HTMLElement.prototype.getBoundingClientRect = vi.fn().mockReturnValue({
-      top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0,
+      top: 0,
+      bottom: 0,
+      left: 0,
+      right: 0,
+      width: 0,
+      height: 0,
     });
 
     mockChatStore = {
@@ -320,6 +325,7 @@ describe('Sidebar DND Improvements', () => {
 
     expect(mockChatStore.setChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'g1', isCollapsed: false });
   });
+
   it('exposes sidebar scroll helper for selected chat handling', async () => {
     vi.useRealTimers();
     mockChatStore.chats.value = [{ id: 'chat-scroll-test', title: 'Test', updatedAt: Date.now() }];
@@ -331,12 +337,26 @@ describe('Sidebar DND Improvements', () => {
     const nav = wrapper.get('[data-testid="sidebar-nav"]').element as HTMLElement;
     const item = wrapper.get('[data-sidebar-chat-id="chat-scroll-test"]').element as HTMLElement;
     vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue({
-      top: 0, bottom: 100, left: 0, right: 100, width: 100, height: 100,
-      x: 0, y: 0, toJSON: () => ({}),
+      top: 0,
+      bottom: 100,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 100,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
     });
     vi.spyOn(item, 'getBoundingClientRect').mockReturnValue({
-      top: 180, bottom: 220, left: 0, right: 100, width: 100, height: 40,
-      x: 0, y: 180, toJSON: () => ({}),
+      top: 180,
+      bottom: 220,
+      left: 0,
+      right: 100,
+      width: 100,
+      height: 40,
+      x: 0,
+      y: 180,
+      toJSON: () => ({}),
     });
 
     const scrollPromise = (wrapper.vm as any).TEST_ONLY.scheduleSidebarItemScroll({

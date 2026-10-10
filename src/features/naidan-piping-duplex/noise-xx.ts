@@ -5,17 +5,20 @@ export type NaidanPipingIdentity = {
     privateKey: CryptoKey;
     publicKey: Uint8Array;
 };
+
 export async function createNaidanPipingIdentity(): Promise<NaidanPipingIdentity> {
   const keys = await crypto.subtle.generateKey({ name: 'X25519' }, false, ['deriveBits']);
   if (!('privateKey' in keys))
     throw new Error('Expected X25519 key pair');
   return { privateKey: keys.privateKey, publicKey: new Uint8Array(await crypto.subtle.exportKey('raw', keys.publicKey)) };
 }
+
 async function hash({ bytes }: {
     bytes: Uint8Array;
 }): Promise<Uint8Array<ArrayBuffer>> {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(bytes)));
 }
+
 async function hkdf2({ chaining, input }: {
     chaining: Uint8Array;
     input: Uint8Array;
@@ -24,8 +27,12 @@ async function hkdf2({ chaining, input }: {
     Uint8Array
 ]> {
   const key = await crypto.subtle.importKey('raw', new Uint8Array(input), 'HKDF', false, ['deriveBits']);
-  const result = new Uint8Array(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(chaining),
-    info: new Uint8Array() }, key, 512));
+  const result = new Uint8Array(await crypto.subtle.deriveBits({
+    name: 'HKDF',
+    hash: 'SHA-256',
+    salt: new Uint8Array(chaining),
+    info: new Uint8Array(),
+  }, key, 512));
   const pair: [
         Uint8Array,
         Uint8Array
@@ -33,24 +40,29 @@ async function hkdf2({ chaining, input }: {
   result.fill(0);
   return pair;
 }
+
 async function aeadKey({ bytes }: {
     bytes: Uint8Array;
 }): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', new Uint8Array(bytes), 'AES-GCM', false, ['encrypt', 'decrypt']);
 }
+
 export class NoiseCipher {
   private internalKey: CryptoKey | undefined;
   private internalNonce = 0n;
   private internalBusy = false;
   private internalClosed = false;
+
   constructor({ key }: {
         key: CryptoKey;
     }) {
     this.internalKey = key;
   }
+
   dispose(): void {
     this.internalClosed = true; this.internalKey = undefined;
   }
+
   async crypt({ operation, bytes, aad }: {
         operation: 'encrypt' | 'decrypt';
         bytes: Uint8Array;
@@ -96,6 +108,7 @@ export class NoiseXX {
   private internalBusy = false;
   private internalFailed = false;
   private internalSplitUsed = false;
+
   private constructor({ role, identity, ephemeral, initialHash }: {
         role: NaidanPipingRole;
         identity: NaidanPipingIdentity;
@@ -108,6 +121,7 @@ export class NoiseXX {
     this.internalChaining = initialHash.slice();
     this.internalHash = initialHash.slice();
   }
+
   static async create({ role, identity, ephemeral, prologue }: {
         role: NaidanPipingRole;
         identity: NaidanPipingIdentity;
@@ -121,16 +135,22 @@ export class NoiseXX {
     requireValue({ condition: publicKey.length === 32 && ephemeralPublic.length === 32, message: 'X25519 key size' });
     const name = ascii({ text: 'Noise_XX_25519_AESGCM_SHA256' });
     const initialHash = name.length <= 32 ? joinBytes({ parts: [name, new Uint8Array(32 - name.length)] }) : await hash({ bytes: name });
-    const state = new NoiseXX({ role, identity: { privateKey: identity.privateKey, publicKey },
-      ephemeral: { privateKey: ephemeral.privateKey, publicKey: ephemeralPublic }, initialHash });
+    const state = new NoiseXX({
+      role,
+      identity: { privateKey: identity.privateKey, publicKey },
+      ephemeral: { privateKey: ephemeral.privateKey, publicKey: ephemeralPublic },
+      initialHash,
+    });
     await state.internalMixHash({ bytes: input });
     return state;
   }
+
   private async internalMixHash({ bytes }: {
         bytes: Uint8Array;
     }): Promise<void> {
     this.internalHash = await hash({ bytes: joinBytes({ parts: [this.internalHash, bytes] }) });
   }
+
   private async internalMixDh({ privateKey, publicKey }: {
         privateKey: CryptoKey;
         publicKey: Uint8Array | undefined;
@@ -150,6 +170,7 @@ export class NoiseXX {
       secret.fill(0);
     }
   }
+
   private async internalField({ operation, bytes }: {
         operation: 'encrypt' | 'decrypt';
         bytes: Uint8Array;
@@ -158,10 +179,12 @@ export class NoiseXX {
     await this.internalMixHash({ bytes: isEncrypt({ operation }) ? result : bytes });
     return result;
   }
+
   get peerIdentity(): Uint8Array | undefined {
     requireValue({ condition: !this.internalFailed && !this.internalBusy, message: 'Handshake unavailable' });
     return this.internalRemoteStatic?.slice();
   }
+
   dispose(): void {
     this.internalFailed = true;
     this.internalChaining.fill(0);
@@ -170,6 +193,7 @@ export class NoiseXX {
     this.internalIdentity = undefined;
     this.internalEphemeral = undefined;
   }
+
   async exchange({ operation, bytes }: {
         operation: 'write' | 'read';
         bytes: Uint8Array;
@@ -211,11 +235,15 @@ export class NoiseXX {
         else
           this.internalRemoteStatic = await this.internalField({ operation: 'decrypt', bytes: take({ count: 48 }) });
         const useEphemeral = (this.internalStep === 1) === initiator;
-        await this.internalMixDh({ privateKey: useEphemeral ? ephemeral.privateKey : identity.privateKey,
-          publicKey: useEphemeral ? this.internalRemoteStatic : this.internalRemoteEphemeral });
+        await this.internalMixDh({
+          privateKey: useEphemeral ? ephemeral.privateKey : identity.privateKey,
+          publicKey: useEphemeral ? this.internalRemoteStatic : this.internalRemoteEphemeral,
+        });
       }
-      const payload = await this.internalField({ operation: isWrite({ operation }) ? 'encrypt' : 'decrypt',
-        bytes: isWrite({ operation }) ? input : input.slice(at) });
+      const payload = await this.internalField({
+        operation: isWrite({ operation }) ? 'encrypt' : 'decrypt',
+        bytes: isWrite({ operation }) ? input : input.slice(at),
+      });
       if (this.internalFailed)
         throw new Error('Handshake disposed');
       const message = isWrite({ operation }) ? joinBytes({ parts: [...output, payload] }) : payload;
@@ -229,6 +257,7 @@ export class NoiseXX {
       this.internalBusy = false;
     }
   }
+
   async split(): Promise<{
         send: NoiseCipher;
         receive: NoiseCipher;
@@ -246,9 +275,12 @@ export class NoiseXX {
       first.fill(0);
       second.fill(0);
       requireValue({ condition: !this.internalFailed, message: 'Handshake disposed during split' });
-      return { send: new NoiseCipher({ key: isInitiator({ role: this.internalRole }) ? firstKey : secondKey }),
+      return {
+        send: new NoiseCipher({ key: isInitiator({ role: this.internalRole }) ? firstKey : secondKey }),
         receive: new NoiseCipher({ key: isInitiator({ role: this.internalRole }) ? secondKey : firstKey }),
-        binding: this.internalHash.slice(), peerIdentity: this.internalRemoteStatic.slice() };
+        binding: this.internalHash.slice(),
+        peerIdentity: this.internalRemoteStatic.slice(),
+      };
     } finally {
       first?.fill(0);
       second?.fill(0);
@@ -266,6 +298,7 @@ function isEncrypt({ operation }: { operation: 'encrypt' | 'decrypt' }): boolean
   default: { const unreachable: never = operation; throw new Error(`Invalid cipher operation: ${unreachable}`); }
   }
 }
+
 function isWrite({ operation }: { operation: 'write' | 'read' }): boolean {
   switch (operation) {
   case 'write': return true;

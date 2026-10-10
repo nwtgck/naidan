@@ -116,6 +116,7 @@ describe('require-named-args rule', () => {
       const results = await createTypedEslint({ typedTsconfigPath }).lintFiles([typedTestFilePath]);
       return results[0]?.messages ?? [];
     } finally {
+      parser.clearCaches();
       fs.rmSync(typedTestFilePath, { force: true });
       fs.rmSync(typedTsconfigPath, { force: true });
     }
@@ -182,7 +183,7 @@ describe('require-named-args rule', () => {
     const messages = await lint(`type EmptyArgs = Record<never, never>; function read(_args: EmptyArgs) {}`);
 
     expect(messages).toHaveLength(1);
-    expect(messages[0]?.message).toBe('Use one destructured object param, e.g. fn({ value }: Args). Disable only for true external/deprecated contracts.');
+    expect(messages[0]?.message).toBe('Use one destructured object param, e.g. fn({ value }: { value: Value }). Disable only for true external/deprecated contracts.');
   });
 
   it('allows any identifier name for the explicit empty named args type', async () => {
@@ -199,8 +200,199 @@ describe('require-named-args rule', () => {
     await expect(lint(`function read({ id = 'a' }: { id?: string } = {}) {}`)).resolves.toHaveLength(0);
   });
 
-  it('allows alias-typed destructured object parameters', async () => {
-    await expect(lint(`type Args = { id: string }; function read({ id }: Args) {}`)).resolves.toHaveLength(0);
+  it.each([
+    `type Args = { id: string }; function read({ id }: Args) {}`,
+    `interface Args { id: string } const read = ({ id }: Args) => id;`,
+    `import type { Args } from './args'; function read({ id }: Args) {}`,
+    `type Args = { id?: string }; function read({ id = 'a' }: Args = {}) {}`,
+    `type Args = { id: string }; class Reader { constructor({ id }: Args) {} }`,
+    `type Args = { id: string }; class Reader { read({ id }: Args) {} }`,
+    `type Args = { id: string }; abstract class Reader { abstract read({ id }: Args): void; }`,
+    `type Args = { id: string }; declare class Reader { read({ id }: Args): void; }`,
+    `type Args = { id: string }; declare class Reader { constructor({ id }: Args); }`,
+    `type Args = { id: string }; class Reader { read({ id }: Args): void; read({ id }: { id: string }) {} }`,
+    `type Args = { id: string }; const reader = { read({ id }: Args) {} };`,
+    `type Args = { id: string }; type Read = ({ id }: Args) => void;`,
+    `type Args = { id: string }; interface Reader { read({ id }: Args): void }`,
+    `type Args = { id: string }; interface Reader { ({ id }: Args): void }`,
+    `type Args = { id: string }; interface Reader { new ({ id }: Args): Reader }`,
+    `type Args = { id: string }; type Reader = new ({ id }: Args) => object;`,
+    `type Args = { id: string }; const read = ({ ...args }: Args) => args;`,
+    `type Args = { id: string }; function read(this: object, { id }: Args) {}`,
+    `function read({ id }: Pick<Args, 'id'>) {}`,
+    `function read({ id }: Omit<Args, 'name'>) {}`,
+    `function read({ id }: Parameters<Read>[0]) {}`,
+    `function read({ id }: ReturnType<Read>) {}`,
+    `function read({ id }: typeof args) {}`,
+    `type Args = { id: string }; declare function read({ id }: Args): void;`,
+    `type Args = { id: string }; function read({ id }: Args): void; function read({ id }: { id: string }) {}`,
+    `function read<T extends { id: string }>({ id }: T) {}`,
+    `function read({ id }: { id: string } & Args) {}`,
+    `function read({ id }: { id: string } | Args) {}`,
+    `function read({ id }: any) {}`,
+    `type Handler = ({ type }: Event) => void;`,
+  ])('reports non-inline outer named-args types: %s', async (code) => {
+    const messages = await lint(code);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.messageId).toBe('requireInlineNamedArgsType');
+    expect(messages[0]?.fix).toBeUndefined();
+    expect(messages[0]?.suggestions).toBeUndefined();
+  });
+
+  it.each([
+    `type Args = { id: string }; function read({ id }: { id: Args['id'] }) {}`,
+    `type Value = { id: string }; function read({ value }: { value: Value }) {}`,
+    `declare function create({ name }?: { readonly name?: string }): void;`,
+    `type Create = new ({ value }: { value: Value }) => Value;`,
+    `abstract class Reader { abstract read({ id }: { id: string }): void; }`,
+    `declare class Reader { read({ id }: { id: string }): void; constructor({ id }: { id: string }); }`,
+    `class Reader { read({ id }: { id: string }): void; read({ id }: { id: string }) {} }`,
+    `function read({ id }: ({ id: string })) {}`,
+    `function read({ id }: { id: string, kind: 'a' } | { id: string, kind: 'b' }) {}`,
+    `function read({ id, name }: { id: string } & { name: string }) {}`,
+    `type Read = ({ id }: { id: string }) => void; const read: Read = ({ id }) => {};`,
+    `interface Reader { read({ id }: { id: string }): void } const reader: Reader = { read({ id }) {} };`,
+  ])('allows visible shapes and contextual implementations: %s', async (code) => {
+    await expect(lint(code)).resolves.toHaveLength(0);
+  });
+
+  it('allows only verified shape-preserving wrappers around visible shapes', async () => {
+    await expect(typedLint(`
+import type { WorkerTransfer as Transfer } from '../../src/utils/worker-transport';
+function read({ id }: Readonly<{ id: string }>) {}
+function transfer({ id }: Transfer<{ id: string }>) {}
+function nested({ id }: Transfer<Readonly<{ id: string }>>) {}
+`)).resolves.toHaveLength(0);
+  });
+
+  it('reports aliases and derived shapes even inside otherwise permitted wrappers', async () => {
+    const messages = await typedLint(`
+import type { WorkerTransfer } from '../../src/utils/worker-transport';
+type Args = { id: string };
+function read({ id }: Readonly<Args>) {}
+function transfer({ id }: WorkerTransfer<Args>) {}
+function pick({ id }: Pick<{ id: string, name: string }, 'id'>) {}
+function mapped({ id }: { [Key in 'id']: string }) {}
+`);
+    expect(messages).toHaveLength(4);
+    expect(messages.every(message => message.messageId === 'requireInlineNamedArgsType')).toBe(true);
+  });
+
+  it('does not trust wrapper names or arbitrary generic wrappers', async () => {
+    const messages = await typedLint(`
+type Readonly<T> = T & { hidden: number };
+type WorkerTransfer<T> = T & { hidden: number };
+type Wrapper<T> = T;
+function read({ id }: Readonly<{ id: string }>) {}
+function transfer({ id }: WorkerTransfer<{ id: string }>) {}
+function wrapped({ id }: Wrapper<{ id: string }>) {}
+`);
+    expect(messages).toHaveLength(3);
+  });
+
+  it('keeps external destructured callback contracts unchanged', async () => {
+    await expect(typedLint(`
+const channel = new MessageChannel();
+channel.port1.onmessage = ({ data }: MessageEvent<unknown>) => { void data; };
+const listener: EventListener = ({ type }: Event) => { void type; };
+const items: { id: string }[] = [];
+type Item = { id: string };
+items.map(({ id }: Item) => id);
+Promise.resolve({ id: 'a' }).then(({ id }: Item) => id);
+const handlers: EventListenerObject = { handleEvent({ type }: Event) { void type; } };
+class Listener implements EventListenerObject { handleEvent({ type }: Event) { void type; } }
+`)).resolves.toHaveLength(0);
+  });
+
+
+  it('preserves external contracts on abstract methods, overloads, and class expressions', async () => {
+    await expect(typedLint(`\
+abstract class Listener implements EventListenerObject { abstract handleEvent({ type }: Event): void; }
+declare class DeclaredListener implements EventListenerObject { handleEvent({ type }: Event): void; }
+class OverloadedListener implements EventListenerObject {
+  handleEvent({ type }: Event): void;
+  handleEvent({ type }: Event) { void type; }
+}
+const ExpressionListener = class implements EventListenerObject { handleEvent({ type }: Event) { void type; } };
+`)).resolves.toHaveLength(0);
+  });
+
+  it('reports Naidan-owned abstract and declared positional methods', async () => {
+    const messages = await lint(`\
+abstract class Reader { abstract read(id: string): void; }
+declare class Writer { write(id: string): void; constructor(id: string); }
+`);
+    expect(messages).toHaveLength(3);
+  });
+
+  it('does not treat constructors as inherited external method contracts', async () => {
+    const messages = await typedLint(`\
+declare class Listener implements EventListenerObject {
+  constructor({ type }: Event);
+  handleEvent({ type }: Event): void;
+}
+`);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.messageId).toBe('requireInlineNamedArgsType');
+  });
+
+  it('does not exempt alias-typed callbacks through shadowed platform constructors', async () => {
+    const messages = await typedLint(`\
+type Input = { value: string };
+class ReadableStream {
+  constructor({ start }: { start: ({ value }: { value: string }) => void }) {}
+}
+new ReadableStream({ start({ value }: Input) { void value; } });
+`);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.messageId).toBe('requireInlineNamedArgsType');
+  });
+
+  it('does not exempt alias-typed setters through shadowed Vue computed bindings', async () => {
+    const messages = await typedLint(`\
+import { computed } from 'vue';
+type Input = { value: string };
+function create() {
+  function computed({ get, set }: { get: () => Input, set: ({ value }: { value: string }) => void }) {}
+  computed({ get: () => ({ value: 'a' }), set({ value }: Input) { void value; } });
+}
+`);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.messageId).toBe('requireInlineNamedArgsType');
+  });
+
+  it('preserves verified stream and Vue callbacks with non-inline payload types', async () => {
+    await expect(typedLint(`\
+import { computed } from 'vue';
+type Input = { value: string };
+new WritableStream<Input>({ write({ value }: Input) { void value; } });
+new ReadableStream<string>({ start({ desiredSize }: ReadableStreamDefaultController<string>) { void desiredSize; } });
+computed({ get: (): Input => ({ value: 'a' }), set({ value }: Input) { void value; } });
+`)).resolves.toHaveLength(0);
+  });
+
+  it('does not let direct call arguments hide Naidan-owned alias-typed callbacks', async () => {
+    const messages = await typedLint(`
+type Args = { id: string };
+function consume({ callback }: { callback: ({ id }: { id: string }) => void }) {}
+consume({ callback: ({ id }: Args) => {} });
+declare function register({ id }: { id: string }): void;
+// eslint-disable-next-line local-rules-named-args/require-named-args -- A local call boundary in this fixture.
+declare function use(callback: typeof register): void;
+use(({ id }: Args) => {});
+`);
+    expect(messages).toHaveLength(2);
+    expect(messages.every(message => message.messageId === 'requireInlineNamedArgsType')).toBe(true);
+  });
+
+  it('reports alias-typed callbacks on Naidan-owned assignment targets', async () => {
+    const messages = await typedLint(`
+type Args = { id: string };
+let read: ({ id }: { id: string }) => void = () => {};
+read = ({ id }: Args) => {};
+`);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.messageId).toBe('requireInlineNamedArgsType');
   });
 
   it('reports single positional parameters with destructuring guidance', async () => {
@@ -502,6 +694,27 @@ interface LocalEventTarget extends LocalBase { addEventListener(type: string, li
     expect(messages).toHaveLength(1);
   }, 30_000);
 
+
+  it('keeps tagged-template destructuring as a language-defined contract', async () => {
+    await expect(lint(`function tag({ raw }: TemplateStringsArray, ...values: unknown[]) { return raw.join(String(values)); }`)).resolves.toHaveLength(0);
+  });
+
+  it('keeps the named-args rule disabled for test and spec files without ignoring other lint rules', async () => {
+    const scoped = new ESLint({
+      overrideConfigFile: true,
+      overrideConfig: [
+        { files: ['**/*.ts'], languageOptions: { parser }, rules: { 'no-debugger': 'error' } },
+        ruleConfig,
+      ],
+    });
+    const code = 'function read({ id }: Args) { debugger; return id; }';
+    for (const suffix of ['test.ts', 'spec.ts']) {
+      const [result] = await scoped.lintText(code, { filePath: path.resolve(testFileDir, `scope.${suffix}`) });
+      expect(result?.messages.map(message => message.ruleId)).toEqual(['no-debugger']);
+    }
+    const [production] = await scoped.lintText(code, { filePath: path.resolve(testFileDir, 'scope.ts') });
+    expect(production?.messages.map(message => message.ruleId)).toEqual(['local-rules-named-args/require-named-args', 'no-debugger']);
+  });
 
   it('does not provide autofixes', () => {
     expect(rule.meta).not.toHaveProperty('fixable');

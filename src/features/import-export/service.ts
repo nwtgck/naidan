@@ -77,9 +77,14 @@ function normalizeMessageDtoTree({ node }: { node: MessageNodeDto }): MessageNod
 
   // Reuse the ordinary migration for stable part IDs and content rules, but keep
   // the DTO-only experimental envelopes that are not application state.
-  const converted = messageNodeToDto({ domain: messageNodeToDomain({ dto: {
-    ...node, replies: { ...node.replies, items: [] },
-  } }) });
+  const converted = messageNodeToDto({
+    domain: messageNodeToDomain({
+      dto: {
+        ...node,
+        replies: { ...node.replies, items: [] },
+      },
+    }),
+  });
   converted.experimental = node.experimental;
   converted.replies = replies;
   switch (converted.role) {
@@ -151,7 +156,8 @@ function normalizeChatDtoTree({ chatDto }: { chatDto: ChatDto }): ChatDto {
   // Export/append write V2 message trees, without round-tripping existing V2
   // envelopes through application objects that intentionally omit experimental.
   if (chatDto.root && chatDto.root.items.length > 0) return {
-    ...chatDto, messages: undefined,
+    ...chatDto,
+    messages: undefined,
     root: { ...chatDto.root, items: chatDto.root.items.map(node => normalizeMessageDtoTree({ node })) },
   };
   return chatToDto({ domain: chatToDomain({ dto: chatDto }) });
@@ -352,7 +358,7 @@ interface ExportExclusionFlags {
   binaryObject: boolean,
 }
 
-function parseExportExclusions({ exclude }: Pick<ExportOptions, 'exclude'>): ExportExclusionFlags {
+function parseExportExclusions({ exclude }: { exclude?: ExportOptions['exclude'] }): ExportExclusionFlags {
   const flags: ExportExclusionFlags = {
     chat: false,
     chatHistory: false,
@@ -412,7 +418,7 @@ export class ImportExportService {
   /**
    * Export data as a ZIP stream.
    */
-  async exportData({ exclude, fileNameSegment }: ExportOptions): Promise<{ stream: ReadableStream<Uint8Array>, filename: string }> {
+  async exportData({ exclude, fileNameSegment }: { exclude?: ExportOptions['exclude'], fileNameSegment?: ExportOptions['fileNameSegment'] }): Promise<{ stream: ReadableStream<Uint8Array>, filename: string }> {
     // Validate caller-controlled options before creating a producer task. Errors
     // here remain direct exportData() rejections instead of surfacing later as
     // asynchronous stream failures after a successful return.
@@ -442,7 +448,9 @@ export class ImportExportService {
     const { settingsToDto, hierarchyToDto, chatGroupToDto, chatMetaToDto } = await import('@/00-storage/mapper/mappers');
     const output = createReadableZipOutput({ highWaterMarkBytes: 512 * 1024 });
     const abort = new AbortController();
-    const stream = createAbortableByteStream({ stream: output.stream, signal: abort.signal,
+    const stream = createAbortableByteStream({
+      stream: output.stream,
+      signal: abort.signal,
       onCancel: () => abort.abort(new DOMException('Export cancelled', 'AbortError')),
     });
     const centralDirectoryStore = createMemoryZipCentralDirectoryStore();
@@ -517,7 +525,7 @@ export class ImportExportService {
         });
         await addTextFile({
           path: `${rootPath}settings.json`,
-          text: JSON.stringify(settingsToDto({ domain: snapshot.structure.settings }), null, 2),
+          text: JSON.stringify(SettingsSchemaDto.parse(settingsToDto({ domain: snapshot.structure.settings })), undefined, 2),
         });
 
         if (excludeFlags.chat) {
@@ -541,7 +549,7 @@ export class ImportExportService {
         for (const group of snapshot.structure.chatGroups) {
           await addTextFile({
             path: `${rootPath}chat-groups/${idToRaw({ id: group.id })}.json`,
-            text: JSON.stringify(chatGroupToDto({ domain: group }), null, 2),
+            text: JSON.stringify(ChatGroupSchemaDto.parse(chatGroupToDto({ domain: group })), undefined, 2),
           });
         }
 
@@ -549,7 +557,7 @@ export class ImportExportService {
           const metasDto = snapshot.structure.chatMetas.map(domain => chatMetaToDto({ domain }));
           await addTextFile({
             path: `${rootPath}chat-metas.json`,
-            text: JSON.stringify({ entries: metasDto }, null, 2),
+            text: JSON.stringify({ entries: metasDto.map(dto => ChatMetaSchemaDto.parse(dto)) }, undefined, 2),
           });
         }
 
@@ -616,13 +624,13 @@ export class ImportExportService {
               }
               await addTextFile({
                 path: `${rootPath}chat-contents/${chunk.data.id}.json`,
-                text: JSON.stringify(currentThreadExport.chatDto, null, 2),
+                text: JSON.stringify(currentThreadExport.chatDto, undefined, 2),
               });
               break;
             }
             await addTextFile({
               path: `${rootPath}chat-contents/${chunk.data.id}.json`,
-              text: JSON.stringify(normalizeChatDtoTree({ chatDto: chunk.data }), null, 2),
+              text: JSON.stringify(normalizeChatDtoTree({ chatDto: chunk.data }), undefined, 2),
             });
             break;
           }
@@ -823,6 +831,7 @@ export class ImportExportService {
       await zip.close();
     }
   }
+
   private assembleLegacyHierarchy({
     chatsMap,
     chatGroupsMap,
@@ -848,6 +857,17 @@ export class ImportExportService {
     }
   }
 
+  private async preflightRetainedRpcSettings({ zip, rootPath }: { zip: IndexedZipArchive, rootPath: string }): Promise<void> {
+    const settingsFile = zip.file({ name: rootPath + 'settings.json' });
+    if (!settingsFile) return;
+    try {
+      SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
+    } catch (error) {
+      // Retained RPC values cannot be silently skipped by a destructive import.
+      // Keep the legacy policy for unrelated malformed settings unchanged.
+    }
+  }
+
   /**
    * Verify that the ZIP content is valid by dry-running the restoration snapshots.
    */
@@ -857,6 +877,7 @@ export class ImportExportService {
       const rootPath = this.findRootPath({ zip });
 
       let snapshot: StorageSnapshot;
+      await this.preflightRetainedRpcSettings({ zip, rootPath });
       const mode = config.data.mode;
       switch (mode) {
       case 'replace':
@@ -876,6 +897,7 @@ export class ImportExportService {
       await zip.close();
     }
   }
+
   /**
    * Execute Import.
    */
@@ -884,6 +906,7 @@ export class ImportExportService {
     try {
       const rootPath = this.findRootPath({ zip });
       const settingsFile = zip.file({ name: rootPath + 'settings.json' });
+      await this.preflightRetainedRpcSettings({ zip, rootPath });
 
       const mode = config.data.mode;
       // Check every selected message before any destructive write. Restore reads a
@@ -904,7 +927,9 @@ export class ImportExportService {
           try {
             const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
             if (result.success) await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
-          } catch (e) { /* Ignore */ }
+          } catch (error) {
+            // Preserve the existing policy for unrelated legacy corruption.
+          }
         }
         const replaceSnapshot = await this.createRestoreSnapshot({ zip, rootPath });
         await this.storage.restore({ snapshot: replaceSnapshot });
@@ -915,7 +940,9 @@ export class ImportExportService {
           try {
             const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
             if (result.success) await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
-          } catch (e) { /* Ignore */ }
+          } catch (error) {
+            // Preserve the existing policy for unrelated legacy corruption.
+          }
         }
         const appendSnapshot = await this.createAppendSnapshot({ zip, rootPath, config });
         await this.storage.restore({ snapshot: appendSnapshot });
@@ -930,6 +957,7 @@ export class ImportExportService {
       await zip.close();
     }
   }
+
   private async loadZip({ blob }: { blob: Blob }): Promise<IndexedZipArchive> {
     try {
       return await openIndexedZipArchive({ blob });
@@ -952,53 +980,55 @@ export class ImportExportService {
   }
 
   private async applySettingsImport({ zipSettings, strategies }: { zipSettings: SettingsDto, strategies: ImportConfig['settings'] }) {
-    await this.storage.updateSettings({ updater: ({ current: currentSettings }) => {
-      const newSettingsDomain = settingsToDomain({ dto: zipSettings });
-      const finalSettings: Settings = currentSettings ? { ...currentSettings } : { ...newSettingsDomain };
+    await this.storage.updateSettings({
+      updater: ({ current: currentSettings }) => {
+        const newSettingsDomain = settingsToDomain({ dto: zipSettings });
+        const finalSettings: Settings = currentSettings ? { ...currentSettings } : { ...newSettingsDomain };
 
-      const applyField = <K extends keyof Settings>({ strategy, newValue, targetKey }: { strategy: ImportFieldStrategy, newValue: Settings[K], targetKey: K }) => {
-        if (strategy === 'replace' && newValue !== undefined) {
-          finalSettings[targetKey] = newValue;
+        const applyField = <K extends keyof Settings>({ strategy, newValue, targetKey }: { strategy: ImportFieldStrategy, newValue: Settings[K], targetKey: K }) => {
+          if (strategy === 'replace' && newValue !== undefined) {
+            finalSettings[targetKey] = newValue;
+          }
+        };
+
+        applyField({
+          strategy: strategies.endpoint,
+          newValue: cloneEndpoint({ endpoint: newSettingsDomain.endpoint }),
+          targetKey: 'endpoint',
+        });
+        applyField({ strategy: strategies.model, newValue: newSettingsDomain.defaultModelId, targetKey: 'defaultModelId' });
+        applyField({ strategy: strategies.titleModel, newValue: newSettingsDomain.titleGeneration, targetKey: 'titleGeneration' });
+        applyField({ strategy: strategies.systemPrompt, newValue: newSettingsDomain.systemPrompt, targetKey: 'systemPrompt' });
+        applyField({ strategy: strategies.lmParameters, newValue: newSettingsDomain.lmParameters, targetKey: 'lmParameters' });
+
+        // Always merge UI flags if present in the import
+        if (newSettingsDomain.heavyContentAlertDismissed !== undefined) {
+          finalSettings.heavyContentAlertDismissed = newSettingsDomain.heavyContentAlertDismissed;
         }
-      };
 
-      applyField({
-        strategy: strategies.endpoint,
-        newValue: cloneEndpoint({ endpoint: newSettingsDomain.endpoint }),
-        targetKey: 'endpoint',
-      });
-      applyField({ strategy: strategies.model, newValue: newSettingsDomain.defaultModelId, targetKey: 'defaultModelId' });
-      applyField({ strategy: strategies.titleModel, newValue: newSettingsDomain.titleGeneration, targetKey: 'titleGeneration' });
-      applyField({ strategy: strategies.systemPrompt, newValue: newSettingsDomain.systemPrompt, targetKey: 'systemPrompt' });
-      applyField({ strategy: strategies.lmParameters, newValue: newSettingsDomain.lmParameters, targetKey: 'lmParameters' });
-
-      // Always merge UI flags if present in the import
-      if (newSettingsDomain.heavyContentAlertDismissed !== undefined) {
-        finalSettings.heavyContentAlertDismissed = newSettingsDomain.heavyContentAlertDismissed;
-      }
-
-      switch (strategies.providerProfiles) {
-      case 'replace':
-        finalSettings.providerProfiles = newSettingsDomain.providerProfiles;
-        break;
-      case 'append': {
-        const appended = newSettingsDomain.providerProfiles.map(profile => ({
-          ...profile,
-          id: generateId<ProviderProfileId>(),
-          endpoint: cloneEndpoint({ endpoint: profile.endpoint }),
-        }));
-        finalSettings.providerProfiles = [...finalSettings.providerProfiles, ...appended];
-        break;
-      }
-      case 'none':
-        break;
-      default: {
-        const _ex: never = strategies.providerProfiles;
-        throw new Error(`Unhandled providerProfiles strategy: ${_ex}`);
-      }
-      }
-      return finalSettings;
-    } });
+        switch (strategies.providerProfiles) {
+        case 'replace':
+          finalSettings.providerProfiles = newSettingsDomain.providerProfiles;
+          break;
+        case 'append': {
+          const appended = newSettingsDomain.providerProfiles.map(profile => ({
+            ...profile,
+            id: generateId<ProviderProfileId>(),
+            endpoint: cloneEndpoint({ endpoint: profile.endpoint }),
+          }));
+          finalSettings.providerProfiles = [...finalSettings.providerProfiles, ...appended];
+          break;
+        }
+        case 'none':
+          break;
+        default: {
+          const _ex: never = strategies.providerProfiles;
+          throw new Error(`Unhandled providerProfiles strategy: ${_ex}`);
+        }
+        }
+        return finalSettings;
+      },
+    });
   }
 
   private async createRestoreSnapshot({ zip, rootPath }: { zip: IndexedZipArchive, rootPath: string }): Promise<StorageSnapshot> {
@@ -1018,7 +1048,9 @@ export class ImportExportService {
             if (res.success) metasDto.push(res.data);
           }
         }
-      } catch (e) { /* Ignore */ }
+      } catch (error) {
+        // Preserve the existing policy for unrelated legacy corruption.
+      }
     }
 
     const groupsPrefix = rootPath + 'chat-groups/';
@@ -1028,7 +1060,9 @@ export class ImportExportService {
         try {
           const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file({ name: filename })!.readText()));
           if (result.success) groupsDto.push(result.data);
-        } catch (e) { /* Ignore */ }
+        } catch (error) {
+          // Preserve the existing policy for unrelated legacy corruption.
+        }
       }
     }
 
@@ -1126,7 +1160,9 @@ export class ImportExportService {
             if (config.data.chatGroupNamePrefix) dto.name = `${config.data.chatGroupNamePrefix}${dto.name}`;
             importedGroupsDto.push(dto);
           }
-        } catch (e) { /* Ignore */ }
+        } catch (error) {
+          // Preserve the existing policy for unrelated legacy corruption.
+        }
       }
     }
 
@@ -1148,7 +1184,9 @@ export class ImportExportService {
             importedMetas.push({ dto, originalId });
           }
         }
-      } catch (e) { /* Ignore */ }
+      } catch (error) {
+        // Preserve the existing policy for unrelated legacy corruption.
+      }
     }
 
     // Reserve IDs only for existing fork targets in imported chats. Reading each
@@ -1250,14 +1288,16 @@ export class ImportExportService {
         if (contentFile) {
           try {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.readText()));
-            const dto = normalizeChatDtoTree({ chatDto: {
-              ...meta,
-              ...content,
-              experimental: meta.experimental,
-              // ChatContentSchemaDto materializes missing currentLeafId as undefined.
-              currentLeafId: content.currentLeafId ?? meta.currentLeafId,
-              messages: undefined,
-            } });
+            const dto = normalizeChatDtoTree({
+              chatDto: {
+                ...meta,
+                ...content,
+                experimental: meta.experimental,
+                // ChatContentSchemaDto materializes missing currentLeafId as undefined.
+                currentLeafId: content.currentLeafId ?? meta.currentLeafId,
+                messages: undefined,
+              },
+            });
 
             const messageIdMap = new Map<string, string>();
             const originMessageIds = originMessageIdMaps.get(originalId);

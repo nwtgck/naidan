@@ -27,19 +27,28 @@ function setup({ declarations }: { declarations: WorkerToolDefinition[] | undefi
 
 describe('LFM2 prompt-open structured generation', () => {
   it('maps structured reasoning history to the native template field without parsing content tags', () => {
-    expect(formatLfm2MessagesForToolHandling({ handling, messages: [
-      { role: 'user', content: '<think>literal user text</think>' },
-      { role: 'assistant', content: 'visible', reasoning: { text: 'private', completeness: 'complete' } },
-    ] })).toEqual([
+    expect(formatLfm2MessagesForToolHandling({
+      handling,
+      messages: [
+        { role: 'user', content: '<think>literal user text</think>' },
+        { role: 'assistant', content: 'visible', reasoning: { text: 'private', completeness: 'complete' } },
+      ],
+    })).toEqual([
       { role: 'user', content: '<think>literal user text</think>' },
       { role: 'assistant', content: 'visible', reasoning: 'private' },
     ]);
-    expect(() => formatLfm2MessagesForToolHandling({ handling, messages: [
-      { role: 'user', content: '', reasoning: { text: 'invalid', completeness: 'complete' } },
-    ] })).toThrow(/assistant/);
-    expect(() => formatLfm2MessagesForToolHandling({ handling, messages: [
-      { role: 'assistant', content: '', reasoning: { text: 'unfinished', completeness: 'partial' } },
-    ] })).toThrow(/partial reasoning/);
+    expect(() => formatLfm2MessagesForToolHandling({
+      handling,
+      messages: [
+        { role: 'user', content: '', reasoning: { text: 'invalid', completeness: 'complete' } },
+      ],
+    })).toThrow(/assistant/);
+    expect(() => formatLfm2MessagesForToolHandling({
+      handling,
+      messages: [
+        { role: 'assistant', content: '', reasoning: { text: 'unfinished', completeness: 'partial' } },
+      ],
+    })).toThrow(/partial reasoning/);
   });
 
   it('leaves LFM2 generated-output messages on the shared standard formatter route', () => {
@@ -51,13 +60,22 @@ describe('LFM2 prompt-open structured generation', () => {
   it('enables reasoning history only for an observed LFM2 prompt-open template', () => {
     const messages = [{ role: 'assistant' as const, content: 'visible', reasoning: { text: 'private', completeness: 'complete' as const } }];
     expect(formatMessagesForLfm2ReasoningProtocol({
-      messages, handling, modelType: 'lfm2', reasoningProtocol: 'prompt-open-think',
+      messages,
+      handling,
+      modelType: 'lfm2',
+      reasoningProtocol: 'prompt-open-think',
     })).toEqual([{ role: 'assistant', content: 'visible', reasoning: 'private' }]);
     expect(() => formatMessagesForLfm2ReasoningProtocol({
-      messages, handling, modelType: 'lfm2', reasoningProtocol: 'generated-output',
+      messages,
+      handling,
+      modelType: 'lfm2',
+      reasoningProtocol: 'generated-output',
     })).toThrow(/reviewed model-specific template adapter/);
     expect(() => formatMessagesForLfm2ReasoningProtocol({
-      messages, handling, modelType: 'other', reasoningProtocol: 'prompt-open-think',
+      messages,
+      handling,
+      modelType: 'other',
+      reasoningProtocol: 'prompt-open-think',
     })).toThrow(/reviewed model-specific template adapter/);
   });
 
@@ -93,7 +111,8 @@ describe('LFM2 prompt-open structured generation', () => {
     ]);
     expect(events.filter(event => event.type === 'tool_start')).toEqual([{ type: 'tool_start', index: 1 }]);
     expect(events.filter(event => event.type === 'tool_call')).toMatchObject([{
-      type: 'tool_call', index: 1,
+      type: 'tool_call',
+      index: 1,
       toolCall: { type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } },
     }]);
     expect(events.at(-1)).toEqual({ type: 'result', result: { type: 'finished', next: 'tool_results' } });
@@ -116,7 +135,9 @@ describe('LFM2 prompt-open structured generation', () => {
     codec.text({ text: '<think>literal</think>' });
     codec.finish({ reason: 'limit' });
     expect(events.find(event => event.type === 'text_delta')).toEqual({
-      type: 'text_delta', index: 0, text: '<think>literal</think>',
+      type: 'text_delta',
+      index: 0,
+      text: '<think>literal</think>',
     });
   });
 

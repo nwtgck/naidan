@@ -10,17 +10,20 @@ vi.mock('@/utils/worker-transport', () => ({ releaseWorkerRemote: vi.fn() }));
 
 const directories = [{ id: 'linked', name: 'Linked models' }];
 let host: MemoryDirectory, opfs: MemoryDirectory;
+
 async function model({ root, path }: { root: MemoryDirectory, path: string[] }): Promise<void> {
   let directory = root;
   for (const name of path) directory = await directory.getDirectoryHandle(name, { create: true });
   const file = await directory.getFileHandle('image.gguf', { create: true });
   vi.spyOn(file, 'getFile').mockResolvedValue(ggufFixture({ name: 'image.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file);
 }
+
 beforeEach(async () => {
   host = new MemoryDirectory('host'); opfs = new MemoryDirectory('opfs');
   vi.mocked(hostModelHandles.get).mockReset().mockResolvedValue(host as unknown as HostModelDirectoryHandle);
   await model({ root: host, path: ['owner', 'repo'] });
 });
+
 afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
@@ -65,4 +68,21 @@ it('keeps corrupt OPFS model diagnostics while inspecting an independent linked 
   expect(result.candidates).toHaveLength(1);
   expect(result.candidates[0]?.repositoryId).toBe('host/linked/owner/repo');
   expect(result.issues).toEqual([expect.objectContaining({ repositoryId: 'user/broken', path: 'broken.gguf' })]);
+});
+
+it('only reads the published OPFS repository and does not revisit linked roots', async () => {
+  await model({ root: opfs, path: ['models', 'user', 'retained'] });
+  await model({ root: opfs, path: ['models', 'user', 'published'] });
+  const user = await (await opfs.getDirectoryHandle('models')).getDirectoryHandle('user');
+  const oldFile = await (await user.getDirectoryHandle('retained')).getFileHandle('image.gguf');
+  vi.mocked(oldFile.getFile).mockClear().mockRejectedValue(new Error('Unrelated source must not be reopened'));
+  vi.stubGlobal('navigator', { storage: { getDirectory: async () => opfs } });
+  const result = await createInventoryWorker().inspect(undefined, vi.fn(), directories, ['user/published']);
+  expect(result.candidates.map(candidate => candidate.repositoryId)).toEqual(['user/published']);
+  expect(result.issues).toEqual([]);
+  expect(oldFile.getFile).not.toHaveBeenCalled(); expect(hostModelHandles.get).not.toHaveBeenCalled();
+});
+
+it('rejects a host selector rather than silently treating it as an empty OPFS scan', async () => {
+  await expect(createInventoryWorker().inspect(undefined, vi.fn(), directories, ['host/linked/owner/repo'])).rejects.toThrow('Only OPFS');
 });

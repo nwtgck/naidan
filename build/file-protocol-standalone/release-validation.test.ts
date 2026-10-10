@@ -42,6 +42,7 @@ describe('createFileProtocolStandaloneReleaseValidationPlugin', () => {
       debugReportFile: '/tmp/naidan-standalone-output/debug.json',
     })).toThrow('debugReportFile must live outside');
   });
+
   it('uses parsed final HTML semantics when collecting release stylesheet files', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'naidan-release-html-'));
     const outputDirectory = path.join(root, 'dist');
@@ -79,12 +80,26 @@ describe('createFileProtocolStandaloneReleaseValidationPlugin', () => {
         {} as never,
         {
           'assets/ui.js': {
-            type: 'chunk', fileName: 'assets/ui.js', name: 'ui', isEntry: true, isDynamicEntry: false,
-            facadeModuleId: uiSourceEntry, imports: [], dynamicImports: [], modules: {},
+            type: 'chunk',
+            fileName: 'assets/ui.js',
+            name: 'ui',
+            isEntry: true,
+            isDynamicEntry: false,
+            facadeModuleId: uiSourceEntry,
+            imports: [],
+            dynamicImports: [],
+            modules: {},
           },
           'assets/worker.js': {
-            type: 'chunk', fileName: 'assets/worker.js', name: 'worker', isEntry: true, isDynamicEntry: false,
-            facadeModuleId: workerSourceEntry, imports: [], dynamicImports: [], modules: {},
+            type: 'chunk',
+            fileName: 'assets/worker.js',
+            name: 'worker',
+            isEntry: true,
+            isDynamicEntry: false,
+            facadeModuleId: workerSourceEntry,
+            imports: [],
+            dynamicImports: [],
+            modules: {},
           },
         } as never,
       );
@@ -109,5 +124,4 @@ describe('createFileProtocolStandaloneReleaseValidationPlugin', () => {
       sourceAudit: { mode: 'external', evidence: '   ' },
     })).toThrow('sourceAudit.evidence is required for external source audit');
   });
-
 });

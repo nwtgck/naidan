@@ -60,7 +60,13 @@ export async function reuseDownloadedProductionRevision({
 
   // The caller's abort must reach the Worker owner; racing only the outer MSI
   // promise leaves an acceptance Worker alive after the UI advances a model.
-  const reuse = await acceptReusableRevisions({ inventory, resolvedRevision, candidateOrderByRevision, signal, onProgress, onTiming,
+  const reuse = await acceptReusableRevisions({
+    inventory,
+    resolvedRevision,
+    candidateOrderByRevision,
+    signal,
+    onProgress,
+    onTiming,
     ...(createAcceptanceClient === undefined ? {} : { createAcceptanceClient }),
   });
   signal?.throwIfAborted();

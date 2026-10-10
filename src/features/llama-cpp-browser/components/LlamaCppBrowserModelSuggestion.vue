@@ -2,9 +2,11 @@
 import { computed, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import { AlertCircleIcon, ChevronDownIcon, DownloadIcon, ExternalLinkIcon, Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import type { AuthorizedModelDestination } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
+import { destinationKey, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 import type { DefaultModelContext } from '@/features/llama-cpp-browser/default-model';
-import { getDownloadQueue, jobIsBusy } from '@/features/llama-cpp-browser/hugging-face/download-queue';
+import { downloadJobKey, getDownloadQueue, jobIsBusy, type DownloadJob } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { getMetadataSession } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
 import type { RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { preferredQuantizationHint, suggestedQuantizationLabel, suggestionDownloadKey, type ModelSuggestion, type MultimodalDownload } from '@/features/llama-cpp-browser/hugging-face/model-suggestions';
@@ -15,10 +17,13 @@ import { repositoryUrlPath, type DownloadSelection } from '@/features/llama-cpp-
 import LlamaCppBrowserDefaultModelAction from './LlamaCppBrowserDefaultModelAction.vue';
 import LlamaCppBrowserDownloadJob from './LlamaCppBrowserDownloadJob.vue';
 import LlamaCppBrowserDownloadPlanFiles from './LlamaCppBrowserDownloadPlanFiles.vue';
-const props = defineProps<{ suggestion: ModelSuggestion, models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean, selectionAction?: 'default' | 'select' }>();
+const props = defineProps<{ suggestion: ModelSuggestion, models: LocalModel[], disabled: boolean, defaultModel: DefaultModelContext | undefined, defaultActionDisabled: boolean, selectionAction?: 'default' | 'select', destination?: ModelDestination, destinationUnavailable?: boolean, destinationRevision?: number, destinationLabel?: ({ destination }: { destination: ModelDestination }) => string, authorizeDestination?: ({ destination }: { destination: ModelDestination }) => Promise<AuthorizedModelDestination> }>();
 const emit = defineEmits<{ selectDefault: [model: LocalModel], select: [model: LocalModel] }>();
 const id = useId();
 const queue = getDownloadQueue();
+const destination = computed<ModelDestination>(() => props.destination ?? { kind: 'opfs' });
+const authorizing = ref(false);
+const authorizationFailed = ref(false);
 const companionRequired = computed(() => {
   const requirement = props.suggestion.companion;
   switch (requirement) {
@@ -48,14 +53,21 @@ const localError = ref(false);
 const checkingLocal = ref(false);
 const installed = shallowRef<LocalModel>();
 let disposed = false;
-const jobKey = computed(() => suggestionDownloadKey({ suggestionId: props.suggestion.id, quantization: quantization.value, multimodal: multimodal.value }));
+const intentKey = computed(() => suggestionDownloadKey({ suggestionId: props.suggestion.id, quantization: quantization.value, multimodal: multimodal.value }));
+const jobKey = computed(() => downloadJobKey({ key: intentKey.value, destination: destination.value }));
 const job = computed(() => queue.jobs.value.find(entry => entry.key === jobKey.value));
+// A new destination must not hide cancellation or resume for already-bound jobs.
+const otherDestinationJobs = computed(() => queue.jobs.value.filter(entry => entry.source === 'suggestion'
+  && entry.key.startsWith(`suggestion:${props.suggestion.id}:`)
+  && destinationKey({ destination: entry.destination }) !== destinationKey({ destination: destination.value })
+  && entry.status !== 'complete' && entry.status !== 'cancelled'));
+
 // Recover the exact source/quantization/options of an in-flight or paused intent
 // after a settings-tab remount. Never inspect or resume just to render this row.
 for (const choice of props.suggestion.quantizationHints) {
   for (const requestedMultimodal of ['off', 'on'] as const) {
     if (companionRequired.value && requestedMultimodal === 'off') continue;
-    const key = suggestionDownloadKey({ suggestionId: props.suggestion.id, quantization: choice, multimodal: requestedMultimodal });
+    const key = downloadJobKey({ key: suggestionDownloadKey({ suggestionId: props.suggestion.id, quantization: choice, multimodal: requestedMultimodal }), destination: destination.value });
     if (queue.jobs.value.some(entry => entry.key === key && (jobIsBusy({ job: entry }) || entry.status === 'paused'))) {
       quantizationId.value = choice.id; multimodal.value = requestedMultimodal;
     }
@@ -64,7 +76,7 @@ for (const choice of props.suggestion.quantizationHints) {
 const busy = computed(() => jobIsBusy({ job: job.value }));
 // Keep one row's submitted intent immutable, including while paused for resume.
 // Other rows remain selectable/queueable. Waiting cancellation unlocks this row.
-const optionsLocked = computed(() => props.disabled || busy.value || inspecting.value !== undefined || job.value?.status === 'paused');
+const optionsLocked = computed(() => props.disabled || authorizing.value || busy.value || inspecting.value !== undefined || job.value?.status === 'paused');
 const preview = computed(() => {
   if (!catalog.value) return { status: 'unchecked' } as const;
   try {
@@ -103,21 +115,21 @@ const totalLabel = computed(() => {
 
 // Only local storage is read here. Approximate sizes cannot determine installed
 // state, and having Q8_0 (or an auxiliary GGUF) must not satisfy Q4_K_M.
-watch([() => props.models, quantization, multimodal, plan, queue.changed], async (_values, _old, onCleanup) => {
+watch([() => props.models, quantization, multimodal, plan, queue.changed, destination, () => props.destinationRevision], async (_values, _old, onCleanup) => {
   let cancelled = false; onCleanup(() => {
     cancelled = true;
   });
   installed.value = undefined; localError.value = false; checkingLocal.value = true;
   try {
-    const known = findLocalSuggestedModel({ quantization: quantization.value, models: props.models });
+    const known = findLocalSuggestedModel({ quantization: quantization.value, models: props.models, destination: destination.value });
     let found: LocalModel | undefined;
-    if (plan.value) found = await installedSelection({ selection: plan.value });
+    if (plan.value) found = await installedSelection({ selection: plan.value, destination: destination.value });
     else if (known && multimodal.value === 'off') found = known;
     else if (known) {
-      const directories = await repositoryDirectories({ repository: quantization.value.repository });
+      const directories = await repositoryDirectories({ repository: quantization.value.repository, destination: destination.value });
       if (directories.some(directory => directory.id === known.id && directory.projectorPath !== undefined)) found = known;
     }
-    if (!cancelled && !disposed) installed.value = found;
+    if (!cancelled && !disposed) installed.value = found ? props.models.find(model => model.id === found.id) ?? found : undefined;
   } catch {
     if (!cancelled && !disposed) localError.value = true;
   } finally {
@@ -136,6 +148,7 @@ function selectQuantization({ event }: { event: Event }): void {
   previewError.value = false;
   // No inspect(), prefetch or fallback source lookup: this selection is local.
 }
+
 async function checkContents(): Promise<void> {
   if (optionsLocked.value) return;
   const requested = quantization.value;
@@ -155,20 +168,68 @@ async function checkContents(): Promise<void> {
     if (!disposed && inspecting.value === controller) inspecting.value = undefined;
   }
 }
-function download(): void {
-  if (props.disabled || busy.value || inspecting.value || checkingLocal.value || localError.value) return;
-  // Capture all mutable UI options BEFORE enqueueing. Changing another row or
-  // unmounting this component cannot change this explicit user's request.
+
+async function download(): Promise<void> {
+  if (props.disabled || props.destinationUnavailable || authorizing.value || busy.value || inspecting.value || checkingLocal.value || localError.value) return;
+  // Capture all mutable UI options BEFORE asking permission. A section can
+  // change destination while the browser prompt is open without redirecting it.
   const requestedQuantization = quantization.value;
   const requestedMultimodal = multimodal.value;
-  const pinned = job.value?.selection ?? (previewSelection.value);
-  previewError.value = false;
-  queue.enqueue({ key: jobKey.value, repository: requestedQuantization.repository, source: 'suggestion', prepare: async ({ signal }) => {
-    if (pinned) return pinned;
-    const resolved = await getMetadataSession().inspect({ input: requestedQuantization.repository, signal, freshness: 'reuse' });
-    return resolveSuggestionPlan({ quantization: requestedQuantization, catalog: resolved, multimodal: requestedMultimodal });
-  } });
+  const requestedDestination = job.value?.destination ?? destination.value;
+  const requestedKey = intentKey.value;
+  const pinned = job.value?.selection ?? previewSelection.value;
+  previewError.value = false; authorizationFailed.value = false; authorizing.value = true;
+  try {
+    const authorized = props.authorizeDestination ? await props.authorizeDestination({ destination: requestedDestination }) : { destination: requestedDestination, expectedRoot: undefined };
+    if (disposed) return;
+    queue.enqueue({
+      key: requestedKey,
+      repository: requestedQuantization.repository,
+      source: 'suggestion',
+      destination: authorized.destination,
+      expectedRoot: authorized.expectedRoot,
+      prepare: async ({ signal }) => {
+        if (pinned) return pinned;
+        const resolved = await getMetadataSession().inspect({ input: requestedQuantization.repository, signal, freshness: 'reuse' });
+        return resolveSuggestionPlan({ quantization: requestedQuantization, catalog: resolved, multimodal: requestedMultimodal });
+      },
+    });
+  } catch {
+    if (!disposed) authorizationFailed.value = true;
+  } finally {
+    authorizing.value = false;
+  }
 }
+
+async function resumeOtherDestination({ job: requestedJob }: { job: DownloadJob }): Promise<void> {
+  if (props.disabled || authorizing.value || jobIsBusy({ job: requestedJob })) return;
+  const requestedDestination = requestedJob.destination;
+  const options = props.suggestion.quantizationHints.flatMap(quantization => (['off', 'on'] as const).map(multimodal => ({ quantization, multimodal })));
+  const requested = options.find(option => downloadJobKey({ key: suggestionDownloadKey({ suggestionId: props.suggestion.id, ...option }), destination: requestedDestination }) === requestedJob.key);
+  if (!requested) return;
+  authorizing.value = true; authorizationFailed.value = false;
+  try {
+    const authorized = props.authorizeDestination ? await props.authorizeDestination({ destination: requestedDestination }) : { destination: requestedDestination, expectedRoot: undefined };
+    if (disposed) return;
+    queue.enqueue({
+      key: requestedJob.key,
+      repository: requestedJob.repository,
+      source: 'suggestion',
+      destination: authorized.destination,
+      expectedRoot: authorized.expectedRoot,
+      prepare: async ({ signal }) => {
+        if (requestedJob.selection) return requestedJob.selection;
+        const resolved = await getMetadataSession().inspect({ input: requestedJob.repository, signal, freshness: 'reuse' });
+        return resolveSuggestionPlan({ quantization: requested.quantization, catalog: resolved, multimodal: requested.multimodal });
+      },
+    });
+  } catch {
+    if (!disposed) authorizationFailed.value = true;
+  } finally {
+    authorizing.value = false;
+  }
+}
+
 onUnmounted(() => {
   disposed = true; inspecting.value?.abort();
 });
@@ -189,7 +250,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             :aria-labelledby="`${id}-name ${id}-quantization-label`"
             :disabled="optionsLocked || suggestion.quantizationHints.length === 1"
             data-testid="llama-suggestion-quantization"
-            tw-class="block h-6 max-w-full appearance-none rounded-md border border-transparent bg-transparent py-0 pl-1.5 pr-5 text-[11px] leading-4 font-normal text-gray-500 dark:text-gray-400 enabled:hover:border-gray-200 dark:enabled:hover:border-gray-700 enabled:hover:bg-gray-100/70 dark:enabled:hover:bg-gray-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            tw-class="block h-6 max-w-full appearance-none rounded-md border border-transparent bg-transparent py-0 pl-1.5 pr-5 text-[11px] leading-4 font-normal text-gray-500 dark:text-gray-400 enabled:hover:border-gray-200 dark:enabled:hover:border-gray-700 enabled:hover:bg-gray-100/70 dark:enabled:hover:bg-gray-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             @change="selectQuantization({ event: $event })"
           >
             <option v-for="choice in suggestion.quantizationHints" :key="choice.id" :value="choice.id" tw-class="bg-white text-gray-700 dark:bg-gray-900 dark:text-gray-200">{{ suggestedQuantizationLabel({ quantization: choice }) }}</option>
@@ -197,17 +258,17 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <ChevronDownIcon aria-hidden="true" tw-class="pointer-events-none absolute inset-y-0 right-1 my-auto w-2.5 h-2.5 text-gray-400 dark:text-gray-500" />
         </div>
       </div>
-      <button v-if="installed && !busy && selectionAction === 'select'" type="button" data-testid="llama-suggestion-use" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 disabled:opacity-50" @click="emit('select', installed)">{{ lazyStrings.llamaCppBrowserDownloads__use_this_model() }}</button>
+      <button v-if="installed && !busy && selectionAction === 'select'" type="button" data-testid="llama-suggestion-use" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 disabled:opacity-50" @click="emit('select', installed)">{{ lazyStrings.llamaCppBrowserDownloads__use_this_model() }}</button>
       <LlamaCppBrowserDefaultModelAction v-else-if="installed && !busy" :model="installed" :current="defaultModel" :disabled="disabled || defaultActionDisabled" tw-class="ml-auto" @select="emit('selectDefault', $event)" />
       <button
         v-else-if="!busy && job?.status !== 'paused' && job?.status !== 'failed'"
         type="button"
         data-testid="llama-suggestion-download"
-        :disabled="disabled || checkingLocal || inspecting !== undefined || localError"
-        tw-class="ml-auto inline-flex max-w-full items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 transition-colors"
+        :disabled="disabled || destinationUnavailable || authorizing || checkingLocal || inspecting !== undefined || localError"
+        tw-class="ml-auto inline-flex max-w-full items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-colors"
         @click="download"
       >
-        <Loader2Icon v-if="checkingLocal" tw-class="w-3.5 h-3.5 shrink-0 animate-spin motion-reduce:animate-none" />
+        <Loader2Icon v-if="checkingLocal || authorizing" tw-class="w-3.5 h-3.5 shrink-0 animate-spin motion-reduce:animate-none" />
         <DownloadIcon v-else tw-class="w-3.5 h-3.5 shrink-0" />
         {{ lazyStrings.llamaCppBrowserDownloads__download() }}
       </button>
@@ -220,14 +281,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <span v-if="companionRequired" data-testid="llama-suggestion-companion-required" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowserDownloads__required_companion_included() }}</span>
         <div v-else-if="quantization.approximateMultimodalBytes !== undefined || canUseMultimodal || multimodal === 'on'" tw-class="flex items-center gap-2">
           <span :id="`${id}-multimodal`" tw-class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserHuggingFaceManager__multimodal_support() }}</span>
-          <button type="button" role="switch" :aria-checked="multimodal === 'on'" :aria-labelledby="`${id}-multimodal`" data-testid="llama-suggestion-multimodal" :disabled="optionsLocked || (!canUseMultimodal && multimodal === 'off')" :tw-class="['relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed', multimodal === 'on' ? 'bg-purple-600' : 'bg-gray-300 dark:bg-gray-700']" @click="multimodal = multimodal === 'off' ? 'on' : 'off'"><span :tw-class="['inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200 mt-0.5 motion-reduce:transition-none', multimodal === 'on' ? 'translate-x-4' : 'translate-x-0.5']" /></button>
+          <button type="button" role="switch" :aria-checked="multimodal === 'on'" :aria-labelledby="`${id}-multimodal`" data-testid="llama-suggestion-multimodal" :disabled="optionsLocked || (!canUseMultimodal && multimodal === 'off')" :tw-class="['relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed', multimodal === 'on' ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-700']" @click="multimodal = multimodal === 'off' ? 'on' : 'off'"><span :tw-class="['inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200 mt-0.5 motion-reduce:transition-none', multimodal === 'on' ? 'translate-x-4' : 'translate-x-0.5']" /></button>
         </div>
         <button
           type="button"
           :aria-expanded="detailsOpen"
           :aria-controls="`${id}-details`"
           data-testid="llama-suggestion-details-toggle"
-          tw-class="inline-flex shrink-0 items-center gap-1 rounded-md px-1 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 transition-colors"
+          tw-class="inline-flex shrink-0 items-center gap-1 rounded-md px-1 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-colors"
           @click="detailsOpen = !detailsOpen"
         >
           {{ lazyStrings.llamaCppBrowserDownloads__details() }}
@@ -235,7 +296,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </button>
       </div>
     </div>
-    <LlamaCppBrowserDownloadJob appearance="manager" v-if="job && (!installed || busy) && job.status !== 'complete' && job.status !== 'cancelled'" :job="job" :disabled="disabled || checkingLocal || localError" tw-class="mt-2" @resume="download" />
+    <LlamaCppBrowserDownloadJob appearance="manager" v-if="job && (!installed || busy) && job.status !== 'complete' && job.status !== 'cancelled'" :job="job" :disabled="disabled || destinationUnavailable || authorizing || checkingLocal || localError" tw-class="mt-2" @resume="download" />
+    <div v-for="boundJob in otherDestinationJobs" :key="boundJob.id" data-testid="llama-suggestion-other-destination-job" tw-class="mt-2 space-y-1">
+      <p tw-class="text-[10px] text-gray-500 dark:text-gray-400">{{ destinationLabel ? destinationLabel({ destination: boundJob.destination }) : destinationKey({ destination: boundJob.destination }) }} · {{ boundJob.repository }}</p>
+      <LlamaCppBrowserDownloadJob appearance="manager" :job="boundJob" :disabled="disabled || authorizing" @resume="resumeOtherDestination({ job: boundJob })" />
+    </div>
+    <p v-if="authorizationFailed" role="alert" data-testid="llama-suggestion-destination-error" tw-class="mt-2 text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
     <p v-if="localError" role="alert" tw-class="mt-2 text-xs text-red-600 dark:text-red-400">{{ lazyStrings.llamaCppBrowser__operation_failed() }}</p>
     <!-- Expansion is local presentation only. Keeping the panel mounted preserves
          its plan, but inert removes hidden links/buttons from keyboard focus. -->
@@ -244,14 +310,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div tw-class="pt-2 space-y-2 text-xs text-gray-500 dark:text-gray-400">
           <!-- A dedicated row keeps long repository names separate from actions. -->
           <div tw-class="min-w-0" data-testid="llama-suggestion-repository-row">
-            <a :href="`https://huggingface.co/${repositoryUrlPath({ repository: quantization.repository })}`" target="_blank" rel="noopener noreferrer" data-testid="llama-suggestion-repository" tw-class="flex w-fit max-w-full min-w-0 items-start gap-1.5 rounded-sm text-purple-600 dark:text-purple-400 hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500">
+            <a :href="`https://huggingface.co/${repositoryUrlPath({ repository: quantization.repository })}`" target="_blank" rel="noopener noreferrer" data-testid="llama-suggestion-repository" tw-class="flex w-fit max-w-full min-w-0 items-start gap-1.5 rounded-sm text-blue-600 dark:text-blue-400 hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
               <span tw-class="min-w-0 break-all leading-relaxed">Hugging Face · {{ quantization.repository }}</span>
               <ExternalLinkIcon aria-hidden="true" tw-class="mt-0.5 w-3 h-3 shrink-0" />
             </a>
           </div>
           <div tw-class="flex flex-wrap items-center justify-between gap-2" data-testid="llama-suggestion-plan-toolbar">
             <h5 tw-class="font-medium">{{ lazyStrings.llamaCppBrowserDownloads__download_contents() }}</h5>
-            <button type="button" data-testid="llama-suggestion-check" :disabled="optionsLocked" tw-class="inline-flex max-w-full items-center justify-center gap-1.5 rounded-md px-1 py-1 text-[11px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 transition-colors" @click="checkContents">
+            <button type="button" data-testid="llama-suggestion-check" :disabled="optionsLocked" tw-class="inline-flex max-w-full items-center justify-center gap-1.5 rounded-md px-1 py-1 text-[11px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-colors" @click="checkContents">
               <Loader2Icon v-if="inspecting" tw-class="w-3 h-3 shrink-0 animate-spin motion-reduce:animate-none" />
               {{ inspecting ? lazyStrings.llamaCppBrowserDownloads__checking_hugging_face() : plan ? lazyStrings.llamaCppBrowserDownloads__refresh_download_contents() : lazyStrings.llamaCppBrowserDownloads__check_download_contents() }}
             </button>

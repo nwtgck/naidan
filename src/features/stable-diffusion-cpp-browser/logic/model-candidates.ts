@@ -7,8 +7,10 @@ import { relativeCompanionPath } from './model-path';
 import { hasLoraTensors } from './lora-metadata';
 import type { LocalImageRepository, RepositoryFile, HostImageRepositorySource } from './repository-store';
 
-export type ImageFamily = 'sd-checkpoint' | 'z-image' | 'qwen-image-2.1' | 'flux1' | 'flux2-klein-4b' | 'anima' | 'krea2' | 'ernie-image' | 'unknown';
-export type ComponentClass = 'vae-flux16' | 'vae-flux32' | 'vae-sd4' | 'vae-qwen21' | 'vae-wan16' | 'lm-qwen3-4b' | 'lm-qwen3-06b' | 'lm-qwen3vl-8b' | 'lm-qwen3vl-4b' | 'lm-ministral3-3b' | 'clip-l' | 'clip-g' | 't5-xxl' | 'other-lm' | 'other-vae' | 'lora';
+import { componentMatch } from '@/features/image-generation/model-configuration';
+import type { ImageFamily, ComponentClass } from '@/features/image-generation/model-configuration';
+export { componentRequirements, componentMatch } from '@/features/image-generation/model-configuration';
+export type { ImageFamily, ComponentClass } from '@/features/image-generation/model-configuration';
 export type ModelCandidate = {
   id: string; repositoryId: string; path: string; files: RepositoryFile[];
   format: 'gguf' | 'safetensors' | 'safetensors-index';
@@ -18,7 +20,8 @@ export type ModelCandidate = {
 };
 export type ModelInventory = { candidates: ModelCandidate[], issues: { repositoryId: string, path: string, message: string }[] };
 const configSchema = z.object({
-  model_type: z.string().optional(), _class_name: z.string().optional(),
+  model_type: z.string().optional(),
+  _class_name: z.string().optional(),
   text_config: z.object({ model_type: z.string().optional() }).optional(),
 });
 const indexSchema = z.object({ weight_map: z.record(z.string().min(1), z.string().min(1)).refine(value => Object.keys(value).length > 0) });
@@ -159,12 +162,15 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
       const progress = () => onProgress?.({ progress: { phase: 'headers', completed, total, path: `${repository.id}/${entry.path}`.slice(0, 2048) } });
       progress(); completed++;
       // Report real I/O progress without reading any additional bytes.
-      const file = { size: entry.file.size,
+      const file = {
+        size: entry.file.size,
         // eslint-disable-next-line local-rules-named-args/require-named-args -- Blob slice-compatible adapter.
         slice(start?: number, end?: number) {
-          return { async arrayBuffer() {
-            const bytes = await entry.file.slice(start, end).arrayBuffer(); progress(); return bytes;
-          } };
+          return {
+            async arrayBuffer() {
+              const bytes = await entry.file.slice(start, end).arrayBuffer(); progress(); return bytes;
+            },
+          };
         },
       };
       if (/\.json$/i.test(entry.path)) {
@@ -244,8 +250,17 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
           }
         }
       }
-      candidates.push({ id: JSON.stringify([repository.id, path]), repositoryId: repository.id, path, files, format, size: files.reduce((n, f) => n + f.file.size, 0), ...facts, issue,
-        ...(repository.hostSource ? { hostSource: repository.hostSource } : {}) });
+      candidates.push({
+        id: JSON.stringify([repository.id, path]),
+        repositoryId: repository.id,
+        path,
+        files,
+        format,
+        size: files.reduce((n, f) => n + f.file.size, 0),
+        ...facts,
+        issue,
+        ...(repository.hostSource ? { hostSource: repository.hostSource } : {}),
+      });
     }
     for (const index of indices) {
       const shards = new Set<string>(); let issue: string | undefined;
@@ -291,35 +306,14 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
   for (const candidate of candidates) if (candidate.issue) issues.push({ repositoryId: candidate.repositoryId, path: candidate.path, message: candidate.issue });
   signal?.throwIfAborted(); onProgress?.({ progress: { phase: 'headers', completed: total, total, path: '' } }); return { candidates, issues };
 }
-export function componentRequirements({ family }: { family: ImageFamily }): { slot: ModelSlot, accepts: ComponentClass[], required: boolean }[] {
-  switch (family) {
-  case 'z-image': return [{ slot: 'vae', accepts: ['vae-flux16'], required: true }, { slot: 'lm', accepts: ['lm-qwen3-4b'], required: true }];
-  case 'qwen-image-2.1': return [{ slot: 'vae', accepts: ['vae-qwen21'], required: true }, { slot: 'lm', accepts: ['lm-qwen3vl-8b'], required: true }];
-  case 'flux1': return [{ slot: 'vae', accepts: ['vae-flux16'], required: true }, { slot: 'clipL', accepts: ['clip-l'], required: true }, { slot: 't5', accepts: ['t5-xxl'], required: true }];
-  case 'flux2-klein-4b': return [{ slot: 'vae', accepts: ['vae-flux32'], required: true }, { slot: 'lm', accepts: ['lm-qwen3-4b'], required: true }];
-  case 'anima': return [{ slot: 'vae', accepts: ['vae-wan16'], required: true }, { slot: 'lm', accepts: ['lm-qwen3-06b'], required: true }];
-  case 'krea2': return [{ slot: 'vae', accepts: ['vae-wan16'], required: true }, { slot: 'lm', accepts: ['lm-qwen3vl-4b'], required: true }];
-  case 'ernie-image': return [{ slot: 'vae', accepts: ['vae-flux32'], required: true }, { slot: 'lm', accepts: ['lm-ministral3-3b'], required: true }];
-  case 'sd-checkpoint': return [{ slot: 'vae', accepts: ['vae-sd4'], required: false }];
-  case 'unknown': return [];
-  default: { const exhaustive: never = family; throw new Error(String(exhaustive)); }
-  }
-}
-export function componentMatch({ candidate, requirement }: { candidate: ModelCandidate, requirement: { slot: ModelSlot, accepts: ComponentClass[] } }): 'matching' | 'unverified' | 'incompatible' {
-  if (candidate.issue) return 'incompatible';
-  // This selector supports standalone VAE files. Embedded decoder tensors do
-  // not establish that a whole different checkpoint is usable as a VAE override.
-  if (requirement.slot === 'vae' && candidate.family === 'sd-checkpoint') return 'incompatible';
-  if (candidate.classes.some(value => requirement.accepts.includes(value))) return 'matching';
-  if (candidate.classes.length || candidate.roles.length && !candidate.roles.includes(requirement.slot)) return 'incompatible';
-  return 'unverified';
-}
+
 export function defaultCompanion({ main, candidates, requirement }: { main: ModelCandidate, candidates: ModelCandidate[], requirement: { slot: ModelSlot, accepts: ComponentClass[] } }): string | undefined {
   const entries = candidates.filter(candidate => candidate.id !== main.id && componentMatch({ candidate, requirement }) === 'matching');
   // Smaller files are a footprint preference, not a quality or memory guarantee.
   entries.sort((a, b) => Number(b.repositoryId === main.repositoryId) - Number(a.repositoryId === main.repositoryId) || a.size - b.size || a.id.localeCompare(b.id));
   return entries[0]?.id;
 }
+
 export const TEST_ONLY = {
   fingerprint,
 };

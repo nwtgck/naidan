@@ -1,3 +1,5 @@
+import { translateImagePrompt } from '@/features/image-generation/translation/request';
+vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: async () => provider }));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { LmProvider } from '@/01-models/lm';
@@ -16,6 +18,7 @@ vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWor
 vi.mock('./runtime/model-store', () => ({ listStoredModels: async () => [], removeStoredModel: vi.fn(), withModelMutationLock: async ({ operation }: { operation: () => Promise<unknown> }) => operation() }));
 let service: LlamaCppBrowserService;
 let provider: LmProvider;
+
 beforeEach(async () => {
   vi.resetModules();vi.clearAllMocks();await ensureAllStringsForTest({ locale: 'en' });worker.canReuse.mockReturnValue(true);
   worker.subscribeDisposed.mockReturnValue(() => {});
@@ -24,22 +27,38 @@ beforeEach(async () => {
   service = (await import('./index-hosted')).llamaCppBrowserService;
   provider = createLlamaCppProvider({ service });
 });
+
 afterEach(() => {
   service.release();
 });
+
 function firstToolCall(): void {
   worker.generate.mockImplementationOnce(async ({ onEvent }) => deliverNativeResult({ result: { content: '', reasoningContent: 'Check the tool.\n', finishReason: 'stop', toolCalls: [{ id: 'c1', type: 'function', function: { name: 'lookup', arguments: '{}' } }] }, onEvent }));
 }
+
 function queuedRequest() {
   return { model: 'local.gguf', messages: [{ role: 'user' as const, content: 'queued' }], temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
 }
+
 describe('llama.cpp public generation across the real owned service lane', () => {
   it('keeps profile and Worker ownership through a common tool wait before admitting another request', async () => {
     service.setOptions({ options: { profile: 'cpu-wasm32' } });firstToolCall();
     const entered = Promise.withResolvers<void>();const release = Promise.withResolvers<void>();
-    const fixture = createChatFixture({ approvalContext: undefined, provider, request: chatRequest(), tools: [{ name: 'lookup', description: '', parametersSchema: z.object({}), execute: async () => {
-      entered.resolve();await release.promise;return { status: 'success', content: 'tool result' };
-    } }], controller: new AbortController(), onToolEvent: () => {} });
+    const fixture = createChatFixture({
+      approvalContext: undefined,
+      provider,
+      request: chatRequest(),
+      tools: [{
+        name: 'lookup',
+        description: '',
+        parametersSchema: z.object({}),
+        execute: async () => {
+          entered.resolve();await release.promise;return { status: 'success', content: 'tool result' };
+        },
+      }],
+      controller: new AbortController(),
+      onToolEvent: () => {},
+    });
     const running = fixture.run();await entered.promise;
     service.setOptions({ options: { profile: 'cpu-wasm64' } });
     const queued = service.generate({ input: queuedRequest(), onEvent: () => {}, signal: undefined });
@@ -50,12 +69,25 @@ describe('llama.cpp public generation across the real owned service lane', () =>
     expect(worker.generate.mock.calls[1]?.[0].request.messages[1]?.reasoning_content).toBe('Check the tool.\n');
     expect(fixture.nodes.map(n => n.role)).toEqual(['assistant', 'tool', 'assistant']);expect(factory).toHaveBeenCalledOnce();
   });
+
   it.each(['cancel', 'release'] as const)('suppresses late tool output on %s, but retains its observed success and holds the lane until it settles', async action => {
     firstToolCall();const entered = Promise.withResolvers<void>();const release = Promise.withResolvers<void>();let toolSignal: AbortSignal | undefined;
     let notify: Parameters<Tool['execute']>[0]['onEvent'];const onToolEvent = vi.fn();
-    const fixture = createChatFixture({ approvalContext: undefined, provider, request: chatRequest(), tools: [{ name: 'lookup', description: '', parametersSchema: z.object({}), execute: async ({ signal, onEvent }) => {
-      toolSignal = signal;notify = onEvent;entered.resolve();await release.promise;await onEvent?.({ event: { type: 'output', stream: 'stdout', text: 'late tool progress' } });return { status: 'success', content: 'observed side effect' };
-    } }], controller: new AbortController(), onToolEvent });
+    const fixture = createChatFixture({
+      approvalContext: undefined,
+      provider,
+      request: chatRequest(),
+      tools: [{
+        name: 'lookup',
+        description: '',
+        parametersSchema: z.object({}),
+        execute: async ({ signal, onEvent }) => {
+          toolSignal = signal;notify = onEvent;entered.resolve();await release.promise;await onEvent?.({ event: { type: 'output', stream: 'stdout', text: 'late tool progress' } });return { status: 'success', content: 'observed side effect' };
+        },
+      }],
+      controller: new AbortController(),
+      onToolEvent,
+    });
     const result = fixture.run().then(value => ({ value }), error => ({ error }));await entered.promise;
     switch (action) {
     case 'cancel': service.cancel();break;case 'release': service.release();break;default: { const exhaustive: never = action;throw new Error(`Unknown action: ${exhaustive}`); }
@@ -68,6 +100,7 @@ describe('llama.cpp public generation across the real owned service lane', () =>
     await notify?.({ event: { type: 'output', stream: 'stdout', text: 'after operation exit' } });expect(onToolEvent).not.toHaveBeenCalled();
     expect(worker.generate).toHaveBeenCalledTimes(2);expect(factory).toHaveBeenCalledTimes(action === 'release' ? 2 : 1);
   });
+
   it('reports an observed model failure once and retires the failed runtime even when the consumer records it as a result', async () => {
     worker.generate.mockImplementationOnce(async ({ onEvent }) => {
       await onEvent({ event: { type: 'text', text: 'received' } });throw new LlamaCppBrowserError({ code: 'worker-failed' });
@@ -77,6 +110,7 @@ describe('llama.cpp public generation across the real owned service lane', () =>
     expect(worker.dispose).toHaveBeenCalledOnce();expect(service.getState()).toEqual({ status: 'error', code: 'worker-failed' });
     await collectChatGeneration({ items: provider.chat(chatRequest()), abortController: new AbortController() });expect(factory).toHaveBeenCalledTimes(2);
   });
+
   it('aborts and awaits a blocked native generation when an operation returns with an unread child', async () => {
     let ended = false;
     worker.generate.mockImplementationOnce(async ({ onEvent, signal }) => {
@@ -89,23 +123,34 @@ describe('llama.cpp public generation across the real owned service lane', () =>
         ended = true;
       }
     });
-    await provider.runChatOperation!({ signal: undefined, operation: async ({ chat }) => {
-      const reader = chat(chatRequest())[Symbol.asyncIterator]();const first = await reader.next();expect(first.done).toBe(false);expect(ended).toBe(false);
-    } });
+    await provider.runChatOperation!({
+      signal: undefined,
+      operation: async ({ chat }) => {
+        const reader = chat(chatRequest())[Symbol.asyncIterator]();const first = await reader.next();expect(first.done).toBe(false);expect(ended).toBe(false);
+      },
+    });
     expect(ended).toBe(true);expect(service.getState()).toEqual({ status: 'idle' });
     await service.generate({ input: queuedRequest(), onEvent: () => {}, signal: undefined });expect(factory).toHaveBeenCalledOnce();
   });
+
   it('rejects a stored scoped generator after its operation releases the lane', async () => {
     let escaped: LlamaCppBrowserService['generate'] | undefined;
-    await service.runGenerationOperation({ signal: undefined, operation: async ({ scope }) => {
-      escaped = scope.generate;
-    } });
+    await service.runGenerationOperation({
+      signal: undefined,
+      operation: async ({ scope }) => {
+        escaped = scope.generate;
+      },
+    });
     expect(() => escaped!({ input: queuedRequest(), onEvent: () => {}, signal: undefined })).toThrow('closed');expect(worker.generate).not.toHaveBeenCalled();
   });
+
   it('handles an already-aborted scoped request without leaving a stale pending request at close', async () => {
-    await service.runGenerationOperation({ signal: undefined, operation: async ({ scope }) => {
-      await expect(scope.generate({ input: queuedRequest(), onEvent: () => {}, signal: AbortSignal.abort() })).rejects.toThrow('aborted');
-    } });
+    await service.runGenerationOperation({
+      signal: undefined,
+      operation: async ({ scope }) => {
+        await expect(scope.generate({ input: queuedRequest(), onEvent: () => {}, signal: AbortSignal.abort() })).rejects.toThrow('aborted');
+      },
+    });
     expect(worker.generate).not.toHaveBeenCalled();expect(service.getState()).toEqual({ status: 'idle' });
     await service.generate({ input: queuedRequest(), onEvent: () => {}, signal: undefined });expect(worker.generate).toHaveBeenCalledOnce();
   });
@@ -133,4 +178,64 @@ it('preserves common generated parts and the next native request through real me
   expect(after).toEqual(before);
   const a = await prepareLlamaCppRequest({ ...request, messages: before });const b = await prepareLlamaCppRequest({ ...request, messages: after });expect(b).toEqual(a);
   expect(a.messages).toEqual([{ role: 'user', content: 'hello' }, { role: 'assistant', content: '', reasoning_content: 'Check the tool.\n', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'lookup', arguments: '{}' } }] }, { role: 'tool', tool_call_id: 'c1', name: 'lookup', content: '  result\r\n' }, { role: 'assistant', content: 'answer' }]);
+});
+
+it.each(['length', 'stop_sequence', 'empty'] as const)('keeps the same Worker between chat and translation even after %s translation', async outcome => {
+  await collectChatGeneration({ items: provider.chat(chatRequest()), abortController: new AbortController() });
+  worker.generate.mockImplementationOnce(async ({ onEvent }) => deliverNativeResult({ result: { ...finalText({ text: outcome === 'empty' ? '' : 'partial' }), finishReason: outcome === 'empty' ? 'stop' : outcome }, onEvent }));
+  await expect(translateImagePrompt({ prompt: 'hello', language: 'en', endpoint: { type: 'llama_cpp_browser' }, modelId: 'local.gguf', parameters: undefined, signal: new AbortController().signal, fakeLmDebugModeStatus: 'disabled' })).rejects.toThrow();
+  const otherProvider = createLlamaCppProvider({ service });
+  await collectChatGeneration({ items: otherProvider.chat(chatRequest()), abortController: new AbortController() });
+  expect(factory).toHaveBeenCalledOnce(); expect(worker.dispose).not.toHaveBeenCalled();
+});
+
+it('reports only the translation queue and its own progress, never an earlier chat progress', async () => {
+  const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
+  let firstProgress: Parameters<LlamaCppWorkerClient['generate']>[0]['onProgress'] | undefined;
+  worker.generate.mockImplementationOnce(async ({ onEvent, onProgress }) => {
+    firstProgress = onProgress; entered.resolve(); await gate.promise; return deliverNativeResult({ result: finalText({ text: 'chat' }), onEvent });
+  });
+  const chat = collectChatGeneration({ items: provider.chat(chatRequest()), abortController: new AbortController() }); await entered.promise;
+  const phases: string[] = [];
+  const translation = translateImagePrompt({
+    prompt: 'hello',
+    language: 'en',
+    endpoint: { type: 'llama_cpp_browser' },
+    modelId: 'local.gguf',
+    parameters: undefined,
+    signal: new AbortController().signal,
+    fakeLmDebugModeStatus: 'disabled',
+    onProgress({ progress }) {
+      phases.push(progress.phase);
+    },
+  });
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+  firstProgress?.({ progress: { phase: 'loading', completed: 99, total: 100 } });
+  expect(phases).toEqual(['queued']);
+  worker.generate.mockImplementationOnce(async ({ onEvent, onProgress }) => {
+    onProgress({ progress: { phase: 'prefill', completed: 1, total: 2 } }); return deliverNativeResult({ result: finalText({ text: 'hello' }), onEvent });
+  });
+  gate.resolve(); await chat; expect(await translation).toBe('hello');
+  expect(phases).toEqual(['queued', 'prefill', 'prefill']); expect(factory).toHaveBeenCalledOnce();
+});
+
+it('keeps the shared Worker when asynchronous translation display observers reject', async () => {
+  worker.generate.mockImplementationOnce(async ({ onEvent, onProgress }) => {
+    onProgress({ progress: { phase: 'prefill', completed: 1, total: 2 } });
+    return deliverNativeResult({ result: finalText({ text: 'hello' }), onEvent });
+  });
+  const observer = vi.fn().mockRejectedValue(new Error('display unavailable'));
+  await expect(translateImagePrompt({
+    prompt: 'hello',
+    language: 'en',
+    endpoint: { type: 'llama_cpp_browser' },
+    modelId: 'local.gguf',
+    parameters: undefined,
+    signal: new AbortController().signal,
+    fakeLmDebugModeStatus: 'disabled',
+    onProgress: observer,
+    onText: observer,
+  })).resolves.toBe('hello');
+  await collectChatGeneration({ items: provider.chat(chatRequest()), abortController: new AbortController() });
+  expect(factory).toHaveBeenCalledOnce(); expect(worker.dispose).not.toHaveBeenCalled();
 });

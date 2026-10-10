@@ -7,18 +7,24 @@ describe('generation callback delivery ownership', () => {
     const release = Promise.withResolvers<void>();
     const events: string[] = [];
     const owner = createGenerationDelivery({ onFailure: vi.fn() });
-    owner.enqueue({ deliver: async () => {
-      events.push('first-start');
-      entered.resolve();
-      await release.promise;
-      events.push('first-end');
-    } });
-    owner.enqueue({ deliver: () => {
-      events.push('second');
-    } });
-    owner.enqueue({ deliver: () => {
-      events.push('tools');
-    } });
+    owner.enqueue({
+      deliver: async () => {
+        events.push('first-start');
+        entered.resolve();
+        await release.promise;
+        events.push('first-end');
+      },
+    });
+    owner.enqueue({
+      deliver: () => {
+        events.push('second');
+      },
+    });
+    owner.enqueue({
+      deliver: () => {
+        events.push('tools');
+      },
+    });
     const finished = owner.finish().then(() => {
       events.push('settled');
     });
@@ -40,10 +46,12 @@ describe('generation callback delivery ownership', () => {
       failed.resolve();
     });
     const owner = createGenerationDelivery({ onFailure: interrupted });
-    owner.enqueue({ deliver: () => {
-      if (kind === 'throw') throw failure;
-      return Promise.reject(failure);
-    } });
+    owner.enqueue({
+      deliver: () => {
+        if (kind === 'throw') throw failure;
+        return Promise.reject(failure);
+      },
+    });
     const later = vi.fn();
     owner.enqueue({ deliver: later });
     await failed.promise;
@@ -56,9 +64,11 @@ describe('generation callback delivery ownership', () => {
   });
 
   it('preserves a non-Error rejection even when interruption throws', async () => {
-    const owner = createGenerationDelivery({ onFailure: () => {
-      throw new Error('Interrupt failed');
-    } });
+    const owner = createGenerationDelivery({
+      onFailure: () => {
+        throw new Error('Interrupt failed');
+      },
+    });
     owner.enqueue({ deliver: () => Promise.reject(undefined) });
     await expect(owner.finish()).rejects.toBeUndefined();
   });

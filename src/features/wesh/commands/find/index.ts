@@ -3032,8 +3032,10 @@ export const findCommandImplementation: WeshCommandImplementation = {
           }
         })();
         if (directoryIdentity !== undefined && activeDirectoryPaths.has(directoryIdentity)) {
-          await context.text().error({ text: `find: ${displayPath}: symbolic link cycle
-` });
+          await context.text().error({
+            text: `find: ${displayPath}: symbolic link cycle
+`,
+          });
           exitCode = 1;
           return;
         }

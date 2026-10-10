@@ -1,0 +1,1 @@
+export const ImageRecoveredOutputs__managed_by_pending_run = (): string => "Esta imagem pertence a uma execução não salva. Use o painel de execuções não salvas para tentar salvar novamente ou descartar a execução.";

@@ -15,9 +15,11 @@ const host = vi.hoisted(() => ({ session: vi.fn<typeof prepareGenerationSession>
 vi.mock('./session', () => ({ prepareGenerationSession: host.session }));
 vi.mock('./native-chat', () => ({ prepareChat: host.chat }));
 vi.mock('./chat-sampler', () => ({ createChatSampler: host.sampler }));
-vi.mock('./multimodal', () => ({ prepareMultimodal: vi.fn(() => {
-  throw new Error('Unexpected media');
-}) }));
+vi.mock('./multimodal', () => ({
+  prepareMultimodal: vi.fn(() => {
+    throw new Error('Unexpected media');
+  }),
+}));
 
 // This exercises the real generation loop and its pacing/cache helpers, not
 // native math. The separate supplied-Wasm suite remains the numerical oracle.
@@ -37,7 +39,8 @@ function fixture() {
     llama_set_abort_callback: vi.fn(async () => {}),
     llama_memory_seq_pos_min: vi.fn(async () => position < 0 ? -1 : 0),
     llama_memory_seq_pos_max: vi.fn(async () => position),
-    llama_model_is_hybrid: vi.fn(async () => 0), llama_model_is_recurrent: vi.fn(async () => 0),
+    llama_model_is_hybrid: vi.fn(async () => 0),
+    llama_model_is_recurrent: vi.fn(async () => 0),
     llama_memory_clear: vi.fn(async () => {
       position = -1;
     }),
@@ -57,15 +60,21 @@ function fixture() {
       position += current.count; return 0;
     }),
     llama_sampler_chain_default_params: vi.fn(async () => {}),
-    llama_sampler_chain_init: vi.fn(async () => 50n), llama_sampler_init_greedy: vi.fn(async () => 51n),
-    llama_sampler_chain_add: vi.fn(async () => {}), llama_sampler_free: vi.fn(async () => {}),
+    llama_sampler_chain_init: vi.fn(async () => 50n),
+    llama_sampler_init_greedy: vi.fn(async () => 51n),
+    llama_sampler_chain_add: vi.fn(async () => {}),
+    llama_sampler_free: vi.fn(async () => {}),
     llama_vocab_is_eog: vi.fn(async () => 0),
     llama_token_to_piece: vi.fn(async (_vocab: bigint, _token: number, pointer: bigint) => {
       heap[Number(pointer)] = 120; return 1;
     }),
   };
   const core = {
-    api, pointerBytes: 4, alloc, tryAlloc: vi.fn(alloc), bytes,
+    api,
+    pointerBytes: 4,
+    alloc,
+    tryAlloc: vi.fn(alloc),
+    bytes,
     allocRecord: () => alloc({ bytes: 64 }),
     utf8: ({ text }: { text: string }) => {
       const encoded = new TextEncoder().encode(text); const pointer = alloc({ bytes: encoded.length + 1 });
@@ -78,25 +87,66 @@ function fixture() {
     module: { addFunction: vi.fn(() => 1), removeFunction: vi.fn() },
   } as unknown as Core;
   const cache: Awaited<ReturnType<typeof prepareGenerationSession>>['cache'] = {
-    tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'probe-cleared',
+    tokens: [],
+    validity: 'invalid',
+    checkpoint: undefined,
+    initialMemoryState: 'probe-cleared',
   };
-  const session = { core, model: 10n, context: 20n, vocab: 30n, memory: 40n, contextTokens: 1024,
-    sequenceRemoval: 'partial', slidingWindow: 0, nativeRollbackTokens: 0, prefillBatchTokens: 512,
-    projector: 0n, cache, preparation: { projector: 'absent', releasedTextContext: false } } as Awaited<ReturnType<typeof prepareGenerationSession>>;
+  const session = {
+    core,
+    model: 10n,
+    context: 20n,
+    vocab: 30n,
+    memory: 40n,
+    contextTokens: 1024,
+    sequenceRemoval: 'partial',
+    slidingWindow: 0,
+    nativeRollbackTokens: 0,
+    prefillBatchTokens: 512,
+    projector: 0n,
+    cache,
+    preparation: { projector: 'absent', releasedTextContext: false },
+  } as Awaited<ReturnType<typeof prepareGenerationSession>>;
   host.session.mockResolvedValue(session);
-  const parse = vi.fn(({ text }: { text: string, partial: boolean }) => ({ content: text, reasoningContent: '', toolCalls: [] }));
+  const parse = vi.fn<ReturnType<typeof prepareChat>['parse']>(({ text }) => ({ content: text, reasoningContent: '', toolCalls: [] }));
   host.chat.mockReturnValue({ params: { prompt: 'prompt', generation_prompt: '' }, images: [], additionalStops: [], parse, dispose: vi.fn() } as unknown as ReturnType<typeof prepareChat>);
   host.sampler.mockResolvedValue({ sample: vi.fn(async () => 7), preservedTokens: new Set<number>(), dispose: vi.fn(async () => {}) } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
-  const request: WorkerGenerateInput = { debug: 'on', model: 'fixture', messages: [{ role: 'user', content: 'hello' }],
-    temperature: 0, topP: 1, maxTokens: 65, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: 'webgpu-wasm32-jspi' }, assetBaseURL: undefined };
+  const request: WorkerGenerateInput = {
+    debug: 'on',
+    model: 'fixture',
+    messages: [{ role: 'user', content: 'hello' }],
+    temperature: 0,
+    topP: 1,
+    maxTokens: 65,
+    presencePenalty: 0,
+    frequencyPenalty: 0,
+    stop: [],
+    options: { profile: 'webgpu-wasm32-jspi' },
+    assetBaseURL: undefined,
+  };
   const chunks: string[] = [];
-  const run = ({ signal }: { signal: AbortSignal | undefined }) => generate({ request, signal, onProgress: () => {}, onEvent: ({ event }) => {
-    if (event.type === 'text') chunks.push(event.text);
-  } });
-  return { core, api, allocations, cache, parse, request, chunks, run, decodedBatches,
+  const run = ({ signal }: { signal: AbortSignal | undefined }) => generate({
+    request,
+    signal,
+    onProgress: () => {},
+    onEvent: ({ event }) => {
+      if (event.type === 'text') chunks.push(event.text);
+    },
+  });
+  return {
+    core,
+    api,
+    allocations,
+    cache,
+    parse,
+    request,
+    chunks,
+    run,
+    decodedBatches,
     setPromptTokens({ tokens }: { tokens: number[] }) {
       promptTokens = tokens;
-    } };
+    },
+  };
 }
 
 beforeEach(() => {
@@ -104,6 +154,7 @@ beforeEach(() => {
   vi.spyOn(performance, 'now').mockReturnValue(0);
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
+
 afterEach(() => vi.restoreAllMocks());
 
 function reports() {
@@ -112,6 +163,161 @@ function reports() {
 }
 
 describe('generation loop performance invariants', () => {
+  it.each(['on', 'off'] as const)('publishes three-second progress only with debug %s', async debug => {
+    const f = fixture(); f.request.maxTokens = 101; f.request.debug = debug;
+    let at = 0;
+    vi.mocked(performance.now).mockImplementation(() => at);
+    host.sampler.mockResolvedValue({
+      sample: vi.fn(async () => {
+        at += 30; return 7;
+      }),
+      preservedTokens: new Set<number>(),
+      dispose: vi.fn(async () => {}),
+    } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
+    await f.run({ signal: undefined });
+    const progress = readDiagnostics({ calls: vi.mocked(console.log).mock.calls }).filter(entry => entry.generationThroughput !== undefined);
+    if (debug === 'on') {
+      expect(progress).toHaveLength(1);
+      expect(diagnosticSchema.parse(progress[0]).generationThroughput).toMatchObject({
+        sampledTokens: 101,
+        firstSampleMs: 30,
+        postFirstSample: { unit: 't/s', sampledTokens: 100, elapsedMs: 3000, tokensPerSecond: 100000 / 3000 },
+        interval: { unit: 't/s', sampledTokens: 100, elapsedMs: 3000, tokensPerSecond: 100000 / 3000 },
+      });
+      expect(reports()).toHaveLength(1);
+    } else {
+      expect(progress).toEqual([]); expect(reports()).toEqual([]);
+    }
+    expect(f.allocations.size).toBe(0);
+  });
+
+  it('leaves the rate unavailable when cancellation arrives during the first sample', async () => {
+    const f = fixture(); const controller = new AbortController();
+    host.sampler.mockResolvedValue({
+      sample: vi.fn(async () => {
+        controller.abort(); return 7;
+      }),
+      preservedTokens: new Set<number>(),
+      dispose: vi.fn(async () => {}),
+    } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
+    await expect(f.run({ signal: controller.signal })).rejects.toThrow('aborted');
+    expect(reports()[0]!.performance).toMatchObject({
+      outcome: 'aborted',
+      sampledTokens: 1,
+      postFirstSample: { unit: 't/s', sampledTokens: 0, elapsedMs: 0 },
+    });
+    expect(reports()[0]!.performance!.postFirstSample!.tokensPerSecond).toBeUndefined();
+    expect(f.allocations.size).toBe(0);
+  });
+
+  it.each(['reasoning', 'tool', 'invisible'] as const)('counts %s generation without relying on visible text', async kind => {
+    const f = fixture(); f.request.maxTokens = 3;
+    let at = 0;
+    vi.mocked(performance.now).mockImplementation(() => at);
+    host.sampler.mockResolvedValue({
+      sample: vi.fn(async () => {
+        at += 20; return 7;
+      }),
+      preservedTokens: new Set<number>(),
+      dispose: vi.fn(async () => {}),
+    } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
+    f.parse.mockImplementation(({ text }) => {
+      switch (kind) {
+      case 'reasoning': return { content: '', reasoningContent: text, toolCalls: [] };
+      case 'tool': return { content: '', reasoningContent: '', toolCalls: [{ id: 'call', type: 'function', function: { name: 'fixture', arguments: text } }] };
+      case 'invisible': return { content: '', reasoningContent: '', toolCalls: [] };
+      default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
+      }
+    });
+    if (kind === 'tool') f.request.tools = [{ type: 'function', function: { name: 'fixture', description: '', parameters: {} } }];
+    expect((await f.run({ signal: undefined })).content).toBe('');
+    expect(reports()[0]!.performance).toMatchObject({
+      sampledTokens: 3,
+      firstSampleMs: 20,
+      postFirstSample: { sampledTokens: 2, elapsedMs: 40, tokensPerSecond: 50 },
+    });
+    expect(f.allocations.size).toBe(0);
+  });
+
+  it.each(['aborted', 'failed'] as const)('stops %s throughput at the last successful sample', async outcome => {
+    const f = fixture(); f.request.maxTokens = 3;
+    const controller = new AbortController();
+    let at = 0;
+    vi.mocked(performance.now).mockImplementation(() => at);
+    host.sampler.mockResolvedValue({
+      sample: vi.fn(async () => {
+        at += 20; return 7;
+      }),
+      preservedTokens: new Set<number>(),
+      dispose: vi.fn(async () => {
+        at += 1000;
+      }),
+    } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
+    const decode = f.api.llama_decode.getMockImplementation()!;
+    f.api.llama_decode.mockImplementationOnce(decode).mockImplementationOnce(decode).mockImplementationOnce(async () => {
+      at += 500;
+      if (outcome === 'aborted') {
+        controller.abort(); return 2;
+      }
+      throw new WebAssembly.RuntimeError('fixture failure');
+    });
+    await expect(f.run({ signal: controller.signal })).rejects.toThrow();
+    expect(reports()).toHaveLength(1);
+    expect(reports()[0]!.performance).toMatchObject({
+      outcome,
+      sampledTokens: 2,
+      postFirstSample: { sampledTokens: 1, elapsedMs: 20, tokensPerSecond: 50 },
+    });
+    expect(f.allocations.size).toBe(0);
+  });
+
+  it('counts native samples rather than coalesced delivery events for token throughput', async () => {
+    const f = fixture();
+    let at = 0;
+    vi.mocked(performance.now).mockImplementation(() => at);
+    host.sampler.mockResolvedValue({
+      sample: vi.fn(async () => {
+        at += 20; return 7;
+      }),
+      preservedTokens: new Set<number>(),
+      dispose: vi.fn(async () => {
+        at += 1000;
+      }),
+    } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
+    await f.run({ signal: undefined });
+    expect(reports()).toHaveLength(1);
+    expect(reports()[0]!.performance).toMatchObject({
+      sampledTokens: 65,
+      firstSampleMs: 20,
+      postFirstSample: { sampledTokens: 64, elapsedMs: 1280, tokensPerSecond: 50 },
+    });
+    expect(reports()[0]!.performance!.streaming!.deliveredEvents).toBeLessThan(65);
+    expect(f.allocations.size).toBe(0);
+  });
+
+  it('includes a sampled EOG token even though it emits no text', async () => {
+    const f = fixture();
+    let at = 0;
+    vi.mocked(performance.now).mockImplementation(() => at);
+    host.sampler.mockResolvedValue({
+      sample: vi.fn(async () => {
+        at += 20; return at === 20 ? 7 : 99;
+      }),
+      preservedTokens: new Set<number>(),
+      dispose: vi.fn(async () => {}),
+    } as unknown as Awaited<ReturnType<typeof createChatSampler>>);
+    f.api.llama_vocab_is_eog.mockImplementation(async (...args: unknown[]) => args[1] === 99 ? 1 : 0);
+    const piece = f.api.llama_token_to_piece.getMockImplementation()!;
+    f.api.llama_token_to_piece.mockImplementation(async (vocab, token, pointer) => token === 99 ? 0 : piece(vocab, token, pointer));
+    expect((await f.run({ signal: undefined })).content).toBe('x');
+    expect(reports()[0]!.performance).toMatchObject({
+      sampledTokens: 2,
+      decodedTokens: 1,
+      postFirstSample: { sampledTokens: 1, elapsedMs: 20, tokensPerSecond: 50 },
+    });
+    expect(f.allocations.size).toBe(0);
+  });
+
   it('reduces parse work against a per-token control without changing content', async () => {
     const optimized = fixture(); const expected = await optimized.run({ signal: undefined });
     const optimizedReport = reports().at(-1)?.performance;
@@ -124,6 +330,7 @@ describe('generation loop performance invariants', () => {
     expect(reports().at(-1)?.performance?.streaming).toMatchObject({ parsedCodeUnits: 2210, deliveredEvents: 65 });
     expect(optimized.allocations.size).toBe(0); expect(reference.allocations.size).toBe(0);
   });
+
   it('reduces repeated-token native calls against a disabled-cache control', async () => {
     const optimized = fixture(); const expected = await optimized.run({ signal: undefined });
     const create = tokenRendering.createTokenRenderer;
@@ -133,6 +340,7 @@ describe('generation loop performance invariants', () => {
     expect(reference.api.llama_vocab_is_eog).toHaveBeenCalledTimes(65); expect(reference.api.llama_token_to_piece).toHaveBeenCalledTimes(65);
     expect(optimized.allocations.size).toBe(0); expect(reference.allocations.size).toBe(0);
   });
+
   it('retains bounded rendering/parsing and defers only the final unused decode', async () => {
     const f = fixture();
     const result = await f.run({ signal: undefined });
@@ -144,13 +352,19 @@ describe('generation loop performance invariants', () => {
     expect(f.cache.tokens).toEqual([11, 22, 33, ...Array.from({ length: 64 }, () => 7)]);
     expect(f.cache.validity).toBe('valid'); expect(f.api.llama_memory_clear).not.toHaveBeenCalled();
     expect(f.allocations.size).toBe(0);
-    expect(reports()).toContainEqual(expect.objectContaining({ performance: expect.objectContaining({
-      outcome: 'completed', sampledTokens: 65, decodedTokens: 64, terminalDecodeDeferred: true,
-      // Length-limited final parsing still uses native partial=true.
-      streaming: expect.objectContaining({ partialParseCalls: 10, finalParseCalls: 0 }),
-      tokenRendering: expect.objectContaining({ cacheHits: 64, pieceCalls: 1 }),
-    }) }));
+    expect(reports()).toContainEqual(expect.objectContaining({
+      performance: expect.objectContaining({
+        outcome: 'completed',
+        sampledTokens: 65,
+        decodedTokens: 64,
+        terminalDecodeDeferred: true,
+        // Length-limited final parsing still uses native partial=true.
+        streaming: expect.objectContaining({ partialParseCalls: 10, finalParseCalls: 0 }),
+        tokenRendering: expect.objectContaining({ cacheHits: 64, pieceCalls: 1 }),
+      }),
+    }));
   });
+
   it('evaluates the deferred token on the next request instead of claiming a decoded prefix', async () => {
     const f = fixture(); await f.run({ signal: undefined });
     const cached = f.cache.tokens.slice(); const previousCalls = f.decodedBatches.length;
@@ -160,6 +374,7 @@ describe('generation loop performance invariants', () => {
     expect(f.api.llama_memory_clear).not.toHaveBeenCalled(); expect(f.allocations.size).toBe(0);
     expect(reports().at(-1)?.performance).toMatchObject({ reusedTokens: cached.length, prefillDecodedTokens: 2, decodedTokens: 0 });
   });
+
   it('keeps performance reporting off without changing generated content', async () => {
     const f = fixture(); f.request.debug = 'off'; f.request.maxTokens = 3;
     expect((await f.run({ signal: undefined })).content).toBe('xxx');
@@ -183,6 +398,7 @@ describe('native status and cancellation do not hide each other', () => {
       expect(f.cache.validity).toBe('invalid'); expect(f.allocations.size).toBe(0);
     });
   }
+
   it('preserves a native trap until delivery has drained, even during Stop', async () => {
     const f = fixture(); const controller = new AbortController();
     const native = Promise.withResolvers<number>(); const delivery = Promise.withResolvers<void>();
@@ -200,6 +416,7 @@ describe('native status and cancellation do not hide each other', () => {
     delivery.resolve(); expect(await pending).toBe(failure);
     expect(f.allocations.size).toBe(0); expect(reports().at(-1)?.performance?.outcome).toBe('failed');
   });
+
   it('classifies a preparation trap as failure even when the signal is also aborted', async () => {
     const f = fixture(); const controller = new AbortController(); const failure = new WebAssembly.RuntimeError('prepare trap');
     host.session.mockImplementationOnce(async () => {

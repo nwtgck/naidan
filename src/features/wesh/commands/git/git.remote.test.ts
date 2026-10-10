@@ -112,9 +112,11 @@ git config remote.configonly.fetch '+refs/heads/*:refs/remotes/configonly/*'`,
     expect(duplicateAdd.stdout.text).toBe('');
     expect(duplicateAdd.stderr.text).toBe('error: remote configonly already exists.\n');
 
-    const setUrl = await execute({ script: `\
+    const setUrl = await execute({
+      script: `\
 git remote set-url configonly configured-url
-git remote get-url configonly` });
+git remote get-url configonly`,
+    });
     expect(setUrl.result.exitCode).toBe(0);
     expect(setUrl.stderr.text).toBe('');
     expect(setUrl.stdout.text).toBe('configured-url\n');
@@ -258,9 +260,11 @@ git remote -v`,
     expect(added.stdout.text).toBe('');
     expect(added.stderr.text).toBe('');
 
-    const effective = await execute({ script: `\
+    const effective = await execute({
+      script: `\
 git remote get-url global
-git remote -v` });
+git remote -v`,
+    });
     expect(effective.result.exitCode).toBe(0);
     expect(effective.stderr.text).toBe('');
     expect(effective.stdout.text).toBe(`\
@@ -498,7 +502,6 @@ cat .git/refs/heads/master`,
     expect(lines).toHaveLength(2);
     expect(lines[0]).toBe(lines[1]);
   });
-
 
   it('enforces force-with-lease when deleting a stale remote branch', async () => {
     const setup = await execute({
@@ -771,7 +774,6 @@ cat .git/refs/heads/master`,
     expect(pulled.stdout.text.trim()).toBe(originalHead);
   });
 
-
   it('merges divergent local pull histories through the shared merge primitive', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -819,7 +821,6 @@ local
     expect(stdout.text).toContain("Merge branch 'master' of /source");
     expect(stdout.text).toContain("pull --no-rebase: Merge made by the 'ort' strategy.");
   });
-
 
   it('rebases divergent local pull histories through the shared rebase sequence', async () => {
     const { result, stdout, stderr } = await execute({
@@ -869,7 +870,6 @@ local
     expect(stdout.text).toContain('pull --rebase (finish): returning to refs/heads/master');
     expect(stderr.text).toContain('Successfully rebased and updated refs/heads/master.\n');
   });
-
 
   it('fetches all configured local remotes', async () => {
     const { result, stdout, stderr } = await execute({
@@ -965,7 +965,6 @@ foo.bar
 `);
   });
 
-
   it('resolves remote-tracking refs through the shared revision syntax', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -994,5 +993,4 @@ git show origin/master:a.txt`,
     expect(lines[3]).toBe('base');
     expect(lines[4]).toBe('base');
   });
-
 });

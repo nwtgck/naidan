@@ -87,7 +87,9 @@ export async function createChatSampler({ core, vocab, chain, params }: { core: 
       }
     };
     logDiagnostic({ diagnostic: { event: 'sampler-ready', grammar: !!grammar, grammarLazy: params.grammar_lazy, reasoning: !!budget, pointerBytes: core.pointerBytes } });
-    return { dispose, preservedTokens,
+    return {
+      dispose,
+      preservedTokens,
       async sample({ context }: { context: bigint }): Promise<number> {
         let stage: DiagnosticStage = 'reasoning-state';
         try {
@@ -130,6 +132,7 @@ export async function createChatSampler({ core, vocab, chain, params }: { core: 
     await dispose(); throw error;
   }
 }
+
 export function copyReasoningEndMatch({ core, budget }: { core: Core, budget: bigint }) {
   core.assertIdle();
   const copy = core.module.common_reasoning_budget_get_end_match_copy;
@@ -139,5 +142,6 @@ export function copyReasoningEndMatch({ core, budget }: { core: Core, budget: bi
   }
   return copy(budget);
 }
+
 export const TEST_ONLY = {
 };

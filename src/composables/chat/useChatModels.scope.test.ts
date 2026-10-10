@@ -15,15 +15,18 @@ vi.mock('./global/chat-core-singletons', async () => {
 const chatA = toChatId({ raw: 'chat-aa' }), chatB = toChatId({ raw: 'chat-bb' });
 const scopes: ReturnType<typeof effectScope>[] = [];
 const wrappers: VueWrapper[] = [];
+
 function open({ chatId }: { chatId: typeof chatA }) {
   const scope = effectScope(); scopes.push(scope);
   const current = ref(chatId);
   const adapter = scope.run(() => useChatModels({ scope: computed(() => current.value) }))!;
   return { current, adapter, scope };
 }
+
 beforeEach(() => {
   vi.resetAllMocks(); availableModels.value = ['global-model'];
 });
+
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount(); for (const scope of scopes.splice(0)) scope.stop();
 });
@@ -41,6 +44,7 @@ describe('model choices for an embedded ChatPane', () => {
     pendingA.resolve(['a-model']); await first;
     expect(a.adapter.availableModels.value).toEqual(['a-model']); expect(availableModels.value).toEqual(['global-model']);
   });
+
   it('rejects late responses after changing the displayed chat or starting a newer request', async () => {
     const view = open({ chatId: chatA }); const pending = Promise.withResolvers<string[]>();
     mocks.chat.mockReturnValueOnce(pending.promise).mockResolvedValueOnce(['current']);
@@ -51,6 +55,7 @@ describe('model choices for an embedded ChatPane', () => {
     const older = view.adapter.fetchForChat({ chatId: chatB }); await view.adapter.fetchForChat({ chatId: chatB });
     slow.resolve(['stale same chat']); await older; expect(view.adapter.availableModels.value).toEqual(['newer']);
   });
+
   it('does not publish to another chat or a disposed view and clears loading after errors', async () => {
     const view = open({ chatId: chatA }); mocks.chat.mockResolvedValueOnce(['other']);
     await view.adapter.fetchForChat({ chatId: chatB }); expect(view.adapter.availableModels.value).toEqual([]);
@@ -61,18 +66,24 @@ describe('model choices for an embedded ChatPane', () => {
     const task = view.adapter.fetchForChat({ chatId: chatA }); view.scope.stop(); pending.resolve(['disposed']); await task;
     expect(view.adapter.availableModels.value).toEqual([]);
   });
+
   it('lets existing descendants use the provided identity without new component props', async () => {
     let adapter: ChatModelsAdapter | undefined;
-    const child = defineComponent({ setup() {
-      adapter = useChatModels(); return () => h('div');
-    } });
-    const parent = defineComponent({ setup() {
-      provideChatViewScope({ chatId: ref(chatB) }); return () => h(child);
-    } });
+    const child = defineComponent({
+      setup() {
+        adapter = useChatModels(); return () => h('div');
+      },
+    });
+    const parent = defineComponent({
+      setup() {
+        provideChatViewScope({ chatId: ref(chatB) }); return () => h(child);
+      },
+    });
     wrappers.push(mount(parent)); mocks.chat.mockResolvedValueOnce(['embedded']);
     await adapter!.fetchForChat({ chatId: chatB });
     expect(adapter!.availableModels.value).toEqual(['embedded']); expect(availableModels.value).toEqual(['global-model']);
   });
+
   it('preserves the global facade for callers without a ChatPane scope', () => {
     const adapter = useChatModels(); expect(adapter.availableModels).toBe(availableModels);
   });

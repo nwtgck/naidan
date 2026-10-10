@@ -34,7 +34,8 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
   const acceptedParameters = cloneLmParameters({ lmParameters: parameters });
   const acceptedTools = tools.map(tool => ({ ...tool, execute: tool.execute.bind(tool) }));
   const definitions = acceptedTools.map(tool => ({
-    name: tool.name, description: tool.description,
+    name: tool.name,
+    description: tool.description,
     parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: tool.parametersSchema })),
   }));
   if (abortController.signal.aborted) return { type: 'interrupted', reason: 'aborted' };
@@ -50,7 +51,8 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
       const result = await consumeChatGeneration({
         node: assistant,
         items: chat({ messages, debug, model, parameters: acceptedParameters, tools: definitions.length ? definitions : undefined, readBinaryObject, signal }),
-        abortController: controller, onChange,
+        abortController: controller,
+        onChange,
         onToolCallDraftsChange: onToolCallDraftsChange === undefined ? undefined : ({ drafts }) => onToolCallDraftsChange({ messageId: assistant.id, drafts }),
       });
       switch (result.type) {
@@ -85,14 +87,20 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
         }
       });
       const node = await createToolMessage({ assistant });
-      await executeChatToolCalls({ calls, tools: acceptedTools, node, signal, approvalContext,
+      await executeChatToolCalls({
+        calls,
+        tools: acceptedTools,
+        node,
+        signal,
+        approvalContext,
         onEvent: ({ toolCallId, event }) => {
           // A retired/canceled operation no longer publishes volatile output.
           // The observed execute() outcome is still recorded in its owned node.
           if (signal.aborted) return;
           return onToolEvent({ toolCallId, event });
         },
-        onChange, persistContent: persistToolContent,
+        onChange,
+        persistContent: persistToolContent,
       });
       signal.throwIfAborted();
       assistant = await createAssistantMessage();
@@ -105,23 +113,26 @@ export async function generateChatTurn({ provider, debug, model, parameters, too
   let entered = false;
   // The callback holds the runtime lane while the common layer owns tool waits
   // and persistence. No feature-specific tool loop or second history is needed.
-  await provider.runChatOperation({ signal: abortController.signal, operation: async ({ chat, signal }) => {
-    if (entered) throw new Error('A chat operation must be entered exactly once.');
-    entered = true;
-    const controller = new AbortController();
-    const sources = [...new Set([signal, abortController.signal])];
-    const removers = sources.map(source => {
-      const abort = () => controller.abort(source.reason);
-      source.addEventListener('abort', abort, { once: true });
-      if (source.aborted) abort();
-      return () => source.removeEventListener('abort', abort);
-    });
-    try {
-      result = await generate({ chat, controller });
-    } finally {
-      for (const remove of removers) remove();
-    }
-  } });
+  await provider.runChatOperation({
+    signal: abortController.signal,
+    operation: async ({ chat, signal }) => {
+      if (entered) throw new Error('A chat operation must be entered exactly once.');
+      entered = true;
+      const controller = new AbortController();
+      const sources = [...new Set([signal, abortController.signal])];
+      const removers = sources.map(source => {
+        const abort = () => controller.abort(source.reason);
+        source.addEventListener('abort', abort, { once: true });
+        if (source.aborted) abort();
+        return () => source.removeEventListener('abort', abort);
+      });
+      try {
+        result = await generate({ chat, controller });
+      } finally {
+        for (const remove of removers) remove();
+      }
+    },
+  });
   if (result === undefined) throw new Error('The Provider did not run the chat operation.');
   return result;
 }

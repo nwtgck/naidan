@@ -3,6 +3,7 @@ import { flushPromises } from '@vue/test-utils';
 import { createMetadataSession } from './metadata-session';
 import type { discoverRepository, RepositoryCatalog } from './catalog';
 const catalog: RepositoryCatalog = { repository: 'owner/model', revision: 'a'.repeat(40), models: [], projectors: [] };
+
 describe('explicit-only repository metadata session', () => {
   it('does nothing until requested, caches across option changes and refreshes only on an explicit action', async () => {
     let now = 0;
@@ -16,6 +17,7 @@ describe('explicit-only repository metadata session', () => {
     await session.inspect(request); expect(discover).toHaveBeenCalledTimes(2);
     await session.inspect({ ...request, freshness: 'refresh' }); expect(discover).toHaveBeenCalledTimes(3);
   });
+
   it('serializes requests, shares a cached repository and skips cancelled waiting metadata', async () => {
     const gate = Promise.withResolvers<RepositoryCatalog>();
     const discover = vi.fn<typeof discoverRepository>().mockReturnValueOnce(gate.promise).mockResolvedValue(catalog);
@@ -30,6 +32,7 @@ describe('explicit-only repository metadata session', () => {
     gate.resolve(catalog); await first; await second; await rejection;
     expect(discover).toHaveBeenCalledOnce();
   });
+
   it('does not cache aborted responses and a failed request does not block the next explicit request', async () => {
     const controller = new AbortController();
     const discover = vi.fn<typeof discoverRepository>().mockImplementationOnce(async () => {
@@ -59,6 +62,7 @@ describe('metadata cache latency without relaxed ordering', () => {
     expect(discover).toHaveBeenCalledTimes(2);
     gate.resolve({ ...catalog, repository: 'owner/other' }); await slow;
   });
+
   it('does not jump over a pending explicit refresh of the same repository', async () => {
     const gate = Promise.withResolvers<RepositoryCatalog>();
     const discover = vi.fn<typeof discoverRepository>().mockResolvedValueOnce(catalog).mockReturnValueOnce(gate.promise);
@@ -73,6 +77,7 @@ describe('metadata cache latency without relaxed ordering', () => {
     const updated = { ...catalog, revision: 'b'.repeat(40) }; gate.resolve(updated);
     await refresh; expect(await reuse).toBe(updated); expect(discover).toHaveBeenCalledTimes(2);
   });
+
   it('checks cancellation even on a cache hit and does not extend the cache lifetime', async () => {
     let now = 0;
     const discover = vi.fn<typeof discoverRepository>().mockResolvedValue(catalog);

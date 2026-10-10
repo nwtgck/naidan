@@ -22,20 +22,24 @@ describe('read-only message display', () => {
     expect(getMessageText({ message })).toBe(raw);
     expect(copyChatMessage({ message })).toEqual(before);
   });
+
   it('preserves native reasoning, repeated part kinds, and tool position', () => {
-    const message = assistant({ parts: [
-      { type: 'reasoning', text: '<think>literal inside native</think>', completeness: 'complete' },
-      { type: 'text', text: '  A', completeness: 'complete' },
-      { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{}' } } },
-      { type: 'reasoning', text: 'R2', completeness: 'partial' },
-      { type: 'text', text: ' B ', completeness: 'partial' },
-    ] });
+    const message = assistant({
+      parts: [
+        { type: 'reasoning', text: '<think>literal inside native</think>', completeness: 'complete' },
+        { type: 'text', text: '  A', completeness: 'complete' },
+        { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: '{}' } } },
+        { type: 'reasoning', text: 'R2', completeness: 'partial' },
+        { type: 'text', text: ' B ', completeness: 'partial' },
+      ],
+    });
     const display = getAssistantDisplayParts({ message });
     expect(display.map(p => p.type)).toEqual(['reasoning', 'text', 'tool_call', 'reasoning', 'text']);
     expect(display[0]).toMatchObject({ type: 'reasoning', text: '<think>literal inside native</think>' });
     expect(new Set(display.map(p => p.key)).size).toBe(5);
     expect(getDisplayedMessageText({ message })).toBe('  A B ');
   });
+
   it('keeps literal tag explanations in code fences and inline code visible', () => {
     const values = [
       '`<think>example</think>`',
@@ -54,6 +58,7 @@ describe('read-only message display', () => {
     ];
     for (const text of values) expect(splitDisplayedThinking({ text })).toEqual([{ type: 'text', text, offset: 0, completeness: 'complete' }]);
   });
+
   it('returns to tag interpretation after a fence closes', () => {
     const raw = `\
 \`\`\`xml
@@ -68,11 +73,13 @@ describe('read-only message display', () => {
 `], ['reasoning', 'reason'], ['text', 'answer'],
     ]);
   });
+
   it('reports an unclosed displayed block as partial without inserting a closing marker', () => {
     const message = assistant({ parts: [{ type: 'text', text: '<think>unfinished', completeness: 'partial' }] });
     expect(getAssistantDisplayParts({ message })[0]).toMatchObject({ type: 'reasoning', text: 'unfinished', completeness: 'partial' });
     expect(getMessageText({ message })).toBe('<think>unfinished');
   });
+
   it('uses stable view keys and offsets as chunks grow or a hidden body becomes nonempty', () => {
     const first: AssistantMessageNode['parts'][number] = { type: 'text', text: '', completeness: 'partial' };
     const second: AssistantMessageNode['parts'][number] = { type: 'reasoning', text: 'R', completeness: 'partial' };
@@ -81,6 +88,7 @@ describe('read-only message display', () => {
     first.text = 'A'; second.text += ' more';
     expect(getAssistantDisplayParts({ message })[1]!.key).toBe(key);
   });
+
   it('preserves keys when a completed call is inserted before an existing part', () => {
     const message = assistant({ parts: [{ type: 'text', text: 'after call', completeness: 'partial' }] });
     const key = getAssistantDisplayParts({ message })[0]!.key;
@@ -90,6 +98,7 @@ describe('read-only message display', () => {
     expect(display[1]!.key).toBe(key);
     expect(display[0]!.key).not.toBe(key);
   });
+
   it('handles every text chunk boundary without rewriting the original string', () => {
     const raw = `\
 A<think>理由🙂

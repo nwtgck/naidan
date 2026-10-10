@@ -8,10 +8,13 @@ import { createImageGenerationStorageHarness, generationAssetFixture, generation
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
 const root = '/naidan-storage/experimental/image-generation';
 const annotationsPath = `${root}/sessions/aa/session-aa/annotations/00/asset-00.json`;
+
 beforeEach(() => {
   fs = createImageGenerationStorageHarness(); vi.stubGlobal('Blob', NodeBlob);
 });
+
 afterEach(() => vi.unstubAllGlobals());
+
 async function ready({ count, finish }: { count: number, finish: boolean }) {
   const catalog = await service.openImageGenerationStore({ storageType: 'opfs', creation: 'allow' });
   if (!catalog) throw new Error('Missing test catalog.');
@@ -27,7 +30,59 @@ async function ready({ count, finish }: { count: number, finish: boolean }) {
   const asset = assets[0]!;
   return { store, catalog, session, run, assets, asset, key: { store, sessionId: session.id, assetId: asset.id } };
 }
+
 describe('image archive and global tag identity', () => {
+  it('reads duplicate historical assignments without writes and canonicalizes only an explicit set command', async () => {
+    const h = await ready({ count: 1, finish: true });
+    const tag = { type: 'system' as const, key: 'favorite' as const };
+    await service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 0, assignedAt: 7, tags: [tag] });
+    const file = await fs.file({ path: annotationsPath });
+    file.text = JSON.stringify({
+      assetId: idToRaw({ id: h.asset.id }),
+      sessionId: idToRaw({ id: h.session.id }),
+      revision: 1,
+      state: 'active',
+      tags: [{ tag, assignedAt: 7 }, { tag, assignedAt: 11 }],
+    });
+    const original = file.text;
+    fs.writes.length = 0;
+    expect((await service.loadImageGenerationAssetAnnotations(h.key))?.tags).toEqual([{ tag, assignedAt: 7 }, { tag, assignedAt: 11 }]);
+    expect(fs.writes).toEqual([]);
+    expect(file.text).toBe(original);
+    await service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 1, assignedAt: 20, tags: [tag, { ...tag }] });
+    expect((await service.loadImageGenerationAssetAnnotations(h.key))?.tags).toEqual([{ tag, assignedAt: 7 }]);
+    // Removing a tag remains possible even if its historical assignments repeated.
+    await service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 2, assignedAt: 30, tags: [] });
+    expect((await service.loadImageGenerationAssetAnnotations(h.key))?.tags).toEqual([]);
+  });
+
+  it('deduplicates by typed identity, keeps request order and does not hide unknown tags', async () => {
+    const h = await ready({ count: 1, finish: true });
+    const system = { type: 'system' as const, key: 'favorite' as const };
+    const user = { type: 'user' as const, tagId: toImageGenerationTagId({ raw: 'favorite' }) };
+    const catalog = await service.loadImageGenerationCatalog({ store: h.store });
+    await service.saveImageGenerationCatalog({
+      store: h.store,
+      catalog: {
+        ...catalog,
+        revision: 1,
+        tags: [{ id: user.tagId, name: 'user favorite', state: 'active', createdAt: 1, updatedAt: 1 }],
+      },
+      expectedRevision: 0,
+    });
+    await service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 0, assignedAt: 7, tags: [user, system, { ...user }, { ...system }] });
+    const annotations = await service.loadImageGenerationAssetAnnotations(h.key);
+    expect(annotations?.tags).toEqual([{ tag: user, assignedAt: 7 }, { tag: system, assignedAt: 7 }]);
+    fs.writes.length = 0;
+    const missing = { type: 'user' as const, tagId: toImageGenerationTagId({ raw: 'missing' }) };
+    await expect(service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 1, assignedAt: 9, tags: [user, user, missing, missing] })).rejects.toThrow('unknown');
+    expect(fs.writes).toEqual([]);
+    expect(await service.loadImageGenerationAssetAnnotations(h.key)).toEqual(annotations);
+    await expect(service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 0, assignedAt: 9, tags: [system, system] })).rejects.toThrow('conflict');
+    expect(fs.writes).toEqual([]);
+    expect(await service.loadImageGenerationAssetAnnotations(h.key)).toEqual(annotations);
+  });
+
   it('archives without changing any image bytes, request, or assigned tags, and restores it', async () => {
     const h = await ready({ count: 1, finish: true });
     await service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 0, assignedAt: 7, tags: [{ type: 'system', key: 'favorite' }] });
@@ -42,6 +97,7 @@ describe('image archive and global tag identity', () => {
     const exported = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
     expect(exported.binaryObjectIds).toContain(h.asset.result.binaryObjectId);
   });
+
   it('resolves all 64 outputs of a run rather than only one gallery page', async () => {
     const h = await ready({ count: 64, finish: true });
     const items = await listImageGenerationRunAssets({ store: h.store, sessionId: h.session.id, runId: h.run.id });
@@ -49,12 +105,14 @@ describe('image archive and global tag identity', () => {
     for (const item of items) await setImageGenerationAssetState({ store: h.store, sessionId: h.session.id, assetId: item.id, expectedRevision: item.annotations.revision, state: 'archived' });
     expect((await listImageGenerationRunAssets({ store: h.store, sessionId: h.session.id, runId: h.run.id })).every(item => item.annotations.state === 'archived')).toBe(true);
   });
+
   it('detects concurrent annotation changes instead of overwriting them', async () => {
     const h = await ready({ count: 1, finish: true });
     await service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 0, assignedAt: 1, tags: [{ type: 'system', key: 'favorite' }] });
     await expect(setImageGenerationAssetState({ ...h.key, expectedRevision: 0, state: 'archived' })).rejects.toThrow('conflict');
     expect((await service.loadImageGenerationAssetAnnotations(h.key))?.state).toBe('active');
   });
+
   it('rebuilds the archive index after a canonical write outlives its acknowledgement', async () => {
     const h = await ready({ count: 1, finish: true });
     fs.faults.add(`close:${root}/sessions/aa/session-aa/annotations/00/index.json`);
@@ -64,6 +122,7 @@ describe('image archive and global tag identity', () => {
     await setImageGenerationAssetState({ ...h.key, expectedRevision: 0, state: 'archived' });
     expect((await service.loadImageGenerationAssetAnnotations(h.key))?.revision).toBe(1);
   });
+
   it('shares one Unicode tag ID across sessions and renames only the global catalog', async () => {
     const h = await ready({ count: 1, finish: true });
     const other = generationSessionFixture({ id: 'session-bb' });
@@ -82,9 +141,11 @@ describe('image archive and global tag identity', () => {
     expect(fs.writes.slice(written)).toEqual([`${root}/catalog.json`]);
     for (const image of [h.asset, asset]) expect((await service.loadImageGenerationAssetAnnotations({ store: h.store, sessionId: image.sessionId, assetId: image.id }))?.tags[0]?.tag).toEqual({ type: 'user', tagId });
     const current = await service.loadImageGenerationCatalog({ store: h.store });
-    await expect(service.saveImageGenerationCatalog({ store: h.store, catalog: { ...current, revision: 3, tags: [...current.tags, { ...current.tags[0]!, id: toImageGenerationTagId({ raw: 'tag-bb' }), name: ' 採用候補🟦 ' }] }, expectedRevision: 2 })).rejects.toThrow();
+    await service.saveImageGenerationCatalog({ store: h.store, catalog: { ...current, revision: 3, tags: [...current.tags, { ...current.tags[0]!, id: toImageGenerationTagId({ raw: 'tag-bb' }), name: ' 採用候補🟦 ' }] }, expectedRevision: 2 });
+    expect((await service.loadImageGenerationCatalog({ store: h.store })).tags).toHaveLength(2);
   });
 });
+
 describe('permanent output deletion', () => {
   it('removes the output and saved previews only and forbids restoring a deleted asset', async () => {
     const h = await ready({ count: 1, finish: true }), removeBinary = vi.fn().mockResolvedValue(undefined);
@@ -97,6 +158,7 @@ describe('permanent output deletion', () => {
     await deleteImageGenerationAsset({ ...h.key, expectedRevision: 0, removeBinary });
     expect(removeBinary).toHaveBeenCalledTimes(2);
   });
+
   it('will not delete when the run is active or the annotation revision is stale', async () => {
     const h = await ready({ count: 1, finish: false }), removeBinary = vi.fn();
     await expect(deleteImageGenerationAsset({ ...h.key, expectedRevision: 0, removeBinary })).rejects.toThrow('Wait');
@@ -106,6 +168,7 @@ describe('permanent output deletion', () => {
     await expect(deleteImageGenerationAsset({ ...h.key, expectedRevision: 0, removeBinary })).rejects.toThrow('conflict');
     expect(removeBinary).not.toHaveBeenCalled();
   });
+
   it('persists pending deletion before removing bytes and retries after a partial failure', async () => {
     const h = await ready({ count: 1, finish: true });
     const removeBinary = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('disk failure')).mockResolvedValue(undefined);
@@ -116,6 +179,7 @@ describe('permanent output deletion', () => {
     expect((await service.loadImageGenerationAssetAnnotations(h.key))?.state).toBe('deleted');
     expect(removeBinary).toHaveBeenCalledTimes(4);
   });
+
   it('does not remove bytes if writing the deletion marker fails', async () => {
     const h = await ready({ count: 1, finish: true }), removeBinary = vi.fn().mockResolvedValue(undefined);
     fs.faults.add(`open:${root}/deleted-binaries/00/binary-asset-00.json`);
@@ -126,6 +190,7 @@ describe('permanent output deletion', () => {
     await deleteImageGenerationAsset({ ...h.key, expectedRevision: 0, removeBinary });
     expect(removeBinary).toHaveBeenCalledTimes(2);
   });
+
   it('does not resurrect deleted output bytes through a stale publication or new input', async () => {
     const h = await ready({ count: 1, finish: true }), removeBinary = vi.fn().mockResolvedValue(undefined);
     await deleteImageGenerationAsset({ ...h.key, expectedRevision: 0, removeBinary });
@@ -138,6 +203,7 @@ describe('permanent output deletion', () => {
     await expect(service.createImageGenerationRun({ store: h.store, run, writeInputs: write })).rejects.toThrow('permanently deleted');
     expect(write).not.toHaveBeenCalled();
   });
+
   it('exports deletion facts instead of trying to export removed bytes', async () => {
     const h = await ready({ count: 2, finish: true });
     await setImageGenerationAssetState({ store: h.store, sessionId: h.session.id, assetId: h.assets[1]!.id, expectedRevision: 0, state: 'archived' });
@@ -149,6 +215,7 @@ describe('permanent output deletion', () => {
     expect(snapshot.binaryObjectIds).toContain(h.run.request.imageInputs.initImage?.binaryObjectId);
     expect(snapshot.metadata.map(file => file.path)).toContain(`deleted-binaries/${idToRaw({ id: h.asset.result.binaryObjectId })}.json`);
   });
+
   it('retries the final metadata write without resurrecting files', async () => {
     const h = await ready({ count: 1, finish: true });
     const removeBinary = vi.fn(async () => {
@@ -159,4 +226,23 @@ describe('permanent output deletion', () => {
     await deleteImageGenerationAsset({ ...h.key, expectedRevision: 1, removeBinary: async () => {} });
     expect((await service.loadImageGenerationAssetAnnotations(h.key))?.state).toBe('deleted');
   });
+});
+
+it('preserves recovery confirmation through canonical storage and refuses its resurrection after deletion', async () => {
+  const h = await ready({ count: 1, finish: false });
+  // Use a second run so the original immutable successful asset is never rewritten.
+  const run = generationRunFixture({ id: 'run-recovered', sessionId: h.session.id, count: 1, seed: '99' });
+  await service.createImageGenerationRun({ store: h.store, run, writeInputs: async () => {} });
+  await service.updateImageGenerationRunExecution({ store: h.store, sessionId: h.session.id, runId: run.id, expectedRevision: 0, execution: { type: 'running', startedAt: 3 } });
+  const asset = generationAssetFixture({ id: 'asset-recovered', run, index: 0 });
+  asset.result = { ...asset.result, confirmation: 'unconfirmed', modelVersion: undefined, uniformOutput: undefined }; asset.previews = [];
+  await service.commitImageGenerationAsset({ store: h.store, asset, writeImages: async () => {} });
+  const key = { store: h.store, sessionId: h.session.id, assetId: asset.id };
+  expect((await service.loadImageGenerationAsset(key))?.result.confirmation).toBe('unconfirmed');
+  await service.updateImageGenerationRunExecution({ store: h.store, sessionId: h.session.id, runId: run.id, expectedRevision: 1, execution: { type: 'interrupted', finishedAt: 12 } });
+  expect((await listImageGenerationRunAssets({ store: h.store, sessionId: h.session.id, runId: run.id }))[0]?.confirmation).toBe('unconfirmed');
+  await deleteImageGenerationAsset({ ...key, expectedRevision: 0, removeBinary: async () => {} });
+  const writeImages = vi.fn();
+  await expect(service.commitImageGenerationAsset({ store: h.store, asset, writeImages })).rejects.toThrow();
+  expect(writeImages).not.toHaveBeenCalled();
 });

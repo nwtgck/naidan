@@ -115,5 +115,4 @@ builtin
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
-
 });

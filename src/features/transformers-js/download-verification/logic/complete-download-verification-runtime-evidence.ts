@@ -85,8 +85,12 @@ export async function completeDownloadVerificationRuntimeEvidence({
     observations.push(measured);
   };
   const runtimeTiming = (): CacheAcceptanceTimingEvidence => ({
-    format: 'msi-cache-acceptance-timing-v1', source: 'current-msi-cache-acceptance',
-    runId: evidence.runId, modelId, droppedObservations, observations,
+    format: 'msi-cache-acceptance-timing-v1',
+    source: 'current-msi-cache-acceptance',
+    runId: evidence.runId,
+    modelId,
+    droppedObservations,
+    observations,
   });
   try {
     // Model Support Investigation is observational. It must never acquire the

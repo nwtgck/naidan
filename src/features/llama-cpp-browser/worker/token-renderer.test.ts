@@ -41,6 +41,7 @@ describe('bounded request-local token rendering', () => {
     renderer.dispose(); renderer.dispose();
     expect(core.free).not.toHaveBeenCalled();
   });
+
   it('reuses both native results but still returns text on every hit', async () => {
     const { core, renderer, allocations } = fixture({ cacheMode: 'bounded' });
     for (let i = 0; i < 100; i++) expect(await renderer.render({ token: 17, special: false })).toEqual({ text: '17', endOfGeneration: false });
@@ -50,6 +51,7 @@ describe('bounded request-local token rendering', () => {
     renderer.dispose(); renderer.dispose();
     expect(allocations.size).toBe(0); expect(core.free).toHaveBeenCalledOnce();
   });
+
   it('includes the special-token visibility flag in the key', async () => {
     const { renderer, core } = fixture({ cacheMode: 'bounded' });
     for (let i = 0; i < 3; i++) {
@@ -59,6 +61,7 @@ describe('bounded request-local token rendering', () => {
     expect(core.api.llama_token_to_piece).toHaveBeenCalledTimes(2);
     renderer.dispose();
   });
+
   it('supports the full nonnegative int32 range without cache-key collisions', async () => {
     const { renderer } = fixture({ cacheMode: 'bounded' });
     for (const token of [0, 1073741824, 2147483647]) {
@@ -69,6 +72,7 @@ describe('bounded request-local token rendering', () => {
     expect((await renderer.render({ token: 2147483647, special: true })).text).toBe('<2147483647>');
     renderer.dispose();
   });
+
   it('does not keep views into a reused or replaced Wasm heap', async () => {
     const { renderer, pieces, allocations } = fixture({ cacheMode: 'bounded' });
     pieces.set(1, Uint8Array.of(65)); pieces.set(2, Uint8Array.of(66));
@@ -80,6 +84,7 @@ describe('bounded request-local token rendering', () => {
     expect((await renderer.render({ token: 1, special: false })).text).toBe('A');
     renderer.dispose();
   });
+
   it('decodes cached byte fragments in order instead of caching partial strings', async () => {
     const { renderer, pieces, core } = fixture({ cacheMode: 'bounded' });
     [0xe6, 0x97, 0xa5].forEach((byte, i) => pieces.set(i + 1, Uint8Array.of(byte)));
@@ -90,6 +95,7 @@ describe('bounded request-local token rendering', () => {
     expect(core.api.llama_token_to_piece).toHaveBeenCalledTimes(3);
     renderer.dispose();
   });
+
   it('keeps stream state through empty pieces and flushes an incomplete character once', async () => {
     const { renderer, pieces } = fixture({ cacheMode: 'bounded' });
     pieces.set(1, Uint8Array.of(0xe6)); pieces.set(2, new Uint8Array());
@@ -99,6 +105,7 @@ describe('bounded request-local token rendering', () => {
     expect(renderer.finish()).toBe('\uFFFD'); expect(renderer.finish()).toBe('');
     renderer.dispose();
   });
+
   it.each([[0xef, 0xbb, 0xbf, 65], [0xff, 65, 0xc3, 0xa9], [0xed, 0xa0, 0x80], [0xf0, 0x9f, 0x90, 0x88]].map(bytes => ({ bytes })))('matches an uncached decoder for byte sequence $bytes', async ({ bytes }) => {
     const a = fixture({ cacheMode: 'bounded' }); const b = fixture({ cacheMode: 'disabled' });
     bytes.forEach((byte, i) => {
@@ -112,6 +119,7 @@ describe('bounded request-local token rendering', () => {
     expect(a.renderer.finish()).toBe(b.renderer.finish());
     a.renderer.dispose(); b.renderer.dispose();
   });
+
   it('reacquires the memory view after an asynchronous native call grows memory', async () => {
     const { renderer, core, allocations } = fixture({ cacheMode: 'bounded' });
     core.api.llama_token_to_piece.mockImplementationOnce(async (_vocab, _token, pointer) => {
@@ -121,6 +129,7 @@ describe('bounded request-local token rendering', () => {
     expect((await renderer.render({ token: 1, special: false })).text).toBe('G');
     renderer.dispose();
   });
+
   it('grows only once and frees the obsolete scratch buffer before replacement', async () => {
     const { renderer, pieces, core, allocations } = fixture({ cacheMode: 'bounded' });
     pieces.set(1, new Uint8Array(513).fill(65));
@@ -130,6 +139,7 @@ describe('bounded request-local token rendering', () => {
     expect(allocations.size).toBe(1);
     renderer.dispose(); expect(allocations.size).toBe(0);
   });
+
   it('keeps large valid pieces uncached without changing their output', async () => {
     const { renderer, pieces } = fixture({ cacheMode: 'bounded' });
     const length = TEST_ONLY.maximumCachedPieceBytes + 1;
@@ -138,6 +148,7 @@ describe('bounded request-local token rendering', () => {
     expect(renderer.counters).toMatchObject({ peakEntries: 0, peakCachedBytes: 0, oversizedPieces: 2, cacheMisses: 2, pieceCalls: 3 });
     renderer.dispose();
   });
+
   it('bounds entries, including zero-length entries, and refreshes recent hits', async () => {
     const { renderer, pieces } = fixture({ cacheMode: 'bounded' });
     for (let token = 0; token < TEST_ONLY.maximumEntries; token++) {
@@ -153,6 +164,7 @@ describe('bounded request-local token rendering', () => {
     expect(renderer.counters.cacheMisses).toBe(misses + 1);
     renderer.dispose();
   });
+
   it('bounds retained bytes even before the entry limit is reached', async () => {
     const { renderer, pieces } = fixture({ cacheMode: 'bounded' });
     for (let token = 0; token < 40; token++) {
@@ -163,6 +175,7 @@ describe('bounded request-local token rendering', () => {
     expect(renderer.counters.peakEntries).toBe(16); expect(renderer.counters.evictions).toBe(24);
     renderer.dispose();
   });
+
   it('does not share vocabulary results or decoder state across requests', async () => {
     const a = fixture({ cacheMode: 'bounded' }); const b = fixture({ cacheMode: 'bounded' });
     a.pieces.set(1, Uint8Array.of(0xe6)); b.pieces.set(1, Uint8Array.of(65));
@@ -170,17 +183,20 @@ describe('bounded request-local token rendering', () => {
     expect((await b.renderer.render({ token: 1, special: false })).text).toBe('A');
     expect(b.core.api.llama_token_to_piece).toHaveBeenCalledOnce(); b.renderer.dispose();
   });
+
   it.each([NaN, Infinity, -1, 1.25, 2147483648])('rejects invalid token %s before a native call', async token => {
     const { renderer, core } = fixture({ cacheMode: 'bounded' });
     await expect(renderer.render({ token, special: false })).rejects.toThrow('runtime-error');
     expect(core.api.llama_vocab_is_eog).not.toHaveBeenCalled(); renderer.dispose();
   });
+
   it.each([NaN, Infinity, -1, 2, 0.5])('rejects invalid end-of-generation result %s', async end => {
     const { renderer, core } = fixture({ cacheMode: 'bounded' });
     core.api.llama_vocab_is_eog.mockResolvedValueOnce(end);
     await expect(renderer.render({ token: 1, special: false })).rejects.toThrow('runtime-error');
     expect(core.api.llama_token_to_piece).not.toHaveBeenCalled(); renderer.dispose();
   });
+
   it.each([NaN, Infinity, -Infinity, 0.5, -1, -256, 257, -2147483648, -(1024 * 1024 + 1)])('rejects invalid piece result %s without reading or caching', async length => {
     const { renderer, core, allocations } = fixture({ cacheMode: 'bounded' });
     core.api.llama_token_to_piece.mockResolvedValueOnce(length);
@@ -188,6 +204,7 @@ describe('bounded request-local token rendering', () => {
     expect(core.bytes).not.toHaveBeenCalled(); expect(renderer.counters.peakEntries).toBe(0);
     renderer.dispose(); expect(allocations.size).toBe(0);
   });
+
   it.each([-513, 512, 514, NaN])('rejects a changed retry result %s', async length => {
     const { renderer, core, allocations } = fixture({ cacheMode: 'bounded' });
     core.api.llama_token_to_piece.mockResolvedValueOnce(-513).mockResolvedValueOnce(length);
@@ -196,6 +213,7 @@ describe('bounded request-local token rendering', () => {
     expect(renderer.counters.peakEntries).toBe(0);
     renderer.dispose(); expect(allocations.size).toBe(0);
   });
+
   it('does not double-free after a replacement allocation fails', async () => {
     const { renderer, core, allocations } = fixture({ cacheMode: 'bounded' });
     core.api.llama_token_to_piece.mockResolvedValueOnce(-513);
@@ -205,6 +223,7 @@ describe('bounded request-local token rendering', () => {
     await expect(renderer.render({ token: 1, special: false })).rejects.toThrow('allocation');
     renderer.dispose(); expect(core.free).toHaveBeenCalledOnce(); expect(allocations.size).toBe(0);
   });
+
   it.each(['eog', 'piece'] as const)('rejects overlapping access and waits for a pending %s call before freeing', async kind => {
     const { renderer, core, allocations } = fixture({ cacheMode: 'bounded' });
     const pending = Promise.withResolvers<number>();
@@ -224,6 +243,7 @@ describe('bounded request-local token rendering', () => {
     expect(renderer.counters.peakEntries).toBe(0);
     renderer.dispose(); expect(allocations.size).toBe(0);
   });
+
   it('does not expose or log cached token IDs or bytes through counters', async () => {
     const { renderer, pieces } = fixture({ cacheMode: 'bounded' });
     pieces.set(1234567, new TextEncoder().encode('private text'));
@@ -235,7 +255,6 @@ describe('bounded request-local token rendering', () => {
     await expect(renderer.render({ token: 1, special: false })).rejects.toThrow('disposed');
   });
 });
-
 
 describe('optional token cache allocation failure', () => {
   it('disables caching once, releases cached bytes and preserves partial UTF-8 state', async () => {

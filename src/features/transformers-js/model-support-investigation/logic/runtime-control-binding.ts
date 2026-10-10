@@ -35,6 +35,7 @@ const bindingEnvelopeSchema = z.object({
 export function validateRuntimeControlBindings({ run }: { run: unknown }): void {
   bindingEnvelopeSchema.parse(run);
 }
+
 export type VerifiedRuntimeControlBytes = { bytes: Uint8Array, sha256: string };
 export type RuntimeControlInput = {
   verifiedWasm: VerifiedRuntimeControlBytes | undefined,
@@ -71,7 +72,8 @@ export async function withVerifiedRuntimeControl<T>({
       // The existing preflight already records selected assets. Retain only
       // equality here: arbitrary configured URLs may contain credentials.
       const observation = runtimeControlBindingSchema.parse({
-        format: 'runtime-control-binding-v1', executionProvider,
+        format: 'runtime-control-binding-v1',
+        executionProvider,
         constructorModule: 'onnxruntime-web/webgpu',
         environmentMatchesConfigured: configuredEnvironment === controlEnvironment,
         mjs: {

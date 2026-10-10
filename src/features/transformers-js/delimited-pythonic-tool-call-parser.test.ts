@@ -100,7 +100,6 @@ describe('DelimitedPythonicToolCallStreamParser', () => {
     expect(({} as Record<string, unknown>)['alsoPolluted']).toBeUndefined();
   });
 
-
   it('fails closed on duplicate argument names instead of choosing one value', () => {
     const parser = createParser({ toolNames: ['lookup_weather'] });
     const output = "<|tool_call_start|>[lookup_weather(city='Tokyo', city='Osaka')]<|tool_call_end|>";
@@ -111,6 +110,7 @@ describe('DelimitedPythonicToolCallStreamParser', () => {
     expect(parser.drainToolCalls()).toEqual([]);
     expect(onText).toHaveBeenCalledWith({ text: output });
   });
+
   it('preserves a syntactically valid call to a tool that was not offered', () => {
     const parser = createParser({ toolNames: ['allowed_tool'] });
     const output = "<|tool_call_start|>[other_tool(value='x')]<|tool_call_end|>";
@@ -121,7 +121,6 @@ describe('DelimitedPythonicToolCallStreamParser', () => {
     expect(parser.drainToolCalls()).toEqual([]);
     expect(onText).toHaveBeenCalledWith({ text: output });
   });
-
 
   it('does not partially execute a multi-call block when any tool was not offered', () => {
     const parser = createParser({ toolNames: ['allowed_tool'] });
@@ -390,5 +389,4 @@ EOF`,
       },
     });
   });
-
 });

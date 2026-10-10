@@ -210,30 +210,11 @@ export interface WorkerGenerationRuntimeState {
   qwen3_5SequenceCache: QwenSequenceCache | undefined,
 }
 
-interface GenerationStrategyContext {
-  continuationOwner?: string,
-  model: PreTrainedModel,
-  tokenizer: PreTrainedTokenizer,
-  messages: InferenceMessage[],
-  onChunk: ({ chunk }: { chunk: string }) => void,
-  onRawChunk: ({ chunk }: { chunk: string }) => void,
-  onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void,
-  params: LmParameters | undefined,
-  tools: WorkerToolDefinition[] | undefined,
-  runtimeState: WorkerGenerationRuntimeState,
-  stoppingCriteria: {
-    reset(): void,
-    interrupt(): void,
-  },
-  debugLog: ({ event, details }: { event: string, details: Record<string, unknown> }) => void,
-  observationSink: GenerationStrategyObservationSink | undefined,
-  generationCapture: GenerationCaptureCall | undefined,
-  onGenerationEvent: (({ event }: { event: InferenceGenerationEvent }) => void) | undefined,
-}
+type GenerationStrategyContext = Parameters<GenerationStrategy['generate']>[0];
 
 export interface GenerationStrategy {
   kind: 'standard' | 'gpt-oss' | 'qwen3_5' | 'gemma4',
-  generate({ model, tokenizer, messages, onChunk, onRawChunk, onToolCalls, params, tools, runtimeState, stoppingCriteria, debugLog, observationSink }: GenerationStrategyContext): Promise<void>,
+  generate({ model, tokenizer, messages, onChunk, onRawChunk, onToolCalls, params, tools, runtimeState, stoppingCriteria, debugLog, observationSink }: { continuationOwner?: string, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, messages: InferenceMessage[], onChunk: ({ chunk }: { chunk: string }) => void, onRawChunk: ({ chunk }: { chunk: string }) => void, onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void, params: LmParameters | undefined, tools: WorkerToolDefinition[] | undefined, runtimeState: WorkerGenerationRuntimeState, stoppingCriteria: { reset(): void, interrupt(): void, }, debugLog: ({ event, details }: { event: string, details: Record<string, unknown> }) => void, observationSink: GenerationStrategyObservationSink | undefined, generationCapture: GenerationCaptureCall | undefined, onGenerationEvent: (({ event }: { event: InferenceGenerationEvent }) => void) | undefined }): Promise<void>,
 }
 
 function detectStandardReasoningProtocol({
@@ -329,7 +310,7 @@ const standardGenerationStrategy: GenerationStrategy = {
     observationSink,
     generationCapture,
     onGenerationEvent,
-  }: GenerationStrategyContext) {
+  }) {
     const hasToolHistory = messages.some(message => message.role === 'tool' || message.tool_calls?.length);
     const toolHandling: StandardToolHandling = tools?.length || hasToolHistory
       ? resolveStandardToolHandling({ tokenizer, debugLog })
@@ -411,7 +392,8 @@ const standardGenerationStrategy: GenerationStrategy = {
         default: { const exhaustive: never = reasoningProtocol; throw new Error(String(exhaustive)); }
         }
       })();
-      const streamer = new NativeProtocolStreamer({ tokenizer,
+      const streamer = new NativeProtocolStreamer({
+        tokenizer,
         protocolTokens: (() => {
           switch (reasoningProtocol) {
           case 'prompt-open-think': return [...new Set([...protocolTokens, ...lfm2ReasoningProtocolTokens])];
@@ -419,7 +401,8 @@ const standardGenerationStrategy: GenerationStrategy = {
           default: { const exhaustive: never = reasoningProtocol; throw new Error(String(exhaustive)); }
           }
         })(),
-        onText: ({ text }) => structured.text({ text }), onControl: ({ token }) => structured.control({ token }),
+        onText: ({ text }) => structured.text({ text }),
+        onControl: ({ token }) => structured.control({ token }),
       });
       try {
         await generateWithModel({ model, inputs, pastKeyValues: null, params, streamer, stoppingCriteria, observationSink, generationCapture });
@@ -509,7 +492,7 @@ const gptOssGenerationStrategy: GenerationStrategy = {
     observationSink,
     generationCapture,
     onGenerationEvent,
-  }: GenerationStrategyContext) {
+  }) {
     const stateOwner = runtimeState.generationStateOwner;
     const previousCache = runtimeState.gptOssPastKeyValues;
     runtimeState.gptOssPastKeyValues = null;
@@ -527,7 +510,7 @@ const gptOssGenerationStrategy: GenerationStrategy = {
       stoppingCriteria,
       onInputPrepared: observationSink === undefined
         ? undefined
-        : ({ fullConversationInputs, cacheDecision }) => {
+        : ({ observation: { fullConversationInputs, cacheDecision } }) => {
           emitGenerationObservation({
             observationSink,
             emit: ({ sink }) => sink.onFullConversationInputPrepared({
@@ -574,7 +557,7 @@ const gemma4GenerationStrategy: GenerationStrategy = {
     observationSink,
     generationCapture,
     onGenerationEvent,
-  }: GenerationStrategyContext) {
+  }) {
     if (!runtimeState.gemma4Processor) {
       throw new Error('Gemma 4 processor not loaded');
     }
@@ -582,11 +565,14 @@ const gemma4GenerationStrategy: GenerationStrategy = {
     for (const tool of tools ?? []) validateGemma4ToolName({ name: tool.function.name });
     const { images, templateMessages } = await buildGemma4TemplateInput({ messages });
     const processor = runtimeState.gemma4Processor;
-    const prompt = renderThinkingTemplate({ offRequested: params?.reasoning.effort === 'none', render: () => processor.apply_chat_template(templateMessages, {
-      add_generation_prompt: true,
-      ...getGemma4ThinkingTemplateOptions({ parameters: params }),
-      ...(tools?.length ? { tools } : {}),
-    }) });
+    const prompt = renderThinkingTemplate({
+      offRequested: params?.reasoning.effort === 'none',
+      render: () => processor.apply_chat_template(templateMessages, {
+        add_generation_prompt: true,
+        ...getGemma4ThinkingTemplateOptions({ parameters: params }),
+        ...(tools?.length ? { tools } : {}),
+      }),
+    });
     const inputs = await runtimeState.gemma4Processor(
       prompt,
       images.length > 0 ? images : null,
@@ -620,15 +606,25 @@ const gemma4GenerationStrategy: GenerationStrategy = {
       // The native tokenizer determines framing. Literal protocol-looking text
       // is never routed through the legacy string/tag parser in this mode.
       const structured = createGemma4Generation({
-        emit: onGenerationEvent, toolCalls: tools?.length ? 'enabled' : 'disabled',
+        emit: onGenerationEvent,
+        toolCalls: tools?.length ? 'enabled' : 'disabled',
       });
-      const streamer = new NativeProtocolStreamer({ protocolTokens: undefined, tokenizer,
+      const streamer = new NativeProtocolStreamer({
+        protocolTokens: undefined,
+        tokenizer,
         onText: ({ text }) => structured.text({ text }),
         onControl: ({ token }) => structured.control({ token }),
       });
       try {
-        await generateWithModel({ model, inputs, pastKeyValues: null, params,
-          streamer, stoppingCriteria, observationSink, generationCapture,
+        await generateWithModel({
+          model,
+          inputs,
+          pastKeyValues: null,
+          params,
+          streamer,
+          stoppingCriteria,
+          observationSink,
+          generationCapture,
         });
       } catch (error) {
         // Flush a boundary newline held by the codec before reporting failure.
@@ -643,7 +639,8 @@ const gemma4GenerationStrategy: GenerationStrategy = {
     }
 
     const toolParser = new Gemma4ToolCallParser({
-      onText: ({ text }) => onChunk({ chunk: text }), toolCalls: tools?.length ? 'enabled' : 'disabled',
+      onText: ({ text }) => onChunk({ chunk: text }),
+      toolCalls: tools?.length ? 'enabled' : 'disabled',
       ignoredSpecialTokens: tokenizer.all_special_ids.map(id => tokenizer.decode([id], { skip_special_tokens: false })),
     });
     const streamer = new TextStreamer(tokenizer, {
@@ -713,7 +710,7 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
     observationSink,
     generationCapture,
     onGenerationEvent,
-  }: GenerationStrategyContext) {
+  }) {
     if (!runtimeState.qwen3_5Processor) {
       throw new Error('Qwen3.5 processor not loaded');
     }
@@ -809,28 +806,41 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
 
     if (onGenerationEvent !== undefined) {
       let cacheableCompletion = false;
-      const structured = createQwen3_5Generation({ prompt, tools, emit: ({ event }) => {
-        switch (event.type) {
-        case 'part_start': case 'text_delta': case 'part_end': case 'tool_start': case 'tool_call': break;
-        case 'result':
-          switch (event.result.type) {
-          case 'finished': cacheableCompletion = event.result.next === 'user'; break;
-          case 'interrupted': cacheableCompletion = false; break;
-          default: { const exhaustive: never = event.result; throw new Error(`Unhandled Qwen result: ${exhaustive}`); }
+      const structured = createQwen3_5Generation({
+        prompt,
+        tools,
+        emit: ({ event }) => {
+          switch (event.type) {
+          case 'part_start': case 'text_delta': case 'part_end': case 'tool_start': case 'tool_call': break;
+          case 'result':
+            switch (event.result.type) {
+            case 'finished': cacheableCompletion = event.result.next === 'user'; break;
+            case 'interrupted': cacheableCompletion = false; break;
+            default: { const exhaustive: never = event.result; throw new Error(`Unhandled Qwen result: ${exhaustive}`); }
+            }
+            break;
+          default: { const exhaustive: never = event; throw new Error(`Unhandled Qwen event: ${exhaustive}`); }
           }
-          break;
-        default: { const exhaustive: never = event; throw new Error(`Unhandled Qwen event: ${exhaustive}`); }
-        }
-        onGenerationEvent({ event });
-      } });
-      const streamer = new NativeProtocolStreamer({ tokenizer, protocolTokens: qwen3_5ProtocolTokens,
-        onText: ({ text }) => structured.text({ text }), onControl: ({ token }) => structured.control({ token }),
+          onGenerationEvent({ event });
+        },
+      });
+      const streamer = new NativeProtocolStreamer({
+        tokenizer,
+        protocolTokens: qwen3_5ProtocolTokens,
+        onText: ({ text }) => structured.text({ text }),
+        onControl: ({ token }) => structured.control({ token }),
       });
       let result: Awaited<ReturnType<typeof generateWithModel>>;
       try {
-        result = await generateWithModel({ model, inputs,
+        result = await generateWithModel({
+          model,
+          inputs,
           pastKeyValues: useNoToolContinuation ? sequenceCache!.pastKeyValues : null,
-          params, streamer, stoppingCriteria, observationSink, generationCapture,
+          params,
+          streamer,
+          stoppingCriteria,
+          observationSink,
+          generationCapture,
         });
       } catch (error) {
         // Publish held content before propagating the native failure. This does
@@ -940,10 +950,12 @@ async function generateWithModel({
   });
   let invocation: ReturnType<GenerationCaptureCall['beginInvocation']>;
   if (generationCapture !== undefined) {
-    recordGenerationCapture({ record: () => {
-      invocation = generationCapture.beginInvocation();
-      invocation?.recordInputs({ phase: 'pre-budget', inputs });
-    } });
+    recordGenerationCapture({
+      record: () => {
+        invocation = generationCapture.beginInvocation();
+        invocation?.recordInputs({ phase: 'pre-budget', inputs });
+      },
+    });
   }
   const generationBudget = resolveGenerationBudget({
     modelConfig: model.config,
@@ -974,19 +986,23 @@ async function generateWithModel({
     }),
   });
   if (invocation !== undefined) {
-    recordGenerationCapture({ record: () => {
-      invocation?.recordSettings({ observation: snapshotGenerationInvocation({ params, generationBudget, kwargs }) });
-      invocation?.recordInputs({ phase: 'native-kwargs', inputs: kwargs });
-      invocation?.recordNativeCall({ phase: 'entering' });
-    } });
+    recordGenerationCapture({
+      record: () => {
+        invocation?.recordSettings({ observation: snapshotGenerationInvocation({ params, generationBudget, kwargs }) });
+        invocation?.recordInputs({ phase: 'native-kwargs', inputs: kwargs });
+        invocation?.recordNativeCall({ phase: 'entering' });
+      },
+    });
   }
   // The observer receives no live kwargs references. Keep the original receiver,
   // a single native call, and the existing await boundary without an observer ACK.
   let nativeStreamHook: ReturnType<typeof observeNativeStreamer> | undefined;
   if (invocation !== undefined) {
-    recordGenerationCapture({ record: () => {
-      nativeStreamHook = observeNativeStreamer({ streamer, streamerPrototype: streamer instanceof NativeProtocolStreamer ? NativeProtocolStreamer.prototype : TextStreamer.prototype, capture: invocation });
-    } });
+    recordGenerationCapture({
+      record: () => {
+        nativeStreamHook = observeNativeStreamer({ streamer, streamerPrototype: streamer instanceof NativeProtocolStreamer ? NativeProtocolStreamer.prototype : TextStreamer.prototype, capture: invocation });
+      },
+    });
   }
   let result: Awaited<ReturnType<TextGenerationModel['generate']>>;
   try {
@@ -998,10 +1014,12 @@ async function generateWithModel({
     if (nativeStreamHook !== undefined) recordGenerationCapture({ record: () => nativeStreamHook?.restore() });
   }
   if (invocation !== undefined) {
-    recordGenerationCapture({ record: () => {
-      invocation?.recordNativeCall({ phase: 'fulfilled' });
-      invocation?.recordSequence({ result });
-    } });
+    recordGenerationCapture({
+      record: () => {
+        invocation?.recordNativeCall({ phase: 'fulfilled' });
+        invocation?.recordSequence({ result });
+      },
+    });
   }
   emitGenerationObservation({
     observationSink,

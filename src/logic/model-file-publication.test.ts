@@ -15,12 +15,18 @@ describe('failed model marker creation', () => {
     vi.spyOn(MemoryFile.prototype, 'createWritable').mockImplementation(async function (this: MemoryFile, options) {
       if (phase === 'open') throw failure;
       const writer = await original.call(this, options);
-      if (phase === 'write') return { ...writer, write: async () => {
-        throw failure;
-      } };
-      return { ...writer, close: async () => {
-        throw failure;
-      } };
+      if (phase === 'write') return {
+        ...writer,
+        write: async () => {
+          throw failure;
+        },
+      };
+      return {
+        ...writer,
+        close: async () => {
+          throw failure;
+        },
+      };
     });
     await expect(writeModelMarkerJson({ directory: directory as unknown as FileSystemDirectoryHandle, name, value: { bytes: 0 } })).rejects.toBe(failure);
     expect(directory.children.has(name)).toBe(false);
@@ -46,17 +52,20 @@ describe('failed model marker creation', () => {
     const original = MemoryFile.prototype.createWritable;
     vi.spyOn(MemoryFile.prototype, 'createWritable').mockImplementation(async function (this: MemoryFile, options) {
       const writer = await original.call(this, options);
-      return { ...writer, write: async () => {
-        switch (change) {
-        case 'replaced': directory.children.set(name, new MemoryFile(name)); break;
-        case 'bytes-changed': this.data = new TextEncoder().encode('foreign'); break;
-        case 'timestamp-changed': this.modified++; break;
-        case 'unreadable': vi.spyOn(this, 'getFile').mockRejectedValue(new Error('Read denied')); break;
-        case 'remove-failed': vi.spyOn(directory, 'removeEntry').mockRejectedValue(new Error('Removal denied')); break;
-        default: { const exhaustive: never = change; throw new Error(String(exhaustive)); }
-        }
-        throw failure;
-      } };
+      return {
+        ...writer,
+        write: async () => {
+          switch (change) {
+          case 'replaced': directory.children.set(name, new MemoryFile(name)); break;
+          case 'bytes-changed': this.data = new TextEncoder().encode('foreign'); break;
+          case 'timestamp-changed': this.modified++; break;
+          case 'unreadable': vi.spyOn(this, 'getFile').mockRejectedValue(new Error('Read denied')); break;
+          case 'remove-failed': vi.spyOn(directory, 'removeEntry').mockRejectedValue(new Error('Removal denied')); break;
+          default: { const exhaustive: never = change; throw new Error(String(exhaustive)); }
+          }
+          throw failure;
+        },
+      };
     });
     await expect(writeModelMarkerJson({ directory: directory as unknown as FileSystemDirectoryHandle, name, value: { bytes: 0 } })).rejects.toBe(failure);
     expect(directory.children.has(name)).toBe(true);

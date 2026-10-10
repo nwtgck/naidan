@@ -3,6 +3,13 @@ import type { BinaryObjectId } from '@/01-models/ids';
 
 export const UNKNOWN_STEPS: unique symbol = Symbol('unknown');
 
+/** Optional, display-only progress for one owned inference operation. */
+export type LmOperationProgress = {
+  phase: 'queued' | 'initializing' | 'loading' | 'prefill' | 'generating',
+  completed: number,
+  total: number,
+};
+
 export type JsonValue =
   | null
   | boolean
@@ -40,8 +47,9 @@ export interface LmProvider {
    * without shared mutable inference state use chat directly. The scoped chat
    * still generates one new assistant per call and never executes tools itself.
    */
-  runChatOperation?({ signal, operation }: {
+  runChatOperation?({ signal, operation, onProgress }: {
     signal: AbortSignal | undefined,
+    onProgress?: ({ progress }: { progress: LmOperationProgress }) => void,
     operation: ({ chat, signal }: { chat: LmProvider['chat'], signal: AbortSignal }) => Promise<void>,
   }): Promise<void>,
 

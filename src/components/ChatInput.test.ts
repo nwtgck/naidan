@@ -5,6 +5,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import ChatInput from './ChatInput.vue';
 import { computed, nextTick, ref } from 'vue';
 import { toVolumeId, toChatId } from '@/01-models/ids';
+import type { ChatTextSubmissionAction } from '@/logic/chat-text-submission';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -296,6 +297,7 @@ vi.mock('../composables/useChatDraft', () => ({
 }));
 
 const mockIsImageMode = ref(false);
+const mockSendImageRequest = vi.fn().mockResolvedValue(true);
 const mockPreferredEditorMode = ref('advanced');
 const mockSetPreferredEditorMode = vi.fn();
 
@@ -396,7 +398,7 @@ vi.mock('../composables/chat/useChatImageGeneration', () => ({
     updateSteps: ({ steps }: { steps: number | undefined }) => mockChatStore.updateSteps({ steps }),
     updateSeed: ({ seed }: { seed: number | 'browser_random' | undefined }) => mockChatStore.updateSeed({ seed }),
     setImageModel: ({ modelId }: { modelId: string }) => mockChatStore.setImageModel({ modelId }),
-    sendImageRequest: vi.fn().mockResolvedValue(true),
+    sendImageRequest: mockSendImageRequest,
     TEST_ONLY: {},
   }),
 }));
@@ -473,6 +475,9 @@ describe('ChatInput Integration', () => {
     mockCurrentChatGroup.value = null;
     mockSettings.value = { storageType: 'opfs', mounts: [] };
     mockAppInteraction.value = 'enabled';
+    mockIsImageMode.value = false;
+    mockSendImageRequest.mockReset();
+    mockSendImageRequest.mockResolvedValue(true);
     mockEnsureChatTmpDirectory.mockResolvedValue({ handle: { kind: 'directory', name: 'tmp' }, mountPath: '/tmp' });
     mockGetChatTmpDirectory.mockReturnValue(undefined);
     mockGetNaidanSysfsAccessScope.mockReturnValue('none');
@@ -481,9 +486,10 @@ describe('ChatInput Integration', () => {
     mockChatStore.fetchAvailableModels.mockResolvedValue([]);
   });
 
-  const getWrapper = ({ autoSendPrompt, isSubmissionEnabled }: {
+  const getWrapper = ({ autoSendPrompt, isSubmissionEnabled, textSubmissionAction }: {
     autoSendPrompt?: string,
     isSubmissionEnabled?: boolean,
+    textSubmissionAction?: ChatTextSubmissionAction,
   } = {}) => mount(ChatInput, {
     props: {
       chatId: toChatId({ raw: 'chat-1' }),
@@ -496,6 +502,7 @@ describe('ChatInput Integration', () => {
       aboveInputVisibility: 'hidden',
       isStreaming: false,
       isSubmissionEnabled,
+      textSubmissionAction,
       canGenerateImage: true,
       hasImageModel: true,
       availableImageModels: [],
@@ -536,10 +543,13 @@ describe('ChatInput Integration', () => {
     const finished = Promise.withResolvers<void>();
     let titleSignal: AbortSignal | undefined;
     try {
-      autoTitleScheduler.schedule({ chatId: toChatId({ raw: 'title-chat' }), run: ({ signal }) => {
-        titleSignal = signal;
-        return finished.promise;
-      } });
+      autoTitleScheduler.schedule({
+        chatId: toChatId({ raw: 'title-chat' }),
+        run: ({ signal }) => {
+          titleSignal = signal;
+          return finished.promise;
+        },
+      });
       await vi.advanceTimersByTimeAsync(2500);
       expect(titleSignal?.aborted).toBe(false);
       expect(wrapper.find('[data-testid="send-button"]').exists()).toBe(true);
@@ -729,12 +739,14 @@ describe('ChatInput Integration', () => {
     await flushPromises();
 
     expect(mockEnsureChatTmpDirectory).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }) });
-    expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
-      kind: 'wesh-mounts',
-      rootName: 'Files',
-      initialPath: ['home', 'user', 'work'],
-      title: 'Files',
-    }) });
+    expect(mockOpenFileExplorer).toHaveBeenCalledWith({
+      options: expect.objectContaining({
+        kind: 'wesh-mounts',
+        rootName: 'Files',
+        initialPath: ['home', 'user', 'work'],
+        title: 'Files',
+      }),
+    });
   });
 
   it('mount explorer omits tmp for local storage', async () => {
@@ -788,11 +800,13 @@ describe('ChatInput Integration', () => {
     // Called once for chat mount and once for global mount
     expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-chat' });
     expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-global' });
-    expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
-      kind: 'wesh-mounts',
-      rootName: 'Files',
-      title: 'Files',
-    }) });
+    expect(mockOpenFileExplorer).toHaveBeenCalledWith({
+      options: expect.objectContaining({
+        kind: 'wesh-mounts',
+        rootName: 'Files',
+        title: 'Files',
+      }),
+    });
   });
 
   it('mount explorer reuses shared naidan sysfs access scope', async () => {
@@ -923,6 +937,78 @@ describe('ChatInput Integration', () => {
     expect(mockSendMessageForChat).toHaveBeenCalled();
     expect(wrapper.vm.input).toBe('');
     expect(wrapper.vm.TEST_ONLY.attachments.value.length).toBe(0);
+  });
+
+  it.each([
+    { label: 'button', shortcut: undefined },
+    { label: 'Ctrl+Enter', shortcut: { ctrlKey: true } },
+    { label: 'Cmd+Enter', shortcut: { metaKey: true } },
+  ])('requests onboarding with %s rather than submitting an incomplete chat', async ({ shortcut }) => {
+    const wrapper = getWrapper({ isSubmissionEnabled: false, textSubmissionAction: 'open-onboarding' });
+    const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Unsent draft');
+    // This data is held in the composer until a *successful* submission.
+    const attachment = { id: 'att-1', status: 'memory', blob: new Blob() } as any;
+    wrapper.vm.TEST_ONLY.attachments.value = [attachment];
+    await nextTick();
+
+    const sendButton = wrapper.get<HTMLButtonElement>('[data-testid="send-button"]');
+    expect(sendButton.element.disabled).toBe(false);
+    if (shortcut === undefined) {
+      await sendButton.trigger('click');
+    } else {
+      await textarea.trigger('keydown', { key: 'Enter', ...shortcut });
+    }
+    await flushPromises();
+
+    expect(wrapper.emitted('request-onboarding')).toHaveLength(1);
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+    expect(textarea.element.value).toBe('Unsent draft');
+    expect(wrapper.vm.TEST_ONLY.attachments.value).toEqual([attachment]);
+    wrapper.unmount();
+  });
+
+  it('keeps image generation independent of missing chat text-model setup', async () => {
+    mockIsImageMode.value = true;
+    const wrapper = getWrapper({ isSubmissionEnabled: true, textSubmissionAction: 'open-onboarding' });
+    await wrapper.get('[data-testid="chat-input"]').setValue('draw a landscape');
+    await wrapper.get('[data-testid="send-button"]').trigger('click');
+    await flushPromises();
+    expect(mockSendImageRequest).toHaveBeenCalledOnce();
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+    expect(wrapper.emitted('request-onboarding')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('does not automatically submit or reopen onboarding when an auto-send prompt lacks setup', async () => {
+    const wrapper = getWrapper({
+      autoSendPrompt: 'Unsent prompt from URL',
+      isSubmissionEnabled: false,
+      textSubmissionAction: 'open-onboarding',
+    });
+    await flushPromises();
+    expect(wrapper.emitted('request-onboarding')).toBeUndefined();
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+    expect(wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]').element.value).toBe('Unsent prompt from URL');
+    expect(wrapper.emitted('auto-sent')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it('does not retry an intercepted message automatically after setup finishes', async () => {
+    const wrapper = getWrapper({ isSubmissionEnabled: false, textSubmissionAction: 'open-onboarding' });
+    const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Send after setup');
+    await wrapper.get('[data-testid="send-button"]').trigger('click');
+    expect(wrapper.emitted('request-onboarding')).toHaveLength(1);
+    await wrapper.setProps({ isSubmissionEnabled: true, textSubmissionAction: 'send' });
+    await flushPromises();
+    expect(mockSendMessageForChat).not.toHaveBeenCalled();
+    expect(textarea.element.value).toBe('Send after setup');
+    await wrapper.get('[data-testid="send-button"]').trigger('click');
+    await flushPromises();
+    expect(mockSendMessageForChat).toHaveBeenCalledOnce();
+    expect(textarea.element.value).toBe('');
+    wrapper.unmount();
   });
 
   it('disables submission while the selected endpoint is not ready', async () => {

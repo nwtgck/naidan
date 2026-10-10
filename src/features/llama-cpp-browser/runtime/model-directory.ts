@@ -8,26 +8,42 @@ import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { errorCode, LlamaCppBrowserError, modelSchema, type LocalModel, type ModelDirectoryInput, type Progress } from '@/features/llama-cpp-browser/types';
 
 const pendingName = '.llama-cpp-import-pending';
-export type ModelFile = { path: string, handle: FileSystemFileHandle, file: File };
+export type ModelFile = { path: string, handle: FileSystemFileHandle, file: File, storageKind?: 'host' };
 export type ModelDirectory = { id: string, name: string, files: ModelFile[], modelPath: string, projectorPath: string | undefined };
 
 export function validSegment({ name }: { name: string }): boolean {
   return isModelSourceSegment({ name });
 }
+
 export function allowedModelDirectory({ name }: { name: string }): boolean {
   return validSegment({ name }) && !name.startsWith('.');
 }
+
 export async function opfsRoot(): Promise<FileSystemDirectoryHandle> {
   if (!navigator.storage?.getDirectory) throw new LlamaCppBrowserError({ code: 'unavailable' });
   return navigator.storage.getDirectory();
 }
+
 export async function userModelDirectory(): Promise<FileSystemDirectoryHandle> {
   const models = await (await opfsRoot()).getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
   return models.getDirectoryHandle('user', { create: true });
 }
+
+/** Read-only lookup. Listing or opening a model must never create storage. */
+export async function existingUserModelDirectory(): Promise<FileSystemDirectoryHandle | undefined> {
+  try {
+    const models = await (await opfsRoot()).getDirectoryHandle(OPFS_MODELS_DIR);
+    return await models.getDirectoryHandle('user');
+  } catch (error) {
+    if (missing({ error })) return undefined;
+    throw error;
+  }
+}
+
 function missing({ error }: { error: unknown }): boolean {
   return error instanceof DOMException && (error.name === 'NotFoundError' || error.name === 'TypeMismatchError');
 }
+
 export async function hasPendingImport({ folder }: { folder: FileSystemDirectoryHandle }): Promise<boolean> {
   try {
     await folder.getFileHandle(pendingName); return true;
@@ -35,11 +51,13 @@ export async function hasPendingImport({ folder }: { folder: FileSystemDirectory
     if (missing({ error })) return false; throw error;
   }
 }
+
 export async function validGguf({ file }: { file: File }): Promise<boolean> {
   if (file.size < 24 || !Number.isSafeInteger(file.size)) return false;
   const bytes = new Uint8Array(await file.slice(0, 8).arrayBuffer());
   return bytes.length === 8 && bytes[0] === 71 && bytes[1] === 71 && bytes[2] === 85 && bytes[3] === 70 && [2, 3].includes(new DataView(bytes.buffer).getUint32(4, true));
 }
+
 export async function readModelFiles({ folder, prefix }: { folder: FileSystemDirectoryHandle, prefix: string }): Promise<ModelFile[]> {
   const result: ModelFile[] = [];
   for await (const [name, entry] of folder.entries()) {
@@ -55,6 +73,7 @@ export async function readModelFiles({ folder, prefix }: { folder: FileSystemDir
   }
   return result.sort((a, b) => a.path.localeCompare(b.path));
 }
+
 export function resolveModelFiles({ files }: { files: { path: string }[] }): { modelPath: string, projectorPath: string | undefined } {
   // Match upstream directory discovery without requiring a particular marker position.
   // External file edits may leave several projectors. Select one deterministically;
@@ -74,6 +93,7 @@ export function resolveModelFiles({ files }: { files: { path: string }[] }): { m
   }
   return { modelPath: first.path, projectorPath: projectors[0]?.path };
 }
+
 export async function resolveDirectory({ folder, id, name }: { folder: FileSystemDirectoryHandle, id: string, name: string }): Promise<ModelDirectory> {
   if (await hasPendingImport({ folder })) throw new LlamaCppBrowserError({ code: 'missing-model' });
   const files = await readModelFiles({ folder, prefix: '' });
@@ -81,9 +101,11 @@ export async function resolveDirectory({ folder, id, name }: { folder: FileSyste
   const resolved = resolveModelFiles({ files });
   return { id, name, files: files.filter(file => !isProjector({ path: file.path }) || file.path === resolved.projectorPath), ...resolved };
 }
+
 export function describeDirectory({ directory }: { directory: ModelDirectory }): LocalModel {
   return modelSchema.parse({ id: directory.id, name: directory.name, size: directory.files.reduce((sum, entry) => sum + entry.file.size, 0), importedAt: Math.max(...directory.files.map(entry => entry.file.lastModified)) });
 }
+
 async function clearEmptyInterruptedImport({ parent, folder, name, paths, signal }: {
   parent: FileSystemDirectoryHandle, folder: FileSystemDirectoryHandle, name: string, paths: Set<string>, signal: AbortSignal | undefined,
 }): Promise<boolean> {
@@ -113,6 +135,7 @@ async function clearEmptyInterruptedImport({ parent, folder, name, paths, signal
     throw error;
   }
 }
+
 /** A source-neutral import boundary shared by dropped folders and future downloads. */
 export async function importModelDirectory({ directory, onProgress, signal }: { signal: AbortSignal | undefined, directory: ModelDirectoryInput, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
   const checkCancelled = (): void => {
@@ -197,5 +220,6 @@ export async function importModelDirectory({ directory, onProgress, signal }: { 
     throw error;
   }
 }
+
 export const TEST_ONLY = {
 };

@@ -9,10 +9,12 @@ vi.mock('./logic/repository-input', () => ({
   imageDirectoriesFromDrop: async () => [{ name: 'first', files: [] }, { name: 'second', files: [] }],
   imageDirectoryFromFiles: vi.fn(),
 }));
+
 function importedRepository(): LocalImageRepository {
   const file = ggufFixture({ name: 'z-image.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file;
   return { id: 'user/imported', name: 'imported', files: [{ path: file.name, file }] };
 }
+
 it.each(['before inspection', 'during inspection'] as const)('publishes an import after independent saving finishes %s', async timing => {
   const blocked = ref(false), entries = [importedRepository()];
   const pending = Promise.withResolvers<LocalImageRepository[]>();
@@ -41,6 +43,7 @@ it.each(['before inspection', 'during inspection'] as const)('publishes an impor
     scope.stop();
   }
 });
+
 it('settles a cancelled import publication and permits a later import without stale publication', async () => {
   const blocked = ref(false), entries = [importedRepository()];
   const list = vi.fn(async () => entries);
@@ -64,6 +67,7 @@ it('settles a cancelled import publication and permits a later import without st
     scope.stop();
   }
 });
+
 it('refreshes successfully imported folders while preserving a later import error', async () => {
   const list = vi.fn(async () => []);
   const importRepo = vi.fn().mockResolvedValueOnce('user/first').mockRejectedValueOnce(new Error('second folder already exists'));
@@ -106,9 +110,17 @@ it('removes a queued transfer during import without starting its download or tou
   const importing = Promise.withResolvers<string>();
   const download = vi.fn(async () => undefined), list = vi.fn(async () => []);
   const scope = effectScope();
-  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection: vi.fn(), dependencies: {
-    list, scan: scanImageRepositories, import: () => importing.promise, download,
-  } }))!;
+  const library = scope.run(() => useImageLibrary({
+    downloadsBlocked: () => false,
+    blocked: () => false,
+    onSelection: vi.fn(),
+    dependencies: {
+      list,
+      scan: scanImageRepositories,
+      import: () => importing.promise,
+      download,
+    },
+  }))!;
   try {
     library.hostDirectories.busy.value = true;
     const transfer = library.downloadRecipe({ recipeId: 'z-image-turbo', selections: {} });

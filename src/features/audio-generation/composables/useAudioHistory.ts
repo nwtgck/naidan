@@ -10,6 +10,7 @@ export type AudioHistoryEntry = {
   result: Omit<AudioHistoryOutput, 'wav'>,
   settings: AudioHistorySettings,
 };
+
 /** Capture before awaiting generation. In particular, never retain a reference
  * Blob or read live form/service settings when a delayed result arrives.
  * Options and context are requested values, not the resolved native allocation.
@@ -18,6 +19,7 @@ export function captureAudioSettings({ input, modelName }: { input: AudioGenerat
   const { reference: _reference, options, ...parameters } = input;
   return { ...parameters, options: { ...options }, modelName };
 }
+
 export function useAudioHistory() {
   const entries = shallowRef<readonly AudioHistoryEntry[]>([]);
   const totalBytes = computed(() => entries.value.reduce((sum, entry) => sum + entry.bytes, 0));
@@ -41,5 +43,6 @@ export function useAudioHistory() {
   onScopeDispose(clear);
   return { entries, totalBytes, append, remove, clear, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) };
 }
+
 export const TEST_ONLY = {
 };

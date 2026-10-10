@@ -13,6 +13,9 @@ const MainApp = defineComponent({
 });
 const loadChatsForAppStartup = vi.hoisted(() => vi.fn(async () => {}));
 const activateChatBootstrap = vi.hoisted(() => vi.fn());
+const disposeRpcAutomaticConnections = vi.hoisted(() => vi.fn());
+const startRpcAutomaticConnections = vi.hoisted(() => vi.fn(() => disposeRpcAutomaticConnections));
+vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({ startRpcAutomaticConnections }));
 
 vi.mock('@/MainApp.vue', () => ({
   default: MainApp,
@@ -74,6 +77,10 @@ function createStartupHarness({ path = '/' }: {
     routes: [
       { path: '/', component: loadRouteComponent },
       { path: '/chat/:id', component: loadRouteComponent },
+      { path: '/image-generation', component: loadRouteComponent },
+      { path: '/image-generation/models', component: loadRouteComponent },
+      { path: '/audio-generation', component: loadRouteComponent },
+      { path: '/audio-generation/voices', component: loadRouteComponent },
     ],
   });
   const navigationGate = createInitialNavigationGate({ router });
@@ -122,6 +129,7 @@ describe('app startup', () => {
   beforeEach(() => {
     loadChatsForAppStartup.mockClear();
     activateChatBootstrap.mockClear();
+    startRpcAutomaticConnections.mockClear(); disposeRpcAutomaticConnections.mockClear();
   });
 
   it('uses the normal main startup path for an already configured user', async () => {
@@ -144,6 +152,7 @@ describe('app startup', () => {
       mainApp: MainApp,
     });
     expect(harness.loadRouteComponent).not.toHaveBeenCalled();
+    expect(startRpcAutomaticConnections).not.toHaveBeenCalled();
 
     flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
     const dispose = await startup;
@@ -155,6 +164,37 @@ describe('app startup', () => {
       mainApp: MainApp,
     });
 
+    dispose();
+    expect(startRpcAutomaticConnections).toHaveBeenCalledOnce();
+    expect(disposeRpcAutomaticConnections).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    '/image-generation',
+    '/image-generation/models',
+    '/audio-generation',
+    '/audio-generation/voices',
+  ])('skips the onboarding-only paint for the initial %s route', async path => {
+    const settings = createSettingsStore({ onboardingDismissed: false });
+    const harness = createStartupHarness({ path });
+    const startup = startApp({
+      startupState: harness.startupState,
+      settingsStore: settings.settingsStore,
+      router: harness.router,
+      navigationGate: harness.navigationGate,
+      window: harness.window,
+    });
+    await flushPromises();
+
+    expect(settings.isOnboardingDismissed.value).toBe(false);
+    expect(loadChatsForAppStartup).toHaveBeenCalledOnce();
+    expect(harness.startupState.value.kind).toBe('rendering-main');
+    expect(harness.animationFrameCallbacks).toHaveLength(1);
+
+    flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
+    const dispose = await startup;
+    expect(harness.router.currentRoute.value.path).toBe(path);
+    expect(harness.startupState.value.kind).toBe('ready');
     dispose();
   });
 

@@ -66,7 +66,8 @@ export function copyChatMessage({ message }: { message: ChatMessage }): ChatMess
     const { id, role, parts, ...unhandled } = message;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<ChatMessage, { role: 'user' }>>()({
-      id, role,
+      id,
+      role,
       parts: parts.map(part => {
         switch (part.type) {
         case 'text': {
@@ -91,7 +92,8 @@ export function copyChatMessage({ message }: { message: ChatMessage }): ChatMess
     const { id, role, parts, ...unhandled } = message;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
-      id, role,
+      id,
+      role,
       parts: parts.map(part => {
         switch (part.type) {
         case 'reasoning':
@@ -107,10 +109,14 @@ export function copyChatMessage({ message }: { message: ChatMessage }): ChatMess
           unhandledCall satisfies Record<PropertyKey, never>;
           const { name, arguments: argumentsText, ...unhandledFunction } = fn;
           unhandledFunction satisfies Record<PropertyKey, never>;
-          return exactObject<typeof part>()({ type, toolCall: exactObject<typeof toolCall>()({
-            id: callId, type: callType,
-            function: exactObject<typeof fn>()({ name, arguments: argumentsText }),
-          }) });
+          return exactObject<typeof part>()({
+            type,
+            toolCall: exactObject<typeof toolCall>()({
+              id: callId,
+              type: callType,
+              function: exactObject<typeof fn>()({ name, arguments: argumentsText }),
+            }),
+          });
         }
         default: {
           const _ex: never = part;
@@ -124,7 +130,8 @@ export function copyChatMessage({ message }: { message: ChatMessage }): ChatMess
     const { id, role, parts, ...unhandled } = message;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<ChatMessage, { role: 'system' }>>()({
-      id, role,
+      id,
+      role,
       parts: parts.map(part => {
         const { type, text, completeness, ...unhandledPart } = part;
         unhandledPart satisfies Record<PropertyKey, never>;
@@ -136,7 +143,8 @@ export function copyChatMessage({ message }: { message: ChatMessage }): ChatMess
     const { id, role, parts, ...unhandled } = message;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<Extract<ChatMessage, { role: 'tool' }>>()({
-      id, role,
+      id,
+      role,
       parts: parts.map(part => {
         const { type, result, ...unhandledPart } = part;
         unhandledPart satisfies Record<PropertyKey, never>;

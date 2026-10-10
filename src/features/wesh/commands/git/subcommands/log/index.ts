@@ -94,6 +94,7 @@ function logDecorationRefName({ refName, mode }: {
   }
   return refName;
 }
+
 async function collectLogDecorations({ context, repository, mode, cache }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
@@ -150,6 +151,7 @@ async function collectLogDecorations({ context, repository, mode, cache }: {
   }
   return new Map([...labelsByObjectId].map(([objectId, labels]) => [objectId, ` (${labels.join(', ')})`]));
 }
+
 export async function runLog({ context, args }: {
     context: WeshCommandContext;
     args: readonly string[];

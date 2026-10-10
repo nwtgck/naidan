@@ -38,5 +38,6 @@ export function parseModelJson({ text }: { text: string }): unknown {
   // the grammar/number/escape validator; consumers use Zod for their own shape.
   return JSON.parse(text);
 }
+
 export const TEST_ONLY = {
 };

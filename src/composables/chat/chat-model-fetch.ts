@@ -64,7 +64,10 @@ export async function fetchModelsForChat({
       && isSupportedEndpoint(endpoint)
       && mutableChat.modelId
       && !models.includes(mutableChat.modelId)
-      && !(endpoint.type === 'llama_cpp_browser' && /^hf\.co\//.test(mutableChat.modelId))
+      && !(endpoint.type === 'llama_cpp_browser' && /^(?:hf\.co|host)\//.test(mutableChat.modelId))
+      // RPC can still resolve saved Host file references after its catalog starts
+      // publishing variant names; an absent listing must not erase that choice.
+      && !(endpoint.type === 'naidan_rpc' && mutableChat.modelId.startsWith('host/'))
     ) {
       let replacement = '';
       switch (endpoint.type) {
@@ -77,7 +80,7 @@ export async function fetchModelsForChat({
         }
         break;
       }
-      case 'openai': case 'ollama': case 'transformers_js': case 'browser_provided_lm': break;
+      case 'naidan_rpc': case 'openai': case 'ollama': case 'transformers_js': case 'browser_provided_lm': break;
       default: { const exhaustive: never = endpoint; throw new Error(`Unhandled endpoint: ${exhaustive}`); }
       }
       mutableChat.modelId = replacement;

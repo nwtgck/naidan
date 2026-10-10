@@ -337,14 +337,20 @@ b
 
   it('supports jq variables and file-backed arguments', async () => {
     await writeFile({ path: '/filter.jq', data: '{raw: $raw, values: $values}' });
-    await writeFile({ path: '/raw.txt', data: `\
+    await writeFile({
+      path: '/raw.txt',
+      data: `\
 hello
 world
-` });
-    await writeFile({ path: '/values.json', data: `\
+`,
+    });
+    await writeFile({
+      path: '/values.json',
+      data: `\
 1
 {"x":2}
-` });
+`,
+    });
 
     const injected = await execute({
       script: `jq -nc --arg name alice --argjson count 2 '{name: $name, count: $count, named: $ARGS.named}'`,

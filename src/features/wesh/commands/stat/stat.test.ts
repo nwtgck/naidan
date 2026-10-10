@@ -569,6 +569,7 @@ name`,
     expect(named.result.exitCode).toBe(0);
     expect(readlinkSpy).toHaveBeenCalledTimes(1);
   });
+
   it('stops argv processing when --help is reached before a later invalid option', async () => {
     const helpFirst = await execute({ script: 'stat --help --definitely-invalid-option' });
     const invalidFirst = await execute({ script: 'stat --definitely-invalid-option --help' });
@@ -590,5 +591,4 @@ name`,
     expect(ambiguous.stderr.text).toContain("'--format'");
     expect(ambiguous.result.exitCode).not.toBe(0);
   });
-
 });

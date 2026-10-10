@@ -162,10 +162,12 @@ describe('StorageSynchronizer', () => {
       });
       window.dispatchEvent(storageEvent);
 
-      expect(listener).toHaveBeenCalledWith({ event: expect.objectContaining({
-        type: 'chat_content',
-        id: '456',
-      }) });
+      expect(listener).toHaveBeenCalledWith({
+        event: expect.objectContaining({
+          type: 'chat_content',
+          id: '456',
+        }),
+      });
     });
 
     it('should notify multiple subscribers', () => {
@@ -242,6 +244,7 @@ describe('StorageSynchronizer', () => {
       (global as any).BroadcastChannel = class {
         postMessage = vi.fn();
         close = vi.fn();
+
         set onmessage(handler: any) {
           capturedHandler = handler;
         }

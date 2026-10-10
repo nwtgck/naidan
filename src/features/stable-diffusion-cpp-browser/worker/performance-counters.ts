@@ -24,9 +24,16 @@ export function createWaitAccounting({ now }: { now: () => number }) {
     },
     snapshot() {
       const time = now();
-      return { started, settled, rejected, pending, peakPending: peak, maxCompletedMs: maxMs,
+      return {
+        started,
+        settled,
+        rejected,
+        pending,
+        peakPending: peak,
+        maxCompletedMs: maxMs,
         wallSumMs: completedMs + Math.max(0, pending * time - pendingStarts),
-        wallUnionMs: unionMs + (pending ? Math.max(0, time - unionStart) : 0) };
+        wallUnionMs: unionMs + (pending ? Math.max(0, time - unionStart) : 0),
+      };
     },
   };
 }
@@ -50,9 +57,11 @@ export function uploadByteLength({ data, dataOffset = 0, size }: {
 
 /** Fixed 8 buckets; inclusive upper bounds, final bucket is all larger values. */
 export const UPLOAD_BUCKET_LIMITS = [256, 4096, 65536, 1048576, 8388608, 67108864, 268435456] as const;
+
 export function uploadBucket({ bytes }: { bytes: number }): number {
   const index = UPLOAD_BUCKET_LIMITS.findIndex(limit => bytes <= limit);
   return index < 0 ? UPLOAD_BUCKET_LIMITS.length : index;
 }
+
 export const TEST_ONLY = {
 };

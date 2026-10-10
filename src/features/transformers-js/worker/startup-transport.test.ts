@@ -98,7 +98,8 @@ describe('Production startup through real Comlink transport', () => {
         (error: unknown) => ({ status: 'rejected' as const, error }),
       );
       expect({ retirement, workerCount: workers.length }).toEqual({
-        retirement: { status: 'rejected', error: physicalFailure }, workerCount: 1,
+        retirement: { status: 'rejected', error: physicalFailure },
+        workerCount: 1,
       });
       await expect(owner.service.resetCache()).rejects.toThrow();
       expect(resetCache).toHaveBeenCalledOnce();
@@ -125,9 +126,12 @@ describe('Production startup through real Comlink transport', () => {
     }, worker.endpoint);
     worker.publishReady();
     await expect(client.loadDownloadedModel({
-      modelId: 'public/model', revisionSelection: { kind: 'pinned', revision: 'exact' }, progressCallback: vi.fn(),
+      modelId: 'public/model',
+      revisionSelection: { kind: 'pinned', revision: 'exact' },
+      progressCallback: vi.fn(),
     })).rejects.toMatchObject({
-      name: 'ProductionWorkerLifecycleError', reason: 'resource-cleanup-failed',
+      name: 'ProductionWorkerLifecycleError',
+      reason: 'resource-cleanup-failed',
       cause: { name: 'RequiredDownloadedResourceCleanupError' },
     });
     expect(loadRequests).toEqual([{ modelId: 'public/model', revisionSelection: { kind: 'pinned', revision: 'exact' } }]);
@@ -152,12 +156,16 @@ describe('Production startup through real Comlink transport', () => {
     }, worker.endpoint);
     worker.publishReady();
     await expect(client.verifyDownloadedModelRevision({
-      modelId: 'public/model', loadRevision: 'exact', progressCallback: vi.fn(),
+      modelId: 'public/model',
+      loadRevision: 'exact',
+      progressCallback: vi.fn(),
     })).rejects.toMatchObject({ name: 'ProductionWorkerLifecycleError', reason: 'resource-cleanup-failed' });
     const sent = worker.sent.length;
     await expect(client.verifyDownloadedModelCandidate({
-      modelId: 'public/model', loadRevision: 'exact',
-      candidate: { device: 'wasm', dtype: 'q4' }, progressCallback: vi.fn(),
+      modelId: 'public/model',
+      loadRevision: 'exact',
+      candidate: { device: 'wasm', dtype: 'q4' },
+      progressCallback: vi.fn(),
     })).rejects.toMatchObject({ reason: 'resource-cleanup-failed' });
     expect(worker.sent).toHaveLength(sent);
     expect(worker.terminate).toHaveBeenCalledOnce();
@@ -205,8 +213,10 @@ describe('Production startup through real Comlink transport', () => {
     const client = createDownloadVerificationCandidateAcceptanceWorkerClient({ operationSignal: undefined });
     clients.push(client);
     const result = client.verifyDownloadedModelCandidate({
-      modelId: 'public/model', loadRevision: 'exact',
-      candidate: { device: 'webgpu', dtype: 'q4' }, progressCallback: vi.fn(),
+      modelId: 'public/model',
+      loadRevision: 'exact',
+      candidate: { device: 'webgpu', dtype: 'q4' },
+      progressCallback: vi.fn(),
     });
     let failure: unknown;
     void result.catch(error => {
@@ -227,7 +237,9 @@ describe('Production startup through real Comlink transport', () => {
     clients.push(client);
     const progress = vi.fn();
     const result = client.verifyDownloadedModelRevision({
-      modelId: 'public/model', loadRevision: 'exact', progressCallback: progress,
+      modelId: 'public/model',
+      loadRevision: 'exact',
+      progressCallback: progress,
     });
     const worker = currentWorker();
     expect(worker.sent).toHaveLength(0);
@@ -263,8 +275,10 @@ describe('Production startup through real Comlink transport', () => {
     }, worker.endpoint);
     worker.publishReady();
     const result = client.verifyDownloadedModelCandidate({
-      modelId: 'public/model', loadRevision: 'exact',
-      candidate: { device: 'webgpu', dtype: 'q4' }, progressCallback: progress,
+      modelId: 'public/model',
+      loadRevision: 'exact',
+      candidate: { device: 'webgpu', dtype: 'q4' },
+      progressCallback: progress,
     });
     const rejected = expect(result).rejects.toMatchObject({ name: 'ProductionWorkerLifecycleError' });
     await entered.promise;

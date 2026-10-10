@@ -10,6 +10,7 @@ describe('upstream-only audio language contract', () => {
     expect(audioGenerationInputSchema.safeParse(input).success).toBe(true);
     expect(workerAudioCallSchema.safeParse({ ...input, generationId: 1 }).success).toBe(true);
   });
+
   it.each(['auto', 'Auto', 'automatic', '', undefined, null, {}])('rejects rather than guesses retired or malformed language %j', language => {
     const input = { ...defaultAudioParameters(), model: 'user/voice', text: 'Hello', debug: 'off', language, options: { profile: 'cpu-wasm32' } };
     expect(audioLanguageSchema.safeParse(language).success).toBe(false);

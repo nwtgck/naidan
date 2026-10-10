@@ -285,10 +285,13 @@ Line 3`;
       });
 
       const wrapper = mount(AdvancedTextEditorV3, {
-        props: { ...defaultProps, initialValue: `\
+        props: {
+          ...defaultProps,
+          initialValue: `\
 Line 1
 Line 2
-Line 3` },
+Line 3`,
+        },
         attachTo: document.body,
       });
       const vm = wrapper.vm as any;
@@ -335,10 +338,13 @@ Line 3` },
 
     it('syncs line numbers on scroll', async () => {
       const wrapper = mount(AdvancedTextEditorV3, {
-        props: { ...defaultProps, initialValue: `\
+        props: {
+          ...defaultProps,
+          initialValue: `\
 Line 1
 Line 2
-Line 3` },
+Line 3`,
+        },
       });
 
       const textarea = wrapper.find('textarea');
@@ -434,10 +440,13 @@ Line 3` },
   describe('Line-based model', () => {
     it('stores content as lines internally', () => {
       const wrapper = mount(AdvancedTextEditorV3, {
-        props: { ...defaultProps, initialValue: `\
+        props: {
+          ...defaultProps,
+          initialValue: `\
 line1
 line2
-line3` },
+line3`,
+        },
       });
       const vm = wrapper.vm as any;
 
@@ -495,9 +504,12 @@ bar`);
 
     it('Ctrl+E moves cursor to end of line', async () => {
       const wrapper = mount(AdvancedTextEditorV3, {
-        props: { ...defaultProps, initialValue: `\
+        props: {
+          ...defaultProps,
+          initialValue: `\
 hello world
-second line` },
+second line`,
+        },
         attachTo: document.body,
       });
 

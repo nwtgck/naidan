@@ -44,7 +44,9 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
   // Non-QAT choices explicitly use LM Studio Community; their projectors must
   // come from that same selected repository, never from the Google QAT source.
   {
-    id: 'gemma-4-e2b', name: 'Gemma 4 E2B it', developer: 'Google',
+    id: 'gemma-4-e2b',
+    name: 'Gemma 4 E2B it',
+    developer: 'Google',
     quantizationHints: [
       { id: 'qat-q4_0', repository: 'google/gemma-4-E2B-it-qat-q4_0-gguf', preferredQuantization: 'Q4_0', checkpoint: 'qat', approximateModelBytes: 3_350_000_000, approximateMultimodalBytes: 987_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 16 },
       { id: 'q4_k_m', repository: 'lmstudio-community/gemma-4-E2B-it-GGUF', preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 3_430_000_000, approximateMultimodalBytes: 987_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 16 },
@@ -53,7 +55,9 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     ],
   },
   {
-    id: 'gemma-4-e4b', name: 'Gemma 4 E4B it', developer: 'Google',
+    id: 'gemma-4-e4b',
+    name: 'Gemma 4 E4B it',
+    developer: 'Google',
     quantizationHints: [
       { id: 'qat-q4_0', repository: 'google/gemma-4-E4B-it-qat-q4_0-gguf', preferredQuantization: 'Q4_0', checkpoint: 'qat', approximateModelBytes: 5_150_000_000, approximateMultimodalBytes: 992_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
       { id: 'q4_k_m', repository: 'lmstudio-community/gemma-4-E4B-it-GGUF', preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 5_340_000_000, approximateMultimodalBytes: 992_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
@@ -62,7 +66,9 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     ],
   },
   {
-    id: 'gemma-4-26b', name: 'Gemma 4 26B-A4B it', developer: 'Google',
+    id: 'gemma-4-26b',
+    name: 'Gemma 4 26B-A4B it',
+    developer: 'Google',
     quantizationHints: [
       { id: 'qat-q4_0', repository: 'google/gemma-4-26B-A4B-it-qat-q4_0-gguf', preferredQuantization: 'Q4_0', checkpoint: 'qat', approximateModelBytes: 14_400_000_000, approximateMultimodalBytes: 1_190_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
       { id: 'q4_k_m', repository: 'lmstudio-community/gemma-4-26B-A4B-it-GGUF', preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 16_800_000_000, approximateMultimodalBytes: 1_190_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
@@ -72,13 +78,17 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
   },
   // The Q8_0/BF16 files here are auxiliary drafter weights, not main choices.
   {
-    id: 'gpt-oss-20b', name: 'gpt-oss-20b', developer: 'OpenAI',
+    id: 'gpt-oss-20b',
+    name: 'gpt-oss-20b',
+    developer: 'OpenAI',
     quantizationHints: [
       { id: 'mxfp4', repository: 'ggml-org/gpt-oss-20b-GGUF', preferredQuantization: 'MXFP4', checkpoint: 'standard', approximateModelBytes: 12_100_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: undefined },
     ],
   },
   {
-    id: 'qwen-3-5-9b', name: 'Qwen3.5 9B', developer: 'Qwen',
+    id: 'qwen-3-5-9b',
+    name: 'Qwen3.5 9B',
+    developer: 'Qwen',
     quantizationHints: [
       { id: 'q4_k_m', repository: 'lmstudio-community/Qwen3.5-9B-GGUF', preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 5_630_000_000, approximateMultimodalBytes: 922_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
       { id: 'q6_k', repository: 'lmstudio-community/Qwen3.5-9B-GGUF', preferredQuantization: 'Q6_K', checkpoint: 'standard', approximateModelBytes: 7_360_000_000, approximateMultimodalBytes: 922_000_000, suggestedMemoryGiB: 16, suggestedMultimodalMemoryGiB: 16 },
@@ -86,7 +96,9 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     ],
   },
   {
-    id: 'qwen-3-6-35b', name: 'Qwen3.6 35B-A3B', developer: 'Qwen',
+    id: 'qwen-3-6-35b',
+    name: 'Qwen3.6 35B-A3B',
+    developer: 'Qwen',
     quantizationHints: [
       { id: 'q4_k_m', repository: 'ggml-org/Qwen3.6-35B-A3B-GGUF', preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 20_400_000_000, approximateMultimodalBytes: 614_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
       { id: 'q8_0', repository: 'ggml-org/Qwen3.6-35B-A3B-GGUF', preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 36_900_000_000, approximateMultimodalBytes: 614_000_000, suggestedMemoryGiB: 64, suggestedMultimodalMemoryGiB: 64 },
@@ -94,7 +106,9 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     ],
   },
   {
-    id: 'qwen-3-8-27b', name: 'Qwen3.8 27B', developer: 'Qwen',
+    id: 'qwen-3-8-27b',
+    name: 'Qwen3.8 27B',
+    developer: 'Qwen',
     quantizationHints: [
       { id: 'q4_k_m', repository: 'ggml-org/Qwen3.8-27B-GGUF', preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 19_000_000_000, approximateMultimodalBytes: 629_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
       { id: 'q8_0', repository: 'ggml-org/Qwen3.8-27B-GGUF', preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 28_600_000_000, approximateMultimodalBytes: 629_000_000, suggestedMemoryGiB: 64, suggestedMultimodalMemoryGiB: 64 },
@@ -102,7 +116,9 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     ],
   },
   {
-    id: 'lfm-2-5-230m', name: 'LFM2.5 230M', developer: 'Liquid AI',
+    id: 'lfm-2-5-230m',
+    name: 'LFM2.5 230M',
+    developer: 'Liquid AI',
     quantizationHints: [
       { id: 'q4_k_m', repository: 'LiquidAI/LFM2.5-230M-GGUF', preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 153_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
       { id: 'q4_0', repository: 'LiquidAI/LFM2.5-230M-GGUF', preferredQuantization: 'Q4_0', checkpoint: 'standard', approximateModelBytes: 149_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
@@ -114,7 +130,9 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
     ],
   },
   {
-    id: 'lfm-2-5-2-6b', name: 'LFM2.5 2.6B', developer: 'Liquid AI',
+    id: 'lfm-2-5-2-6b',
+    name: 'LFM2.5 2.6B',
+    developer: 'Liquid AI',
     quantizationHints: [
       { id: 'q4_k_m', repository: 'LiquidAI/LFM2.5-2.6B-GGUF', preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 1_670_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
       { id: 'q4_0', repository: 'LiquidAI/LFM2.5-2.6B-GGUF', preferredQuantization: 'Q4_0', checkpoint: 'standard', approximateModelBytes: 1_590_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
@@ -127,14 +145,18 @@ export const modelSuggestions: readonly ModelSuggestion[] = [
   },
   // Match full tokens, including XL; KQuant filename modifiers are not tokens.
   {
-    id: 'muse-glimmer-30b', name: 'Muse-Glimmer 30B', developer: 'Meta',
+    id: 'muse-glimmer-30b',
+    name: 'Muse-Glimmer 30B',
+    developer: 'Meta',
     quantizationHints: [
       { id: 'q4_k_m', repository: 'meta-models/Muse-Glimmer-30B-GGUF', preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 16_800_000_000, approximateMultimodalBytes: 1_400_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
       { id: 'q4_k_xl', repository: 'meta-models/Muse-Glimmer-30B-GGUF', preferredQuantization: 'Q4_K_XL', checkpoint: 'standard', approximateModelBytes: 19_700_000_000, approximateMultimodalBytes: 1_400_000_000, suggestedMemoryGiB: 32, suggestedMultimodalMemoryGiB: 32 },
     ],
   },
   {
-    id: 'smollm2-135m', name: 'SmolLM2 135M Instruct', developer: 'Hugging Face',
+    id: 'smollm2-135m',
+    name: 'SmolLM2 135M Instruct',
+    developer: 'Hugging Face',
     quantizationHints: [
       { id: 'q4_k_m', repository: 'lmstudio-community/SmolLM2-135M-Instruct-GGUF', preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 105_000_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },
       { id: 'q3_k_l', repository: 'lmstudio-community/SmolLM2-135M-Instruct-GGUF', preferredQuantization: 'Q3_K_L', checkpoint: 'standard', approximateModelBytes: 97_500_000, approximateMultimodalBytes: undefined, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: undefined },

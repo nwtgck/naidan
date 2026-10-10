@@ -29,8 +29,13 @@ export async function collectTitleGeneration({ provider, endpoint, messages, mod
       && isUnsupportedReasoningError({ error });
     try {
       const items = provider.chat({
-        debug: undefined, messages, model, parameters: effective,
-        tools: undefined, readBinaryObject: undefined, signal: attemptSignal,
+        debug: undefined,
+        messages,
+        model,
+        parameters: effective,
+        tools: undefined,
+        readBinaryObject: undefined,
+        signal: attemptSignal,
       });
       async function* observe(): AsyncGenerator<ChatGenerationItem> {
         for await (const item of items) {

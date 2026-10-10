@@ -5,8 +5,10 @@ const modelId = 'fixture/model';
 const revision = 'a'.repeat(40);
 const required = ['config.json', 'onnx/model_q4.onnx'];
 const completion = {
-  autoClass: 'AutoModelForCausalLM', processor: 'tokenizer',
-  candidate: { device: 'wasm', dtype: 'q4' }, plannedRequiredPaths: required,
+  autoClass: 'AutoModelForCausalLM',
+  processor: 'tokenizer',
+  candidate: { device: 'wasm', dtype: 'q4' },
+  plannedRequiredPaths: required,
 } as const;
 
 function key({ path, cacheRevision }: { path: string; cacheRevision: string }) {
@@ -28,9 +30,11 @@ describe('Production offline Load receipt recorder', () => {
     recorder.observe({ resourceKey: key({ path: 'optional.json', cacheRevision: revision }), result: 'miss' });
     const receipt = recorder.finish({ ...completion, plannedRequiredPaths: [...required] });
     expect(receipt).toMatchObject({
-      modelId, loaderRevisionOption: { status: 'provided', value: revision },
+      modelId,
+      loaderRevisionOption: { status: 'provided', value: revision },
       cacheLookup: { revision, source: 'read-only-opfs-scoped-match', hitPaths: ['config.json', 'onnx/model_q4.onnx', 'tokenizer.json'] },
-      completion: 'model-session-and-tokenizer-processor-ready', resourceHealth: 'healthy-after-close',
+      completion: 'model-session-and-tokenizer-processor-ready',
+      resourceHealth: 'healthy-after-close',
       accessBoundary: 'production-offline-read-only',
       limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
     });

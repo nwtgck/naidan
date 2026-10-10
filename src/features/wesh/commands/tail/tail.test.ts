@@ -97,16 +97,22 @@ describe('tail command', () => {
   }
 
   it('prints headers for multiple files by default', async () => {
-    await writeFile({ name: 'a.txt', data: `\
+    await writeFile({
+      name: 'a.txt',
+      data: `\
 a1
 a2
 a3
-` });
-    await writeFile({ name: 'b.txt', data: `\
+`,
+    });
+    await writeFile({
+      name: 'b.txt',
+      data: `\
 b1
 b2
 b3
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'tail -n 1 a.txt b.txt',
@@ -125,14 +131,20 @@ b3
   });
 
   it('suppresses headers with -q', async () => {
-    await writeFile({ name: 'a.txt', data: `\
+    await writeFile({
+      name: 'a.txt',
+      data: `\
 a1
 a2
-` });
-    await writeFile({ name: 'b.txt', data: `\
+`,
+    });
+    await writeFile({
+      name: 'b.txt',
+      data: `\
 b1
 b2
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'tail -q -n 1 a.txt b.txt',
@@ -148,14 +160,20 @@ b2
   });
 
   it('supports long option aliases for header and line selection', async () => {
-    await writeFile({ name: 'a.txt', data: `\
+    await writeFile({
+      name: 'a.txt',
+      data: `\
 a1
 a2
-` });
-    await writeFile({ name: 'b.txt', data: `\
+`,
+    });
+    await writeFile({
+      name: 'b.txt',
+      data: `\
 b1
 b2
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'tail --silent --lines=1 a.txt b.txt',
@@ -171,10 +189,13 @@ b2
   });
 
   it('forces headers with -v for a single file', async () => {
-    await writeFile({ name: 'a.txt', data: `\
+    await writeFile({
+      name: 'a.txt',
+      data: `\
 a1
 a2
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'tail -v -n 1 a.txt',
@@ -190,10 +211,13 @@ a2
   });
 
   it('treats - as stdin among files', async () => {
-    await writeFile({ name: 'a.txt', data: `\
+    await writeFile({
+      name: 'a.txt',
+      data: `\
 a1
 a2
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'tail -n 1 - a.txt',
@@ -215,10 +239,13 @@ a2
   });
 
   it('returns non-zero when any file is missing', async () => {
-    await writeFile({ name: 'a.txt', data: `\
+    await writeFile({
+      name: 'a.txt',
+      data: `\
 a1
 a2
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'tail -n 1 a.txt missing.txt',
@@ -231,10 +258,13 @@ a2
   });
 
   it('does not print headers for files that fail to open', async () => {
-    await writeFile({ name: 'a.txt', data: `\
+    await writeFile({
+      name: 'a.txt',
+      data: `\
 a1
 a2
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'tail -n 1 missing.txt a.txt',
@@ -409,11 +439,14 @@ beta
   });
 
   it('uses leading +N as obsolete syntax only in its one-file context', async () => {
-    await writeFile({ name: 'a.txt', data: `\
+    await writeFile({
+      name: 'a.txt',
+      data: `\
 a
 b
 c
-` });
+`,
+    });
     await writeFile({ name: '+2', data: 'named-plus\n' });
 
     const obsolete = await execute({
@@ -479,7 +512,6 @@ beta
     expect(bytes.result.exitCode).toBe(0);
   });
 
-
   it('does not inspect missing files or directories when a zero count suppresses all output', async () => {
     await rootHandle.getDirectoryHandle('dir', { create: true });
 
@@ -543,5 +575,4 @@ alpha
     expect(stderr.text).toContain('tail: dir:');
     expect(result.exitCode).toBe(1);
   });
-
 });

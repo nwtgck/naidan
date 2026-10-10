@@ -77,7 +77,8 @@ describe('OllamaProvider Integration Tests', () => {
       const provider = new OllamaProvider({ endpoint: baseUrl });
       let result = '';
       let thinking = '';
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [{ role: 'user', content: 'What is the answer?' }],
         model: 'llama3',
         onReasoning: ({ chunk }) => {
@@ -100,7 +101,8 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: `${baseUrl}/` });
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'any',
         onChunk: () => {},
@@ -120,7 +122,8 @@ describe('OllamaProvider Integration Tests', () => {
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
       let result = '';
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'llama3',
         onChunk: ({ chunk: chunk }) => {
@@ -143,7 +146,8 @@ describe('OllamaProvider Integration Tests', () => {
       const provider = new OllamaProvider({ endpoint: baseUrl });
       let result = '';
       try {
-        await runProviderConversationForTest({ provider,
+        await runProviderConversationForTest({
+          provider,
           messages: [],
           model: 'llama3',
           onChunk: ({ chunk: chunk }) => {
@@ -163,7 +167,8 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [{
           role: 'user',
           content: [
@@ -187,7 +192,8 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [{
           role: 'user',
           content: [
@@ -209,7 +215,8 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [{
           role: 'user',
           content: [
@@ -231,7 +238,8 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'test-model',
         onChunk: () => {},
@@ -272,7 +280,8 @@ describe('OllamaProvider Integration Tests', () => {
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
       let result = '';
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'llama3',
         onChunk: ({ chunk: chunk }) => {
@@ -300,7 +309,8 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      await expect(runProviderConversationForTest({ provider,
+      await expect(runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'llama3',
         onChunk: () => {},
@@ -474,7 +484,15 @@ describe('OllamaProvider Integration Tests', () => {
       expect(capturedRequests[1]!.headers['x-test']).toBe('Ollama');
 
       await provider.generateImage({
-        prompt: 'p', model: 'm', width: 1, height: 1, steps: 1, seed: 1, images: [], onProgress: () => {}, signal: undefined,
+        prompt: 'p',
+        model: 'm',
+        width: 1,
+        height: 1,
+        steps: 1,
+        seed: 1,
+        images: [],
+        onProgress: () => {},
+        signal: undefined,
       });
       expect(capturedRequests[2]!.headers['x-test']).toBe('Ollama');
     });
@@ -531,7 +549,8 @@ describe('OllamaProvider Integration Tests', () => {
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
       let result = '';
-      await expect(runProviderConversationForTest({ provider,
+      await expect(runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'llama3',
         onChunk: ({ chunk: chunk }) => {
@@ -559,7 +578,8 @@ describe('OllamaProvider Integration Tests', () => {
       });
 
       const provider = new OllamaProvider({ endpoint: baseUrl });
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'm',
         onChunk: () => {},
@@ -629,7 +649,6 @@ const EMPTY_LM_PARAMETERS = {
   stop: undefined,
   reasoning: { effort: undefined },
 };
-
 
 describe('OllamaProvider runtime model management', () => {
   it('lists running models and maps optional API fields', async () => {

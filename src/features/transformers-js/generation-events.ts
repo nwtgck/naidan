@@ -10,17 +10,21 @@ export const inferenceGenerationEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('part_end'), index: position, completeness: z.enum(['complete', 'partial']) }),
   z.object({ type: z.literal('tool_start'), index: position }),
   z.object({
-    type: z.literal('tool_call'), index: position,
+    type: z.literal('tool_call'),
+    index: position,
     toolCall: z.object({
       id: z.string().transform(raw => toToolCallId({ raw })),
       type: z.literal('function'),
       function: z.object({ name: z.string().min(1), arguments: z.string() }),
     }),
   }),
-  z.object({ type: z.literal('result'), result: z.discriminatedUnion('type', [
-    z.object({ type: z.literal('finished'), next: z.enum(['user', 'tool_results']) }),
-    z.object({ type: z.literal('interrupted'), reason: z.enum(['aborted', 'limit', 'unknown']) }),
-  ]) }),
+  z.object({
+    type: z.literal('result'),
+    result: z.discriminatedUnion('type', [
+      z.object({ type: z.literal('finished'), next: z.enum(['user', 'tool_results']) }),
+      z.object({ type: z.literal('interrupted'), reason: z.enum(['aborted', 'limit', 'unknown']) }),
+    ]),
+  }),
 ]);
 export type InferenceGenerationEvent = z.infer<typeof inferenceGenerationEventSchema>;
 export type InferenceGenerationCallback = ({ event }: { event: InferenceGenerationEvent }) => void | Promise<void>;

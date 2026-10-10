@@ -526,14 +526,17 @@ export class Wesh {
       }),
     });
 
-    this.registerInternalCommand({ name: 'jobs', fn: async ({ context }) => {
-      const jobs = context.getJobs();
-      const { print } = context.text();
-      for (const job of jobs) {
-        await print({ text: `[${job.id}] ${job.status} ${job.command}\n` });
-      }
-      return { exitCode: 0 };
-    } });
+    this.registerInternalCommand({
+      name: 'jobs',
+      fn: async ({ context }) => {
+        const jobs = context.getJobs();
+        const { print } = context.text();
+        for (const job of jobs) {
+          await print({ text: `[${job.id}] ${job.status} ${job.command}\n` });
+        }
+        return { exitCode: 0 };
+      },
+    });
   }
 
   async init(): Promise<void> {
@@ -4248,29 +4251,37 @@ usage: ${name} [-c command] [file [argument...]]
 
     switch (redirection.type) {
     case 'read':
-      return this.createSharedFileHandle({ handle: await this.kernel.open({
-        path: fullTarget,
-        flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
-        mode: 0o644,
-      }) });
+      return this.createSharedFileHandle({
+        handle: await this.kernel.open({
+          path: fullTarget,
+          flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+          mode: 0o644,
+        }),
+      });
     case 'write':
-      return this.createSharedFileHandle({ handle: await this.kernel.open({
-        path: fullTarget,
-        flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' },
-        mode: 0o644,
-      }) });
+      return this.createSharedFileHandle({
+        handle: await this.kernel.open({
+          path: fullTarget,
+          flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' },
+          mode: 0o644,
+        }),
+      });
     case 'append':
-      return this.createSharedFileHandle({ handle: await this.kernel.open({
-        path: fullTarget,
-        flags: { access: 'write', creation: 'if-needed', truncate: 'preserve', append: 'append' },
-        mode: 0o644,
-      }) });
+      return this.createSharedFileHandle({
+        handle: await this.kernel.open({
+          path: fullTarget,
+          flags: { access: 'write', creation: 'if-needed', truncate: 'preserve', append: 'append' },
+          mode: 0o644,
+        }),
+      });
     case 'read_write':
-      return this.createSharedFileHandle({ handle: await this.kernel.open({
-        path: fullTarget,
-        flags: { access: 'read-write', creation: 'if-needed', truncate: 'preserve', append: 'preserve' },
-        mode: 0o644,
-      }) });
+      return this.createSharedFileHandle({
+        handle: await this.kernel.open({
+          path: fullTarget,
+          flags: { access: 'read-write', creation: 'if-needed', truncate: 'preserve', append: 'preserve' },
+          mode: 0o644,
+        }),
+      });
     default: {
       const _ex: never = redirection.type;
       throw new Error(`Unhandled redirection type: ${_ex}`);
@@ -4535,7 +4546,9 @@ usage: ${name} [-c command] [file [argument...]]
             lastResult = await this.executeNode({
               node: part.node,
               environment,
-              stdin, stdout, stderr,
+              stdin,
+              stdout,
+              stderr,
               loopDepth,
               functionDepth,
               errexitSuppressed: suppressForPart,
@@ -4619,7 +4632,10 @@ usage: ${name} [-c command] [file [argument...]]
     case 'if': {
       const conditionResult = await this.executeNode({
         node: node.condition,
-        environment, stdin, stdout, stderr,
+        environment,
+        stdin,
+        stdout,
+        stderr,
         loopDepth,
         functionDepth,
         errexitSuppressed: true,
@@ -4629,14 +4645,20 @@ usage: ${name} [-c command] [file [argument...]]
       } else if (conditionResult.exitCode === 0) {
         result = await this.executeNode({
           node: node.thenBody,
-          environment, stdin, stdout, stderr,
+          environment,
+          stdin,
+          stdout,
+          stderr,
           loopDepth,
           functionDepth,
         });
       } else if (node.elseBody) {
         result = await this.executeNode({
           node: node.elseBody,
-          environment, stdin, stdout, stderr,
+          environment,
+          stdin,
+          stdout,
+          stderr,
           loopDepth,
           functionDepth,
         });
@@ -4665,7 +4687,10 @@ usage: ${name} [-c command] [file [argument...]]
         environment.env.set(node.variable, item);
         lastForRes = await this.executeNode({
           node: node.body,
-          environment, stdin, stdout, stderr,
+          environment,
+          stdin,
+          stdout,
+          stderr,
           loopDepth: loopDepth + 1,
           functionDepth,
         });

@@ -13,16 +13,26 @@ function observation({ items, controller }: { items: AsyncIterable<ChatGeneratio
   const node: AssistantMessageNode = { id: toMessageId({ raw: 'new' }), role: 'assistant', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
   const drafts: ToolCallDraft[][] = [];
   const onChange = vi.fn();
-  const result = consumeChatGeneration({ node, items, abortController: controller, onChange, onToolCallDraftsChange: ({ drafts: current }) => {
-    drafts.push(current.map(draft => ({ ...draft })));
-  } });
+  const result = consumeChatGeneration({
+    node,
+    items,
+    abortController: controller,
+    onChange,
+    onToolCallDraftsChange: ({ drafts: current }) => {
+      drafts.push(current.map(draft => ({ ...draft })));
+    },
+  });
   return { node, result, drafts, onChange };
 }
+
 function source({ generate, controller }: { generate: LlamaCppBrowserService['generate'], controller: AbortController }) {
   return createLlamaCppGeneration({ request: { ...chatRequest(), signal: controller.signal }, generate });
 }
+
 const call = { id: 'call1', type: 'function' as const, function: { name: 'lookup', arguments: ' {"x": "\\u3042"} ' } };
+
 const called = (): GenerationResult => ({ ...finalText({ text: '' }), toolCalls: [call] });
+
 describe('native llama.cpp events into common parts', () => {
   it('keeps parallel native previews transient and replaces them only with authoritative completed calls', async () => {
     const controller = new AbortController();
@@ -101,12 +111,14 @@ describe('native llama.cpp events into common parts', () => {
     expect(await result).toEqual({ type: 'finished', next: 'user' });
     expect(node.parts).toEqual([{ type: 'reasoning', text: ' R\n', completeness: 'complete' }, { type: 'text', text: '<think>literal</think>  ', completeness: 'complete' }]);
   });
+
   it.each(['length', 'stop_sequence'] as const)('retains partial text after native %s', async finishReason => {
     const controller = new AbortController();const generate: LlamaCppBrowserService['generate'] = async ({ onEvent }) => deliverNativeResult({ result: { ...finalText({ text: ' 途中\n' }), finishReason }, onEvent });
     const { node, result } = observation({ items: source({ generate, controller }), controller });
     expect(await result).toEqual({ type: 'interrupted', reason: finishReason === 'length' ? 'limit' : 'stop_sequence' });
     expect(node.parts[0]).toMatchObject({ text: ' 途中\n', completeness: 'partial' });
   });
+
   it('does not treat a final native result as undelivered content', async () => {
     const controller = new AbortController(); const generate: LlamaCppBrowserService['generate'] = async ({ onEvent }) => {
       await onEvent({ event: { type: 'text', text: 'accepted' } });return finalText({ text: 'accepted but not sent' });
@@ -114,6 +126,7 @@ describe('native llama.cpp events into common parts', () => {
     const { node, result } = observation({ items: source({ generate, controller }), controller });
     expect((await result).type).toBe('error');expect(node.parts[0]).toMatchObject({ text: 'accepted', completeness: 'partial' });
   });
+
   it('retains a completed call delivered before a cancelled RPC rejects', async () => {
     const controller = new AbortController();const generate: LlamaCppBrowserService['generate'] = async ({ onEvent }) => {
       await deliverNativeResult({ result: called(), onEvent });controller.abort();throw new LlamaCppBrowserError({ code: 'aborted' });
@@ -122,6 +135,7 @@ describe('native llama.cpp events into common parts', () => {
     expect(await result).toEqual({ type: 'interrupted', reason: 'aborted' });
     expect(node.parts[0]).toMatchObject({ type: 'tool_call', toolCall: call });
   });
+
   it('keeps a prior complete call and unrepresentable subsequent text but rejects tool execution', async () => {
     const controller = new AbortController(); const generate: LlamaCppBrowserService['generate'] = async ({ onEvent }) => {
       await deliverNativeResult({ result: called(), onEvent });await onEvent({ event: { type: 'text', text: 'after call' } });return { ...called(), content: 'after call' };
@@ -129,6 +143,7 @@ describe('native llama.cpp events into common parts', () => {
     const { node, result } = observation({ items: source({ generate, controller }), controller });
     expect((await result).type).toBe('error');expect(node.parts.map(p => p.type)).toEqual(['tool_call', 'text']);expect(node.parts[1]).toMatchObject({ text: 'after call', completeness: 'partial' });
   });
+
   it('preserves a later reasoning block without flattening it into the first reasoning', async () => {
     const controller = new AbortController();const generate: LlamaCppBrowserService['generate'] = async ({ onEvent }) => {
       for (const event of [{ type: 'reasoning', text: 'R' }, { type: 'text', text: 'A' }, { type: 'reasoning', text: 'S' }] satisfies GenerationEvent[]) await onEvent({ event });
@@ -136,6 +151,7 @@ describe('native llama.cpp events into common parts', () => {
     };
     const { node, result } = observation({ items: source({ generate, controller }), controller });expect((await result).type).toBe('error');expect(node.parts.map(p => p.type)).toEqual(['reasoning', 'text', 'reasoning']);
   });
+
   it.each(['missing reservation', 'duplicate call', 'result only'] as const)('rejects %s instead of fabricating completed calls', async defect => {
     const controller = new AbortController();const generate: LlamaCppBrowserService['generate'] = async ({ onEvent }) => {
       switch (defect) {
@@ -148,6 +164,7 @@ describe('native llama.cpp events into common parts', () => {
     };
     const { node, result } = observation({ items: source({ generate, controller }), controller });expect((await result).type).toBe('error');expect(node.parts).toHaveLength(defect === 'duplicate call' ? 1 : 0);
   });
+
   it('does not seal an unfinished call after a length limit', async () => {
     const controller = new AbortController(); const generate: LlamaCppBrowserService['generate'] = async ({ onEvent }) => {
       await onEvent({ event: { type: 'text', text: 'before' } });await onEvent({ event: { type: 'tool_call_start', index: 0 } });
@@ -155,6 +172,7 @@ describe('native llama.cpp events into common parts', () => {
     };
     const { node, result } = observation({ items: source({ generate, controller }), controller });expect((await result).type).toBe('interrupted');expect(node.parts.map(p => p.type)).toEqual(['text']);
   });
+
   it('does not release the operation on an event before the native request completes', async () => {
     const gate = Promise.withResolvers<void>();let entered = false;const controller = new AbortController();
     const generate: LlamaCppBrowserService['generate'] = async ({ onEvent }) => {
@@ -169,16 +187,19 @@ describe('native llama.cpp events into common parts', () => {
 
 describe('local operation and child lifetime', () => {
   const generate: LlamaCppBrowserService['generate'] = async ({ onEvent }) => deliverNativeResult({ result: finalText({ text: 'A' }), onEvent });
+
   it('freezes request content before delayed consumption', async () => {
     const native = vi.fn<LlamaCppBrowserService['generate']>(generate);const controller = new AbortController();const scoped = createScopedGeneration({ scope: { generate: native, signal: controller.signal } });
     const request = chatRequest(); const items = scoped.chat(request);
     const part = request.messages[0]?.parts[0];if (part?.type === 'text') part.text = 'changed';
     await observation({ items, controller }).result;expect(native.mock.calls[0]?.[0].input.messages[0]?.content).toBe('hello');await scoped.close();
   });
+
   it('rejects an escaped method and iterable after the operation closes', async () => {
     const scoped = createScopedGeneration({ scope: { generate, signal: new AbortController().signal } });const escaped = scoped.chat(chatRequest());await scoped.close();
     expect(() => scoped.chat(chatRequest())).toThrow('closed');expect(() => escaped[Symbol.asyncIterator]()).toThrow('closed');
   });
+
   it('drains accepted partial content on an owner abort even without a caller signal', async () => {
     const owner = new AbortController();const native: LlamaCppBrowserService['generate'] = async ({ onEvent, signal }) => {
       await onEvent({ event: { type: 'text', text: 'A' } });owner.abort();expect(signal?.aborted).toBe(true);await onEvent({ event: { type: 'text', text: 'B' } });throw new LlamaCppBrowserError({ code: 'aborted' });
@@ -186,10 +207,12 @@ describe('local operation and child lifetime', () => {
     const scoped = createScopedGeneration({ scope: { generate: native, signal: owner.signal } });const { node, result } = observation({ items: scoped.chat(chatRequest()), controller: new AbortController() });
     expect(await result).toEqual({ type: 'interrupted', reason: 'aborted' });expect(node.parts[0]).toMatchObject({ text: 'AB', completeness: 'partial' });await scoped.close();
   });
+
   it('does not start a queued generation after owner cancellation', async () => {
     const native = vi.fn<LlamaCppBrowserService['generate']>(generate);const scoped = createScopedGeneration({ scope: { generate: native, signal: AbortSignal.abort() } });
     expect(await observation({ items: scoped.chat(chatRequest()), controller: new AbortController() }).result).toEqual({ type: 'interrupted', reason: 'aborted' });expect(native).not.toHaveBeenCalled();await scoped.close();
   });
+
   it('rejects concurrent generations until all children of the first are read', async () => {
     const native = vi.fn<LlamaCppBrowserService['generate']>(generate);const scoped = createScopedGeneration({ scope: { generate: native, signal: new AbortController().signal } });
     const first = scoped.chat(chatRequest())[Symbol.asyncIterator]();const initial = await first.next();
@@ -201,6 +224,7 @@ describe('local operation and child lifetime', () => {
     expect((await first.next()).done).toBe(true);
     const { result } = observation({ items: scoped.chat(chatRequest()), controller: new AbortController() });await result;expect(native).toHaveBeenCalledTimes(2);await scoped.close();
   });
+
   it('closes unread children and waits for the associated producer cleanup without draining the queue', async () => {
     let stopped = false;let generationSignal: AbortSignal | undefined;
     const native: LlamaCppBrowserService['generate'] = async ({ onEvent, signal }) => {
@@ -217,6 +241,7 @@ describe('local operation and child lifetime', () => {
     if (item.done || (item.value.type !== 'text' && item.value.type !== 'reasoning')) throw new Error('Expected text');
     expect(await item.value.completeness).toBe('partial');
   });
+
   it('retired callback writes cannot alter a subsequent generation', async () => {
     let send: GenerationCallback | undefined;let count = 0;
     const native: LlamaCppBrowserService['generate'] = async ({ onEvent }) => {

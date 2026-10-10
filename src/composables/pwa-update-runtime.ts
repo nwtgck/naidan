@@ -17,6 +17,7 @@ export function startPWAUpdateRuntime(): void {
       serviceWorkers: navigator.serviceWorker,
       reload: () => reloadPWAPage({ location: window.location, history: window.history }),
     },
+    pageBuildId: __PWA_BUILD_ID__,
     baseUrl: new URL(import.meta.env.BASE_URL, window.location.href),
     onState: ({ next }) => setUpdateState({ next }),
     onOfflineReady: () => {
@@ -35,9 +36,11 @@ export function startPWAUpdateRuntime(): void {
       addErrorEvent({ source: 'PWA', message, details: error instanceof Error ? error : String(error) });
     },
   });
-  runtime = { dispose() {
-    disposed = true; controller.dispose();
-  } };
+  runtime = {
+    dispose() {
+      disposed = true; controller.dispose();
+    },
+  };
 }
 
 export const TEST_ONLY = {

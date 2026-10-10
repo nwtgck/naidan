@@ -11,7 +11,7 @@ The goal is not only to silence lint. The goal is to preserve Naidan's named-arg
 
 ## Core rule
 
-Naidan-owned callables should use one destructured object parameter.
+Naidan-owned callables should use one destructured object parameter. Its explicit outer type must show the argument fields inline; an alias such as `({ id }: Args)` is not allowed.
 
 ```ts
 function run({ value }: { value: string }) {}
@@ -115,27 +115,56 @@ constructor({ endpoint, headers }: { endpoint: string, headers?: [string, string
 }
 ```
 
-## Alias-typed parameters
+## Explicit outer argument shapes
 
-Alias-typed parameters need judgment.
-
-```ts
-function run(params: RunParams) {}
-```
-
-Prefer destructuring when the callable is Naidan-owned and the object is not intentionally passed through as a cohesive object.
+Do not use a type alias, interface, imported type, type parameter, `Parameters<...>[0]`, `Pick`, `Omit`, or a schema-inferred type as the outer annotation of a Naidan-owned destructured parameter.
 
 ```ts
-function run({ id, title }: RunParams) {}
+// Not allowed, even though callers supply an object.
+function read({ id, name }: ReadArgs) {}
 ```
 
-A destructured alias is already named-args compatible.
+Choose the fix from the callable's meaning, not from the type's name:
+
+1. If the fields are independent named arguments, write the outer shape inline. Property types may still reference shared definitions.
+2. If the callable consumes one cohesive value, wrap that value under a meaningful argument name instead of copying its fields into an argument bag.
+3. For a shared callable contract, make the canonical signature inline and let contextually typed implementations infer their parameters when possible.
+4. Keep real external callback and Comlink contracts unchanged. An external argument type alone does not prove external ownership.
 
 ```ts
-function run({ id, title }: RunParams) {}
+function read({ id, name }: { id: ReadArgs['id'], name: ReadArgs['name'] }) {}
+function copyPublication({ publication }: { publication: Publication }) {}
+type Observer = ({ observation }: { observation: Observation }) => void;
 ```
 
-Do not expand alias types mechanically unless doing so improves the code. Shared option types, worker request types, payload types, and cohesive context objects may remain aliases.
+Property-level indexed access is allowed. Preserve optional properties (`?`), readonly modifiers, explicit `undefined`, and discriminated-union correlations when converting an argument type. Do not change an optional field into a required field merely by spelling it as `field: Args['field']`.
+
+For shared provider implementations, preserve the canonical input contract, including fields not destructured by that implementation. A private helper may use a narrower shape only after its callers have been checked. Do not remove a public option just because one implementation ignores it.
+
+```ts
+interface Reader { read({ id }: { id: string }): void }
+const reader: Reader = { read({ id }) {} };
+```
+
+Do not remove a type annotation merely to bypass the rule when there is no real contextual signature. Class `implements` clauses alone do not provide contextual parameter types.
+
+Inline object unions and intersections are allowed when every branch has a visible shape. Verified TypeScript `Readonly<{ ... }>` and Naidan `WorkerTransfer<{ ... }>` wrappers are allowed because they preserve the visible argument fields; nested aliases such as `Readonly<Args>` are not. Arbitrary `Wrapper<{ ... }>` types are not proof of a visible shape, and names that shadow the permitted wrappers are not exceptions.
+
+Direct callbacks with a non-inline outer annotation require a verifiable external callable context, just like stored callbacks. For example, `items.map(({ id }: Item) => id)` keeps Array's positional callback contract; passing `({ id }: Args) => ...` into a Naidan-owned named-args callback contract is still reported. The parameter type's origin does not determine the callable's owner.
+
+Abstract methods, ambient class members, and method overloads follow the same rule as implemented methods. An external method contract may be inherited by a class declaration or class expression; that inheritance does not make its constructor external.
+
+For an explicit non-inline outer type, Web Streams and Vue setters also need a type-verified external contract. A local class named `ReadableStream` or a local function shadowing an imported `computed` binding is not an exception.
+
+### Preserve behavior and layout
+
+Inlining the outer type is a type-only change when the fields retain their original types and modifiers. Wrapping a cohesive value changes the calling convention: update its callers, callback consumers, and relevant tests together. Preserve any deliberate object-rest snapshot, validation-before-field-access, exception handling, and awaited callback delivery.
+
+Do not add line breaks merely because an inline type makes a line longer. Keep one-line signatures on one line and preserve existing multiline structures where possible. Do not mix this migration with unrelated formatting.
+
+This rule deliberately has no automatic fix or suggestion: deciding between an argument bag, a cohesive value, and an external contract requires semantic review.
+
+The rule remains scoped to `src/**/*.ts` and `src/**/*.vue`, excluding `src/**/*.test.ts` and `src/**/*.spec.ts`. Test files may still be checked by other ESLint rules. Test call sites must still be updated when a production signature changes.
 
 ## Naidan callback and signature types
 
@@ -601,4 +630,6 @@ Before returning a patch:
 10. Keep runtime-only external exceptions narrow and explicit.
 11. Confirm no `TODO(named-args-audit): mechanically suppressed` remains.
 12. Confirm `TODO(named-args-design)` is rare and genuinely needs human design judgment.
-13. Run the named-args rule tests and lint before finalizing.
+13. Check explicit outer types for aliases and derived types; keep shared property types and verified external contracts.
+14. Preserve existing line breaks instead of vertically expanding inline types.
+15. Run targeted named-args rule tests, relevant consumer tests, lint, and typechecks before finalizing; do not run project-wide checks without permission.

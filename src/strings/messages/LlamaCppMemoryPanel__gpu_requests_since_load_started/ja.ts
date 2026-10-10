@@ -1,0 +1,1 @@
+export const LlamaCppMemoryPanel__gpu_requests_since_load_started = ({ bufferBytes, bufferCount, writeBytes, writeCount }: { bufferBytes: string, bufferCount: number, writeBytes: string, writeCount: number }): string => `直近のロード開始からの要求: createBuffer ${bufferBytes} / ${bufferCount}回; writeBuffer ${writeBytes} / ${writeCount}回`;

@@ -3343,7 +3343,7 @@ function visitJqFilterOutputsWithContext({
         readonly path: JqPath,
         readonly metadata: JqRuntimeInputMetadata,
       };
-      type JqPathConsumer = ({ path, metadata }: VisitedPath) => JqRuntimeOutputVisitResult;
+      type JqPathConsumer = ({ path, metadata }: { readonly path: VisitedPath['path'], readonly metadata: VisitedPath['metadata'] }) => JqRuntimeOutputVisitResult;
 
       const appendSegment = ({
         path,

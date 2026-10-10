@@ -4,12 +4,15 @@ import { OPFSStorageProvider } from './opfs-storage';
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {
   kind = 'file' as const;
+
   constructor(public name: string, private content: string = '') {}
+
   getFile() {
     return Promise.resolve({
       text: () => Promise.resolve(this.content),
     });
   }
+
   createWritable() {
     return Promise.resolve({
       write: (data: string) => {
@@ -92,13 +95,15 @@ describe('OPFSStorageProvider Directory Isolation', () => {
     expect(storageDir.kind).toBe('directory');
 
     // Saving settings should put the file inside the subdirectory, NOT the root
-    await provider.saveSettings({ settings: {
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
-      storageType: 'opfs',
-      providerProfiles: [],
-      mounts: [],
-      endpoint: { type: 'openai', url: 'http://localhost' },
-    } });
+    await provider.saveSettings({
+      settings: {
+        titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+        storageType: 'opfs',
+        providerProfiles: [],
+        mounts: [],
+        endpoint: { type: 'openai', url: 'http://localhost' },
+      },
+    });
 
     expect(mockOpfsRoot.entries.has('settings.json')).toBe(false);
     expect(storageDir.entries.has('settings.json')).toBe(true);
@@ -113,13 +118,15 @@ describe('OPFSStorageProvider Directory Isolation', () => {
     mockOpfsRoot.entries.set('other-app-data.txt', new MockFileSystemFileHandle('other-app-data.txt'));
 
     // Save some app data
-    await provider.saveSettings({ settings: {
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
-      storageType: 'opfs',
-      providerProfiles: [],
-      mounts: [],
-      endpoint: { type: 'openai', url: 'http://localhost' },
-    } });
+    await provider.saveSettings({
+      settings: {
+        titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+        storageType: 'opfs',
+        providerProfiles: [],
+        mounts: [],
+        endpoint: { type: 'openai', url: 'http://localhost' },
+      },
+    });
 
     expect(storageDir.entries.size).toBeGreaterThan(0);
     expect(mockOpfsRoot.entries.has('other-app-data.txt')).toBe(true);

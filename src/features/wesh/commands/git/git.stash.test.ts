@@ -6,7 +6,6 @@ beforeAll(async () => {
   await gitCommandDefinition.load();
 });
 
-
 describe('wesh git stash', () => {
   const base = `\
 git init -q repo
@@ -370,7 +369,6 @@ git stash list`,
     expect(stdout.text).toBe(' M a\n');
   });
 
-
   it('honors -- as an option terminator across existing stash subcommands', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -398,7 +396,6 @@ printf 'ok\n'`,
     expect(stderr.text).toBe('');
     expect(stdout.text).toBe('ok\n');
   });
-
 
   it('accepts Git-style unique long prefixes for stash apply index selection', async () => {
     const execute = await createGitTestExecutor();
@@ -519,7 +516,6 @@ git stash clear bogus`,
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe('error: git stash clear with arguments is unimplemented\n');
   });
-
 });
 
 function stashApplyUsageForTest(subcommand: 'apply' | 'pop'): string {

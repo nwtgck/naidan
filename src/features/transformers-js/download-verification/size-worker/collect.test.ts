@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { collectDownloadSizes } from './collect';
 
 const request = { modelId: 'fixture/model', revision: 'a'.repeat(40), paths: ['onnx/a.onnx', 'onnx/b.onnx'] };
+
 afterEach(() => vi.useRealTimers());
 
 it('requests only frozen paths using the official form wire and matches file identities independently of response order', async () => {
@@ -42,7 +43,8 @@ it('rejects an oversized decoded response before retaining its body as JSON', as
   const repositoryFetch = vi.fn<typeof fetch>(async () => new Response(new ReadableStream({
     start(controller) {
       controller.enqueue(new Uint8Array(256 * 1024 + 1));
-    }, cancel,
+    },
+    cancel,
   })));
   expect(await collectDownloadSizes({ request, repositoryFetch, signal: new AbortController().signal })).toEqual({ sizes: [], quotaLimited: false });
   expect(cancel).toHaveBeenCalledOnce();

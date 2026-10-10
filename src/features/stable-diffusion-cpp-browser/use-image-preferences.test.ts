@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref } from 'vue';
 import { DEFAULT_SETTINGS, type BrowserImageGenerationSettings, type Settings } from '@/01-models/types';
 import { toHostModelDirectoryId } from '@/01-models/ids';
-import { createImageForm } from './form';
+import { createImageForm } from '@/features/image-generation/form';
 import { useImagePreferences } from './use-image-preferences';
 import { useImageLibrary } from './use-image-library';
 import { scanImageRepositories } from './logic/model-candidates';
@@ -11,9 +11,11 @@ import type { LocalImageRepository } from './logic/repository-store';
 import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTextTensors } from './test-utils/weights';
 
 const scopes: ReturnType<typeof effectScope>[] = [];
+
 afterEach(() => {
   for (const scope of scopes.splice(0)) scope.stop();
 });
+
 function repositories(): LocalImageRepository[] {
   const files = [
     ggufFixture({ name: 'z-image.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file,
@@ -23,11 +25,13 @@ function repositories(): LocalImageRepository[] {
   ];
   return files.map((file, index) => ({ id: `user/${index}`, name: `repo ${index}`, files: [{ path: file.name, file }] }));
 }
+
 function harness({ saved, initialized, entries }: { saved: BrowserImageGenerationSettings | undefined, initialized: boolean, entries: LocalImageRepository[] }) {
   const scope = effectScope(); scopes.push(scope);
   return scope.run(() => {
     const settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' }, experimental: { browserImageGeneration: saved, locale: 'en' } });
-    const ready = ref(initialized), restoring = ref(false), seedMode = ref<'random' | 'fixed'>('random'), historyEnabled = ref(true);
+    const ready = ref(initialized), localModels = ref(true), restoring = ref(false), seedMode = ref<'random' | 'fixed'>('random'), historyEnabled = ref(true);
+    let generation = 0;
     const form = createImageForm({ profile: 'webgpu-wasm32-asyncify' });
     const download = vi.fn(), onSelection = vi.fn(), restored = vi.fn(), failed = vi.fn();
     const list = vi.fn(async () => entries);
@@ -35,13 +39,74 @@ function harness({ saved, initialized, entries }: { saved: BrowserImageGeneratio
     const updateExperimental = vi.fn(async ({ updater }: { updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'] }) => {
       settings.value = { ...settings.value, experimental: updater({ experimental: settings.value.experimental }) };
     });
-    useImagePreferences({ settings, initialized: ready, updateExperimental, form, seedMode, historyEnabled, library, restoring, restored, failed });
-    return { scope, settings, ready, form, seedMode, historyEnabled, library, restoring, restored, failed, updateExperimental, download, onSelection, list };
+    const updateForStorage = vi.fn(async ({ isCurrent, updater }: {
+      isCurrent(): boolean, updater({ experimental }: { experimental: Settings['experimental'] }): Settings['experimental'],
+    }): Promise<'saved' | 'changed'> => {
+      if (!isCurrent()) return 'changed';
+      await updateExperimental({ updater }); return 'saved';
+    });
+    const preferences = useImagePreferences({
+      settings,
+      initialized: ready,
+      captureStorage() {
+        const captured = generation; return () => captured === generation;
+      },
+      updateForStorage,
+      form,
+      seedMode,
+      historyEnabled,
+      library,
+      localModels,
+      restoring,
+      restored,
+      failed,
+    });
+    return {
+      preferences,
+      scope,
+      settings,
+      ready,
+      localModels,
+      form,
+      seedMode,
+      historyEnabled,
+      library,
+      restoring,
+      restored,
+      failed,
+      updateExperimental,
+      updateForStorage,
+      download,
+      onSelection,
+      list,
+      replaceStorage() {
+        generation++;
+      },
+    };
   })!;
 }
+
 async function settled(): Promise<void> {
   await nextTick(); await new Promise(resolve => setImmediate(resolve)); await nextTick();
 }
+
+it('defers local model discovery until switching back from a restored remote inference location', async () => {
+  const saved: BrowserImageGenerationSettings = { width: 768, modelSelection: { primary: { slot: 'diffusion', location: { kind: 'opfs', path: 'models/user/0/z-image.gguf' } }, components: [], loras: [] } };
+  const h = harness({ initialized: false, saved, entries: repositories() });
+  h.localModels.value = false; h.ready.value = true; await settled();
+  expect(h.form.parameters.value.width).toBe(768); expect(h.list).not.toHaveBeenCalled(); expect(h.updateExperimental).not.toHaveBeenCalled();
+  h.localModels.value = true;
+  await vi.waitFor(() => expect(h.restoring.value).toBe(false)); await settled();
+  expect(h.list).toHaveBeenCalledOnce(); expect(h.library.main.value).toContain('user/0'); expect(h.updateExperimental).not.toHaveBeenCalled();
+});
+
+it('lets an explicit session configuration supersede deferred global model defaults', async () => {
+  const saved: BrowserImageGenerationSettings = { modelSelection: { primary: { slot: 'diffusion', location: { kind: 'opfs', path: 'models/user/0/z-image.gguf' } }, components: [], loras: [] } };
+  const h = harness({ initialized: false, saved, entries: repositories() });
+  h.localModels.value = false; h.ready.value = true; await settled();
+  h.preferences.discardDeferredModelSelection(); h.localModels.value = true; await settled();
+  expect(h.list).not.toHaveBeenCalled(); expect(h.restored).not.toHaveBeenCalled();
+});
 
 it('hydrates once before saving and stores only approved preferences after explicit edits', async () => {
   const h = harness({ initialized: false, entries: [], saved: { width: 512, height: 768, seedMode: 'fixed', seed: '9007199254740993', debug: 'on', imageDownload: { format: 'webp', metadata: 'include' }, preview: { enabled: 'enabled', interval: 5 }, maxResults: 31, bf16WeightType: 'f16' } });
@@ -102,11 +167,15 @@ it('restores exact host/OPFS locations, explicit component none and LoRA control
   const entries = repositories();
   entries[0]!.hostSource = { directoryId: 'chosen-root', directoryName: 'Chosen', repository: 'org/image' };
   const sameNamed = { ...entries[0]!, id: 'other', hostSource: { directoryId: 'other-root', directoryName: 'Other', repository: 'org/image' } };
-  const saved: BrowserImageGenerationSettings = { modelSelection: {
-    primary: { slot: 'diffusion', location: { kind: 'host', directoryId: toHostModelDirectoryId({ raw: 'chosen-root' }), path: 'org/image/z-image.gguf' } },
-    components: [{ slot: 'vae', choice: { kind: 'none' } }, { slot: 'lm', choice: { kind: 'file', location: { kind: 'opfs', path: 'models/user/2/text.gguf' } } }],
-    loras: [{ location: { kind: 'opfs', path: 'models/user/3/adapter.gguf' }, enabled: 'disabled', strength: 0.7 }],
-  }, preview: { enabled: 'enabled', mode: 'projection' }, width: 768 };
+  const saved: BrowserImageGenerationSettings = {
+    modelSelection: {
+      primary: { slot: 'diffusion', location: { kind: 'host', directoryId: toHostModelDirectoryId({ raw: 'chosen-root' }), path: 'org/image/z-image.gguf' } },
+      components: [{ slot: 'vae', choice: { kind: 'none' } }, { slot: 'lm', choice: { kind: 'file', location: { kind: 'opfs', path: 'models/user/2/text.gguf' } } }],
+      loras: [{ location: { kind: 'opfs', path: 'models/user/3/adapter.gguf' }, enabled: 'disabled', strength: 0.7 }],
+    },
+    preview: { enabled: 'enabled', mode: 'projection' },
+    width: 768,
+  };
   const h = harness({ initialized: true, saved, entries: [sameNamed, ...entries] });
   await vi.waitFor(() => expect(h.restoring.value).toBe(false)); await settled();
   expect(h.library.main.value).toContain('user/0');
@@ -193,4 +262,19 @@ it('drains already accepted preference edits after leaving the workspace during 
   expect(h.settings.value.experimental?.browserImageGeneration).toMatchObject({ width: 512, height: 768 });
   const reopened = harness({ initialized: true, saved: h.settings.value.experimental?.browserImageGeneration, entries: [] }); await settled();
   expect(reopened.form.parameters.value).toMatchObject({ width: 512, height: 768 });
+});
+
+it('rehydrates a replaced provider and saves subsequent edits after an old write retires', async () => {
+  const h = harness({ initialized: true, entries: [], saved: { width: 512 } }); await settled();
+  const gate = Promise.withResolvers<void>();
+  h.updateForStorage.mockImplementationOnce(async ({ isCurrent }) => {
+    await gate.promise; return isCurrent() ? 'saved' : 'changed';
+  });
+  h.form.parameters.value.width = 768; await settled();
+  h.replaceStorage(); h.settings.value.experimental = { locale: 'ja', browserImageGeneration: { width: 1024, height: 256 } }; await settled();
+  expect(h.form.parameters.value).toMatchObject({ width: 1024, height: 256 }); expect(h.updateForStorage).toHaveBeenCalledOnce();
+  h.form.parameters.value.width = 640; h.form.parameters.value.height = 512; await settled();
+  gate.resolve(); await settled();
+  expect(h.settings.value.experimental).toMatchObject({ locale: 'ja', browserImageGeneration: { width: 640, height: 512 } });
+  expect(h.updateForStorage).toHaveBeenCalledTimes(2); expect(h.failed).not.toHaveBeenCalled();
 });

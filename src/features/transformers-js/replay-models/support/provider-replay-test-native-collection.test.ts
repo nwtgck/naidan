@@ -20,8 +20,12 @@ describe('Production native collection through actual Comlink', () => {
     const path = 'onnx/model_q4f16.onnx';
     const requestedBytes = 257;
     const harness = await createProviderReplayTestRuntime({
-      modelId, expectedRevision: revision, cacheRevision: revision, metadataCache: 'all-fixture',
-      artifacts: [{ path, bytes: new Uint8Array(requestedBytes) }], imagePlatform: undefined,
+      modelId,
+      expectedRevision: revision,
+      cacheRevision: revision,
+      metadataCache: 'all-fixture',
+      artifacts: [{ path, bytes: new Uint8Array(requestedBytes) }],
+      imagePlatform: undefined,
       generate: async () => {
         throw new Error('Allocation control must stop before native generation');
       },
@@ -34,8 +38,11 @@ describe('Production native collection through actual Comlink', () => {
     const replacementEpochs: number[] = [];
     const replacementOperations: string[] = [];
     const owner = createProductionProviderGenerationCaptureOwner({
-      runId: `synthetic-allocation-${collectionMode}`, modelId, plan: 'first-continuity-independent',
-      traceLimits: { maximumEvents: 64, maximumCharacters: 4096 }, maximumWorkerEpochs: 8,
+      runId: `synthetic-allocation-${collectionMode}`,
+      modelId,
+      plan: 'first-continuity-independent',
+      traceLimits: { maximumEvents: 64, maximumCharacters: 4096 },
+      maximumWorkerEpochs: 8,
       createCaptureClient: ({ runId, workerEpoch, getActiveRequest }) => {
         if (workerEpoch > 1) {
           // The first Worker and its fatal-error retirement are real. A new
@@ -63,19 +70,32 @@ describe('Production native collection through actual Comlink', () => {
           };
         }
         const capture = createTransformersJsGenerationCaptureClient({
-          runId, workerEpoch, getActiveRequest,
-          limits: { maxCalls: 8, maxInvocationsPerCall: 4, maxEvents: 256, maxTextBytes: 8192,
-            maxTensorBytes: 8192, maxTotalTensorBytes: 65536,
-            maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144 },
+          runId,
+          workerEpoch,
+          getActiveRequest,
+          limits: {
+            maxCalls: 8,
+            maxInvocationsPerCall: 4,
+            maxEvents: 256,
+            maxTextBytes: 8192,
+            maxTensorBytes: 8192,
+            maxTotalTensorBytes: 65536,
+            maxTokensPerStreamEvent: 4096,
+            maxTotalStreamTokens: 16384,
+            maxTotalStreamTokenBytes: 262144,
+          },
         });
         clients.push(capture);
         creationSnapshots.push(capture.getCaptureLifetime());
-        return { ...capture, async takeGenerationCapture() {
-          takeCalls.push(workerEpoch);
-          const result = await capture.takeGenerationCapture();
-          if (collectionMode === 'take-failed') throw new Error('Synthetic capture reply discarded after the actual take');
-          return result;
-        } };
+        return {
+          ...capture,
+          async takeGenerationCapture() {
+            takeCalls.push(workerEpoch);
+            const result = await capture.takeGenerationCapture();
+            if (collectionMode === 'take-failed') throw new Error('Synthetic capture reply discarded after the actual take');
+            return result;
+          },
+        };
       },
       createUnrecordedWorkerClient: () => {
         throw new Error('Unexpected replacement Worker');
@@ -133,13 +153,22 @@ describe('Production native collection through actual Comlink', () => {
       const allocation = diagnostics.events.filter(event => event.kind === 'allocation-failed');
       expect(allocation, JSON.stringify(diagnostics)).toHaveLength(1);
       expect(allocation[0]).toMatchObject({
-        loadOrdinal: 1, candidateOrdinal: 1, resource: path, requestedBytes,
-        errorName: 'RangeError', candidateScopeAllocatedBytes: 0, returnedReadBufferBytes: 0,
-        activeReadCount: 0, scope: 'active',
+        loadOrdinal: 1,
+        candidateOrdinal: 1,
+        resource: path,
+        requestedBytes,
+        errorName: 'RangeError',
+        candidateScopeAllocatedBytes: 0,
+        returnedReadBufferBytes: 0,
+        activeReadCount: 0,
+        scope: 'active',
       });
       expect(diagnostics.events[0]).toMatchObject({ kind: 'load-start', priorRuntime: 'absent' });
       expect(diagnostics.events.find(event => event.kind === 'candidate-start')).toMatchObject({
-        candidateOrdinal: 1, device: 'webgpu', dtype: 'q4f16', revision,
+        candidateOrdinal: 1,
+        device: 'webgpu',
+        dtype: 'q4f16',
+        revision,
       });
       expect(diagnostics.events.filter(event => event.kind === 'allocation-attempt')).toEqual([
         expect.objectContaining({ resource: path, requestedBytes, readOrdinal: allocation[0]!.readOrdinal }),
@@ -173,9 +202,11 @@ describe('Production native collection through actual Comlink', () => {
       const secondZip = await JSZip.loadAsync(await second.blob.arrayBuffer());
       expect(await firstZip.file(sidecar.path)!.async('text')).toBe(sidecar.json);
       const exported: unknown = JSON.parse(await firstZip.file(sidecar.path)!.async('text'));
-      expect(exported).toMatchObject({ epochs: expect.arrayContaining([
-        expect.objectContaining({ workerEpoch: 1, lifetime: { status: 'observed', value: expect.objectContaining({ loadDiagnostics: diagnostics }) } }),
-      ]) });
+      expect(exported).toMatchObject({
+        epochs: expect.arrayContaining([
+          expect.objectContaining({ workerEpoch: 1, lifetime: { status: 'observed', value: expect.objectContaining({ loadDiagnostics: diagnostics }) } }),
+        ]),
+      });
       const paths = Object.keys(firstZip.files).filter(path => !firstZip.files[path]!.dir).sort();
       expect(Object.keys(secondZip.files).filter(path => !secondZip.files[path]!.dir).sort()).toEqual(paths);
       for (const entry of paths) expect(await secondZip.file(entry)!.async('uint8array')).toEqual(await firstZip.file(entry)!.async('uint8array'));
@@ -201,7 +232,10 @@ describe('Production native collection through actual Comlink', () => {
     const imageInputs: Array<{ original_sizes: unknown; reshaped_input_sizes: unknown }> = [];
     const boundary = 'Synthetic image input inspection only: no vision output evidence';
     const harness = await createProviderReplayTestRuntime({
-      modelId, expectedRevision: revision, cacheRevision: revision, metadataCache: "all-fixture",
+      modelId,
+      expectedRevision: revision,
+      cacheRevision: revision,
+      metadataCache: "all-fixture",
       imagePlatform: { platform: createProviderReplayTestImagePlatform(), allowedDataUrls: [image.dataUrl] },
       artifacts: [
         'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
@@ -232,13 +266,26 @@ describe('Production native collection through actual Comlink', () => {
     const { createProductionProviderGenerationCaptureOwner } = await import('@/features/transformers-js/model-support-investigation/logic/production-provider-generation-capture-owner');
     const { createTransformersJsGenerationCaptureClient } = await import('@/features/transformers-js/worker/client-hosted');
     const owner = createProductionProviderGenerationCaptureOwner({
-      runId: 'synthetic-qwen-image-metadata', modelId, plan: 'full-v2',
-      traceLimits: { maximumEvents: 128, maximumCharacters: 8192 }, maximumWorkerEpochs: 8,
+      runId: 'synthetic-qwen-image-metadata',
+      modelId,
+      plan: 'full-v2',
+      traceLimits: { maximumEvents: 128, maximumCharacters: 8192 },
+      maximumWorkerEpochs: 8,
       createCaptureClient: ({ runId, workerEpoch, getActiveRequest }) => createTransformersJsGenerationCaptureClient({
-        runId, workerEpoch, getActiveRequest,
-        limits: { maxCalls: 32, maxInvocationsPerCall: 4, maxEvents: 2048, maxTextBytes: 131072,
-          maxTensorBytes: 4 * 1024 * 1024, maxTotalTensorBytes: 16 * 1024 * 1024,
-          maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144 },
+        runId,
+        workerEpoch,
+        getActiveRequest,
+        limits: {
+          maxCalls: 32,
+          maxInvocationsPerCall: 4,
+          maxEvents: 2048,
+          maxTextBytes: 131072,
+          maxTensorBytes: 4 * 1024 * 1024,
+          maxTotalTensorBytes: 16 * 1024 * 1024,
+          maxTokensPerStreamEvent: 4096,
+          maxTotalStreamTokens: 16384,
+          maxTotalStreamTokenBytes: 262144,
+        },
       }),
       createUnrecordedWorkerClient: () => {
         throw new Error('Unexpected replacement Worker');
@@ -300,6 +347,7 @@ describe('Production native collection through actual Comlink', () => {
       }
     }
   }, 30_000);
+
   it('terminates the real session during an unresolved native call without collecting or inventing settlement at cutoff', async () => {
     let entered!: () => void;
     const nativeEntered = new Promise<void>(resolve => {
@@ -311,7 +359,9 @@ describe('Production native collection through actual Comlink', () => {
     });
     const harness = await createProviderReplayTestRuntime({
       modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-      expectedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac', cacheRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac', metadataCache: "all-fixture",
+      expectedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
+      cacheRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
+      metadataCache: "all-fixture",
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: Uint8Array.of(1, 2, 3) }],
       imagePlatform: undefined,
       generate: async () => {
@@ -329,16 +379,26 @@ describe('Production native collection through actual Comlink', () => {
       throw new Error('Stop must not create a replacement Worker');
     });
     const owner = createProductionProviderGenerationCaptureOwner({
-      runId: 'synthetic-native-stop', modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-      plan: 'first-continuity-independent', traceLimits: { maximumEvents: 64, maximumCharacters: 4096 },
+      runId: 'synthetic-native-stop',
+      modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+      plan: 'first-continuity-independent',
+      traceLimits: { maximumEvents: 64, maximumCharacters: 4096 },
       maximumWorkerEpochs: 8,
       createCaptureClient: ({ runId, workerEpoch, getActiveRequest }) => {
         const capture = createTransformersJsGenerationCaptureClient({
-          runId, workerEpoch, getActiveRequest,
+          runId,
+          workerEpoch,
+          getActiveRequest,
           limits: {
-            maxCalls: 8, maxInvocationsPerCall: 4, maxEvents: 256, maxTextBytes: 8192,
-            maxTensorBytes: 8192, maxTotalTensorBytes: 65536,
-            maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144,
+            maxCalls: 8,
+            maxInvocationsPerCall: 4,
+            maxEvents: 256,
+            maxTextBytes: 8192,
+            maxTensorBytes: 8192,
+            maxTotalTensorBytes: 65536,
+            maxTokensPerStreamEvent: 4096,
+            maxTotalStreamTokens: 16384,
+            maxTotalStreamTokenBytes: 262144,
           },
         });
         const take = vi.fn(capture.takeGenerationCapture);
@@ -394,7 +454,9 @@ describe('Production native collection through actual Comlink', () => {
     const budgets: unknown[] = [];
     const harness = await createProviderReplayTestRuntime({
       modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-      expectedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac', cacheRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac', metadataCache: "all-fixture",
+      expectedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
+      cacheRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
+      metadataCache: "all-fixture",
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: Uint8Array.of(1, 2, 3) }],
       imagePlatform: undefined,
       generate: async ({ options, tokenizer, runtime }) => {
@@ -421,16 +483,26 @@ describe('Production native collection through actual Comlink', () => {
       throw new Error('Unexpected extra Worker in single-realm collection control');
     });
     const owner = createProductionProviderGenerationCaptureOwner({
-      runId: 'synthetic-native-collection', modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-      plan: 'first-continuity-independent', traceLimits: { maximumEvents: 64, maximumCharacters: 4096 },
+      runId: 'synthetic-native-collection',
+      modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+      plan: 'first-continuity-independent',
+      traceLimits: { maximumEvents: 64, maximumCharacters: 4096 },
       maximumWorkerEpochs: 8,
       createCaptureClient: ({ runId, workerEpoch, getActiveRequest }) => {
         const capture = createTransformersJsGenerationCaptureClient({
-          runId, workerEpoch, getActiveRequest,
+          runId,
+          workerEpoch,
+          getActiveRequest,
           limits: {
-            maxCalls: 8, maxInvocationsPerCall: 4, maxEvents: 256, maxTextBytes: 8192,
-            maxTensorBytes: 8192, maxTotalTensorBytes: 65536,
-            maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144,
+            maxCalls: 8,
+            maxInvocationsPerCall: 4,
+            maxEvents: 256,
+            maxTextBytes: 8192,
+            maxTensorBytes: 8192,
+            maxTotalTensorBytes: 65536,
+            maxTokensPerStreamEvent: 4096,
+            maxTotalStreamTokens: 16384,
+            maxTotalStreamTokenBytes: 262144,
           },
         });
         const take = vi.fn(capture.takeGenerationCapture);
@@ -460,8 +532,10 @@ describe('Production native collection through actual Comlink', () => {
       expect(snapshot.native.capture.epochs).toHaveLength(1);
       const epoch = snapshot.native.capture.epochs[0]!;
       const contexts = provider.requests.map((request, index) => ({
-        runId: 'synthetic-native-collection', workerEpoch: 1,
-        requestId: request.requestId, generationCallId: index + 1,
+        runId: 'synthetic-native-collection',
+        workerEpoch: 1,
+        requestId: request.requestId,
+        generationCallId: index + 1,
       }));
       if (epoch.lifetime.status !== 'observed') throw new Error('Expected host-owned lifetime');
       const { loadDiagnostics, ...existingLifetime } = epoch.lifetime.value;
@@ -471,8 +545,11 @@ describe('Production native collection through actual Comlink', () => {
         expect.objectContaining({ kind: 'load-finished' }),
       ]));
       expect(existingLifetime).toEqual({
-        runId: 'synthetic-native-collection', workerEpoch: 1, session: 'active',
-        issuedCalls: contexts, incompleteReasons: [],
+        runId: 'synthetic-native-collection',
+        workerEpoch: 1,
+        session: 'active',
+        issuedCalls: contexts,
+        incompleteReasons: [],
         // The host requests offline discovery; the Worker's exact selected
         // revision remains independently asserted in every call's loadIdentity.
         loadRequests: [{
@@ -483,15 +560,25 @@ describe('Production native collection through actual Comlink', () => {
       });
       if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') throw new Error('Expected actual native capture result');
       const capture = epoch.collection.result.capture;
-      expect(capture.calls).toEqual(contexts.map(context => ({ context, loadIdentity: {
-        status: 'ready', workerLoadOrdinal: 1, requestedModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-        requestedRevision: { status: 'provided', value: '12fd25f77366fa6b3b4b768ec3050bf629380bac' },
-        cleanModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct', autoClass: 'AutoModelForCausalLM', processor: 'tokenizer',
-        selectedCandidate: { device: 'webgpu', dtype: 'q4f16' },
-        resolvedRevision: { status: 'not-observed' }, sessionExecutionProvider: { status: 'not-observed' },
-      }, outcome: 'fulfilled', invocations: [
-        { nativeInvocationOrdinal: 1, stream: { status: 'available', restoration: 'restored' } },
-      ] })));
+      expect(capture.calls).toEqual(contexts.map(context => ({
+        context,
+        loadIdentity: {
+          status: 'ready',
+          workerLoadOrdinal: 1,
+          requestedModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+          requestedRevision: { status: 'provided', value: '12fd25f77366fa6b3b4b768ec3050bf629380bac' },
+          cleanModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+          autoClass: 'AutoModelForCausalLM',
+          processor: 'tokenizer',
+          selectedCandidate: { device: 'webgpu', dtype: 'q4f16' },
+          resolvedRevision: { status: 'not-observed' },
+          sessionExecutionProvider: { status: 'not-observed' },
+        },
+        outcome: 'fulfilled',
+        invocations: [
+          { nativeInvocationOrdinal: 1, stream: { status: 'available', restoration: 'restored' } },
+        ],
+      })));
       expect(capture.incompleteReasons).toEqual([]);
       expect(capture.events.filter(event => event.kind === 'native-stream')).toEqual(contexts.flatMap((context, index) => {
         const identity = { ...context, nativeInvocationOrdinal: 1 };
@@ -521,17 +608,28 @@ describe('Production native collection through actual Comlink', () => {
         fetchCalls: harness.observations.fetchCalls.length,
       };
       const nativeEvidence = await nativeEvidenceModule.createProductionProviderNativeEvidence({
-        provider: snapshot.provider, native: snapshot.native.capture,
+        provider: snapshot.provider,
+        native: snapshot.native.capture,
         maximumBinaryBytes: nativeEvidenceModule.PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES,
       });
       expect(nativeEvidence.summary).toEqual({
-        phase: 'finished', refusedEpochCount: 0, recording: 'recorded', capturedCallCount: 3, enteredNativeInvocationCount: 3,
-        issuedNotObservedCallCount: 0, unavailableEpochCount: 0, incompleteEpochCount: 0,
-        unobservedLoadCount: 0, incompleteInvocationCount: 0, unrecordedValueCount: 0,
+        phase: 'finished',
+        refusedEpochCount: 0,
+        recording: 'recorded',
+        capturedCallCount: 3,
+        enteredNativeInvocationCount: 3,
+        issuedNotObservedCallCount: 0,
+        unavailableEpochCount: 0,
+        incompleteEpochCount: 0,
+        unobservedLoadCount: 0,
+        incompleteInvocationCount: 0,
+        unrecordedValueCount: 0,
       });
       expect(nativeEvidence.binaries.length).toBeGreaterThan(0);
       const { run, recovery } = createInitialInvestigationCheckpoint({
-        runId: provider.runId, modelId: provider.modelId, now: () => '2026-09-09T00:00:00.000Z',
+        runId: provider.runId,
+        modelId: provider.modelId,
+        now: () => '2026-09-09T00:00:00.000Z',
       });
       run.productionProviderCapture = snapshot.provider;
       const encode = vi.spyOn(nativeEvidenceModule, 'createProductionProviderNativeEvidence');
@@ -578,7 +676,9 @@ describe('Production native collection through actual Comlink', () => {
     const budgets: unknown[] = [];
     const harness = await createProviderReplayTestRuntime({
       modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-      expectedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac', cacheRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac', metadataCache: "all-fixture",
+      expectedRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
+      cacheRevision: '12fd25f77366fa6b3b4b768ec3050bf629380bac',
+      metadataCache: "all-fixture",
       artifacts: [{ path: 'onnx/model_q4f16.onnx', bytes: Uint8Array.of(1, 2, 3) }],
       imagePlatform: undefined,
       generate: async ({ options, tokenizer, runtime }) => {
@@ -601,16 +701,26 @@ describe('Production native collection through actual Comlink', () => {
       throw new Error('The Full script must not create a replacement Worker');
     });
     const owner = createProductionProviderGenerationCaptureOwner({
-      runId: 'synthetic-full-collection', modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-      plan: 'full-v2', traceLimits: { maximumEvents: 64, maximumCharacters: 4096 },
+      runId: 'synthetic-full-collection',
+      modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+      plan: 'full-v2',
+      traceLimits: { maximumEvents: 64, maximumCharacters: 4096 },
       maximumWorkerEpochs: 8,
       createCaptureClient: ({ runId, workerEpoch, getActiveRequest }) => {
         const capture = createTransformersJsGenerationCaptureClient({
-          runId, workerEpoch, getActiveRequest,
+          runId,
+          workerEpoch,
+          getActiveRequest,
           limits: {
-            maxCalls: 32, maxInvocationsPerCall: 4, maxEvents: 2048, maxTextBytes: 131072,
-            maxTensorBytes: 1048576, maxTotalTensorBytes: 8388608,
-            maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144,
+            maxCalls: 32,
+            maxInvocationsPerCall: 4,
+            maxEvents: 2048,
+            maxTextBytes: 131072,
+            maxTensorBytes: 1048576,
+            maxTotalTensorBytes: 8388608,
+            maxTokensPerStreamEvent: 4096,
+            maxTotalStreamTokens: 16384,
+            maxTotalStreamTokenBytes: 262144,
           },
         });
         const take = vi.fn(capture.takeGenerationCapture);
@@ -634,7 +744,9 @@ describe('Production native collection through actual Comlink', () => {
         ...Array(4).fill({ status: 'rejected', errorName: 'Error' }),
       ]);
       expect(provider.requests.map(request => request.trace.limits)).toEqual(Array(13).fill({
-        maximumEvents: 64, maximumCharacters: 4096, maximumFieldCharacters: 16384,
+        maximumEvents: 64,
+        maximumCharacters: 4096,
+        maximumFieldCharacters: 16384,
       }));
       expect(budgets).toEqual([16, 16, 1, 1, 1, 1, 1, 1, 1]);
       expect(takeCalls).toHaveLength(1);
@@ -649,24 +761,41 @@ describe('Production native collection through actual Comlink', () => {
       if (epoch.collection.status !== 'returned' || epoch.collection.result.status !== 'captured') throw new Error('Expected Full native capture');
       expect(epoch.collection.result.capture.calls.map(call => call.context.requestId)).toEqual(provider.requests.map(request => request.requestId));
       expect(epoch.collection.result.capture.calls.map(call => call.loadIdentity)).toEqual(Array(13).fill({
-        status: 'ready', workerLoadOrdinal: 1, requestedModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+        status: 'ready',
+        workerLoadOrdinal: 1,
+        requestedModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
         requestedRevision: { status: 'provided', value: '12fd25f77366fa6b3b4b768ec3050bf629380bac' },
-        cleanModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct', autoClass: 'AutoModelForCausalLM', processor: 'tokenizer',
+        cleanModelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+        autoClass: 'AutoModelForCausalLM',
+        processor: 'tokenizer',
         selectedCandidate: { device: 'webgpu', dtype: 'q4f16' },
-        resolvedRevision: { status: 'not-observed' }, sessionExecutionProvider: { status: 'not-observed' },
+        resolvedRevision: { status: 'not-observed' },
+        sessionExecutionProvider: { status: 'not-observed' },
       }));
       expect(epoch.collection.result.capture.incompleteReasons).toEqual([]);
       const { createProductionProviderNativeEvidence, verifyProductionProviderNativeEvidenceSidecar } = await import('@/features/transformers-js/model-support-investigation/logic/production-provider-native-evidence');
       const nativeEvidence = await createProductionProviderNativeEvidence({
-        provider: snapshot.provider, native: snapshot.native.capture, maximumBinaryBytes: 64 * 1024 * 1024,
+        provider: snapshot.provider,
+        native: snapshot.native.capture,
+        maximumBinaryBytes: 64 * 1024 * 1024,
       });
       expect(nativeEvidence.summary).toEqual({
-        phase: 'finished', refusedEpochCount: 0, recording: 'recorded', capturedCallCount: 13, enteredNativeInvocationCount: 9,
-        issuedNotObservedCallCount: 0, unavailableEpochCount: 0, incompleteEpochCount: 0,
-        unobservedLoadCount: 0, incompleteInvocationCount: 0, unrecordedValueCount: 0,
+        phase: 'finished',
+        refusedEpochCount: 0,
+        recording: 'recorded',
+        capturedCallCount: 13,
+        enteredNativeInvocationCount: 9,
+        issuedNotObservedCallCount: 0,
+        unavailableEpochCount: 0,
+        incompleteEpochCount: 0,
+        unobservedLoadCount: 0,
+        incompleteInvocationCount: 0,
+        unrecordedValueCount: 0,
       });
       await expect(verifyProductionProviderNativeEvidenceSidecar({
-        evidence: structuredClone(nativeEvidence), provider: snapshot.provider, maximumBinaryBytes: 64 * 1024 * 1024,
+        evidence: structuredClone(nativeEvidence),
+        provider: snapshot.provider,
+        maximumBinaryBytes: 64 * 1024 * 1024,
       })).resolves.toEqual(nativeEvidence);
       expect(takeCalls[0]).toHaveBeenCalledOnce();
       expect(unrecorded).not.toHaveBeenCalled();

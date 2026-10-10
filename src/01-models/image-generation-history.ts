@@ -1,4 +1,4 @@
-import type { BinaryObjectId, HostModelDirectoryId, ImageGenerationId } from './ids';
+import type { BinaryObjectId, HostModelDirectoryId, ImageGenerationId, NaidanRpcRegistrationId, NaidanRpcPeerPublicKey } from './ids';
 
 /** Shared by the image workspace and its public persistence service. */
 export type ImageGenerationModelFile = {
@@ -11,6 +11,32 @@ export type ImageGenerationModelFile = {
   | { type: 'file' }
 );
 
+/** Remote model references belong to the provider, never to this browser's
+ * model library. These shared data types do not authorize filesystem access. */
+export type RemoteImageModelFile = {
+  location: { kind: 'opfs', path: string } | { kind: 'host', directoryId: string, path: string },
+  expected?: { size: number, lastModified: number },
+};
+export type RemoteImageModelSelection = {
+  primary: { slot: 'model' | 'diffusion', file: RemoteImageModelFile },
+  components: { slot: 'vae' | 'clipL' | 'clipG' | 't5' | 'lm', file: RemoteImageModelFile }[],
+  loras: { file: RemoteImageModelFile, strength: number }[],
+};
+export type ImageGenerationRemoteRuntime = {
+  profile: 'naidan-rpc',
+  registrationId: NaidanRpcRegistrationId,
+  peerPublicKey: NaidanRpcPeerPublicKey,
+  label: string,
+  modelSelection: RemoteImageModelSelection | undefined,
+};
+export type ImageGenerationLocalRuntime = {
+  sourceCommit: string,
+  profile: 'webgpu-wasm32-asyncify' | 'webgpu-wasm32-jspi' | 'webgpu-wasm64-jspi',
+  weightResidency: 'auto' | 'cpu' | 'hybrid' | 'disk' | 'runtime',
+  gpuBudgetMiB: number | undefined,
+};
+export type ImageGenerationRuntime = ImageGenerationLocalRuntime | ImageGenerationRemoteRuntime;
+
 export type ImageGenerationParameters = {
   prompt: string,
   negativePrompt: string,
@@ -22,13 +48,13 @@ export type ImageGenerationParameters = {
   sampler: 'auto' | 'euler' | 'euler_a' | 'heun' | 'dpm2' | 'dpm++2m' | 'lcm',
   scheduler: 'auto' | 'discrete' | 'karras' | 'exponential' | 'simple' | 'sgm_uniform',
   distilledGuidance: number,
-  vaeTiling: boolean,
-  vaeTileSize: number,
-  flashAttention: boolean,
-  bf16WeightType: 'f32' | 'f16',
-  qwenVaePolicy: 'bounded' | 'native',
-  conditioningCacheSize: number,
-  modelArguments: string,
+  vaeTiling?: boolean,
+  vaeTileSize?: number,
+  flashAttention?: boolean,
+  bf16WeightType?: 'f32' | 'f16',
+  qwenVaePolicy?: 'bounded' | 'native',
+  conditioningCacheSize?: number,
+  modelArguments?: string,
 };
 
 export type ImageGenerationImage = {
@@ -60,21 +86,17 @@ export type ImageGenerationRecord = {
       mode: 'projection' | 'vae',
       maxEdge: number,
     },
-    runtime: {
-      sourceCommit: string,
-      profile: 'webgpu-wasm32-asyncify' | 'webgpu-wasm32-jspi' | 'webgpu-wasm64-jspi',
-      weightResidency: 'auto' | 'cpu' | 'hybrid' | 'disk' | 'runtime',
-      gpuBudgetMiB: number | undefined,
-    },
+    runtime: ImageGenerationRuntime,
   },
   result: {
     binaryObjectId: BinaryObjectId,
     width: number,
     height: number,
-    modelVersion: string,
-    uniformOutput: boolean,
     elapsedMs: number,
-  },
+  } & (
+    | { confirmation?: 'confirmed', modelVersion: string, uniformOutput: boolean }
+    | { confirmation: 'unconfirmed', modelVersion?: string, uniformOutput?: boolean }
+  ),
   previews: {
     binaryObjectId: BinaryObjectId,
     step: number,

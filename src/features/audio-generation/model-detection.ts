@@ -40,9 +40,11 @@ export async function detectAudioModelFiles({ directory, signal }: {
     return { status: 'unverified', reason: 'metadata' };
   }
 }
+
 function hasGenerator({ details, projector }: { details: ReadonlyMap<string, GgufMetadataValue>, projector: string }): boolean {
   return details.get('clip.has_gen_audio_encoder') === true && details.get('clip.gen.audio.projector_type') === projector;
 }
+
 export async function inspectStoredAudioModel({ id, signal }: { id: string, signal: AbortSignal | undefined }): Promise<AudioModelDetection> {
   signal?.throwIfAborted();
   try {
@@ -54,6 +56,7 @@ export async function inspectStoredAudioModel({ id, signal }: { id: string, sign
     return { status: 'unverified', reason: 'metadata' };
   }
 }
+
 export function preferredAudioModel({ models, detections }: {
   models: readonly LocalModel[], detections: ReadonlyMap<string, AudioModelDetection>,
 }): string | undefined {
@@ -67,5 +70,6 @@ export function preferredAudioModel({ models, detections }: {
   candidates.sort((a, b) => referenceRank(a) - referenceRank(b) || a.size - b.size || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return candidates[0]?.id;
 }
+
 export const TEST_ONLY = {
 };

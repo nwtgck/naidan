@@ -6,6 +6,7 @@ import type { SyncBlobReader } from './gguf-file';
 
 type Input = Pick<Request['models'][number], 'file' | 'path' | 'companions'>;
 const indexSchema = z.object({ weight_map: z.record(z.string().min(1), z.string().min(1)).refine(map => Object.keys(map).length > 0) });
+
 /** Validate untrusted model/index data before the native parser can fall back to
  * a different format. No model-provided network path or code is ever executed. */
 export async function validateModelMounts({ input, reader, capabilities }: { input: Input, reader: SyncBlobReader, capabilities: number }): Promise<{ path: string, files: { path: string, file: File }[], summary: { tensorCount: number, dtypes: string, largestElements: number } }> {
@@ -15,12 +16,15 @@ export async function validateModelMounts({ input, reader, capabilities }: { inp
   if (files.some(file => !validModelPath({ path: file.path })) || names.size !== files.length) throw new Error('Unsafe or duplicate model paths');
   const metadata = new Map<string, WeightMetadata>();
   function source({ file }: { file: File }): ModelMetadataFile {
-    return { size: file.size,
+    return {
+      size: file.size,
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Platform Blob.slice signature.
       slice(start, end) {
-        return { async arrayBuffer() {
-          return reader.readAsArrayBuffer(file.slice(start, end));
-        } };
+        return {
+          async arrayBuffer() {
+            return reader.readAsArrayBuffer(file.slice(start, end));
+          },
+        };
       },
     };
   }
@@ -73,9 +77,16 @@ export async function validateModelMounts({ input, reader, capabilities }: { inp
     dtypes.set(type, (dtypes.get(type) ?? 0) + 1); tensorCount++;
     largestElements = Math.max(largestElements, tensor.shape.reduce((n, value) => n * value, 1));
   }
-  return { path, files: files.filter(entry => required.has(entry.path)), summary: {
-    tensorCount, dtypes: JSON.stringify(Object.fromEntries(dtypes)).slice(0, 512), largestElements,
-  } };
+  return {
+    path,
+    files: files.filter(entry => required.has(entry.path)),
+    summary: {
+      tensorCount,
+      dtypes: JSON.stringify(Object.fromEntries(dtypes)).slice(0, 512),
+      largestElements,
+    },
+  };
 }
+
 export const TEST_ONLY = {
 };

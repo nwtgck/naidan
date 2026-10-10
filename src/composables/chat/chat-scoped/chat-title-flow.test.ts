@@ -23,9 +23,15 @@ vi.mock('@/features/lm/providerFactory', () => ({
 // coordinator must release foreground work without trusting provider cleanup.
 async function* titleItems({ text, ready }: { text: string, ready: Promise<void> }): AsyncGenerator<ChatGenerationItem> {
   await ready;
-  yield { type: 'text', index: 0, partId: 'title', chunks: (async function* () {
-    yield text;
-  })(), completeness: Promise.resolve('complete') };
+  yield {
+    type: 'text',
+    index: 0,
+    partId: 'title',
+    chunks: (async function* () {
+      yield text;
+    })(),
+    completeness: Promise.resolve('complete'),
+  };
   yield { type: 'result', result: { type: 'finished', next: 'user' } };
 }
 
@@ -33,10 +39,23 @@ async function savedChat({ name, selected }: { name: string, selected: boolean }
   const id = toChatId({ raw: name });
   const messageId = toMessageId({ raw: `${name}-user` });
   const chat: Chat = {
-    id, title: null, createdAt: 1, updatedAt: 1, debugEnabled: false,
+    id,
+    title: null,
+    createdAt: 1,
+    updatedAt: 1,
+    debugEnabled: false,
     currentLeafId: messageId,
-    root: { items: [{ id: messageId, role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined,
-      parts: [{ type: 'text', text: 'A conversation about testing', completeness: 'complete' }], replies: { items: [] } }] },
+    root: {
+      items: [{
+        id: messageId,
+        role: 'user',
+        createdAt: 1,
+        modelId: undefined,
+        lmParameters: undefined,
+        parts: [{ type: 'text', text: 'A conversation about testing', completeness: 'complete' }],
+        replies: { items: [] },
+      }],
+    },
   };
   await storageService.updateChatMeta({ id, updater: () => chat });
   await storageService.updateChatContent({ id, updater: () => ({ root: chat.root, currentLeafId: messageId }) });
@@ -64,6 +83,7 @@ beforeEach(async () => {
   settings.value = { ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: { type: 'openai', url: 'https://example.test' }, defaultModelId: 'model' };
   chatRequest.mockReset().mockImplementation(() => titleItems({ text: 'Generated Title', ready: Promise.resolve() }));
 });
+
 afterEach(async () => {
   autoTitleScheduler.reset();
   await vi.advanceTimersByTimeAsync(0);
@@ -157,10 +177,13 @@ describe('title lifecycle with real memory persistence', () => {
     const chat = await savedChat({ name: 'timestamp', selected: true });
     const newerTimestamp = Date.now() + 10000;
     chat.updatedAt = newerTimestamp;
-    await storageService.updateChatMeta({ id: chat.id, updater: ({ current }) => {
-      if (current === null) throw new Error('Missing persisted metadata');
-      return { ...current, updatedAt: newerTimestamp };
-    } });
+    await storageService.updateChatMeta({
+      id: chat.id,
+      updater: ({ current }) => {
+        if (current === null) throw new Error('Missing persisted metadata');
+        return { ...current, updatedAt: newerTimestamp };
+      },
+    });
     await generateChatTitleForChat({ chatId: chat.id, signal: undefined, titleModelIdOverride: undefined });
     const persisted = await storageService.loadChatMeta({ id: chat.id });
     expect(persisted?.updatedAt).toBe(newerTimestamp + 1);
@@ -177,9 +200,14 @@ describe('title lifecycle with real memory persistence', () => {
       if (action === 'rename') {
         chat.title = 'Later manual title';
         chat.updatedAt = Date.now() + 10000;
-        await update({ id: chat.id, updater: ({ current }) => current === null ? undefined : {
-          ...current, title: chat.title, updatedAt: chat.updatedAt,
-        } });
+        await update({
+          id: chat.id,
+          updater: ({ current }) => current === null ? undefined : {
+            ...current,
+            title: chat.title,
+            updatedAt: chat.updatedAt,
+          },
+        });
       }
     });
     scheduleAutoTitleForChat({ chatId: chat.id });
@@ -194,11 +222,14 @@ describe('title lifecycle with real memory persistence', () => {
     const chat = await savedChat({ name: 'lock-wait', selected: true });
     const entered = Promise.withResolvers<void>();
     const unlocked = Promise.withResolvers<void>();
-    const blocking = storageService.updateChatMeta({ id: chat.id, updater: async ({ current }) => {
-      entered.resolve();
-      await unlocked.promise;
-      return current ?? undefined;
-    } });
+    const blocking = storageService.updateChatMeta({
+      id: chat.id,
+      updater: async ({ current }) => {
+        entered.resolve();
+        await unlocked.promise;
+        return current ?? undefined;
+      },
+    });
     await entered.promise;
     try {
       scheduleAutoTitleForChat({ chatId: chat.id });

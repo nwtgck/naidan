@@ -83,6 +83,7 @@ watch([() => props.show, mode, () => props.chat, () => selectedNode.value?.id], 
 onUnmounted(() => {
   previewRequest += 1;
 });
+
 async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
   const request = ++previewRequest;
   const allImageIds = new Set<BinaryObjectId>();
@@ -109,8 +110,11 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: Bin
         const attachment = part.attachment;
         allImageIds.add(attachment.binaryObjectId);
         attachmentImages.set(attachment.binaryObjectId, {
-          id: attachment.binaryObjectId, name: attachment.originalName,
-          mimeType: attachment.mimeType, size: attachment.size, createdAt: attachment.uploadedAt,
+          id: attachment.binaryObjectId,
+          name: attachment.originalName,
+          mimeType: attachment.mimeType,
+          size: attachment.size,
+          createdAt: attachment.uploadedAt,
           memoryBlob: (() => {
             switch (attachment.status) {
             case 'memory': return attachment.blob;

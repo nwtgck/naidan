@@ -1,3 +1,4 @@
+import { configureRpcFeature } from '@/features/naidan-rpc-integration/runtime/feature';
 import { canInitializeModelLaunchDefaults, type ModelLaunchDefaultSnapshot } from '@/features/llama-cpp-browser/model-launch/defaults';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { ref, readonly, computed, watch, type ComputedRef, type Ref } from 'vue';
@@ -37,6 +38,12 @@ const _settings = ref<Settings>({
   storageType: 'local',
   endpoint: { type: 'openai', url: '' },
 } as Settings);
+
+watch(() => _settings.value.experimental?.naidanRpc ?? 'disabled', status => {
+  void configureRpcFeature({ status, settings: () => _settings.value }).catch(() => {
+    console.warn('[naidan-rpc] stop-confirmation-failed');
+  });
+}, { immediate: true, flush: 'sync' });
 
 let globalDefaultRevision = 0;
 watch(() => ({ endpoint: cloneEndpoint({ endpoint: _settings.value.endpoint }), modelId: _settings.value.defaultModelId }), (next, previous) => {
@@ -89,6 +96,11 @@ interface UseSettingsApi {
     patch: Partial<Settings>,
     modelRefresh: 'await' | 'background',
   }) => Promise<void>,
+  captureExperimentalStorage(): () => boolean,
+  updateExperimentalForStorage: ({ isCurrent, updater }: {
+    isCurrent(): boolean,
+    updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
+  }) => Promise<'saved' | 'changed'>,
   updateExperimental: ({ updater }: {
     updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
   }) => Promise<void>,
@@ -122,22 +134,36 @@ let scheduledFakeLmRuntimePrefetch: ScheduledIdleTask | undefined;
 
 // --- Synchronization ---
 
-storageService.subscribeToChanges({ listener: async ({ event }) => {
-  if (event.type === 'settings' || event.type === 'migration') {
-    try {
-      const fresh = await storageService.loadSettings();
-      if (fresh) {
-        _settings.value = fresh;
-        scheduleFakeLmRuntimePrefetch({ status: fresh.experimental?.fakeLm ?? 'disabled' });
-        await setStringLocale({
-          locale: fresh.experimental?.locale ?? resolveBrowserLocale(),
-        });
+storageService.subscribeToChanges({
+  listener: async ({ event }) => {
+    if (event.type === 'settings' || event.type === 'migration') {
+      try {
+        const fresh = await storageService.loadSettings();
+        if (fresh) {
+          _settings.value = fresh;
+          scheduleFakeLmRuntimePrefetch({ status: fresh.experimental?.fakeLm ?? 'disabled' });
+          await setStringLocale({
+            locale: fresh.experimental?.locale ?? resolveBrowserLocale(),
+          });
+        } else {
+          const type = event.type;
+          switch (type) {
+          case 'settings': break;
+          case 'migration':
+          // Clearing storage still retires editor write owners. Republish the
+          // current UI settings so mounted editors can capture the new provider
+          // boundary even when no saved Settings record exists yet.
+            _settings.value = { ..._settings.value };
+            break;
+          default: { const unreachable: never = type; throw new Error(String(unreachable)); }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to synchronize settings:', error);
       }
-    } catch (error) {
-      console.error('Failed to synchronize settings:', error);
     }
-  }
-} });
+  },
+});
 
 // Performance-only watcher: this does not maintain application correctness.
 // It only prefetches the selected provider during idle time to reduce the
@@ -171,6 +197,7 @@ watch(
   () => _settings.value.endpoint.type,
   (endpointType, _previousType, onCleanup) => {
     switch (endpointType) {
+    case 'naidan_rpc':
     case 'openai':
     case 'ollama':
       return;
@@ -193,15 +220,17 @@ watch(
       default: { const exhaustive: never = endpointType; throw new Error(`Unhandled endpoint: ${exhaustive}`); }
       }
     })();
-    const unsubscribe = modelService.subscribeModelList({ listener: async () => {
-      const { fetchModels } = useSettings();
-      try {
-        await fetchModels({});
-      } catch {
+    const unsubscribe = modelService.subscribeModelList({
+      listener: async () => {
+        const { fetchModels } = useSettings();
+        try {
+          await fetchModels({});
+        } catch {
         // fetchModels records the relevant error. Subscription callbacks must not
         // create unhandled promise rejections when a background refresh fails.
-      }
-    } });
+        }
+      },
+    });
     onCleanup(() => {
       unsubscribe();
     });
@@ -467,10 +496,12 @@ export function useSettings(): UseSettingsApi {
     }
 
     // Persist as a patch to ensure we don't overwrite concurrent changes to other fields
-    await storageService.updateSettings({ updater: ({ current: curr }) => {
-      const base = curr || _settings.value;
-      return { ...base, ...normalizedPatch } as Settings;
-    } });
+    await storageService.updateSettings({
+      updater: ({ current: curr }) => {
+        const base = curr || _settings.value;
+        return { ...base, ...normalizedPatch } as Settings;
+      },
+    });
 
     // Re-fetch models if connection changed
     const endpointChanged = normalizedPatch.endpoint !== undefined
@@ -522,6 +553,33 @@ export function useSettings(): UseSettingsApi {
     }
   }
 
+  function captureExperimentalStorage(): () => boolean {
+    return storageService.captureSettingsStorage();
+  }
+
+  async function updateExperimentalForStorage({ isCurrent, updater }: {
+    isCurrent(): boolean,
+    updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
+  }): Promise<'saved' | 'changed'> {
+    let savedSettings: Settings | undefined;
+    const outcome = await storageService.updateSettingsForStorage({
+      isCurrent,
+      updater: ({ current }) => {
+        const base = current ?? _settings.value;
+        savedSettings = { ...base, experimental: updater({ experimental: base.experimental }) };
+        return savedSettings;
+      },
+    });
+    switch (outcome) {
+    case 'changed': return outcome;
+    case 'saved':
+      if (!isCurrent()) return 'changed';
+      if (savedSettings) _settings.value = savedSettings;
+      return outcome;
+    default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+    }
+  }
+
   // --- Explicit Actions ---
 
   async function updateProviderProfiles({ profiles }: { profiles: ProviderProfile[] }) {
@@ -547,12 +605,14 @@ export function useSettings(): UseSettingsApi {
     );
     if (!expected.storedMatches || !stillExpected({ current: _settings.value })) return 'changed';
     let applied = false;
-    await storageService.updateSettings({ updater: ({ current }) => {
-      const base = current ?? _settings.value;
-      if (!stillExpected({ current: base })) return base;
-      applied = true;
-      return { ...base, endpoint: { type: 'llama_cpp_browser' }, defaultModelId: modelId };
-    } });
+    await storageService.updateSettings({
+      updater: ({ current }) => {
+        const base = current ?? _settings.value;
+        if (!stillExpected({ current: base })) return base;
+        applied = true;
+        return { ...base, endpoint: { type: 'llama_cpp_browser' }, defaultModelId: modelId };
+      },
+    });
     if (!applied) return 'changed';
     // A newer explicit in-memory selection must not be overwritten by the
     // completion of this write. It owns its own settings save.
@@ -579,16 +639,18 @@ export function useSettings(): UseSettingsApi {
     const nextEndpoint = cloneEndpoint({ endpoint });
     let applied = false;
     let observedDefault: { endpoint: Endpoint, modelId: string | undefined } | undefined;
-    await storageService.updateSettings({ updater: ({ current }) => {
-      const base = current ?? _settings.value;
-      // A dialog may be open while another settings action or browser tab saves.
-      if (!matchesExpected({ current: base })) {
-        observedDefault = { endpoint: cloneEndpoint({ endpoint: base.endpoint }), modelId: base.defaultModelId };
-        return base;
-      }
-      applied = true;
-      return { ...base, endpoint: nextEndpoint, defaultModelId: modelId };
-    } });
+    await storageService.updateSettings({
+      updater: ({ current }) => {
+        const base = current ?? _settings.value;
+        // A dialog may be open while another settings action or browser tab saves.
+        if (!matchesExpected({ current: base })) {
+          observedDefault = { endpoint: cloneEndpoint({ endpoint: base.endpoint }), modelId: base.defaultModelId };
+          return base;
+        }
+        applied = true;
+        return { ...base, endpoint: nextEndpoint, defaultModelId: modelId };
+      },
+    });
     if (!applied) {
       // Show the newly observed default before requesting another confirmation.
       if (observedDefault) _settings.value = { ..._settings.value, endpoint: observedDefault.endpoint, defaultModelId: observedDefault.modelId };
@@ -607,10 +669,12 @@ export function useSettings(): UseSettingsApi {
 
     _settings.value.endpoint = nextEndpoint;
 
-    await storageService.updateSettings({ updater: ({ current: curr }) => ({
-      ...(curr || _settings.value),
-      endpoint: cloneEndpoint({ endpoint: nextEndpoint }),
-    }) });
+    await storageService.updateSettings({
+      updater: ({ current: curr }) => ({
+        ...(curr || _settings.value),
+        endpoint: cloneEndpoint({ endpoint: nextEndpoint }),
+      }),
+    });
 
     if (!areEndpointsEqual({ left: previousEndpoint, right: nextEndpoint })) {
       await fetchModels({});
@@ -651,16 +715,18 @@ export function useSettings(): UseSettingsApi {
       fakeLm: status,
     };
 
-    await storageService.updateSettings({ updater: ({ current: curr }) => {
-      const base = curr ?? _settings.value;
-      return {
-        ...base,
-        experimental: {
-          ...base.experimental,
-          fakeLm: status,
-        },
-      };
-    } });
+    await storageService.updateSettings({
+      updater: ({ current: curr }) => {
+        const base = curr ?? _settings.value;
+        return {
+          ...base,
+          experimental: {
+            ...base.experimental,
+            fakeLm: status,
+          },
+        };
+      },
+    });
 
     scheduleFakeLmRuntimePrefetch({ status });
   }
@@ -780,6 +846,8 @@ export function useSettings(): UseSettingsApi {
     init,
     save,
     updateExperimental,
+    captureExperimentalStorage,
+    updateExperimentalForStorage,
     fetchModels,
     updateProviderProfiles,
     updateGlobalModel,

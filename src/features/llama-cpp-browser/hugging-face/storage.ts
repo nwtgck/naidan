@@ -1,7 +1,10 @@
+import { hostModelSelector } from '@/features/llama-cpp-browser/runtime/model-destination-types';
+import { hostDownloadMarker, hostDownloadMarkerPath } from './host-download-marker';
+import { isHostDestination, hostModelRoot, hostModelReference, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
 import { huggingFaceModelId } from '@/01-models/llama-cpp-browser-model-launch';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { rankedProjectors } from './presentation';
-import { modelGroups, variantLabel, isProjector } from './model-variants';
+import { modelGroups, modelVariantName, isProjector } from './model-variants';
 import { deletionPlanSchema, executeDeletionPlan, type DeletionPlan, type DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { describeDirectory, opfsRoot, readModelFiles, resolveModelFiles, validGguf, type ModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { LlamaCppBrowserError, type LocalModel } from '@/features/llama-cpp-browser/types';
@@ -10,22 +13,27 @@ import { journalSchema, modelName, pendingName, repositorySchema, type DownloadJ
 export function isMissing({ error }: { error: unknown }): boolean {
   return error instanceof DOMException && error.name === 'NotFoundError';
 }
-export async function repositoryFolder({ repository, create }: { repository: string, create: boolean }): Promise<FileSystemDirectoryHandle> {
+
+export async function repositoryFolder({ repository, create, destination }: { repository: string, create: boolean, destination?: ModelDestination }): Promise<FileSystemDirectoryHandle> {
   const [owner, repo] = repositorySchema.parse(repository).split('/');
-  let folder = await opfsRoot();
-  for (const name of [OPFS_MODELS_DIR, 'huggingface.co', owner!, repo!, 'resolve', 'main']) folder = await folder.getDirectoryHandle(name, { create });
+  let folder = isHostDestination(destination) ? await hostModelRoot({ destination, mode: create ? 'readwrite' : 'read' }) : await opfsRoot();
+  const path = isHostDestination(destination) ? [owner!, repo!] : [OPFS_MODELS_DIR, 'huggingface.co', owner!, repo!, 'resolve', 'main'];
+  for (const name of path) folder = await folder.getDirectoryHandle(name, { create });
   return folder;
 }
+
 export async function selectedFile({ folder, path, create }: { folder: FileSystemDirectoryHandle, path: string, create: boolean }): Promise<FileSystemFileHandle> {
   const parts = path.split('/'); const name = parts.pop()!;
   for (const part of parts) folder = await folder.getDirectoryHandle(part, { create });
   return folder.getFileHandle(name, { create });
 }
+
 export async function readJournal({ folder }: { folder: FileSystemDirectoryHandle }): Promise<DownloadJournal> {
   const file = await (await folder.getFileHandle(pendingName)).getFile();
   if (file.size > 4 * 1024 * 1024) throw new Error('Download journal exceeds the size limit');
   return journalSchema.parse(JSON.parse(await file.text()));
 }
+
 export async function writeJournal({ folder, journal }: { folder: FileSystemDirectoryHandle, journal: DownloadJournal }): Promise<void> {
   const writer = await (await folder.getFileHandle(pendingName, { create: true })).createWritable();
   try {
@@ -34,10 +42,11 @@ export async function writeJournal({ folder, journal }: { folder: FileSystemDire
     await writer.abort().catch(() => {}); throw error;
   }
 }
-export async function visitRepositories({ visit }: { visit: ({ repository, folder }: { repository: string, folder: FileSystemDirectoryHandle }) => Promise<void> }): Promise<void> {
+
+export async function visitRepositories({ visit, destination, onIssue }: { destination?: ModelDestination, onIssue?: ({ repository, error }: { repository: string, error: unknown }) => void, visit: ({ repository, folder }: { repository: string, folder: FileSystemDirectoryHandle }) => Promise<void> }): Promise<void> {
   let host: FileSystemDirectoryHandle;
   try {
-    host = await (await (await opfsRoot()).getDirectoryHandle(OPFS_MODELS_DIR)).getDirectoryHandle('huggingface.co');
+    host = isHostDestination(destination) ? await hostModelRoot({ destination, mode: 'read' }) : await (await (await opfsRoot()).getDirectoryHandle(OPFS_MODELS_DIR)).getDirectoryHandle('huggingface.co');
   } catch (error) {
     if (isMissing({ error })) return; throw error;
   }
@@ -51,15 +60,18 @@ export async function visitRepositories({ visit }: { visit: ({ repository, folde
       }
       const repository = `${owner}/${repo}`; if (!repositorySchema.safeParse(repository).success) continue;
       try {
-        await visit({ repository, folder: await (await repoFolder.getDirectoryHandle('resolve')).getDirectoryHandle('main') });
+        await visit({ repository, folder: isHostDestination(destination) ? repoFolder : await (await repoFolder.getDirectoryHandle('resolve')).getDirectoryHandle('main') });
       } catch (error) {
-        if (!isMissing({ error })) throw error;
+        if (!isMissing({ error })) {
+          if (onIssue) onIssue({ repository, error }); else throw error;
+        }
       }
     }
   }
 }
-async function repositoryFiles({ repository }: { repository: string }): Promise<ModelDirectory['files']> {
-  const folder = await repositoryFolder({ repository, create: false });
+
+async function repositoryFiles({ repository, destination }: { repository: string, destination?: ModelDestination }): Promise<ModelDirectory['files']> {
+  const folder = await repositoryFolder({ repository, create: false, destination });
   let pending: DownloadJournal | undefined;
   try {
     pending = await readJournal({ folder });
@@ -67,12 +79,14 @@ async function repositoryFiles({ repository }: { repository: string }): Promise<
     if (!isMissing({ error })) throw error;
   }
   const hidden = new Set(pending?.selection.files.filter((_file, index) => !pending?.reused?.[index]).map(file => file.path));
-  return (await readModelFiles({ folder, prefix: '' })).filter(file => !hidden.has(file.path));
+  return (await readModelFiles({ folder, prefix: '' })).filter(file => !hidden.has(file.path)).map(file => isHostDestination(destination) ? { ...file, storageKind: 'host' as const } : file);
 }
-export async function repositoryDirectories({ repository }: { repository: string }): Promise<ModelDirectory[]> {
-  return describeRepositoryDirectories({ repository, actual: await repositoryFiles({ repository }) });
+
+export async function repositoryDirectories({ repository, destination }: { repository: string, destination?: ModelDestination }): Promise<ModelDirectory[]> {
+  return describeRepositoryDirectories({ repository, actual: await repositoryFiles({ repository, destination }), destination });
 }
-async function describeRepositoryDirectories({ repository, actual, onlyModelPath }: { repository: string, actual: ModelDirectory['files'], onlyModelPath?: string }): Promise<ModelDirectory[]> {
+
+async function describeRepositoryDirectories({ repository, actual, onlyModelPath, destination }: { repository: string, actual: ModelDirectory['files'], onlyModelPath?: string, destination?: ModelDestination }): Promise<ModelDirectory[]> {
   const { models, projectors } = modelGroups({ files: actual }); const result: ModelDirectory[] = [];
   for (const group of models) {
     const files = [...group, ...rankedProjectors({ files: projectors }).slice(0, 1)];
@@ -82,11 +96,11 @@ async function describeRepositoryDirectories({ repository, actual, onlyModelPath
       // Keep grouping and projector selection identical to normal model listing.
       if (onlyModelPath !== undefined && resolved.modelPath !== onlyModelPath) continue;
       if (!await allValid({ files })) continue;
-      const id = huggingFaceModelId({ repository, modelPath: resolved.modelPath });
-      const split = /-\d{5}-of-(\d{5})\.gguf$/i.exec(resolved.modelPath);
-      const label = variantLabel({ repository, path: resolved.modelPath });
-      // Split identities are visible even before a same-stem unsplit file is added.
-      const name = `${modelName({ repository })}:${label}${split ? ` (split-${split[1]})` : ''}`;
+      const id = isHostDestination(destination) ? hostModelReference({ directoryId: destination.directoryId, repository, modelPath: resolved.modelPath }) : huggingFaceModelId({ repository, modelPath: resolved.modelPath });
+      const variant = modelVariantName({ repository, path: resolved.modelPath });
+      const name = isHostDestination(destination)
+        ? hostModelSelector({ directoryId: destination.directoryId, repository, selector: variant })
+        : `${modelName({ repository })}:${variant}`;
       result.push({ id, name, files, ...resolved });
     } catch (error) {
       if (!(error instanceof LlamaCppBrowserError)) throw error;
@@ -94,10 +108,11 @@ async function describeRepositoryDirectories({ repository, actual, onlyModelPath
   }
   return result;
 }
-export async function installedSelection({ selection }: { selection: DownloadSelection }): Promise<LocalModel | undefined> {
+
+export async function installedSelection({ selection, destination }: { selection: DownloadSelection, destination?: ModelDestination }): Promise<LocalModel | undefined> {
   let actual: ModelDirectory['files'];
   try {
-    actual = await repositoryFiles({ repository: selection.repository });
+    actual = await repositoryFiles({ repository: selection.repository, destination });
   } catch (error) {
     if (isMissing({ error })) return undefined; throw error;
   }
@@ -110,40 +125,69 @@ export async function installedSelection({ selection }: { selection: DownloadSel
   // Availability uses local metadata and small headers, not a remote revision or checksum guarantee.
   if (!await allValid({ files: selectedFiles })) return undefined;
   const requested = resolveModelFiles({ files: selection.files });
-  const directory = (await describeRepositoryDirectories({ repository: selection.repository, actual, onlyModelPath: requested.modelPath })).find(model => model.modelPath === requested.modelPath);
+  const directory = (await describeRepositoryDirectories({ repository: selection.repository, actual, onlyModelPath: requested.modelPath, destination })).find(model => model.modelPath === requested.modelPath);
   return directory ? describeDirectory({ directory }) : undefined;
 }
+
 async function allValid({ files }: { files: ModelDirectory['files'] }): Promise<boolean> {
   for (const entry of files) if (!await validGguf({ file: entry.file })) return false;
   return true;
 }
+
 export function parseModelReference({ name }: { name: string }): { repository: string, variant: string | undefined } {
   if (!name.startsWith('hf.co/')) throw new LlamaCppBrowserError({ code: 'missing-model' });
   const value = name.slice('hf.co/'.length); const colon = value.indexOf(':');
   return { repository: repositorySchema.parse(colon < 0 ? value : value.slice(0, colon)), variant: colon < 0 ? undefined : value.slice(colon + 1) };
 }
-export async function resolveRepositoryModel({ name }: { name: string }): Promise<ModelDirectory> {
-  const { repository, variant } = parseModelReference({ name }); const models = await repositoryDirectories({ repository });
-  const matching = variant === undefined ? models : models.filter(model => model.id === name || model.name === name);
+
+/** Exact file identities and public variants share one namespace. Never let an
+ * exact match silently win over a different model's variant (or vice versa).
+ */
+export function selectRepositoryModel({ models, repository, selectors }: { models: ModelDirectory[], repository: string, selectors: string[] | undefined }): ModelDirectory {
+  const matching = selectors === undefined ? models : models.filter(model => selectors.some(selector => model.modelPath === selector || modelVariantName({ repository, path: model.modelPath }) === selector));
   if (matching.length !== 1) throw new LlamaCppBrowserError({ code: matching.length ? 'unsupported-input' : 'missing-model' });
   return matching[0]!;
 }
-export async function listHuggingFaceModels(): Promise<LocalModel[]> {
+
+export async function resolveRepositoryModel({ name }: { name: string }): Promise<ModelDirectory> {
+  const { repository, variant } = parseModelReference({ name });
+  // OPFS historically exposes raw labels and percent-encoded file identities.
+  // Match both spellings, rejecting collisions rather than preferring either.
+  const selectors = variant === undefined ? undefined : [variant];
+  if (variant !== undefined) {
+    try {
+      const decoded = decodeURIComponent(variant);
+      if (encodeURIComponent(decoded) === variant) selectors!.push(decoded);
+    } catch { /* A literal percent in an existing raw label is not URI encoding. */ }
+  }
+  return selectRepositoryModel({ models: await repositoryDirectories({ repository }), repository, selectors });
+}
+
+export async function listHuggingFaceModels({ destination, onIssue }: { destination?: ModelDestination, onIssue?: ({ repository, error }: { repository: string, error: unknown }) => void } = {}): Promise<LocalModel[]> {
   const result: LocalModel[] = [];
-  await visitRepositories({ visit: async ({ repository }) => {
-    result.push(...(await repositoryDirectories({ repository })).map(directory => describeDirectory({ directory })));
-  } });
+  await visitRepositories({
+    destination,
+    onIssue,
+    visit: async ({ repository }) => {
+      result.push(...(await repositoryDirectories({ repository, destination })).map(directory => describeDirectory({ directory })));
+    },
+  });
   return result;
 }
-export async function listPendingDownloads(): Promise<DownloadJournal[]> {
+
+export async function listPendingDownloads({ destination }: { destination?: ModelDestination } = {}): Promise<DownloadJournal[]> {
   const result: DownloadJournal[] = [];
-  await visitRepositories({ visit: async ({ repository, folder }) => {
-    const journal = await readJournal({ folder });
-    if (journal.selection.repository !== repository) throw new Error('Download journal repository mismatch');
-    result.push(journal);
-  } });
+  await visitRepositories({
+    destination,
+    visit: async ({ repository, folder }) => {
+      const journal = await readJournal({ folder });
+      if (journal.selection.repository !== repository) throw new Error('Download journal repository mismatch');
+      result.push(journal);
+    },
+  });
   return result;
 }
+
 export async function withRepositoryLock<T>({ repository, operation }: { repository: string, operation: () => Promise<T> }): Promise<T> {
   repositorySchema.parse(repository);
   if (!navigator.locks) throw new LlamaCppBrowserError({ code: 'unavailable' });
@@ -151,20 +195,25 @@ export async function withRepositoryLock<T>({ repository, operation }: { reposit
     if (!lock) throw new LlamaCppBrowserError({ code: 'busy' }); return operation();
   });
 }
-export async function deleteRepository({ repository, plan }: { repository: string, plan: DeletionPlan }): Promise<DeletionResult> {
+
+export async function deleteRepository({ repository, plan, destination }: { repository: string, plan: DeletionPlan, destination?: ModelDestination }): Promise<DeletionResult> {
   plan = deletionPlanSchema.parse(plan);
-  if (plan.id !== modelName({ repository })) throw new Error('Deletion plan does not match the repository');
+  if (plan.id !== (isHostDestination(destination) ? hostModelReference({ directoryId: destination.directoryId, repository, modelPath: undefined }) : modelName({ repository }))) throw new Error('Deletion plan does not match the repository');
   const [owner, repo] = repositorySchema.parse(repository).split('/');
-  let folder = await opfsRoot();
-  for (const name of [OPFS_MODELS_DIR, 'huggingface.co', owner!, repo!, 'resolve']) folder = await folder.getDirectoryHandle(name);
-  const current = await folder.getDirectoryHandle('main');
+  let folder = isHostDestination(destination) ? await hostModelRoot({ destination, mode: 'readwrite' }) : await opfsRoot();
+  for (const name of isHostDestination(destination) ? [owner!] : [OPFS_MODELS_DIR, 'huggingface.co', owner!, repo!, 'resolve']) folder = await folder.getDirectoryHandle(name);
+  const leaf = isHostDestination(destination) ? repo! : 'main';
+  const current = await folder.getDirectoryHandle(leaf);
   let journal: DownloadJournal | undefined;
   try {
     journal = await readJournal({ folder: current });
   } catch (error) {
     if (!isMissing({ error })) throw error;
   }
-  const selectedPaths = journal ? [pendingName, ...journal.selection.files.filter((_file, index) => !journal!.reused?.[index]).map(file => file.path)] : (await resolveRepositoryModel({ name: plan.id })).files.filter(file => plan.sharedProjector !== 'keep' || !isProjector({ path: file.path })).map(file => file.path);
+  if (journal && isHostDestination(destination)) for (let index = 0; index < journal.selection.files.length; index++) {
+    if (!journal.reused?.[index]) await hostDownloadMarker({ folder: current, selection: journal.selection, index, action: 'check' });
+  }
+  const selectedPaths = journal ? [pendingName, ...journal.selection.files.filter((_file, index) => !journal!.reused?.[index]).flatMap(file => isHostDestination(destination) ? [file.path, hostDownloadMarkerPath({ path: file.path })] : [file.path])] : (await resolveRepositoryModel({ name: plan.id })).files.filter(file => plan.sharedProjector !== 'keep' || !isProjector({ path: file.path })).map(file => file.path);
   const result = await executeDeletionPlan({ folder: current, plan, selectedPaths });
   switch (result) {
   case 'changed': return result;
@@ -172,11 +221,12 @@ export async function deleteRepository({ repository, plan }: { repository: strin
   default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
   }
   try {
-    await folder.getDirectoryHandle('main'); await folder.removeEntry('main');
+    await folder.getDirectoryHandle(leaf); await folder.removeEntry(leaf);
   } catch (error) {
     if (!(error instanceof DOMException && ['NotFoundError', 'InvalidModificationError', 'TypeMismatchError'].includes(error.name))) throw error;
   }
   return result;
 }
+
 export const TEST_ONLY = {
 };

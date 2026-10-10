@@ -85,12 +85,14 @@ const { assets, runtimeFetch } = configureHostedTransformersRuntime({
 });
 const modelFetch = createHostedTransformersModelFetch({ runtimeFetch });
 const MODEL_SUPPORT_INVESTIGATION_MAXIMUM_MODEL_ARTIFACT_RANGE_BYTES = 32 * 1024;
+
 const downloadedModelCacheOnlyFetch: typeof fetch = async input => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   throw new Error(
     `Model Support Investigation MUST NOT fetch model artifacts while loading; required downloaded file is missing: ${url}`,
   );
 };
+
 self.fetch = modelFetch;
 env.fetch = downloadedModelCacheOnlyFetch;
 // Investigation loads must match Production's downloaded-model contract. The
@@ -414,8 +416,12 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         runtimeFetch: investigationFetch,
         importRuntimeModule: importPlanningRuntimeModule,
         runWasmControl: async ({ verifiedWasm, observeBinding }) => withVerifiedRuntimeControl({
-          executionProvider: 'wasm', assets, configuredEnvironment: env.backends.onnx.wasm,
-          controlEnvironment: ortEnv.wasm, verifiedWasm, observeBinding,
+          executionProvider: 'wasm',
+          assets,
+          configuredEnvironment: env.backends.onnx.wasm,
+          controlEnvironment: ortEnv.wasm,
+          verifiedWasm,
+          observeBinding,
           run: async () => {
             const session = await InferenceSession.create(createRuntimeControlModelBytes(), {
               executionProviders: ["wasm"],
@@ -460,8 +466,12 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
             };
           }
           return withVerifiedRuntimeControl({
-            executionProvider: 'webgpu', assets, configuredEnvironment: env.backends.onnx.wasm,
-            controlEnvironment: ortEnv.wasm, verifiedWasm, observeBinding,
+            executionProvider: 'webgpu',
+            assets,
+            configuredEnvironment: env.backends.onnx.wasm,
+            controlEnvironment: ortEnv.wasm,
+            verifiedWasm,
+            observeBinding,
             run: async () => {
               const session = await InferenceSession.create(createRuntimeControlModelBytes(), {
                 executionProviders: ["webgpu"],
@@ -559,10 +569,14 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
         const modelAccess = classifyReplayMetadataAccess({ metadata: repository?.metadata });
         const budgetBytes = replayMetadataBudgetBytes ?? REPLAY_METADATA_TARGET_BYTES;
         if (externalNetworkPolicy === 'allow' && modelAccess === 'public-request' && revision !== undefined && repository !== undefined && budgetBytes > 0) {
-          const result = await collectFreshMetadata({ request: {
-            modelId: normalizedModelId, revision, maximumBytes: budgetBytes,
-            repositoryFiles: repository.files.map(({ path, size }) => ({ path, size })),
-          } });
+          const result = await collectFreshMetadata({
+            request: {
+              modelId: normalizedModelId,
+              revision,
+              maximumBytes: budgetBytes,
+              repositoryFiles: repository.files.map(({ path, size }) => ({ path, size })),
+            },
+          });
           freshMetadata = result.summary;
           replayMetadata = result.files;
           if (result.replayMetadata !== undefined) {
@@ -572,9 +586,14 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
             // Publish an explicit partial collection, never retry acquisition
             // through the later fallback collection hook.
             await collectReplayMetadata({
-              modelId: normalizedModelId, revision, files: repository.files,
-              budgetBytes, fileTimeoutMs: 15_000, modelAccess,
-              localRead: async () => undefined, remoteFetch: undefined,
+              modelId: normalizedModelId,
+              revision,
+              files: repository.files,
+              budgetBytes,
+              fileTimeoutMs: 15_000,
+              modelAccess,
+              localRead: async () => undefined,
+              remoteFetch: undefined,
               onSnapshot: ({ snapshot }) => onSummary({ summary: snapshot.summary }),
             });
           }
@@ -588,7 +607,10 @@ const worker: WorkerServerApi<IModelSupportInvestigationWorker> = {
           fileTimeoutMs: 15_000,
           modelAccess,
           localRead: async ({ path, revision: exactRevision }) => readReplayMetadataLocal({
-            storageRoot: await navigator.storage.getDirectory(), modelId: normalizedModelId, revision: exactRevision, path,
+            storageRoot: await navigator.storage.getDirectory(),
+            modelId: normalizedModelId,
+            revision: exactRevision,
+            path,
           }),
           remoteFetch: (() => {
             switch (externalNetworkPolicy) {

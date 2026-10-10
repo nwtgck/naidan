@@ -3,12 +3,16 @@ import { LlamaCppBrowserError, type ModelDirectoryInput } from '@/features/llama
 export function directoryFromFiles({ files }: { files: File[] }): ModelDirectoryInput {
   const first = files[0]?.webkitRelativePath.split('/')[0];
   if (!first) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
-  return { name: first, files: files.map(file => {
-    const prefix = `${first}/`;
-    if (!file.webkitRelativePath.startsWith(prefix)) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
-    return { path: file.webkitRelativePath.slice(prefix.length), file };
-  }) };
+  return {
+    name: first,
+    files: files.map(file => {
+      const prefix = `${first}/`;
+      if (!file.webkitRelativePath.startsWith(prefix)) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
+      return { path: file.webkitRelativePath.slice(prefix.length), file };
+    }),
+  };
 }
+
 export async function droppedModels({ transfer }: { transfer: DataTransfer }): Promise<{ directories: ModelDirectoryInput[], files: File[] }> {
   // Capture entries synchronously: the drag data store is protected after dispatch.
   const entries = Array.from(transfer.items ?? []).filter(item => item.kind === 'file').map(item => item.webkitGetAsEntry?.());
@@ -53,5 +57,6 @@ export async function droppedModels({ transfer }: { transfer: DataTransfer }): P
   }
   return { directories, files };
 }
+
 export const TEST_ONLY = {
 };

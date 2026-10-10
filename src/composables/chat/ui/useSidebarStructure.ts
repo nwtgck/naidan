@@ -70,13 +70,16 @@ export function useSidebarStructure(): SidebarStructureAdapter {
       currentChatGroupRef.value.isCollapsed = isCollapsed;
     }
 
-    await storageService.updateChatGroup({ id: groupId, updater: ({ current }) => {
-      if (current === null) {
-        throw new Error('Chat group not found');
-      }
-      current.isCollapsed = isCollapsed;
-      return current;
-    } });
+    await storageService.updateChatGroup({
+      id: groupId,
+      updater: ({ current }) => {
+        if (current === null) {
+          throw new Error('Chat group not found');
+        }
+        current.isCollapsed = isCollapsed;
+        return current;
+      },
+    });
   }
 
   return {

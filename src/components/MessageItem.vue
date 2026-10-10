@@ -164,6 +164,7 @@ watch([() => props.chatId, () => props.message], () => {
 onUnmounted(() => {
   previewRequest += 1;
 });
+
 async function handlePreviewImage({ id }: { id: BinaryObjectId }) {
   const request = ++previewRequest;
   // Capture local attachment bytes before waiting for generated-image metadata.
@@ -346,9 +347,11 @@ function handleClearContent() {
 onMounted(() => {
   loadAttachments();
 
-  transformersUnsubscribe = transformersJsService.subscribe({ listener: ({ status: s }) => {
-    transformersStatus.value = s;
-  } });
+  transformersUnsubscribe = transformersJsService.subscribe({
+    listener: ({ status: s }) => {
+      transformersStatus.value = s;
+    },
+  });
 
 });
 

@@ -36,7 +36,8 @@ export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptio
     // constructor presence. This also probes the integrity checker
     // without loading the multi-megabyte runtime chunk. The expected byte is 71.
     await decodeEmbeddedBrotli({
-      base64: 'CwCARwM=', byteLength: 1,
+      base64: 'CwCARwM=',
+      byteLength: 1,
       sha256: '333e0a1e27815d0ceee55c473fe3dc93d56c63e3bee2b3b4aee8eed6d70191a3',
     });
     await checkStorage();
@@ -47,6 +48,7 @@ export async function resolveRuntimeProfile({ profile }: { profile: RuntimeOptio
     throw new LlamaCppBrowserError({ code: 'unavailable' });
   }
 }
+
 /** Probe only browser capabilities in the inference Worker, before core/model loading. */
 export async function probeRuntimeProfiles(): Promise<ProfileCapabilities> {
   let reason: ProfileUnavailableReason | undefined;
@@ -60,8 +62,11 @@ export async function probeRuntimeProfiles(): Promise<ProfileCapabilities> {
       reason = gpuReason; throw new Error('WebGPU');
     }
     reason = 'brotli';
-    await decodeEmbeddedBrotli({ base64: 'CwCARwM=', byteLength: 1,
-      sha256: '333e0a1e27815d0ceee55c473fe3dc93d56c63e3bee2b3b4aee8eed6d70191a3' });
+    await decodeEmbeddedBrotli({
+      base64: 'CwCARwM=',
+      byteLength: 1,
+      sha256: '333e0a1e27815d0ceee55c473fe3dc93d56c63e3bee2b3b4aee8eed6d70191a3',
+    });
     reason = 'storage'; await checkStorage();
     reason = undefined;
   } catch { /* Return only a closed capability reason, never browser error text. */ }
@@ -73,6 +78,7 @@ export async function probeRuntimeProfiles(): Promise<ProfileCapabilities> {
     }),
   });
 }
+
 export const TEST_ONLY = {
   memory64Probe,
   suspensionProbe,

@@ -118,14 +118,38 @@ const mockSettings = {
 };
 
 const globalStubs = {
-  ActivityIcon: true, RefreshCwIcon: true, Loader2Icon: true, GlobeIcon: true,
-  BookmarkPlusIcon: true, DatabaseIcon: true, CpuIcon: true, BotIcon: true,
-  CheckIcon: true, PencilIcon: true, TargetIcon: true, TrashIcon: true,
-  Trash2Icon: true, XIcon: true, CheckCircle2Icon: true, SaveIcon: true,
-  TypeIcon: true, FlaskConicalIcon: true, AlertTriangleIcon: true, ShieldCheckIcon: true,
-  Logo: true, ImportExportModal: true, ChefHatIcon: true, DownloadIcon: true,
-  GithubIcon: true, ExternalLinkIcon: true, PlusIcon: true, InfoIcon: true,
-  FileArchiveIcon: true, HardDriveIcon: true, GhostIcon: true, MessageSquareQuoteIcon: true,
+  ActivityIcon: true,
+  RefreshCwIcon: true,
+  Loader2Icon: true,
+  GlobeIcon: true,
+  BookmarkPlusIcon: true,
+  DatabaseIcon: true,
+  CpuIcon: true,
+  BotIcon: true,
+  CheckIcon: true,
+  PencilIcon: true,
+  TargetIcon: true,
+  TrashIcon: true,
+  Trash2Icon: true,
+  XIcon: true,
+  CheckCircle2Icon: true,
+  SaveIcon: true,
+  TypeIcon: true,
+  FlaskConicalIcon: true,
+  AlertTriangleIcon: true,
+  ShieldCheckIcon: true,
+  Logo: true,
+  ImportExportModal: true,
+  ChefHatIcon: true,
+  DownloadIcon: true,
+  GithubIcon: true,
+  ExternalLinkIcon: true,
+  PlusIcon: true,
+  InfoIcon: true,
+  FileArchiveIcon: true,
+  HardDriveIcon: true,
+  GhostIcon: true,
+  MessageSquareQuoteIcon: true,
   'router-link': true,
 };
 
@@ -246,6 +270,7 @@ describe('StorageTab.vue Tests', () => {
 
       expect(storageService.switchProvider).toHaveBeenCalledWith('opfs');
     }, 15_000);
+
     it('warns about attachment loss when switching from OPFS to Local', async () => {
       vi.mocked(storageService.getCurrentType).mockReturnValue('opfs');
       vi.mocked(storageService.hasAttachments).mockResolvedValue(true);
@@ -540,6 +565,8 @@ describe('StorageTab.vue Tests', () => {
         settings: { value: { storageType: 'local', providerProfiles: [], endpoint: { type: 'openai', url: '' } } } as any,
         save: mockSaveFail,
         updateExperimental: vi.fn(),
+        captureExperimentalStorage: () => () => true,
+        updateExperimentalForStorage: vi.fn(),
         updateProviderProfiles: vi.fn(),
         initialized: { value: true } as any,
         isOnboardingDismissed: { value: true } as any,

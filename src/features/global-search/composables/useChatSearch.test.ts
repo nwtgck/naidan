@@ -34,7 +34,6 @@ async function createComposable() {
   return useChatSearch({ sidebarItems });
 }
 
-
 describe('useChatSearch Composable', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -91,7 +90,8 @@ describe('useChatSearch Composable', () => {
       root: {
         items: [{
           id: 'm1',
-          modelId: undefined, lmParameters: undefined,
+          modelId: undefined,
+          lmParameters: undefined,
           parts: [{ type: 'text', text: 'hello content', completeness: 'complete' }],
           createdAt: 100,
           role: 'user',
@@ -286,7 +286,8 @@ describe('useChatSearch Composable', () => {
       root: {
         items: [{
           id: 'm1',
-          modelId: undefined, lmParameters: undefined,
+          modelId: undefined,
+          lmParameters: undefined,
           parts: [{ type: 'text', text: 'hello content', completeness: 'complete' }],
           createdAt: 100,
           role: 'user',
@@ -317,7 +318,8 @@ describe('useChatSearch Composable', () => {
         items: [
           {
             id: 'm1',
-            modelId: undefined, lmParameters: undefined,
+            modelId: undefined,
+            lmParameters: undefined,
             parts: [{ type: 'text', text: 'hello from user', completeness: 'complete' }],
             createdAt: 100,
             role: 'user',
@@ -325,7 +327,9 @@ describe('useChatSearch Composable', () => {
           },
           {
             id: 'm2',
-            modelId: undefined, lmParameters: undefined, interruption: undefined,
+            modelId: undefined,
+            lmParameters: undefined,
+            interruption: undefined,
             parts: [{ type: 'text', text: 'hello from assistant', completeness: 'complete' }],
             createdAt: 200,
             role: 'assistant',
@@ -356,7 +360,8 @@ describe('useChatSearch Composable', () => {
         items: [
           {
             id: 'm1',
-            modelId: undefined, lmParameters: undefined,
+            modelId: undefined,
+            lmParameters: undefined,
             parts: [{ type: 'text', text: 'hello from user', completeness: 'complete' }],
             createdAt: 100,
             role: 'user',
@@ -364,7 +369,9 @@ describe('useChatSearch Composable', () => {
           },
           {
             id: 'm2',
-            modelId: undefined, lmParameters: undefined, interruption: undefined,
+            modelId: undefined,
+            lmParameters: undefined,
+            interruption: undefined,
             parts: [{ type: 'text', text: 'hello from assistant', completeness: 'complete' }],
             createdAt: 200,
             role: 'assistant',
@@ -678,6 +685,4 @@ describe('useChatSearch Composable', () => {
       expect(mockCreateGlobalSearchWorkerClient).toHaveBeenLastCalledWith({ storageType: 'local' });
     });
   });
-
-
 });

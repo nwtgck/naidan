@@ -1,0 +1,1 @@
+export const naidanRpc__use_help = (): string => "Wähle diese Verbindung in den Chat-Einstellungen oder als Rechenziel für die Bilderzeugung. Das andere Gerät bestimmt, welche Funktionen verfügbar sind.";

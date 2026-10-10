@@ -17,63 +17,69 @@ export async function acceptDownloadedProductionCandidate({ modelId, resolvedRev
   onTiming?: DownloadTimingCallback;
   createAcceptanceClient?: () => DownloadVerificationCandidateAcceptanceWorkerClient;
 }): Promise<DownloadVerificationCandidateAcceptanceObservation> {
-  return await measureDownloadAcceptance({ revision: loadRevision ?? 'main', candidate, route: 'candidate', callback: onTiming, operation: async ({ attempt, cleanup, load }) => {
-    signal?.throwIfAborted();
-    const client = createAcceptanceClient === undefined
-      ? createDownloadVerificationCandidateAcceptanceWorkerClient({ operationSignal: signal })
-      : createAcceptanceClient();
-    try {
-      attempt({ count: 1 });
-      const operation = client.verifyDownloadedModelCandidate({
-        modelId,
-        loadRevision,
-        candidate,
-        progressCallback,
-      });
-      const result = await awaitWithAbort({ operation, signal });
-      if (result.device !== candidate.device) {
-        load({ outcome: 'rejected' });
+  return await measureDownloadAcceptance({
+    revision: loadRevision ?? 'main',
+    candidate,
+    route: 'candidate',
+    callback: onTiming,
+    operation: async ({ attempt, cleanup, load }) => {
+      signal?.throwIfAborted();
+      const client = createAcceptanceClient === undefined
+        ? createDownloadVerificationCandidateAcceptanceWorkerClient({ operationSignal: signal })
+        : createAcceptanceClient();
+      try {
+        attempt({ count: 1 });
+        const operation = client.verifyDownloadedModelCandidate({
+          modelId,
+          loadRevision,
+          candidate,
+          progressCallback,
+        });
+        const result = await awaitWithAbort({ operation, signal });
+        if (result.device !== candidate.device) {
+          load({ outcome: 'rejected' });
+          return {
+            modelId,
+            resolvedRevision,
+            loaderRevisionOption: loadRevision ?? null,
+            candidate,
+            status: 'rejected',
+            observationMethod: 'production-cache-only-runtime-preparation',
+            error: {
+              name: 'UnexpectedCandidateDevice',
+              message: `Expected ${candidate.device}, received ${result.device}`,
+            },
+          };
+        }
+        const receipt = readProductionLoadResultReceipt({ value: result, modelId, revision: loadRevision });
+        load({ outcome: 'accepted' });
         return {
           modelId,
           resolvedRevision,
           loaderRevisionOption: loadRevision ?? null,
           candidate,
-          status: 'rejected',
+          status: 'accepted',
           observationMethod: 'production-cache-only-runtime-preparation',
-          error: {
-            name: 'UnexpectedCandidateDevice',
-            message: `Expected ${candidate.device}, received ${result.device}`,
-          },
+          error: undefined,
+          receipt,
         };
+      } catch (error) {
+        if (signal?.aborted === true) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+        load({ outcome: productionAcceptanceFailureStatus({ error }) });
+        return {
+          modelId,
+          resolvedRevision,
+          loaderRevisionOption: loadRevision ?? null,
+          candidate,
+          status: productionAcceptanceFailureStatus({ error }),
+          observationMethod: 'production-cache-only-runtime-preparation',
+          error: serializeProductionAcceptanceError({ error }),
+        };
+      } finally {
+        await disposeWithDownloadTiming({ dispose: () => client.dispose(), onOutcome: cleanup });
       }
-      const receipt = readProductionLoadResultReceipt({ value: result, modelId, revision: loadRevision });
-      load({ outcome: 'accepted' });
-      return {
-        modelId,
-        resolvedRevision,
-        loaderRevisionOption: loadRevision ?? null,
-        candidate,
-        status: 'accepted',
-        observationMethod: 'production-cache-only-runtime-preparation',
-        error: undefined,
-        receipt,
-      };
-    } catch (error) {
-      if (signal?.aborted === true) throw signal.reason ?? new DOMException('Aborted', 'AbortError');
-      load({ outcome: productionAcceptanceFailureStatus({ error }) });
-      return {
-        modelId,
-        resolvedRevision,
-        loaderRevisionOption: loadRevision ?? null,
-        candidate,
-        status: productionAcceptanceFailureStatus({ error }),
-        observationMethod: 'production-cache-only-runtime-preparation',
-        error: serializeProductionAcceptanceError({ error }),
-      };
-    } finally {
-      await disposeWithDownloadTiming({ dispose: () => client.dispose(), onOutcome: cleanup });
-    }
-  } });
+    },
+  });
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

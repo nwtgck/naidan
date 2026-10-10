@@ -4,7 +4,7 @@ import { FolderPlusIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import type { HostModelDirectoriesView } from '@/features/stable-diffusion-cpp-browser/library-view';
 import type { ImageRecipeFile } from '@/features/stable-diffusion-cpp-browser/model-recipes';
-import ImageSettingsSection from './ImageSettingsSection.vue';
+import ImageSettingsSection from '@/features/image-generation/components/ImageSettingsSection.vue';
 
 const props = defineProps<{
   view: HostModelDirectoriesView,
@@ -32,6 +32,7 @@ function selectDestination({ event }: { event: Event }): void {
   if (event.target.value === 'opfs' && !props.opfsSupported) return;
   props.view.selectDestination({ id: event.target.value });
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 

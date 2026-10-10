@@ -45,10 +45,12 @@ export function createBenchmarkMeasurements() {
   }
   return { append, snapshot };
 }
+
 export function medianMilliseconds({ values }: { values: number[] }): number | undefined {
   if (!values.length) return undefined;
   const sorted = [...values].sort((a, b) => a - b), middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1]! + sorted[middle]!) / 2;
 }
+
 export const TEST_ONLY = {
 };

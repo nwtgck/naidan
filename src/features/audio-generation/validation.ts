@@ -5,6 +5,7 @@ import { MAX_AUDIO_CONTEXT_TOKENS } from './types';
 export function audioValidationFields({ issues }: { issues: readonly ZodIssue[] }): string[] {
   return [...new Set(issues.map(issue => typeof issue.path[0] === 'string' ? issue.path[0] : 'input'))];
 }
+
 export function audioFieldLabel({ field }: { field: string }): string | undefined {
   switch (field) {
   case 'model': return lazyStrings.audioGeneration__audio_model();
@@ -21,6 +22,7 @@ export function audioFieldLabel({ field }: { field: string }): string | undefine
   default: return lazyStrings.audioGeneration__advanced_settings();
   }
 }
+
 export function audioFieldValidationMessage({ field }: { field: string }): string | undefined {
   switch (field) {
   case 'text': return lazyStrings.audioGeneration__invalid_text();
@@ -35,5 +37,6 @@ export function audioFieldValidationMessage({ field }: { field: string }): strin
   default: return lazyStrings.audioGeneration__check_parameters();
   }
 }
+
 export const TEST_ONLY = {
 };

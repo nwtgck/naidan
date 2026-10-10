@@ -12,6 +12,7 @@ vi.mock('./download-verification/logic/run-production-download-preparation', () 
 
 const owners: Array<{ dispose(): Promise<void> }> = [];
 const acceptanceTiming: DownloadAcceptanceTiming = { kind: 'acceptance', version: 1, route: 'candidate', revision: 'a'.repeat(40), candidate: { device: 'webgpu', dtype: 'q4f16' }, timingStatus: 'measured', hostDurationMs: 23_000, loadOutcome: 'accepted', cleanupOutcome: 'completed', hostSettlement: 'fulfilled', attemptCount: 1 };
+
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubGlobal('fetch', vi.fn(() => {
@@ -23,9 +24,11 @@ beforeEach(() => {
 
 it('bounds a held Download subscriber and retains terminal state without waiting for its acknowledgement', async () => {
   const { createTransformersJsService } = await import('./index-hosted');
-  const owner = createTransformersJsService({ createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  } });
+  const owner = createTransformersJsService({
+    createWorkerClient: () => {
+      throw new Error('No runtime expected');
+    },
+  });
   owners.push(owner);
   const held = Promise.withResolvers<void>();
   const subscriber = vi.fn(({ status }: { status: string }) => status === 'loading' ? held.promise : undefined);
@@ -49,12 +52,16 @@ it('bounds a held Download subscriber and retains terminal state without waiting
 
 it('retains ordinary Download timing in its owning service without mutating a captured snapshot', async () => {
   const { createTransformersJsService } = await import('./index-hosted');
-  const first = createTransformersJsService({ createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  } });
-  const second = createTransformersJsService({ createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  } });
+  const first = createTransformersJsService({
+    createWorkerClient: () => {
+      throw new Error('No runtime expected');
+    },
+  });
+  const second = createTransformersJsService({
+    createWorkerClient: () => {
+      throw new Error('No runtime expected');
+    },
+  });
   owners.push(first, second);
   transfer.reuse.mockResolvedValue({ reused: false });
   transfer.prepare.mockImplementation(async ({ onTiming }: { onTiming: DownloadTimingCallback }) => {
@@ -75,9 +82,11 @@ it('retains ordinary Download timing in its owning service without mutating a ca
 
 it('does not record success or late timing while a cancelled Download is still settling', async () => {
   const { createTransformersJsService } = await import('./index-hosted');
-  const owner = createTransformersJsService({ createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  } });
+  const owner = createTransformersJsService({
+    createWorkerClient: () => {
+      throw new Error('No runtime expected');
+    },
+  });
   owners.push(owner);
   const entered = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
@@ -108,9 +117,11 @@ it('does not record success or late timing while a cancelled Download is still s
 
 it('drops a disposed service owner timing callback without resurrecting retained records', async () => {
   const { createTransformersJsService } = await import('./index-hosted');
-  const owner = createTransformersJsService({ createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  } });
+  const owner = createTransformersJsService({
+    createWorkerClient: () => {
+      throw new Error('No runtime expected');
+    },
+  });
   owners.push(owner);
   const entered = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
@@ -136,6 +147,7 @@ it('drops a disposed service owner timing callback without resurrecting retained
     await running;
   }
 });
+
 afterEach(async () => {
   await Promise.all(owners.splice(0).map(owner => owner.dispose()));
   expect(fetch).not.toHaveBeenCalled();
@@ -152,13 +164,17 @@ it('does not let a failing Download progress subscriber prevent cache reuse or c
   const owner = createTransformersJsService({ createWorkerClient });
   owners.push(owner);
   const healthy = vi.fn();
-  owner.service.subscribe({ listener: ({ status }) => {
-    if (status === 'loading') throw new Error('Synthetic failed progress renderer');
-  } });
+  owner.service.subscribe({
+    listener: ({ status }) => {
+      if (status === 'loading') throw new Error('Synthetic failed progress renderer');
+    },
+  });
   owner.service.subscribe({ listener: healthy });
-  owner.service.subscribeModelList({ listener: () => {
-    throw new Error('Broken list renderer');
-  } });
+  owner.service.subscribeModelList({
+    listener: () => {
+      throw new Error('Broken list renderer');
+    },
+  });
   const healthyList = vi.fn();
   owner.service.subscribeModelList({ listener: healthyList });
   await expect(owner.service.downloadModel({ modelId: 'fixture/model' })).resolves.toBeUndefined();
@@ -173,9 +189,11 @@ it('does not let a failing Download progress subscriber prevent cache reuse or c
 
 it('does not turn a completed raw cache or metadata read into early Download completion before a transfer plan exists', async () => {
   const { createTransformersJsService } = await import('./index-hosted');
-  const owner = createTransformersJsService({ createWorkerClient: () => {
-    throw new Error('This scalar progress control must not load weights');
-  } });
+  const owner = createTransformersJsService({
+    createWorkerClient: () => {
+      throw new Error('This scalar progress control must not load weights');
+    },
+  });
   owners.push(owner);
   transfer.reuse.mockResolvedValue({ reused: false });
   const observed: Array<ReturnType<typeof owner.service.getState>> = [];
@@ -227,9 +245,11 @@ it('shows cached model-session acceptance at 95 without starting size discovery 
 
 it('ignores a previous Download callback while a new operation owns the service', async () => {
   const { createTransformersJsService } = await import('./index-hosted');
-  const owner = createTransformersJsService({ createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  } });
+  const owner = createTransformersJsService({
+    createWorkerClient: () => {
+      throw new Error('No runtime expected');
+    },
+  });
   owners.push(owner);
   transfer.reuse.mockResolvedValue({ reused: false });
   let previous: DownloadProgressCallback | undefined;
@@ -265,9 +285,11 @@ it('ignores a previous Download callback while a new operation owns the service'
 
 it('drops the old buffered snapshot when the same listener is unsubscribed and registered again', async () => {
   const { createTransformersJsService } = await import('./index-hosted');
-  const owner = createTransformersJsService({ createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  } });
+  const owner = createTransformersJsService({
+    createWorkerClient: () => {
+      throw new Error('No runtime expected');
+    },
+  });
   owners.push(owner);
   const held = Promise.withResolvers<void>();
   const entered = Promise.withResolvers<void>();
@@ -294,9 +316,11 @@ it('publishes stalled ETA from the display timer and retires that timer after Do
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
   const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
   const { createTransformersJsService } = await import('./index-hosted');
-  const owner = createTransformersJsService({ createWorkerClient: () => {
-    throw new Error('No runtime expected');
-  } }); owners.push(owner);
+  const owner = createTransformersJsService({
+    createWorkerClient: () => {
+      throw new Error('No runtime expected');
+    },
+  }); owners.push(owner);
   // The existing subscriber is an invalidation signal; Manager reads getState.
   const snapshots: ReturnType<typeof owner.service.getState>[] = [];
   const notifications = vi.fn(() => {

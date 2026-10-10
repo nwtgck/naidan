@@ -67,9 +67,16 @@ describe('generateGptOss input observation', () => {
     ];
     await generateGptOss({
       onGenerationEvent: undefined,
-      model: {} as never, tokenizer: tokenizer as never, messages,
-      onChunk: vi.fn(), onToolCalls: vi.fn(), params: undefined, tools,
-      pastKeyValues: undefined, stoppingCriteria, onInputPrepared: undefined,
+      model: {} as never,
+      tokenizer: tokenizer as never,
+      messages,
+      onChunk: vi.fn(),
+      onToolCalls: vi.fn(),
+      params: undefined,
+      tools,
+      pastKeyValues: undefined,
+      stoppingCriteria,
+      onInputPrepared: undefined,
       generateWithModel: generateWithModelFixture(),
     });
     expect(applyChatTemplate.mock.calls[0]?.[0]).toStrictEqual([
@@ -104,8 +111,10 @@ describe('generateGptOss input observation', () => {
     expect(callable).not.toHaveBeenCalled();
     expect(applyChatTemplate).toHaveBeenCalledOnce();
     expect(onInputPrepared).toHaveBeenCalledWith({
-      fullConversationInputs: { input_ids: { data: BigInt64Array.from([10n, 11n, 12n]) } },
-      cacheDecision: { status: 'not-reused', reason: 'gpt-oss-owned-continuation-unavailable' },
+      observation: {
+        fullConversationInputs: { input_ids: { data: BigInt64Array.from([10n, 11n, 12n]) } },
+        cacheDecision: { status: 'not-reused', reason: 'gpt-oss-owned-continuation-unavailable' },
+      },
     });
     expect(generateWithModel).toHaveBeenCalledWith(expect.objectContaining({
       inputs: { input_ids: { data: BigInt64Array.from([10n, 11n, 12n]) } },
@@ -135,9 +144,11 @@ describe('generateGptOss input observation', () => {
 
     expect(callable).not.toHaveBeenCalled();
     expect(applyChatTemplate).toHaveBeenCalledOnce();
-    expect(onInputPrepared).toHaveBeenCalledWith(expect.objectContaining({
-      cacheDecision: { status: 'not-reused', reason: 'gpt-oss-owned-continuation-unavailable' },
-    }));
+    expect(onInputPrepared).toHaveBeenCalledWith({
+      observation: expect.objectContaining({
+        cacheDecision: { status: 'not-reused', reason: 'gpt-oss-owned-continuation-unavailable' },
+      }),
+    });
     expect(generateWithModel).toHaveBeenCalledWith(expect.objectContaining({ pastKeyValues: null }));
   });
 
@@ -192,7 +203,6 @@ describe('generateGptOss input observation', () => {
   });
 });
 
-
 describe('GPT-OSS content boundaries', () => {
   beforeEach(() => {
     vi.clearAllMocks(); streaming.callback = undefined;
@@ -203,16 +213,27 @@ describe('GPT-OSS content boundaries', () => {
     const id = toToolCallId({ raw: 'literal-history-call' });
     const messages: InferenceMessage[] = [
       { role: 'user', content: [{ type: 'text', text: '  First ' }, { type: 'text', text: 'Second🙂  ' }] },
-      { role: 'assistant', content: [{ type: 'text', text: '<thi' }, { type: 'text', text: 'nk>R</think>A ' }],
-        tool_calls: [{ id, type: 'function', function: { name: 'my_tool', arguments: ' { "x" : 1 } ' } }] },
+      {
+        role: 'assistant',
+        content: [{ type: 'text', text: '<thi' }, { type: 'text', text: 'nk>R</think>A ' }],
+        tool_calls: [{ id, type: 'function', function: { name: 'my_tool', arguments: ' { "x" : 1 } ' } }],
+      },
       { role: 'tool', content: [{ type: 'text', text: 'Result ' }, { type: 'text', text: 'Result ' }], tool_call_id: id },
     ];
     const before = structuredClone(messages);
     await generateGptOss({
       onGenerationEvent: undefined,
-      model: {} as never, tokenizer: tokenizer as never, messages,
-      onChunk: vi.fn(), onToolCalls: vi.fn(), params: undefined, tools: undefined,
-      pastKeyValues: undefined, continuationOwner: undefined, stoppingCriteria, onInputPrepared: undefined,
+      model: {} as never,
+      tokenizer: tokenizer as never,
+      messages,
+      onChunk: vi.fn(),
+      onToolCalls: vi.fn(),
+      params: undefined,
+      tools: undefined,
+      pastKeyValues: undefined,
+      continuationOwner: undefined,
+      stoppingCriteria,
+      onInputPrepared: undefined,
       generateWithModel: generateWithModelFixture(),
     });
     expect(applyChatTemplate.mock.calls[0]?.[0]).toStrictEqual([
@@ -228,10 +249,17 @@ describe('GPT-OSS content boundaries', () => {
     const generateWithModel = generateWithModelFixture();
     await expect(generateGptOss({
       onGenerationEvent: undefined,
-      model: {} as never, tokenizer: tokenizer as never,
+      model: {} as never,
+      tokenizer: tokenizer as never,
       messages: [{ role: 'user', content: [{ type: 'text', text: 'Keep me' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }],
-      onChunk: vi.fn(), onToolCalls: vi.fn(), params: undefined, tools: undefined,
-      pastKeyValues: undefined, continuationOwner: undefined, stoppingCriteria, onInputPrepared: undefined,
+      onChunk: vi.fn(),
+      onToolCalls: vi.fn(),
+      params: undefined,
+      tools: undefined,
+      pastKeyValues: undefined,
+      continuationOwner: undefined,
+      stoppingCriteria,
+      onInputPrepared: undefined,
       generateWithModel,
     })).rejects.toThrow('text-only');
     expect(applyChatTemplate).not.toHaveBeenCalled();
@@ -257,9 +285,17 @@ describe('GPT-OSS content boundaries', () => {
     });
     await generateGptOss({
       onGenerationEvent: undefined,
-      model: {} as never, tokenizer: tokenizer as never, messages: [{ role: 'user', content: 'Use the tool' }],
-      onChunk, onToolCalls, params: undefined, tools,
-      pastKeyValues: undefined, continuationOwner: undefined, stoppingCriteria, onInputPrepared: undefined,
+      model: {} as never,
+      tokenizer: tokenizer as never,
+      messages: [{ role: 'user', content: 'Use the tool' }],
+      onChunk,
+      onToolCalls,
+      params: undefined,
+      tools,
+      pastKeyValues: undefined,
+      continuationOwner: undefined,
+      stoppingCriteria,
+      onInputPrepared: undefined,
       generateWithModel,
     });
     expect(onToolCalls).toHaveBeenCalledOnce();
@@ -272,9 +308,17 @@ describe('GPT-OSS content boundaries', () => {
     const onToolCalls = vi.fn();
     await generateGptOss({
       onGenerationEvent: undefined,
-      model: {} as never, tokenizer: tokenizer as never, messages: [{ role: 'user', content: 'Tool' }],
-      onChunk: vi.fn(), onToolCalls, params: undefined, tools,
-      pastKeyValues: undefined, continuationOwner: undefined, stoppingCriteria, onInputPrepared: undefined,
+      model: {} as never,
+      tokenizer: tokenizer as never,
+      messages: [{ role: 'user', content: 'Tool' }],
+      onChunk: vi.fn(),
+      onToolCalls,
+      params: undefined,
+      tools,
+      pastKeyValues: undefined,
+      continuationOwner: undefined,
+      stoppingCriteria,
+      onInputPrepared: undefined,
       generateWithModel: vi.fn(async () => {
         const emit = streaming.callback!;
         for (const token of ['<|start|>', 'assistant to=functions.my_tool', '<|message|>', content, '<|call|>']) emit(token);
@@ -289,9 +333,17 @@ describe('GPT-OSS content boundaries', () => {
     const onToolCalls = vi.fn();
     await generateGptOss({
       onGenerationEvent: undefined,
-      model: {} as never, tokenizer: tokenizer as never, messages: [{ role: 'user', content: 'Tool' }],
-      onChunk: vi.fn(), onToolCalls, params: undefined, tools,
-      pastKeyValues: undefined, continuationOwner: undefined, stoppingCriteria, onInputPrepared: undefined,
+      model: {} as never,
+      tokenizer: tokenizer as never,
+      messages: [{ role: 'user', content: 'Tool' }],
+      onChunk: vi.fn(),
+      onToolCalls,
+      params: undefined,
+      tools,
+      pastKeyValues: undefined,
+      continuationOwner: undefined,
+      stoppingCriteria,
+      onInputPrepared: undefined,
       generateWithModel: vi.fn(async () => {
         const emit = streaming.callback!;
         for (const token of ['<|start|>', 'assistant to=functions.my_tool', '<|message|>', '{}']) emit(token);
@@ -321,7 +373,19 @@ describe('GPT-OSS structured reasoning input', () => {
       { role: 'user', content: 'next' },
     ];
     await generateGptOss({
-      onGenerationEvent: undefined, model: {} as never, tokenizer: tokenizer as never, messages, onChunk: vi.fn(), onToolCalls: vi.fn(), params: undefined, tools: undefined, pastKeyValues: undefined, stoppingCriteria, onInputPrepared: undefined, generateWithModel: generateWithModelFixture() });
+      onGenerationEvent: undefined,
+      model: {} as never,
+      tokenizer: tokenizer as never,
+      messages,
+      onChunk: vi.fn(),
+      onToolCalls: vi.fn(),
+      params: undefined,
+      tools: undefined,
+      pastKeyValues: undefined,
+      stoppingCriteria,
+      onInputPrepared: undefined,
+      generateWithModel: generateWithModelFixture(),
+    });
     expect(applyChatTemplate.mock.calls[0]?.[0]).toEqual([
       { role: 'assistant', content: '<think>literal</think>', thinking: '  R\n' },
       { role: 'user', content: 'next' },
@@ -332,7 +396,19 @@ describe('GPT-OSS structured reasoning input', () => {
   it('preserves an explicitly empty reasoning field rather than dropping it by truthiness', async () => {
     const { tokenizer, applyChatTemplate } = tokenizerFixture();
     await generateGptOss({
-      onGenerationEvent: undefined, model: {} as never, tokenizer: tokenizer as never, messages: [{ role: 'assistant', content: 'answer', reasoning: { text: '', completeness: 'complete' } }], onChunk: vi.fn(), onToolCalls: vi.fn(), params: undefined, tools: undefined, pastKeyValues: undefined, stoppingCriteria, onInputPrepared: undefined, generateWithModel: generateWithModelFixture() });
+      onGenerationEvent: undefined,
+      model: {} as never,
+      tokenizer: tokenizer as never,
+      messages: [{ role: 'assistant', content: 'answer', reasoning: { text: '', completeness: 'complete' } }],
+      onChunk: vi.fn(),
+      onToolCalls: vi.fn(),
+      params: undefined,
+      tools: undefined,
+      pastKeyValues: undefined,
+      stoppingCriteria,
+      onInputPrepared: undefined,
+      generateWithModel: generateWithModelFixture(),
+    });
     expect(applyChatTemplate.mock.calls[0]?.[0]).toEqual([{ role: 'assistant', content: 'answer', thinking: '' }]);
   });
 
@@ -344,7 +420,19 @@ describe('GPT-OSS structured reasoning input', () => {
       [{ ...continuationMessages()[1]!, content: 'second body', reasoning: { text: 'R', completeness: 'complete' as const } }],
     ]) {
       await expect(generateGptOss({
-        onGenerationEvent: undefined, model: {} as never, tokenizer: tokenizer as never, messages, onChunk: vi.fn(), onToolCalls: vi.fn(), params: undefined, tools: undefined, pastKeyValues: undefined, stoppingCriteria, onInputPrepared: undefined, generateWithModel: generate })).rejects.toThrow();
+        onGenerationEvent: undefined,
+        model: {} as never,
+        tokenizer: tokenizer as never,
+        messages,
+        onChunk: vi.fn(),
+        onToolCalls: vi.fn(),
+        params: undefined,
+        tools: undefined,
+        pastKeyValues: undefined,
+        stoppingCriteria,
+        onInputPrepared: undefined,
+        generateWithModel: generate,
+      })).rejects.toThrow();
     }
     expect(applyChatTemplate).not.toHaveBeenCalled();
     expect(generate).not.toHaveBeenCalled();

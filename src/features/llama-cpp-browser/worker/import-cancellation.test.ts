@@ -10,19 +10,25 @@ import type { LlamaCppWorkerApi } from './types';
 // Worker transport and storage are in-memory: this catches cancellation wiring
 // regressions that a manager test with a mocked importModel() cannot observe.
 const transport = vi.hoisted(() => ({ remote: undefined as WorkerServerApi<LlamaCppWorkerApi> | undefined, release: vi.fn() }));
-vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: () => transport.remote,
-  releaseWorkerRemote: transport.release, workerProxy: ({ value }: { value: unknown }) => value }));
+vi.mock('@/utils/worker-transport', async importOriginal => ({
+  ...await importOriginal<typeof import('@/utils/worker-transport')>(),
+  wrapWorkerRemote: () => transport.remote,
+  releaseWorkerRemote: transport.release,
+  workerProxy: ({ value }: { value: unknown }) => value,
+}));
 vi.mock('@/features/llama-cpp-browser/runtime/detect-profile', () => ({ probeRuntimeProfiles: vi.fn() }));
 vi.mock('./session', () => ({ invalidateStoredModel: vi.fn(), releaseSession: vi.fn() }));
 vi.mock('./generation', () => ({ generate: vi.fn() }));
 class TestWorker extends EventTarget {
   static instances: TestWorker[] = [];
   terminate = vi.fn();
+
   constructor() {
     super(); TestWorker.instances.push(this);
   }
 }
 let root: ReturnType<typeof memoryDirectory>;
+
 function modelFile({ name }: { name: string }): File {
   // Preserve jsdom's File identity for the real wire schemas, while supplying
   // the Blob streaming methods that jsdom does not implement.
@@ -34,9 +40,11 @@ function modelFile({ name }: { name: string }): File {
   });
   return file;
 }
+
 async function userFolder() {
   return (await root.getDirectoryHandle('models', { create: true })).getDirectoryHandle('user', { create: true });
 }
+
 beforeEach(() => {
   vi.clearAllMocks(); TestWorker.instances = []; root = memoryDirectory({ name: '' });
   vi.stubGlobal('Worker', TestWorker);
@@ -44,6 +52,7 @@ beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {});
   transport.remote = createWorkerApi();
 });
+
 afterEach(() => {
   llamaCppBrowserService.release(); vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
@@ -52,9 +61,11 @@ describe('local import cancellation through service and Worker boundaries', () =
   it.each(['file', 'folder'] as const)('cancels a %s copy, removes partial data, and imports the identical selection again', async kind => {
     const file = modelFile({ name: 'same.gguf' }); const controller = new AbortController();
     const imported = vi.fn(); const unsubscribeModels = llamaCppBrowserService.subscribeModelList({ listener: imported });
-    const unsubscribe = llamaCppBrowserService.subscribe({ listener: ({ state }) => {
-      if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) controller.abort();
-    } });
+    const unsubscribe = llamaCppBrowserService.subscribe({
+      listener: ({ state }) => {
+        if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) controller.abort();
+      },
+    });
     const copy = ({ signal }: { signal: AbortSignal | undefined }) => {
       switch (kind) {
       case 'file': return llamaCppBrowserService.importModel({ file, signal });
@@ -78,6 +89,7 @@ describe('local import cancellation through service and Worker boundaries', () =
       unsubscribe(); unsubscribeModels();
     }
   });
+
   it('keeps a second import queued until the cancelled copy has finished deleting its destination', async () => {
     const file = modelFile({ name: 'same.gguf' }); const controller = new AbortController();
     const user = await userFolder(); const rollback = Promise.withResolvers<void>(); const entered = Promise.withResolvers<void>();
@@ -85,9 +97,11 @@ describe('local import cancellation through service and Worker boundaries', () =
     vi.spyOn(user, 'removeEntry').mockImplementationOnce(async (name, options) => {
       entered.resolve(); await rollback.promise; await remove(name, options);
     });
-    const unsubscribe = llamaCppBrowserService.subscribe({ listener: ({ state }) => {
-      if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) controller.abort();
-    } });
+    const unsubscribe = llamaCppBrowserService.subscribe({
+      listener: ({ state }) => {
+        if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) controller.abort();
+      },
+    });
     try {
       let settled = false;
       const first = llamaCppBrowserService.importModel({ file, signal: controller.signal }).finally(() => {
@@ -106,6 +120,7 @@ describe('local import cancellation through service and Worker boundaries', () =
       rollback.resolve(); unsubscribe();
     }
   });
+
   it('retries an empty single-file placeholder left by the previous forced-termination implementation', async () => {
     const file = modelFile({ name: 'same.gguf' }); const user = await userFolder();
     const folder = await user.getDirectoryHandle('same-GGUF', { create: true });

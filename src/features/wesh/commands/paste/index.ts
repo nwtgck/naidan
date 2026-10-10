@@ -303,8 +303,10 @@ export const pasteCommandImplementation: WeshCommandImplementation = {
       switch (source.kind) {
       case 'directory': {
         exitCode = 1;
-        await context.text().error({ text: `paste: ${file}: Is a directory
-` });
+        await context.text().error({
+          text: `paste: ${file}: Is a directory
+`,
+        });
         const iterator = emptyPasteRecords()[Symbol.asyncIterator]();
         return { iterator, stdinIterator };
       }

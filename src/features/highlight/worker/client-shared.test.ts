@@ -37,7 +37,6 @@ describe('shared highlight worker client leases', () => {
     expect(client.dispose).toHaveBeenCalledOnce();
   });
 
-
   it('keeps the client alive while a resolved second acquisition is still pending', async () => {
     const client = {
       highlight: vi.fn(),

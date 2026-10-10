@@ -214,21 +214,30 @@ echo hello
   });
 
   it('recognizes a shell script only when the shebang starts the file', async () => {
-    await writeFile({ path: '/direct.sh', data: `\
+    await writeFile({
+      path: '/direct.sh',
+      data: `\
 #!/bin/sh
 echo ok
-` });
+`,
+    });
     await writeFile({ path: '/bom.sh', data: '\uFEFF#!/bin/sh\necho ok\n' });
-    await writeFile({ path: '/space.sh', data: `\
+    await writeFile({
+      path: '/space.sh',
+      data: `\
  #!/bin/sh
 echo ok
-` });
+`,
+    });
     await writeFile({ path: '/tab.sh', data: '\t#!/bin/sh\necho ok\n' });
-    await writeFile({ path: '/newline.sh', data: `\
+    await writeFile({
+      path: '/newline.sh',
+      data: `\
 
 #!/bin/sh
 echo ok
-` });
+`,
+    });
     await writeFile({ path: '/nbsp.sh', data: '\u00A0#!/bin/sh\necho ok\n' });
     await writeFile({ path: '/em-space.sh', data: '\u2003#!/bin/sh\necho ok\n' });
 
@@ -422,9 +431,12 @@ ASCII text, with CR line terminators
 
   it('adds computed text qualifiers to structured documents and executable scripts', async () => {
     await writeFile({ path: '/no-eol.html', data: '<html><body>x</body></html>' });
-    await writeFile({ path: '/crlf.xml', data: `\
+    await writeFile({
+      path: '/crlf.xml',
+      data: `\
 <?xml version="1.0"?>\r
-<root/>` });
+<root/>`,
+    });
     await writeFile({ path: '/escape.svg', data: '<svg>\u001B</svg>\n' });
     await writeFile({ path: '/cr-script.sh', data: '#!/bin/sh\recho ok\r' });
 
@@ -532,7 +544,6 @@ printf 'alpha
     expect(directoryMime.stderr.text).toBe('');
     expect(directoryMime.result.exitCode).toBe(0);
   });
-
 
   it('separates MIME type and encoding output', async () => {
     await writeFile({ path: '/plain.txt', data: 'alpha\n' });
@@ -677,7 +688,6 @@ version="1.0"?><root/>`],
     expect(result.result.exitCode).toBe(0);
   });
 
-
   it('distinguishes named and standard-input empty MIME types', async () => {
     await writeFile({ path: '/empty', data: '' });
 
@@ -737,7 +747,6 @@ empty: empty
     expect(result.result.exitCode).toBe(0);
   });
 
-
   it('uses terminal display width when aligning Unicode operands', async () => {
     await writeFile({ path: '/a', data: 'alpha\n' });
     await writeFile({ path: '/é', data: 'alpha\n' });
@@ -759,5 +768,4 @@ é:   ASCII text
     expect(result.stderr.text).toBe('');
     expect(result.result.exitCode).toBe(0);
   });
-
 });

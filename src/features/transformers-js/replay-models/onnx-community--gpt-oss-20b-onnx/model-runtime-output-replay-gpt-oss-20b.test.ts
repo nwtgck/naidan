@@ -7,6 +7,7 @@ import type { InferenceGenerationEvent } from '@/features/transformers-js/genera
 
 const modelId = 'onnx-community/gpt-oss-20b-ONNX';
 installRawReplay({ evidence: undefined });
+
 afterEach(() => {
   vi.doUnmock('@huggingface/transformers'); vi.resetModules();
 });
@@ -16,18 +17,25 @@ describe('GPT-OSS native output with the Production TextStreamer and original to
     const archive = await archiveFor({ modelId });
     const { harness } = await start({ archive, bodyPaths: [] });
     const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(modelId, {
-      revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined,
+      revision: archive.summary.revision,
+      local_files_only: true,
+      progress_callback: () => undefined,
     });
     // Import the same adapter against the actual, freshly evaluated Production
     // artifact. No fake TextStreamer, session or model output is used below.
     vi.doMock('@huggingface/transformers', () => harness.runtime);
     const { NativeProtocolStreamer } = await import('@/features/transformers-js/models/native-protocol-streamer');
     const events: InferenceGenerationEvent[] = [];
-    const parser = createGptOssGeneration({ emit: ({ event }) => {
-      events.push(event);
-    } });
-    const streamer = new NativeProtocolStreamer({ protocolTokens: undefined, tokenizer: tokenizer as unknown as ConstructorParameters<typeof NativeProtocolStreamer>[0]['tokenizer'],
-      onText: ({ text }) => parser.text({ text }), onControl: ({ token }) => parser.control({ token }),
+    const parser = createGptOssGeneration({
+      emit: ({ event }) => {
+        events.push(event);
+      },
+    });
+    const streamer = new NativeProtocolStreamer({
+      protocolTokens: undefined,
+      tokenizer: tokenizer as unknown as ConstructorParameters<typeof NativeProtocolStreamer>[0]['tokenizer'],
+      onText: ({ text }) => parser.text({ text }),
+      onControl: ({ token }) => parser.control({ token }),
     });
     const prompt = tokenizer.encode('<|start|>assistant', { add_special_tokens: false }).map(BigInt);
     // Synthetic generation IDs, not a captured inference. The framing/text
@@ -54,7 +62,9 @@ describe('GPT-OSS native output with the Production TextStreamer and original to
     const archive = await archiveFor({ modelId });
     const { harness } = await start({ archive, bodyPaths: [] });
     const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(modelId, {
-      revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined,
+      revision: archive.summary.revision,
+      local_files_only: true,
+      progress_callback: () => undefined,
     });
     vi.doMock('@huggingface/transformers', () => harness.runtime);
     const { generateGptOss } = await import('@/features/transformers-js/models/gpt-oss');
@@ -78,14 +88,22 @@ describe('GPT-OSS native output with the Production TextStreamer and original to
       model: { config: {} } as Parameters<typeof generateGptOss>[0]['model'],
       tokenizer: tokenizer as unknown as Parameters<typeof generateGptOss>[0]['tokenizer'],
       messages: [{ role: 'user', content: 'Run the synthetic example.' }],
-      onChunk, onToolCalls, params: undefined, tools: undefined,
-      pastKeyValues: undefined, continuationOwner: undefined, stoppingCriteria,
-      onInputPrepared: undefined, onGenerationEvent: ({ event }) => {
+      onChunk,
+      onToolCalls,
+      params: undefined,
+      tools: undefined,
+      pastKeyValues: undefined,
+      continuationOwner: undefined,
+      stoppingCriteria,
+      onInputPrepared: undefined,
+      onGenerationEvent: ({ event }) => {
         events.push(event);
       },
       generateWithModel: async ({ streamer }) => {
         expect(streamer).toBeInstanceOf(NativeProtocolStreamer);
-        const observation = observeNativeStreamer({ streamer, streamerPrototype: NativeProtocolStreamer.prototype,
+        const observation = observeNativeStreamer({
+          streamer,
+          streamerPrototype: NativeProtocolStreamer.prototype,
           capture: { setNativeStreamAvailability, recordNativeStream },
         });
         try {
@@ -128,5 +146,4 @@ A  `);
     }
     expect(harness.sessions).not.toHaveBeenCalled(); expect(harness.bodyReads).toEqual([]); expect(harness.transport).not.toHaveBeenCalled();
   }, 20_000);
-
 });

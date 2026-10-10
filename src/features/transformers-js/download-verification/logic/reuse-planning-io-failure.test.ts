@@ -28,6 +28,7 @@ vi.mock('@huggingface/transformers', () => ({
   },
   InterruptableStoppingCriteria: class {
     reset() {}
+
     interrupt() {}
   },
   StoppingCriteriaList: class extends Array {},
@@ -37,7 +38,9 @@ vi.mock('@huggingface/transformers', () => ({
 }));
 vi.mock('@/features/transformers-js/runtime/production-resource-selector', () => ({
   selectProductionModelResources: ({ candidate }: { candidate: { dtype: string } }) => ({
-    className: 'SyntheticPlanningIoModel', sessions: [], paths: [`onnx/model_${candidate.dtype}.onnx`],
+    className: 'SyntheticPlanningIoModel',
+    sessions: [],
+    paths: [`onnx/model_${candidate.dtype}.onnx`],
   }),
 }));
 vi.mock('@/utils/worker-transport', async importOriginal => ({
@@ -127,14 +130,19 @@ it('stops revision reuse after an exact candidate-plan OPFS I/O failure instead 
   });
   const dispose = vi.fn(async () => {});
   vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue({
-    verifyDownloadedModelRevision, verifyDownloadedModelCandidate: vi.fn(), dispose,
+    verifyDownloadedModelRevision,
+    verifyDownloadedModelCandidate: vi.fn(),
+    dispose,
   });
   const startFreshDownload = vi.fn();
   const result = await (async () => {
     const reuse = await reuseDownloadedProductionRevision({
-      modelId, resolvedRevision: revision, storageRoot: fs.root,
+      modelId,
+      resolvedRevision: revision,
+      storageRoot: fs.root,
       inspectCachedRevisions: async () => ({
-        modelId, normalizedModelId: modelId,
+        modelId,
+        normalizedModelId: modelId,
         revisions: [
           { revision, kind: 'immutable-sha', totalBytes: 3, fileCount: 1, completionMarkerCount: 1, incompleteFileCount: 0, zeroByteFileCount: 0, weightFileCount: 1, committedWeightFileCount: 1, lastModified: 2, status: 'committed-file-set' },
           { revision: 'main', kind: 'legacy-main', totalBytes: 3, fileCount: 1, completionMarkerCount: 1, incompleteFileCount: 0, zeroByteFileCount: 0, weightFileCount: 1, committedWeightFileCount: 1, lastModified: 1, status: 'committed-file-set' },

@@ -30,6 +30,10 @@ export const StorageChangeEventSchema = z.discriminatedUnion('type', [
     type: z.literal('migration'),
     timestamp: z.number(),
   }),
+  z.object({
+    type: z.literal('naidan_rpc_registry'),
+    timestamp: z.number(),
+  }),
 ]);
 
 export type StorageChangeEvent = z.infer<typeof StorageChangeEventSchema>;

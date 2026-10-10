@@ -1,3 +1,4 @@
+import { memoryDiagnosticsHistories, TEST_ONLY as memoryHistoryTest } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { createAudioPreviewRequests } from '@/features/audio-generation/preview-requests';
 import type { AudioPreviewEvent } from '@/features/audio-generation/types';
 import { audioResult } from '@/features/audio-generation/test-utils/wav';
@@ -6,30 +7,63 @@ import type { Progress } from '@/features/llama-cpp-browser/types';
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-browser/types';
+import { performanceReport } from '@/features/llama-cpp-browser/test-utils/performance';
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { createLlamaCppWorkerClient } from './client-hosted';
-const transport = vi.hoisted(() => ({ remote: { prepareModel: vi.fn(), requestAudioPreview: vi.fn(async () => {}), finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
-vi.mock('@/utils/worker-transport', () => ({ wrapWorkerRemote: () => transport.remote,
-  releaseWorkerRemote: transport.release, workerProxy: ({ value }: { value: unknown }) => value }));
+const transport = vi.hoisted(() => ({ remote: { release: vi.fn(), prepareModel: vi.fn(), requestAudioPreview: vi.fn(async () => {}), finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));
+vi.mock('@/utils/worker-transport', async importOriginal => ({
+  ...await importOriginal<typeof import('@/utils/worker-transport')>(),
+  wrapWorkerRemote: () => transport.remote,
+  releaseWorkerRemote: transport.release,
+  workerProxy: ({ value }: { value: unknown }) => value,
+}));
 class TestWorker extends EventTarget {
+  postMessage = vi.fn();
   static instances: TestWorker[] = [];
   terminate = vi.fn();
+
   constructor() {
     super(); TestWorker.instances.push(this);
   }
 }
+
 beforeEach(() => {
+  memoryHistoryTest.reset();
   vi.clearAllMocks(); TestWorker.instances = [];
   vi.stubGlobal('Worker', TestWorker);
+  transport.remote.release.mockReset(); transport.remote.release.mockResolvedValue(undefined);
   transport.remote.listModels.mockResolvedValue([]);
   transport.remote.cancelGeneration.mockResolvedValue(undefined); transport.remote.finishAudioGeneration.mockReset(); transport.remote.finishAudioGeneration.mockResolvedValue(undefined);
   transport.remote.generate.mockReset(); transport.remote.generateAudio.mockReset(); transport.remote.generateAudio.mockResolvedValue(audioResult());
   transport.remote.importModel.mockReset(); transport.remote.importDirectory.mockReset();
 });
+
 afterEach(() => {
   vi.unstubAllGlobals(); vi.useRealTimers();
 });
+
 describe('hosted Worker lifetime', () => {
+  it('passively receives memory checkpoints without calling the worker API', () => {
+    const client = createLlamaCppWorkerClient();
+    const worker = TestWorker.instances[0]!;
+    worker.dispatchEvent(new MessageEvent('message', {
+      data: {
+        kind: 'naidan-llama-cpp-memory',
+        instanceId: 'core-one',
+        profile: 'cpu-wasm64',
+        checkpoint: 'runtime-ready',
+        capacityBytes: 2 ** 33,
+        timestamp: 1000,
+      },
+    }));
+    expect(memoryDiagnosticsHistories.value[0]?.samples[0]?.capacityBytes).toBe(2 ** 33);
+    expect(transport.remote.prepareModel).not.toHaveBeenCalled();
+    expect(transport.remote.generate).not.toHaveBeenCalled();
+    expect(transport.remote.probeProfiles).not.toHaveBeenCalled();
+    client.dispose();
+    expect(memoryDiagnosticsHistories.value[0]?.status).toBe('worker-ended');
+  });
+
   it('validates capability reports and notifies session observers once when the Worker dies', async () => {
     const report = { recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] };
     transport.remote.probeProfiles.mockResolvedValueOnce(report);
@@ -42,11 +76,13 @@ describe('hosted Worker lifetime', () => {
     expect(disposed).toHaveBeenCalledOnce(); client.dispose(); expect(disposed).toHaveBeenCalledOnce();
     const late = vi.fn(); client.subscribeDisposed({ listener: late }); expect(late).toHaveBeenCalledOnce();
   });
+
   it('rejects unresolved automatic selection before a generation RPC', async () => {
     const client = createLlamaCppWorkerClient();
     await expect(client.generate({ request: { ...generationInput(), options: { profile: 'auto' } }, onEvent: () => {}, onProgress: () => {}, signal: undefined })).rejects.toThrow();
     expect(transport.remote.generate).not.toHaveBeenCalled(); client.dispose();
   });
+
   it('does not construct a Worker when the platform has no Worker support', async () => {
     vi.stubGlobal('Worker', undefined);
     const client = createLlamaCppWorkerClient();
@@ -54,6 +90,7 @@ describe('hosted Worker lifetime', () => {
     expect(TestWorker.instances).toHaveLength(0);
     client.dispose();
   });
+
   it('rejects a pending call immediately when its signal aborts and terminates the Worker once', async () => {
     transport.remote.listModels.mockImplementation(() => new Promise(() => {}));
     const client = createLlamaCppWorkerClient(); const controller = new AbortController();
@@ -66,6 +103,7 @@ describe('hosted Worker lifetime', () => {
     expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce();
     await expect(client.listModels({ signal: undefined })).rejects.toThrow('worker-failed');
   });
+
   it('rejects pending work on a Worker error without exposing the native error message', async () => {
     transport.remote.listModels.mockImplementation(() => new Promise(() => {}));
     const client = createLlamaCppWorkerClient(); const pending = client.listModels({ signal: undefined });
@@ -73,12 +111,14 @@ describe('hosted Worker lifetime', () => {
     await expect(pending).rejects.toThrow('llama.cpp browser: worker-failed');
     expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce();
   });
+
   it('rejects overlapping operations instead of sharing unsafe native state', async () => {
     transport.remote.listModels.mockImplementation(() => new Promise(() => {}));
     const client = createLlamaCppWorkerClient(); const first = client.listModels({ signal: undefined });
     await expect(client.listModels({ signal: undefined })).rejects.toThrow('busy');
     client.dispose(); await expect(first).rejects.toThrow('worker-failed');
   });
+
   it('transmits the confirmed deletion plan and validates the deletion result', async () => {
     const client = createLlamaCppWorkerClient();
     const plan = { id: 'hf.co/owner/repo', files: [{ path: 'nested/model.gguf', size: 128, lastModified: 1 }] };
@@ -89,6 +129,7 @@ describe('hosted Worker lifetime', () => {
     await expect(client.removeModel({ plan, signal: undefined })).rejects.toThrow();
     client.dispose();
   });
+
   it('validates model inventory received from the Worker', async () => {
     transport.remote.listModels.mockResolvedValue([{ id: '../invalid', name: 'private.gguf', size: 1, importedAt: 0 }]);
     const client = createLlamaCppWorkerClient();
@@ -98,9 +139,19 @@ describe('hosted Worker lifetime', () => {
 });
 
 function generationInput(): GenerateInput {
-  return { model: 'local.gguf', messages: [{ role: 'user', content: 'private prompt' }], temperature: 0,
-    topP: 1, maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: 'cpu-wasm32' } };
+  return {
+    model: 'local.gguf',
+    messages: [{ role: 'user', content: 'private prompt' }],
+    temperature: 0,
+    topP: 1,
+    maxTokens: 5,
+    presencePenalty: 0,
+    frequencyPenalty: 0,
+    stop: [],
+    options: { profile: 'cpu-wasm32' },
+  };
 }
+
 describe('cooperative generation cancellation', () => {
   it('waits for native cleanup, preserves the Worker, and suppresses cancelled or late events', async () => {
     let finish: () => void = () => {};
@@ -126,6 +177,7 @@ describe('cooperative generation cancellation', () => {
     onProgress({ phase: 'loading', completed: 1, total: 1 }); expect(progress).not.toHaveBeenCalled();
     expect(TestWorker.instances).toHaveLength(1); client.dispose();
   });
+
   it('terminates a Worker only when cooperative cancellation does not settle within the grace period', async () => {
     vi.useFakeTimers();
     transport.remote.generate.mockImplementationOnce(() => new Promise<void>(() => {}));
@@ -137,6 +189,7 @@ describe('cooperative generation cancellation', () => {
     await vi.advanceTimersByTimeAsync(1); await rejected;
     expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce(); expect(client.canReuse()).toBe(false);
   });
+
   it('resets a Worker on a cancellation transport failure', async () => {
     transport.remote.generate.mockImplementationOnce(() => new Promise<void>(() => {}));
     transport.remote.cancelGeneration.mockRejectedValueOnce(new Error('private transport detail'));
@@ -145,6 +198,7 @@ describe('cooperative generation cancellation', () => {
     const rejected = expect(pending).rejects.toThrow('aborted');
     controller.abort(); await rejected; expect(client.canReuse()).toBe(false);
   });
+
   it('preserves the Worker after a cooperatively aborted native request', async () => {
     transport.remote.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'aborted' }));
     const client = createLlamaCppWorkerClient();
@@ -213,6 +267,7 @@ describe('host snapshots of native operations', () => {
     expect(readDiagnostics({ calls: debug.mock.calls }).at(-1)).toEqual(expect.objectContaining({ event: 'failed', nativeNode: 42, nativeTensorShape: [768, 240, 1, 1] }));
     debug.mockRestore();
   });
+
   it('keeps a failure checkpoint with debug off without emitting periodic wait details', async () => {
     vi.useFakeTimers(); const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     transport.remote.generate.mockImplementation((_request, _onChunk, _onProgress, onDiagnostic) => {
@@ -228,6 +283,7 @@ describe('host snapshots of native operations', () => {
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'failed', lastStage: 'media-encode', nativeOperation: 'copy-image', imageWidth: 328, imageHeight: 92 }));
     debug.mockRestore();
   });
+
   it('retains native batch details and monitors the outer helper after an inner operation completes', async () => {
     vi.useFakeTimers(); const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     let report: ({ diagnostic }: { diagnostic: Diagnostic }) => void = () => {};
@@ -249,6 +305,7 @@ describe('host snapshots of native operations', () => {
     debug.mockClear(); await vi.advanceTimersByTimeAsync(60000); expect(debug).not.toHaveBeenCalled();
     client.dispose(); await expect(pending).rejects.toThrow('worker-failed'); debug.mockRestore();
   });
+
   it('reports the last checkpoint and known GPU reason when the worker crashes', async () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     transport.remote.generate.mockImplementation((_request, _onChunk, _onProgress, onDiagnostic) => {
@@ -265,6 +322,7 @@ describe('host snapshots of native operations', () => {
     expect(debug.mock.calls).toHaveLength(1); expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
     debug.mockRestore();
   });
+
   it('reports a long native wait without cancelling it and stops reporting after disposal', async () => {
     vi.useFakeTimers(); const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     transport.remote.generate.mockImplementation((_request, _onChunk, _onProgress, onDiagnostic) => {
@@ -279,6 +337,7 @@ describe('host snapshots of native operations', () => {
     client.dispose(); await expect(pending).rejects.toThrow('worker-failed');
     debug.mockClear(); await vi.advanceTimersByTimeAsync(60000); expect(debug).not.toHaveBeenCalled(); debug.mockRestore();
   });
+
   it('classifies a known worker error message without printing its raw contents', async () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     transport.remote.listModels.mockImplementation(() => new Promise(() => {}));
@@ -289,7 +348,6 @@ describe('host snapshots of native operations', () => {
     expect(JSON.stringify(debug.mock.calls)).not.toContain('private'); debug.mockRestore();
   });
 });
-
 
 describe('single-file import cancellation', () => {
   it('keeps the worker and import lane alive until slow rollback completes, then accepts a retry', async () => {
@@ -322,6 +380,7 @@ describe('single-file import cancellation', () => {
     report({ phase: 'importing', completed: 2, total: 2 }); expect(progress).toHaveBeenCalledOnce();
     expect(TestWorker.instances).toHaveLength(1); client.dispose();
   });
+
   it('does not send a cancelled request or accept progress callbacks after successful completion', async () => {
     const client = createLlamaCppWorkerClient(); const controller = new AbortController(); controller.abort();
     const file = new File(['fixture'], 'same.gguf'); const progress = vi.fn();
@@ -332,6 +391,7 @@ describe('single-file import cancellation', () => {
     transport.remote.importModel.mock.calls[0]?.[1]({ phase: 'importing', completed: 7, total: 7 });
     expect(progress).not.toHaveBeenCalled(); expect(client.canReuse()).toBe(true); client.dispose();
   });
+
   it('still rejects cancellation if the worker actually crashes during rollback', async () => {
     transport.remote.importModel.mockImplementationOnce(() => new Promise(() => {}));
     const client = createLlamaCppWorkerClient(); const controller = new AbortController();
@@ -346,21 +406,25 @@ describe('single-file import cancellation', () => {
 function audioInput(): AudioGenerationInput {
   return { ...defaultAudioParameters(), model: 'user/voice', text: 'Hello', options: { profile: 'cpu-wasm32' }, debug: 'off' };
 }
+
 describe('hosted audio transport', () => {
   it('validates and returns WAV output through the dedicated method', async () => {
     const client = createLlamaCppWorkerClient();
     expect(await client.generateAudio({ request: audioInput(), onProgress: () => {}, cancellationSignal: undefined })).toEqual(audioResult());
     expect(transport.remote.generate).not.toHaveBeenCalled(); expect(transport.remote.generateAudio.mock.calls[0]?.[0]).toMatchObject({ generationId: 1, model: 'user/voice' }); client.dispose();
   });
+
   it('rejects unresolved automatic profiles before the audio RPC', async () => {
     const client = createLlamaCppWorkerClient();
     await expect(client.generateAudio({ request: { ...audioInput(), options: { profile: 'auto' } }, onProgress: () => {}, cancellationSignal: undefined })).rejects.toThrow();
     expect(transport.remote.generateAudio).not.toHaveBeenCalled(); client.dispose();
   });
+
   it('rejects malformed results', async () => {
     transport.remote.generateAudio.mockResolvedValueOnce({ ...audioResult(), wav: new Uint8Array(1) }); const client = createLlamaCppWorkerClient();
     await expect(client.generateAudio({ request: audioInput(), onProgress: () => {}, cancellationSignal: undefined })).rejects.toThrow(); client.dispose();
   });
+
   it('waits for cooperative cleanup and suppresses cancelled or stale audio progress', async () => {
     const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); transport.remote.generateAudio.mockReturnValueOnce(gate.promise);
     const client = createLlamaCppWorkerClient(); const controller = new AbortController(); const progress = vi.fn();
@@ -373,6 +437,7 @@ describe('hosted audio transport', () => {
     await client.generateAudio({ request: audioInput(), onProgress: progress, cancellationSignal: undefined });
     onProgress({ phase: 'generating', completed: 2, total: 2 }); expect(progress).not.toHaveBeenCalled(); client.dispose();
   });
+
   it('terminates hung native audio after the existing cancellation grace period', async () => {
     vi.useFakeTimers(); transport.remote.generateAudio.mockReturnValueOnce(new Promise(() => {}));
     const client = createLlamaCppWorkerClient(); const controller = new AbortController();
@@ -381,7 +446,6 @@ describe('hosted audio transport', () => {
     await vi.advanceTimersByTimeAsync(1); await rejected; expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce();
   });
 });
-
 
 describe('hosted audio finish transport', () => {
   it.each([false, true])('posts a finish request after starting the audio RPC (pre-requested: %s)', async preRequested => {
@@ -396,6 +460,7 @@ describe('hosted audio finish transport', () => {
     gate.resolve({ ...audioResult(), finishReason: 'user-stop' });
     expect(await pending).toMatchObject({ finishReason: 'user-stop' }); expect(client.canReuse()).toBe(true); client.dispose();
   });
+
   it('does not arm the five-second cancellation deadline while waveform conversion is pending', async () => {
     vi.useFakeTimers(); const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); transport.remote.generateAudio.mockReturnValueOnce(gate.promise);
     const client = createLlamaCppWorkerClient(); const finish = new AbortController();
@@ -404,6 +469,7 @@ describe('hosted audio finish transport', () => {
     expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled(); expect(transport.remote.cancelGeneration).not.toHaveBeenCalled();
     gate.resolve(audioResult()); await pending; client.dispose();
   });
+
   it('detaches completed request signals and ignores their delayed finish failures', async () => {
     const finishReply = Promise.withResolvers<void>(); transport.remote.finishAudioGeneration.mockReturnValueOnce(finishReply.promise);
     const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); transport.remote.generateAudio.mockReturnValueOnce(gate.promise);
@@ -415,6 +481,7 @@ describe('hosted audio finish transport', () => {
     finishReply.reject(new Error('late old RPC failure')); await Promise.resolve();
     expect(client.canReuse()).toBe(true); expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled(); client.dispose();
   });
+
   it('can still cancel and discard after asking for a partial result', async () => {
     const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); transport.remote.generateAudio.mockReturnValueOnce(gate.promise);
     const client = createLlamaCppWorkerClient(); const finish = new AbortController(); const abort = new AbortController();
@@ -424,7 +491,6 @@ describe('hosted audio finish transport', () => {
     gate.resolve({ ...audioResult(), finishReason: 'user-stop' }); await rejected; client.dispose();
   });
 });
-
 
 describe('generation-scoped preview delivery', () => {
   it('forwards repeated and already-queued requests without ending generation or arming cancellation', async () => {
@@ -437,7 +503,7 @@ describe('generation-scoped preview delivery', () => {
     const deliver = transport.remote.generateAudio.mock.calls.at(-1)![3] as (event: AudioPreviewEvent) => Promise<void>;
     const preview = { ...audioResult(), frames: 72, finishReason: 'preview' as const };
     await deliver({ result: preview, requestVersion: 1 }); await deliver({ result: preview, requestVersion: 1 });
-    expect(onPreview).toHaveBeenCalledOnce(); captures.request();
+    expect(onPreview).toHaveBeenCalledExactlyOnceWith({ event: { result: preview, requestVersion: 1 } }); captures.request();
     expect(transport.remote.requestAudioPreview).toHaveBeenLastCalledWith({ generationId: 1, requestVersion: 2 });
     expect(transport.remote.finishAudioGeneration).not.toHaveBeenCalled(); expect(transport.remote.cancelGeneration).not.toHaveBeenCalled();
     gate.resolve(audioResult()); await pending;
@@ -446,6 +512,7 @@ describe('generation-scoped preview delivery', () => {
     expect(onPreview).toHaveBeenCalledOnce(); expect(transport.remote.requestAudioPreview).toHaveBeenCalledTimes(calls);
     client.dispose();
   });
+
   it('ignores delayed previews after cancellation and rejects malformed or unrequested outputs', async () => {
     const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); transport.remote.generateAudio.mockReturnValueOnce(gate.promise);
     const client = createLlamaCppWorkerClient(); const captures = createAudioPreviewRequests(); const abort = new AbortController(); const onPreview = vi.fn();
@@ -457,6 +524,7 @@ describe('generation-scoped preview delivery', () => {
     abort.abort(); await deliver({ result: { ...audioResult(), finishReason: 'preview' }, requestVersion: 1 });
     expect(onPreview).not.toHaveBeenCalled(); gate.resolve(audioResult()); await expect(pending).rejects.toThrow('aborted'); client.dispose();
   });
+
   it('does not dispose a subsequent owner when an old preview control fails late', async () => {
     const control = Promise.withResolvers<void>(); transport.remote.requestAudioPreview.mockReturnValueOnce(control.promise);
     const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); transport.remote.generateAudio.mockReturnValueOnce(gate.promise);
@@ -467,7 +535,6 @@ describe('generation-scoped preview delivery', () => {
     expect(client.canReuse()).toBe(true); client.dispose();
   });
 });
-
 
 describe('model preparation transport', () => {
   it('forwards a real prepare request without messages and validates progress', async () => {
@@ -481,6 +548,7 @@ describe('model preparation transport', () => {
     expect(progress).toHaveBeenCalledWith({ progress: { phase: 'loading', completed: 1, total: 2 } });
     expect(transport.remote.generate).not.toHaveBeenCalled(); client.dispose();
   });
+
   it('requests targeted cancellation and waits for the preparation operation to settle', async () => {
     const gate = Promise.withResolvers<void>(); transport.remote.prepareModel.mockReturnValueOnce(gate.promise);
     const client = createLlamaCppWorkerClient(); const controller = new AbortController();
@@ -488,5 +556,75 @@ describe('model preparation transport', () => {
     const rejected = expect(pending).rejects.toThrow('aborted');
     controller.abort(); expect(transport.remote.cancelGeneration).toHaveBeenCalledWith({ generationId: transport.remote.prepareModel.mock.calls[0]![0].generationId });
     gate.resolve(); await rejected; expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled(); client.dispose();
+  });
+});
+
+describe('measured session client', () => {
+  it('forwards terminal evidence after Stop and ignores it after the request settles', async () => {
+    const client = createLlamaCppWorkerClient(), control = new AbortController(), receive = vi.fn();
+    let late: ((args: { diagnostic: Diagnostic }) => void) | undefined;
+    transport.remote.generate.mockImplementationOnce(async (_request, _event, _progress, _diagnostic, summary) => {
+      late = summary; control.abort();
+      summary({ diagnostic: performanceReport({ outcome: 'aborted' }) });
+      throw new LlamaCppBrowserError({ code: 'aborted' });
+    });
+    await expect(client.generate({ request: { ...generationInput(), measurement: { sequence: 'fresh' } }, onEvent: () => {}, onProgress: () => {}, onSummary: receive, signal: control.signal })).rejects.toThrow('aborted');
+    expect(receive).toHaveBeenCalledOnce();
+    late!({ diagnostic: performanceReport() }); expect(receive).toHaveBeenCalledOnce(); client.dispose();
+  });
+
+  it('waits for native release and terminates a release that never returns', async () => {
+    vi.useFakeTimers(); const client = createLlamaCppWorkerClient();
+    transport.remote.release.mockReturnValueOnce(new Promise(() => {}));
+    const rejected = expect(client.releaseRuntime({ signal: undefined })).rejects.toThrow('aborted');
+    await vi.advanceTimersByTimeAsync(10000); await rejected;
+    expect(client.canReuse()).toBe(false); expect(TestWorker.instances[0]?.terminate).toHaveBeenCalledOnce();
+  });
+});
+
+describe('measured partial memory evidence', () => {
+  const sample = { kind: 'naidan-llama-cpp-memory', instanceId: 'core-one', profile: 'cpu-wasm32', checkpoint: 'model-load-failed', capacityBytes: 65536, timestamp: 100 };
+
+  it.each(['failure', 'dispose', 'timeout'] as const)('preserves received memory after %s without a terminal summary', async mode => {
+    vi.useFakeTimers();
+    const client = createLlamaCppWorkerClient(), control = new AbortController(), receive = vi.fn();
+    let late: ((args: { diagnostic: Diagnostic }) => void) | undefined;
+    transport.remote.generate.mockImplementationOnce(async (_request, _event, _progress, diagnostic) => {
+      late = diagnostic;
+      TestWorker.instances[0]!.dispatchEvent(new MessageEvent('message', { data: sample }));
+      diagnostic({ diagnostic: { event: 'native-info', nativeMetric: 'model_buffer_mib', nativeBackend: 'WebGPU', nativeValue: 12.25 } });
+      if (mode === 'failure') throw new LlamaCppBrowserError({ code: 'missing-model' });
+      return new Promise(() => {});
+    });
+    const pending = client.generate({ request: { ...generationInput(), measurement: { sequence: 'fresh' } }, onEvent: () => {}, onProgress: () => {}, onMemoryDiagnostics: receive, signal: control.signal });
+    const rejected = expect(pending).rejects.toThrow();
+    if (mode === 'dispose') client.dispose();
+    if (mode === 'timeout') {
+      control.abort(); await vi.advanceTimersByTimeAsync(5000);
+    }
+    await rejected;
+    expect(receive).toHaveBeenCalledOnce();
+    const memory = receive.mock.calls[0]![0].memory;
+    expect(memory.samples).toEqual([sample]); expect(memory.nativeAllocations).toMatchObject([{ nativeMetric: 'model_buffer_mib', nativeValue: 12.25 }]);
+    late!({ diagnostic: { event: 'native-info', nativeMetric: 'kv_buffer_mib', nativeBackend: 'WebGPU', nativeValue: 99 } });
+    TestWorker.instances[0]!.dispatchEvent(new MessageEvent('message', { data: sample }));
+    expect(memory.samples).toHaveLength(1); expect(memory.nativeAllocations).toHaveLength(1); client.dispose();
+  });
+
+  it('does not let an observer failure replace success or the original load failure', async () => {
+    const client = createLlamaCppWorkerClient();
+    const args = {
+      request: { ...generationInput(), measurement: { sequence: 'fresh' as const } },
+      onEvent: () => {},
+      onProgress: () => {},
+      onMemoryDiagnostics: () => {
+        throw new Error('observer');
+      },
+      signal: undefined,
+    };
+    transport.remote.generate.mockResolvedValueOnce({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+    await expect(client.generate(args)).resolves.toMatchObject({ finishReason: 'stop' });
+    transport.remote.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'missing-model' }));
+    await expect(client.generate(args)).rejects.toThrow('missing-model'); client.dispose();
   });
 });

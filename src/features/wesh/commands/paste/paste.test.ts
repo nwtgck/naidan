@@ -145,23 +145,35 @@ right
   });
 
   it('cycles multibyte delimiter arguments byte by byte', async () => {
-    await writeFile({ path: 'records', data: `\
+    await writeFile({
+      path: 'records',
+      data: `\
 a
 b
 c
-` });
-    await writeFile({ path: 'left', data: `\
+`,
+    });
+    await writeFile({
+      path: 'left',
+      data: `\
 a
 b
-` });
-    await writeFile({ path: 'middle', data: `\
+`,
+    });
+    await writeFile({
+      path: 'middle',
+      data: `\
 1
 2
-` });
-    await writeFile({ path: 'right', data: `\
+`,
+    });
+    await writeFile({
+      path: 'right',
+      data: `\
 x
 y
-` });
+`,
+    });
 
     const supplementary = await execute({ script: "paste -s -d '😀' records" });
     const multibyteCycle = await execute({ script: "paste -s -d 'éX' records" });
@@ -261,10 +273,13 @@ y
   });
 
   it('continues serial processing after missing operands and diagnoses the actual operand', async () => {
-    await writeFile({ path: 'g1', data: `\
+    await writeFile({
+      path: 'g1',
+      data: `\
 a
 b
-` });
+`,
+    });
     await writeFile({ path: 'g2', data: 'c\n' });
 
     const middleMissing = await execute({ script: 'paste -s g1 missing g2' });

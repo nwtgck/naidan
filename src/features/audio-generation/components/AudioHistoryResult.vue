@@ -11,6 +11,7 @@ const player = ref<HTMLAudioElement>();
 const fullText = ref<HTMLElement>();
 const copyState = ref<'idle' | 'copying' | 'copied' | 'failed'>('idle');
 let disposed = false;
+
 async function copyText(): Promise<void> {
   const status = copyState.value;
   switch (status) {
@@ -35,6 +36,7 @@ async function copyText(): Promise<void> {
     }
   }
 }
+
 const language = computed(() => {
   const code = props.entry.settings.language;
   switch (code) {

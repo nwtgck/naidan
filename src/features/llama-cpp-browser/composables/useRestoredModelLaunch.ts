@@ -64,9 +64,16 @@ export function useRestoredModelLaunch({ chat, resolved }: {
   function retryRestoration(): void {
     retry.value++;
   }
-  return { launch, view, isCurrentRoute, restoration, retryRestoration, synchronize,
+  return {
+    launch,
+    view,
+    isCurrentRoute,
+    restoration,
+    retryRestoration,
+    synchronize,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
   };
 }
+
 export const TEST_ONLY = {
 };

@@ -1,4 +1,5 @@
 import { OPFS_MODELS_DIR } from '@/constants';
+
 function isNotFoundError({ error }: { error: unknown }): boolean {
   return error instanceof DOMException
     ? error.name === "NotFoundError"

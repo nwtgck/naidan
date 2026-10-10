@@ -62,6 +62,7 @@ beforeEach(() => {
   boundary.prepare.mockRejectedValue(new Error('Unexpected fresh preparation in revision fixture'));
   vi.stubGlobal('self', { location: { origin: 'http://localhost' } });
 });
+
 afterEach(() => vi.unstubAllGlobals());
 
 function fixture() {

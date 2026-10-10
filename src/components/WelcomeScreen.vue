@@ -127,8 +127,8 @@ defineExpose({
 
       </slot>
 
-      <!-- Ordinary missing-model recovery is supplemental. It never owns the
-           composer visibility or replaces the usual privacy welcome content. -->
+      <!-- Supplemental notices never own composer visibility or replace the
+           primary content. Keep the slot absent when there is nothing to show. -->
       <slot name="notice" />
 
       <!-- Minimal Discovery Links -->

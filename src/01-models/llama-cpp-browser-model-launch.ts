@@ -9,6 +9,7 @@ export function isModelSourceSegment({ name }: { name: string }): boolean {
     && !Array.from(name).some(character => character.charCodeAt(0) < 32)
     && new TextEncoder().encode(name).length <= 255;
 }
+
 export const modelSourceRepositorySchema = z.string()
   .regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/)
   .refine(value => value.split('/').every(name => isModelSourceSegment({ name })));
@@ -51,9 +52,11 @@ export type ChatModelLaunch = {
   chatGroupId: ChatGroupId,
   phase: ModelLaunchPhase,
 };
+
 export async function modelLaunchChatGroupPrefix({ modelId }: { modelId: string }): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(modelId));
   return `model-launch-${Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')}`;
 }
+
 export const TEST_ONLY = {
 };

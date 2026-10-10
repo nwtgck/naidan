@@ -30,10 +30,12 @@ watch([() => props.job.id, plan], () => {
   generation++; open.value = false; copyState.value = undefined;
 });
 onScopeDispose(() => generation++);
+
 function close(): void {
   if (!open.value) return;
   open.value = false; trigger.value?.focus();
 }
+
 async function copyUrl({ url }: { url: string }): Promise<void> {
   const operation = ++generation;
   copyState.value = undefined;
@@ -44,6 +46,7 @@ async function copyUrl({ url }: { url: string }): Promise<void> {
     if (operation === generation) copyState.value = { url, status: 'failed' };
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

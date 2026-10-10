@@ -56,7 +56,9 @@ async function fixtureWorker() {
     }
   }
   vi.doMock('@huggingface/transformers', () => ({
-    env, AutoConfig: { from_pretrained: config }, AutoTokenizer: { from_pretrained: tokenizer },
+    env,
+    AutoConfig: { from_pretrained: config },
+    AutoTokenizer: { from_pretrained: tokenizer },
     AutoProcessor: { from_pretrained: processor },
     ModelRegistry: { get_model_files: async () => ['onnx/model_q4.onnx'] },
     PreTrainedModel: SyntheticGenericModel,
@@ -88,7 +90,8 @@ it('canonicalizes only the known main Range probe and preserves Request/init pre
   const controller = new AbortController();
   h.tokenizer.mockImplementation(async () => {
     const request = new Request(`https://huggingface.co/${modelId}/resolve/main/tokenizer_config.json`, {
-      headers: { Range: 'bytes=7-9', 'X-Fixture': 'original' }, signal: controller.signal,
+      headers: { Range: 'bytes=7-9', 'X-Fixture': 'original' },
+      signal: controller.signal,
     });
     const response = await h.env.fetch(request, { headers: { Range: 'bytes=0-0', 'X-Fixture': 'override' } });
     await response.body?.cancel();
@@ -120,7 +123,8 @@ it('does not let an upstream catch turn a full main request into preparation suc
 it('permits an exact config size probe without persisting its partial response', async () => {
   const h = await fixtureWorker();
   h.network.mockResolvedValue(new Response(Uint8Array.of(123), {
-    status: 206, headers: { 'Content-Length': '1', 'Content-Range': 'bytes 0-0/200' },
+    status: 206,
+    headers: { 'Content-Length': '1', 'Content-Range': 'bytes 0-0/200' },
   }));
   h.tokenizer.mockImplementation(async () => {
     const response = await h.env.fetch(`${base}config.json`, { headers: { Range: 'bytes=0-0' } });

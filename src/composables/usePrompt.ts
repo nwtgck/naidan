@@ -22,7 +22,7 @@ const promptBodyComponent = shallowRef<Component | any | null>(null);
 let resolvePromptPromise: ReturnType<typeof Promise.withResolvers<string | null>>['resolve'] | undefined;
 
 export function usePrompt() {
-  const showPrompt = async ({ title, message, confirmButtonText, cancelButtonText, defaultValue, bodyComponent }: PromptOptions): Promise<string | null> => {
+  const showPrompt = async ({ title, message, confirmButtonText, cancelButtonText, defaultValue, bodyComponent }: { title?: PromptOptions['title'], message?: PromptOptions['message'], confirmButtonText?: PromptOptions['confirmButtonText'], cancelButtonText?: PromptOptions['cancelButtonText'], defaultValue?: PromptOptions['defaultValue'], bodyComponent?: PromptOptions['bodyComponent'] }): Promise<string | null> => {
     const resolvedTitle = title || await ensureStrings.usePrompt__prompt();
     const resolvedConfirmButtonText = confirmButtonText || await ensureStrings.SHARED__confirm();
     const resolvedCancelButtonText = cancelButtonText || await ensureStrings.SHARED__cancel();

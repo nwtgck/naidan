@@ -1,38 +1,63 @@
 import { defineComponent, h } from 'vue';
-import ImageGenerationSidebar from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationSidebar.vue';
-import { useImageGenerationWorkspaceNavigation } from '@/features/stable-diffusion-cpp-browser/session/navigation';
+import ImageGenerationSidebar from '@/features/image-generation/components/ImageGenerationSidebar.vue';
+import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { createMemoryHistory, createRouter, RouterView, type Router } from 'vue-router';
 import { routes } from 'vue-router/auto-routes';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import ImageGenerationLab from '@/features/stable-diffusion-cpp-browser/components/ImageGenerationLab.vue';
+import ImageGenerationLab from '@/features/image-generation/components/ImageGenerationLab.vue';
 import { ggufFile } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 
 const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), inspect: vi.fn() }));
 vi.mock('@/features/stable-diffusion-cpp-browser/inventory-worker/client', () => ({ inspectImageInventory: (...args: unknown[]) => mocks.inspect(...args) }));
 vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify', supportsJspi: () => false, supportsMemory64: () => false }));
-vi.mock('@/features/stable-diffusion-cpp-browser/worker/client', () => ({ createImageClient: () => {
-  mocks.create(); return { generate: mocks.generate, dispose: mocks.dispose, release: mocks.release, cancel() {}, updatePreview() {} };
-} }));
-vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({ default: {
-  kind: 'available', sourceCommit: 'a'.repeat(40), artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`, wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`, schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) }],
-} }));
+vi.mock('@/features/stable-diffusion-cpp-browser/worker/client', () => ({
+  createImageClient: () => {
+    mocks.create(); return { generate: mocks.generate, dispose: mocks.dispose, release: mocks.release, cancel() {}, updatePreview() {} };
+  },
+}));
+vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({
+  default: {
+    kind: 'available',
+    sourceCommit: 'a'.repeat(40),
+    artifacts: [{ profile: 'webgpu-wasm32-asyncify', modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`, wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`, helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`, schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64) }],
+  },
+}));
 let wrapper: VueWrapper | undefined;
 const descriptor = Object.getOwnPropertyDescriptor(navigator, 'gpu');
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   vi.resetAllMocks();
   const file = ggufFile();
-  mocks.inspect.mockResolvedValue({ candidates: [{ id: 'model', repositoryId: 'user/model', path: 'model.gguf', files: [{ path: 'model.gguf', file }], size: file.size,
-    format: 'gguf', family: 'sd-checkpoint', roles: ['model'], classes: [], evidence: [], variant: 'unknown', turboHint: false, issue: undefined }], issues: [] });
+  mocks.inspect.mockResolvedValue({
+    candidates: [{
+      id: 'model',
+      repositoryId: 'user/model',
+      path: 'model.gguf',
+      files: [{ path: 'model.gguf', file }],
+      size: file.size,
+      format: 'gguf',
+      family: 'sd-checkpoint',
+      roles: ['model'],
+      classes: [],
+      evidence: [],
+      variant: 'unknown',
+      turboHint: false,
+      issue: undefined,
+    }],
+    issues: [],
+  });
   vi.stubGlobal('isSecureContext', true); vi.stubGlobal('OffscreenCanvas', class {}); vi.stubGlobal('DecompressionStream', class {});
   Object.defineProperty(navigator, 'gpu', { value: {}, configurable: true });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined; vi.restoreAllMocks(); vi.unstubAllGlobals();
   if (descriptor) Object.defineProperty(navigator, 'gpu', descriptor); else Reflect.deleteProperty(navigator, 'gpu');
 });
+
 async function open({ path }: { path: string }): Promise<Router> {
   // Use the actual file-router record so the alias declaration is exercised.
   const records = routes.filter(route => route.path === '/image-generation');
@@ -43,13 +68,16 @@ async function open({ path }: { path: string }): Promise<Router> {
   expect(records[0]!.children?.find(child => child.path === 'session')?.children?.map(child => child.path)).toEqual([':sessionId']);
   const router = createRouter({ history: createMemoryHistory(), routes: records });
   await router.push(path); await router.isReady();
-  const surface = defineComponent({ setup() {
-    const { active } = useImageGenerationWorkspaceNavigation();
-    return () => h('div', [active.value ? h(ImageGenerationSidebar, { navigation: active.value }) : undefined, h(RouterView)]);
-  } });
+  const surface = defineComponent({
+    setup() {
+      const { active } = useImageGenerationWorkspaceNavigation();
+      return () => h('div', [active.value ? h(ImageGenerationSidebar, { navigation: active.value }) : undefined, h(RouterView)]);
+    },
+  });
   wrapper = mount(surface, { global: { plugins: [router], stubs: { SidebarDebugControls: true } } });
   await vi.dynamicImportSettled(); await flushPromises(); return router;
 }
+
 async function historyStep({ router, delta }: { router: Router, delta: number }): Promise<void> {
   await new Promise<void>(resolve => {
     const stop = router.afterEach(() => {
@@ -59,6 +87,7 @@ async function historyStep({ router, delta }: { router: Router, delta: number })
   });
   await flushPromises();
 }
+
 it('opens the diagnostics URL directly and preserves both forms when navigating through the sidebar', async () => {
   const router = await open({ path: '/image-generation/diagnostics' });
   const owner = wrapper!.getComponent(ImageGenerationLab).vm;
@@ -81,6 +110,7 @@ it('opens the diagnostics URL directly and preserves both forms when navigating 
   expect(owner.TEST_ONLY.parameters.value.prompt).toBe('ordinary prompt');
   expect(mocks.dispose).not.toHaveBeenCalled(); expect(mocks.create).not.toHaveBeenCalled();
 });
+
 it('preserves an active benchmark and its retained results across browser back and forward navigation', async () => {
   const pending = Promise.withResolvers<unknown>(); mocks.generate.mockReturnValue(pending.promise);
   const router = await open({ path: '/image-generation' });
@@ -92,7 +122,7 @@ it('preserves an active benchmark and its retained results across browser back a
   await historyStep({ router, delta: -1 });
   expect(owner.TEST_ONLY.activeTab.value).toBe('generate');
   expect(bench.busy.value).toBe(true); expect(mocks.dispose).not.toHaveBeenCalled();
-  await owner.TEST_ONLY.generate(); expect(mocks.generate).toHaveBeenCalledTimes(1);
+  await owner.TEST_ONLY.generate({ submission: undefined }); expect(mocks.generate).toHaveBeenCalledTimes(1);
   await historyStep({ router, delta: 1 });
   expect(wrapper!.getComponent(ImageGenerationLab).vm.$.uid).toBe(owner.$.uid);
   pending.resolve({ png: new Blob(['PNG'], { type: 'image/png' }), width: 512, height: 512, modelVersion: 'fixture' });

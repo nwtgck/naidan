@@ -16,6 +16,7 @@ describe('bounded async channel', () => {
     expect(await iterator.next()).toEqual({ value: 'B', done: false });
     expect((await iterator.next()).done).toBe(true);
   });
+
   it('cancellation settles pending reads and writers without preserving unread values', async () => {
     const cancelled = vi.fn(); const channel = createAsyncChannel<string>({ capacity: 1, onCancel: cancelled });
     await channel.send({ value: 'A' });
@@ -28,6 +29,7 @@ describe('bounded async channel', () => {
     const reader = empty.values[Symbol.asyncIterator](); const read = reader.next();
     empty.cancel(); expect((await read).done).toBe(true);
   });
+
   it('rejects a second reader and invalid capacities', () => {
     const channel = createAsyncChannel<string>({ capacity: 1, onCancel: () => {} });
     channel.values[Symbol.asyncIterator]();

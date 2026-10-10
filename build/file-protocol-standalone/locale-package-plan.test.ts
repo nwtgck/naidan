@@ -167,7 +167,6 @@ describe('locale package projection', () => {
     expect(plan.retainedChunkFileNames.has('shared.js')).toBe(true);
   });
 
-
   it('uses module semantics when registration and a locale helper share one physical chunk', () => {
     const serviceId = '/src/shared-storage-service.ts';
     const helperId = '/src/strings/shared.ts';
@@ -290,7 +289,6 @@ describe('locale package projection', () => {
     expect(() => createPlan({ chunks: graph, targetLocale: 'ja', supportedLocales: locales })).not.toThrow();
   });
 
-
   it('projects more than two canonical locale codes without changing the algorithm', () => {
     const supported = ['en', 'ja', 'pt-BR'] as const;
     const graph: PackageChunk[] = [
@@ -403,7 +401,6 @@ describe('locale package projection', () => {
     expect(() => createPlan({ chunks: graph, targetLocale: 'ja', supportedLocales: locales })).toThrow(/missing output chunk/u);
   });
 });
-
 
 describe('module graph collection', () => {
   it('preserves non-rendered semantic modules between an entry and rendered output', () => {

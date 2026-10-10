@@ -8,10 +8,11 @@ describe('bounded generation performance summaries', () => {
   it('performs no clock reads or reporting when disabled', () => {
     const now = vi.fn(() => 100);
     const metrics = createGenerationPerformance({ enabled: false, now });
-    metrics.enter({ next: 'native-sample' }); metrics.sampled(); metrics.delivered();
+    metrics.enter({ next: 'native-sample' }); metrics.sampled(); metrics.rendered({ endOfGeneration: false }); metrics.delivered();
     expect(metrics.finish({ outcome: 'completed', profile })).toBeUndefined();
     expect(now).not.toHaveBeenCalled();
   });
+
   it('measures exclusive stages including repeats and cleanup without keeping a token history', () => {
     let at = 10;
     const metrics = createGenerationPerformance({ enabled: true, now: () => at });
@@ -23,9 +24,23 @@ describe('bounded generation performance summaries', () => {
     at = 30;
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     expect(report.elapsedMs).toBe(20);
-    expect(report.performance).toEqual({ version: 1, outcome: 'completed', input: 'unknown',
-      sampledTokens: 2, decodedTokens: 0, prefillDecodedTokens: 0, prefillDecodeCalls: 0, maximumPrefillBatchTokens: 0, tokenizeCalls: 1, checkpointTokenizeCalls: 0,
-      terminalDecodeDeferred: false, firstSampleMs: 11, firstDeliveryMs: 15,
+    expect(report.performance).toEqual({
+      sampleWindows: [],
+      nonEogTokens: 0,
+      version: 1,
+      outcome: 'completed',
+      input: 'unknown',
+      sampledTokens: 2,
+      decodedTokens: 0,
+      prefillDecodedTokens: 0,
+      prefillDecodeCalls: 0,
+      maximumPrefillBatchTokens: 0,
+      tokenizeCalls: 1,
+      checkpointTokenizeCalls: 0,
+      terminalDecodeDeferred: false,
+      firstSampleMs: 11,
+      firstDeliveryMs: 15,
+      postFirstSample: { unit: 't/s', sampledTokens: 1, elapsedMs: 7, tokensPerSecond: 1000 / 7 },
       stages: [
         { stage: 'session', visits: 1, elapsedMs: 5 }, { stage: 'tokenize', visits: 1, elapsedMs: 4 },
         { stage: 'native-sample', visits: 2, elapsedMs: 5 }, { stage: 'stream-emit', visits: 1, elapsedMs: 4 },
@@ -38,6 +53,7 @@ describe('bounded generation performance summaries', () => {
     expect(report.performance!.decodedTokens).toBe(0);
     expect(metrics.finish({ outcome: 'failed', profile })).toBeUndefined();
   });
+
   it.each(['aborted', 'failed'] as const)('reports %s without inventing a first token time', outcome => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
     const report = diagnosticSchema.parse(metrics.finish({ outcome, profile }));
@@ -46,6 +62,7 @@ describe('bounded generation performance summaries', () => {
     expect(report.performance!.firstDeliveryMs).toBeUndefined();
     expect(report.performance!.stages).toHaveLength(1);
   });
+
   it('keeps one aggregate per stage even after a long generation', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
     for (let i = 0; i < 10000; i++) {
@@ -57,6 +74,7 @@ describe('bounded generation performance summaries', () => {
     expect(report.performance!.sampledTokens).toBe(10000);
     expect(JSON.stringify(report).length).toBeLessThan(1500);
   });
+
   it('snapshots numeric settings without retaining a mutable sampling object', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
     const sampling = { temperature: 0.7, topP: 0.95, presencePenalty: -1, frequencyPenalty: 2, seed: 4294967295 };
@@ -68,6 +86,7 @@ describe('bounded generation performance summaries', () => {
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, sampling: { ...sampling, prompt: 'private' } } }).success).toBe(false);
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, sampling: { ...sampling, seed: -1 } } }).success).toBe(false);
   });
+
   it('validates and publishes the summary without accepting nested content', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
     const report = metrics.finish({ outcome: 'completed', profile })!;
@@ -80,8 +99,13 @@ describe('bounded generation performance summaries', () => {
       logDiagnostic({ diagnostic: untrusted });
       expect(log).toHaveBeenCalledOnce();
       expect(JSON.stringify(log.mock.calls)).not.toContain('private');
-      expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!,
-        stages: [{ stage: 'tokenize', visits: 1, elapsedMs: 2, tokenIds: [123] }] } }).success).toBe(false);
+      expect(diagnosticSchema.safeParse({
+        ...report,
+        performance: {
+          ...report.performance!,
+          stages: [{ stage: 'tokenize', visits: 1, elapsedMs: 2, tokenIds: [123] }],
+        },
+      }).success).toBe(false);
     } finally {
       log.mockRestore();
     }
@@ -91,27 +115,50 @@ describe('bounded generation performance summaries', () => {
 describe('streaming work counters', () => {
   it('snapshots the bounded counters and rejects extra content-bearing fields', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
-    const streaming = { mode: 'coalesced' as const, partialParseCalls: 3, finalParseCalls: 1,
-      parsedCodeUnits: 30, skippedPartialParses: 14, deliveredEvents: 2 };
+    const streaming = {
+      mode: 'coalesced' as const,
+      partialParseCalls: 3,
+      finalParseCalls: 1,
+      parsedCodeUnits: 30,
+      skippedPartialParses: 14,
+      deliveredEvents: 2,
+    };
     metrics.counters.streaming = streaming;
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     streaming.partialParseCalls = 999;
     expect(report.performance!.streaming!.partialParseCalls).toBe(3);
-    expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!,
-      streaming: { ...streaming, output: 'private' } } }).success).toBe(false);
-    expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!,
-      streaming: { ...streaming, parsedCodeUnits: -1 } } }).success).toBe(false);
+    expect(diagnosticSchema.safeParse({
+      ...report,
+      performance: {
+        ...report.performance!,
+        streaming: { ...streaming, output: 'private' },
+      },
+    }).success).toBe(false);
+    expect(diagnosticSchema.safeParse({
+      ...report,
+      performance: {
+        ...report.performance!,
+        streaming: { ...streaming, parsedCodeUnits: -1 },
+      },
+    }).success).toBe(false);
     // Additive version-1 compatibility: 012 summaries have no streaming field.
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, streaming: undefined } }).success).toBe(true);
   });
 });
 
-
 describe('token rendering work counters', () => {
   it('snapshots bounded counters without accepting cached bytes or token identifiers', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
-    const tokenRendering = { cacheHits: 32, cacheMisses: 1, eogCalls: 1, pieceCalls: 1,
-      evictions: 0, oversizedPieces: 0, peakEntries: 1, peakCachedBytes: 1 };
+    const tokenRendering = {
+      cacheHits: 32,
+      cacheMisses: 1,
+      eogCalls: 1,
+      pieceCalls: 1,
+      evictions: 0,
+      oversizedPieces: 0,
+      peakEntries: 1,
+      peakCachedBytes: 1,
+    };
     metrics.counters.tokenRendering = tokenRendering;
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     tokenRendering.cacheHits = 100;
@@ -145,16 +192,27 @@ describe('prefill output work counters', () => {
 describe('generation task yield counters', () => {
   it('snapshots additive scheduling counts without accepting content or token histories', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
-    const generationYield = { mode: 'coalesced' as const, checks: 32, requestedYields: 8,
-      completedYields: 8, coalescedYields: 24, maximumDecodesBetweenYields: 4 };
+    const generationYield = {
+      mode: 'coalesced' as const,
+      checks: 32,
+      requestedYields: 8,
+      completedYields: 8,
+      coalescedYields: 24,
+      maximumDecodesBetweenYields: 4,
+    };
     metrics.counters.generationYield = generationYield;
     const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
     generationYield.completedYields = 99;
     expect(report.performance!.generationYield!.completedYields).toBe(8);
     for (const extra of [{ content: 'private' }, { tokens: [1] }, { checks: -1 },
       { completedYields: 0.5 }, { mode: 'unknown' }, { maximumDecodesBetweenYields: 5 }]) {
-      expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!,
-        generationYield: { ...generationYield, ...extra } } }).success).toBe(false);
+      expect(diagnosticSchema.safeParse({
+        ...report,
+        performance: {
+          ...report.performance!,
+          generationYield: { ...generationYield, ...extra },
+        },
+      }).success).toBe(false);
     }
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, generationYield: undefined } }).success).toBe(true);
   });
@@ -175,13 +233,19 @@ describe('initial memory reset counters', () => {
   });
 });
 
-
 describe('paired delivery and decode accounting', () => {
   it('keeps joint time exclusive and child waits explicitly overlapping', () => {
     let now = 0;
     const metrics = createGenerationPerformance({ enabled: true, now: () => now });
-    const pair = { mode: 'overlap' as const, pairedSteps: 1, settledPairs: 1, serialSteps: 0,
-      deliveryWaitMs: 20, decodeWaitMs: 30, jointWaitMs: 30 };
+    const pair = {
+      mode: 'overlap' as const,
+      pairedSteps: 1,
+      settledPairs: 1,
+      serialSteps: 0,
+      deliveryWaitMs: 20,
+      decodeWaitMs: 30,
+      jointWaitMs: 30,
+    };
     metrics.counters.deliveryDecode = pair;
     metrics.enter({ next: 'generation-overlap' });
     now = 30; metrics.enter({ next: 'cleanup' }); now = 35;
@@ -197,7 +261,6 @@ describe('paired delivery and decode accounting', () => {
   });
 });
 
-
 describe('session preparation measurements', () => {
   it.each(['absent', 'deferred', 'retained', 'loaded', 'reused'] as const)('snapshots the %s preparation outcome without private data', projector => {
     const measurements = createGenerationPerformance({ enabled: true, now: () => 0 });
@@ -207,5 +270,153 @@ describe('session preparation measurements', () => {
     preparation.releasedTextContext = true;
     expect(diagnosticSchema.parse(report).performance!.sessionPreparation).toEqual({ projector, releasedTextContext: false });
     expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, sessionPreparation: { ...preparation, model: 'private' } } }).success).toBe(false);
+  });
+});
+
+describe('post-first-sample throughput', () => {
+  it('requires 100 total samples and three seconds, then reports each three-second sample window', () => {
+    let at = 0;
+    const metrics = createGenerationPerformance({ enabled: true, now: () => at });
+    at = 1000; expect(metrics.sampled()).toBeUndefined();
+    at = 3999;
+    for (let i = 1; i < 100; i++) expect(metrics.sampled()).toBeUndefined();
+    at = 4000;
+    expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({
+      sampledTokens: 101,
+      firstSampleMs: 1000,
+      postFirstSample: { unit: 't/s', sampledTokens: 100, elapsedMs: 3000, tokensPerSecond: 100000 / 3000 },
+      interval: { unit: 't/s', sampledTokens: 100, elapsedMs: 3000, tokensPerSecond: 100000 / 3000 },
+    });
+    at = 6999; expect(metrics.sampled()).toBeUndefined();
+    at = 7000;
+    expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({
+      sampledTokens: 103,
+      firstSampleMs: 1000,
+      postFirstSample: { unit: 't/s', sampledTokens: 102, elapsedMs: 6000, tokensPerSecond: 17 },
+      interval: { unit: 't/s', sampledTokens: 2, elapsedMs: 3000, tokensPerSecond: 2000 / 3000 },
+    });
+    at = 9000;
+    expect(metrics.finish({ outcome: 'completed', profile })!.performance!.postFirstSample)
+      .toEqual({ unit: 't/s', sampledTokens: 102, elapsedMs: 6000, tokensPerSecond: 17 });
+    expect(metrics.sampled()).toBeUndefined();
+  });
+
+  it('starts reporting on sample 100 when the time threshold is already met', () => {
+    let at = 0;
+    const metrics = createGenerationPerformance({ enabled: true, now: () => at });
+    expect(metrics.sampled()).toBeUndefined();
+    at = 4000;
+    for (let i = 1; i < 99; i++) expect(metrics.sampled()).toBeUndefined();
+    expect(diagnosticSchema.parse(metrics.sampled()).generationThroughput).toEqual({
+      sampledTokens: 100,
+      firstSampleMs: 0,
+      postFirstSample: { unit: 't/s', sampledTokens: 99, elapsedMs: 4000, tokensPerSecond: 24.75 },
+      interval: { unit: 't/s', sampledTokens: 99, elapsedMs: 4000, tokensPerSecond: 24.75 },
+    });
+  });
+
+  it.each(['completed', 'aborted', 'failed'] as const)('keeps %s throughput separate from TTFT, delivery and cleanup', outcome => {
+    let at = 0;
+    const metrics = createGenerationPerformance({ enabled: true, now: () => at });
+    at = 1000; metrics.sampled();
+    at = 1040; metrics.sampled();
+    at = 1100; metrics.sampled();
+    at = 2000; metrics.delivered(); metrics.enter({ next: 'cleanup' });
+    at = 3000;
+    const report = diagnosticSchema.parse(metrics.finish({ outcome, profile }));
+    expect(report.elapsedMs).toBe(3000);
+    expect(report.performance).toMatchObject({
+      outcome,
+      sampledTokens: 3,
+      firstSampleMs: 1000,
+      firstDeliveryMs: 2000,
+      postFirstSample: { unit: 't/s', sampledTokens: 2, elapsedMs: 100, tokensPerSecond: 20 },
+    });
+  });
+
+  it.each([0, 1, 2])('omits an undefined rate for %s samples with no measurable interval', count => {
+    const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
+    for (let i = 0; i < count; i++) metrics.sampled();
+    const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
+    expect(report.performance!.postFirstSample).toEqual({ unit: 't/s', sampledTokens: Math.max(0, count - 1), elapsedMs: 0 });
+    expect(report.performance!.firstSampleMs).toBe(count ? 0 : undefined);
+  });
+
+  it('keeps interleaved requests and finished reports independent', () => {
+    let at = 0;
+    const first = createGenerationPerformance({ enabled: true, now: () => at });
+    at = 100; first.sampled();
+    const second = createGenerationPerformance({ enabled: true, now: () => at });
+    at = 200; second.sampled();
+    at = 300; first.sampled();
+    const report = first.finish({ outcome: 'completed', profile })!;
+    at = 400; second.sampled(); first.sampled();
+    at = 500; second.sampled();
+    expect(report.performance!.postFirstSample).toEqual({ unit: 't/s', sampledTokens: 1, elapsedMs: 200, tokensPerSecond: 5 });
+    expect(report.performance!.sampledTokens).toBe(2);
+    expect(first.finish({ outcome: 'failed', profile })).toBeUndefined();
+    expect(second.finish({ outcome: 'aborted', profile })!.performance!.postFirstSample).toEqual({ unit: 't/s', sampledTokens: 2, elapsedMs: 300, tokensPerSecond: 2000 / 300 });
+  });
+
+  it('accepts older summaries but rejects invalid rates and content-bearing fields', () => {
+    const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
+    const report = metrics.finish({ outcome: 'completed', profile })!;
+    expect(diagnosticSchema.safeParse({ ...report, performance: { ...report.performance!, postFirstSample: undefined } }).success).toBe(true);
+    for (const extra of [{ tokensPerSecond: Infinity }, { tokensPerSecond: NaN }, { tokensPerSecond: -1 },
+      { elapsedMs: -1 }, { sampledTokens: 0.5 }, { text: 'private' }, { tokenIds: [123] }]) {
+      expect(diagnosticSchema.safeParse({
+        ...report,
+        performance: {
+          ...report.performance!,
+          postFirstSample: { ...report.performance!.postFirstSample!, ...extra },
+        },
+      }).success).toBe(false);
+    }
+  });
+});
+
+describe('nonterminal token interval measurement', () => {
+  it('does not count EOG as a displayed token or include its final wait', () => {
+    let at = 100;
+    const metrics = createGenerationPerformance({ enabled: true, now: () => at });
+    at = 110; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
+    at = 140; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
+    at = 160; metrics.sampled(); metrics.rendered({ endOfGeneration: true });
+    const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
+    expect(report.performance).toMatchObject({ sampledTokens: 3, nonEogTokens: 2, firstNonEogSampleMs: 10, lastNonEogSampleMs: 40 });
+  });
+});
+
+it('uses already acquired sample timestamps for bounded windows without extra clock reads', () => {
+  let time = 0; const now = vi.fn(() => time);
+  const metrics = createGenerationPerformance({ enabled: true, now });
+  for (let i = 0; i < 35; i++) {
+    time++; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
+  }
+  expect(now).toHaveBeenCalledTimes(36);
+  const result = metrics.finish({ outcome: 'completed', profile: 'cpu-wasm32' });
+  expect(result?.performance?.sampleWindows).toEqual([
+    { firstSample: 1, lastSample: 16, firstMs: 1, lastMs: 16 },
+    { firstSample: 17, lastSample: 32, firstMs: 17, lastMs: 32 },
+    { firstSample: 33, lastSample: 35, firstMs: 33, lastMs: 35 },
+  ]);
+  expect(diagnosticSchema.safeParse(result).success).toBe(true);
+});
+
+it('keeps inclusive debug throughput and nonterminal investigation intervals distinct in one summary', () => {
+  let at = 0;
+  const metrics = createGenerationPerformance({ enabled: true, now: () => at });
+  at = 100; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
+  at = 150; metrics.sampled(); metrics.rendered({ endOfGeneration: false });
+  at = 210; metrics.sampled(); metrics.rendered({ endOfGeneration: true });
+  at = 250;
+  const report = diagnosticSchema.parse(metrics.finish({ outcome: 'completed', profile }));
+  expect(report.performance).toMatchObject({
+    sampledTokens: 3,
+    postFirstSample: { sampledTokens: 2, elapsedMs: 110, tokensPerSecond: 2000 / 110 },
+    nonEogTokens: 2,
+    firstNonEogSampleMs: 100,
+    lastNonEogSampleMs: 150,
+    sampleWindows: [{ firstSample: 1, lastSample: 2, firstMs: 100, lastMs: 150 }],
   });
 });

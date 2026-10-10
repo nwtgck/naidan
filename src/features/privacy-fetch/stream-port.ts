@@ -121,16 +121,20 @@ export function receivePrivacyStream({ port, signal, onFinish }: {
   }).catch(() => fail({ code: 'fetch_failed' }));
   signal?.addEventListener('abort', abort, { once: true });
   if (signal?.aborted) abort();
-  return { response, dispose: () => {
-    fail({ code: 'broker_disposed' });
-    // The iframe may already be gone; disposal cannot wait for a remote acknowledgement.
-    release();
-  } };
+  return {
+    response,
+    dispose: () => {
+      fail({ code: 'broker_disposed' });
+      // The iframe may already be gone; disposal cannot wait for a remote acknowledgement.
+      release();
+    },
+  };
 }
 
 export function servePrivacyStream({ port, request }: { port: MessagePort, request: PrivacyFetchRequest }): void {
   servePrivacyStreamWithFetcher({ port, fetchResponse: ({ signal }) => fetchPrivacyStream({ request: { ...request, signal } }) });
 }
+
 /** Reuse the same backpressure/transfer negotiation for an already authorized
  * fetch source. Hosted callers must inject privacyFetchStream, not raw fetch. */
 export function servePrivacyStreamWithFetcher({ port, fetchResponse }: {
@@ -155,7 +159,8 @@ export function servePrivacyStreamWithFetcher({ port, fetchResponse }: {
     resolveCompleted();
   };
   const errorReply = ({ error }: { error: unknown }): StreamReply => ({
-    type: 'error', code: isPrivacyFetchError(error) && error.code === 'rejected' ? 'rejected' : 'fetch_failed',
+    type: 'error',
+    code: isPrivacyFetchError(error) && error.code === 'rejected' ? 'rejected' : 'fetch_failed',
     message: 'Privacy fetch stream failed',
   });
   const ready: Promise<StreamReply> = Promise.resolve().then(() => fetchResponse({ signal: abort.signal })).then(async (response): Promise<StreamReply> => {

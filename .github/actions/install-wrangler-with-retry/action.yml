@@ -1,0 +1,33 @@
+name: Install Wrangler with retry
+description: Install Wrangler v4 with retries before Cloudflare Pages deployments.
+
+runs:
+  using: composite
+  steps:
+    - name: Install Wrangler
+      shell: bash
+      run: |
+        # wrangler-action uses `npx --no-install wrangler --version` to
+        # detect pre-installed Wrangler. Keep npm's global prefix available
+        # to that check, without modifying the project's dependencies.
+        prefix="$RUNNER_TEMP/naidan-wrangler"
+        export NPM_CONFIG_PREFIX="$prefix"
+        export PATH="$prefix/bin:$PATH"
+
+        for attempt in 1 2 3; do
+          if npm install --global --prefix "$prefix" wrangler@4 &&
+            npx --no-install wrangler --version; then
+            echo "NPM_CONFIG_PREFIX=$prefix" >> "$GITHUB_ENV"
+            echo "$prefix/bin" >> "$GITHUB_PATH"
+            exit 0
+          fi
+
+          if [ "$attempt" -eq 3 ]; then
+            echo "::error::Wrangler installation failed after 3 attempts"
+            exit 1
+          fi
+
+          delay=$((attempt * 15 + RANDOM % 15))
+          echo "::warning::Wrangler installation failed (attempt ${attempt}/3); retrying in ${delay} seconds"
+          sleep "$delay"
+        done

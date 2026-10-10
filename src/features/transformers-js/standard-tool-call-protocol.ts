@@ -294,7 +294,8 @@ export function formatStandardMessagesForToolCallProtocol({
     const { role, content, tool_calls, tool_call_id, reasoning: _reasoning, ...unhandled } = message;
     unhandled satisfies Record<PropertyKey, never>;
     return exactObject<{ role: InferenceMessage['role']; content: string; tool_calls?: unknown; tool_call_id?: InferenceMessage['tool_call_id'] }>()({
-      role, content: readStandardTextContent({ content }),
+      role,
+      content: readStandardTextContent({ content }),
       ...(tool_calls === undefined ? {} : { tool_calls: formatToolCallsForProtocol({ toolCalls: tool_calls, protocol }) }),
       ...(tool_call_id === undefined ? {} : { tool_call_id }),
     });

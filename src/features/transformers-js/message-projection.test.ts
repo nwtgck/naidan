@@ -9,17 +9,29 @@ import { prepareInferenceRequest } from './message-projection';
 const messageId = toMessageId({ raw: 'm' });
 const callId = toToolCallId({ raw: 'call-1' });
 const binaryId = toBinaryObjectId({ raw: 'binary-1' });
+
 const makeText = ({ text }: { text: string }) => ({ type: 'text' as const, text, completeness: 'complete' as const });
+
 const makeCall = ({ argumentsText }: { argumentsText: string }) => ({
   type: 'tool_call' as const,
   toolCall: { id: callId, type: 'function' as const, function: { name: 'calculator', arguments: argumentsText } },
 });
+
 function image({ state }: { state: { status: 'memory', blob: Blob } | { status: 'persisted' | 'missing' } }): Extract<Extract<ChatMessage, { role: 'user' }>['parts'][number], { type: 'attachment' }> {
-  return { type: 'attachment', attachment: {
-    id: toAttachmentId({ raw: 'attachment-1' }), binaryObjectId: binaryId,
-    originalName: 'image.png', mimeType: 'image/png', size: 3, uploadedAt: 1, ...state,
-  } };
+  return {
+    type: 'attachment',
+    attachment: {
+      id: toAttachmentId({ raw: 'attachment-1' }),
+      binaryObjectId: binaryId,
+      originalName: 'image.png',
+      mimeType: 'image/png',
+      size: 3,
+      uploadedAt: 1,
+      ...state,
+    },
+  };
 }
+
 function prepare({ messages, readBinaryObject, signal }: {
   messages: readonly ChatMessage[],
   readBinaryObject: Parameters<LmProvider['chat']>[0]['readBinaryObject'],
@@ -48,7 +60,7 @@ describe('parts to Transformers.js inference input', () => {
     const messages: ChatMessage[] = [
       { id: messageId, role: 'assistant', parts: [] },
       { id: messageId, role: 'assistant', parts: [makeText({ text: '' })] },
-      { id: messageId, role: 'system', parts: [makeText({ text: '' }), { ...makeText({ text: ' R ' }), }] },
+      { id: messageId, role: 'system', parts: [makeText({ text: '' }), { ...makeText({ text: ' R ' }) }] },
     ];
     const result = await prepare({ messages, readBinaryObject: undefined, signal: undefined });
     expect(result.messages).toEqual([
@@ -58,7 +70,7 @@ describe('parts to Transformers.js inference input', () => {
   });
 
   it('does not deduplicate identical text parts', async () => {
-    const result = await prepare({ messages: [{ id: messageId, role: 'user', parts: [makeText({ text: 'A' }), { ...makeText({ text: 'A' }), }] }], readBinaryObject: undefined, signal: undefined });
+    const result = await prepare({ messages: [{ id: messageId, role: 'user', parts: [makeText({ text: 'A' }), { ...makeText({ text: 'A' }) }] }], readBinaryObject: undefined, signal: undefined });
     expect(result.messages[0]!.content).toEqual([{ type: 'text', text: 'A' }, { type: 'text', text: 'A' }]);
   });
 
@@ -101,19 +113,31 @@ describe('parts to Transformers.js inference input', () => {
 
   it('validates the entire history before resolving any binaries', async () => {
     const read = vi.fn();
-    await expect(prepare({ messages: [
-      { id: messageId, role: 'user', parts: [image({ state: { status: 'persisted' } })] },
-      { id: messageId, role: 'assistant', parts: [makeText({ text: '' }), { type: 'reasoning', text: '', completeness: 'partial' }] },
-    ], readBinaryObject: read, signal: undefined })).rejects.toThrow('single leading reasoning');
+    await expect(prepare({
+      messages: [
+        { id: messageId, role: 'user', parts: [image({ state: { status: 'persisted' } })] },
+        { id: messageId, role: 'assistant', parts: [makeText({ text: '' }), { type: 'reasoning', text: '', completeness: 'partial' }] },
+      ],
+      readBinaryObject: read,
+      signal: undefined,
+    })).rejects.toThrow('single leading reasoning');
     expect(read).not.toHaveBeenCalled();
   });
 
   it('encodes memory images locally without using fetch or the binary resolver', async () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
     const read = vi.fn();
-    const result = await prepare({ messages: [{ id: messageId, role: 'user', parts: [
-      makeText({ text: 'before' }), image({ state: { status: 'memory', blob: new Blob([new Uint8Array([0, 1, 255])]) } }), { ...makeText({ text: '' }), },
-    ] }], readBinaryObject: read, signal: undefined });
+    const result = await prepare({
+      messages: [{
+        id: messageId,
+        role: 'user',
+        parts: [
+          makeText({ text: 'before' }), image({ state: { status: 'memory', blob: new Blob([new Uint8Array([0, 1, 255])]) } }), { ...makeText({ text: '' }) },
+        ],
+      }],
+      readBinaryObject: read,
+      signal: undefined,
+    });
     expect(result.messages[0]!.content).toEqual([
       { type: 'text', text: 'before' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AAH/' } }, { type: 'text', text: '' },
     ]);
@@ -171,10 +195,18 @@ describe('parts to Transformers.js inference input', () => {
   });
 
   it('preserves inline tool success and error text and expands each result in order', async () => {
-    const result = await prepare({ messages: [{ id: messageId, role: 'tool', parts: [
-      { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: '  result\r\n' } } },
-      { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call-2' }), status: 'error', error: { code: 'invalid_arguments', message: { type: 'text', text: '説明' } } } },
-    ] }], readBinaryObject: undefined, signal: undefined });
+    const result = await prepare({
+      messages: [{
+        id: messageId,
+        role: 'tool',
+        parts: [
+          { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: '  result\r\n' } } },
+          { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: 'call-2' }), status: 'error', error: { code: 'invalid_arguments', message: { type: 'text', text: '説明' } } } },
+        ],
+      }],
+      readBinaryObject: undefined,
+      signal: undefined,
+    });
     expect(result.messages).toEqual([
       { role: 'tool', tool_call_id: callId, content: '  result\r\n' },
       { role: 'tool', tool_call_id: toToolCallId({ raw: 'call-2' }), content: 'Error [invalid_arguments]: 説明' },
@@ -201,9 +233,13 @@ describe('parts to Transformers.js inference input', () => {
 
   it('retains the original resolver error rather than yielding empty content', async () => {
     const error = new Error('local blob unavailable');
-    await expect(prepare({ messages: [{ id: messageId, role: 'user', parts: [image({ state: { status: 'persisted' } })] }], readBinaryObject: async () => {
-      throw error;
-    }, signal: undefined })).rejects.toBe(error);
+    await expect(prepare({
+      messages: [{ id: messageId, role: 'user', parts: [image({ state: { status: 'persisted' } })] }],
+      readBinaryObject: async () => {
+        throw error;
+      },
+      signal: undefined,
+    })).rejects.toBe(error);
   });
 
   it('does not begin resolution for an already aborted request', async () => {

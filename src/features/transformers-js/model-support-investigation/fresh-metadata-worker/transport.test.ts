@@ -8,18 +8,27 @@ const base = `https://huggingface.co/${modelId}/resolve/${revision}/`;
 
 it('records missing Content-Length and a size probe without retaining signed queries', async () => {
   const originalFetch = vi.fn<typeof fetch>(async () => new Response(Uint8Array.of(123), {
-    status: 206, headers: { 'Content-Range': 'bytes 0-0/100' },
+    status: 206,
+    headers: { 'Content-Range': 'bytes 0-0/100' },
   }));
   const transport = createFreshMetadataTransport({ modelId, revision, maximumBytes: 8, originalFetch, signal: new AbortController().signal, onObservation: () => undefined });
   try {
     const response = await transport.fetch(`${base}config.json?token=private-fixture-value`, { headers: { Range: 'bytes=0-0' } });
     expect(response.status).toBe(206);
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(Uint8Array.of(123));
-    expect(transport.snapshot()).toEqual({ receivedBytes: 1, requests: [{
-      consumer: 'runtime-preparation',
-      path: 'config.json', request: 'size-probe', status: 'complete', httpStatus: 206,
-      contentLength: undefined, contentRange: 'bytes 0-0/100', receivedBytes: 1,
-    }] });
+    expect(transport.snapshot()).toEqual({
+      receivedBytes: 1,
+      requests: [{
+        consumer: 'runtime-preparation',
+        path: 'config.json',
+        request: 'size-probe',
+        status: 'complete',
+        httpStatus: 206,
+        contentLength: undefined,
+        contentRange: 'bytes 0-0/100',
+        receivedBytes: 1,
+      }],
+    });
     expect(originalFetch.mock.calls[0]![1]).toMatchObject({ credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer' });
   } finally {
     transport.dispose();
@@ -66,11 +75,17 @@ it('does not report a size probe as cancelled until its source acknowledges canc
   const started = Promise.withResolvers<void>();
   const finished = Promise.withResolvers<void>();
   const transport = createFreshMetadataTransport({
-    modelId, revision, maximumBytes: 1024, signal: new AbortController().signal, onObservation: () => undefined,
-    originalFetch: async () => new Response(new ReadableStream({ cancel() {
-      started.resolve();
-      return finished.promise;
-    } })),
+    modelId,
+    revision,
+    maximumBytes: 1024,
+    signal: new AbortController().signal,
+    onObservation: () => undefined,
+    originalFetch: async () => new Response(new ReadableStream({
+      cancel() {
+        started.resolve();
+        return finished.promise;
+      },
+    })),
   });
   const response = await transport.fetch(`${base}config.json`, { headers: { Range: 'bytes=0-0' } });
   const cancellation = response.body!.cancel();

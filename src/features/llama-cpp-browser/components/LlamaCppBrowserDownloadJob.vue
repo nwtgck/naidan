@@ -43,7 +43,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <span v-if="job.status === 'paused'" role="status">{{ lazyStrings.llamaCppBrowserDownloads__paused() }}</span>
         <button type="button" :disabled="disabled" data-testid="llama-download-resume" :tw-class="appearance === 'welcome'
           ? 'inline-flex w-full min-h-14 items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500 disabled:cursor-wait'
-          : 'inline-flex items-center gap-1.5 ml-auto px-2 py-1 rounded-lg font-bold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-50 disabled:cursor-not-allowed'" @click="emit('resume')"><PlayIcon tw-class="w-3 h-3" />{{ job.status === 'paused' ? lazyStrings.llamaCppBrowserDownloads__resume() : lazyStrings.llamaCppBrowserDownloads__retry() }}</button>
+          : 'inline-flex items-center gap-1.5 ml-auto px-2 py-1 rounded-lg font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed'" @click="emit('resume')"><PlayIcon tw-class="w-3 h-3" />{{ job.status === 'paused' ? lazyStrings.llamaCppBrowserDownloads__resume() : lazyStrings.llamaCppBrowserDownloads__retry() }}</button>
       </div>
     </template>
     <LlamaCppBrowserDownloadSources v-if="appearance === 'welcome'" :job="job" />

@@ -9,12 +9,15 @@ function createFlow({ message, processing }: { message: AssistantMessageNode, pr
   const chat = ref({ id: toChatId({ raw: 'chat' }), root: { items: [message] }, currentLeafId: message.id } as Chat);
   return { ...useChatDisplayFlow({ getToolCallDrafts: undefined, chat: computed(() => chat.value), isProcessing: () => processing }), chat };
 }
+
 function assistant({ parts, interruption }: { parts: AssistantMessageNode['parts'], interruption: AssistantMessageNode['interruption'] }): AssistantMessageNode {
   return { id: toMessageId({ raw: 'a' }), role: 'assistant', parts, interruption, createdAt: 0, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
 }
+
 function flatten({ items }: { items: ChatFlowItem[] }): Exclude<ChatFlowItem, { type: 'process_sequence' }>[] {
   return items.flatMap(item => item.type === 'process_sequence' ? flatten({ items: item.items }) : [item]);
 }
+
 describe('parts-based display flow', () => {
   it('shows draft-only calls and preserves logical gaps and parallel completion order', () => {
     const message = assistant({ parts: [{ type: 'text', text: 'Later text', completeness: 'partial' }], interruption: undefined });
@@ -24,7 +27,8 @@ describe('parts-based display flow', () => {
       { partId: 'call-3', index: 3, beforePartIndex: 0, name: 'shell_execute', arguments: '{"shell_script":"echo' },
     ]);
     const { chatFlow } = useChatDisplayFlow({
-      chat: computed(() => chat.value), isProcessing: () => true,
+      chat: computed(() => chat.value),
+      isProcessing: () => true,
       getToolCallDrafts: ({ chatId, messageId }) => chatId === chat.value.id && messageId === message.id ? drafts.value : [],
     });
     const initial = chatFlow.value;
@@ -56,9 +60,10 @@ describe('parts-based display flow', () => {
     const message = assistant({ parts: [], interruption: undefined });
     const chat = ref({ id: toChatId({ raw: 'owned' }), root: { items: [message] }, currentLeafId: message.id } as Chat);
     const processing = ref(true);
-    const draft: ToolCallDraft = { partId: 'pending', index: 0, beforePartIndex: 0, name: '', arguments: '', };
+    const draft: ToolCallDraft = { partId: 'pending', index: 0, beforePartIndex: 0, name: '', arguments: '' };
     const { chatFlow } = useChatDisplayFlow({
-      chat: computed(() => chat.value), isProcessing: () => processing.value,
+      chat: computed(() => chat.value),
+      isProcessing: () => processing.value,
       getToolCallDrafts: ({ chatId }) => chatId === toChatId({ raw: 'owned' }) ? [draft] : [],
     });
     expect(chatFlow.value[0]).toMatchObject({ type: 'message', mode: 'tool_calls', toolCallDrafts: [draft] });
@@ -94,22 +99,31 @@ describe('parts-based display flow', () => {
     ]);
     expect(new Set(items.map(p => p.type === 'message' ? p.key : p.id)).size).toBe(4);
   });
+
   it('does not animate stored partial reasoning after stopping', () => {
     const message = assistant({ parts: [{ type: 'reasoning', text: '途中', completeness: 'partial' }], interruption: { type: 'cancelled' } });
     const { chatFlow, isThinkingActive } = createFlow({ message, processing: false });
     expect(isThinkingActive({ item: chatFlow.value[0]! })).toBe(false);
     expect(message.parts[0]).toMatchObject({ completeness: 'partial', text: '途中' });
   });
+
   it('animates the native partial of the live generation', () => {
     const message = assistant({ parts: [{ type: 'reasoning', text: 'R', completeness: 'partial' }], interruption: undefined });
     const { chatFlow, isThinkingActive } = createFlow({ message, processing: true });
     expect(isThinkingActive({ item: chatFlow.value[0]! })).toBe(true);
   });
+
   it('keeps a later part key stable when an earlier empty part receives content', () => {
-    const { chat, chatFlow } = createFlow({ message: assistant({ parts: [
-      { type: 'text', text: '', completeness: 'partial' },
-      { type: 'reasoning', text: 'R', completeness: 'partial' },
-    ], interruption: undefined }), processing: true });
+    const { chat, chatFlow } = createFlow({
+      message: assistant({
+        parts: [
+          { type: 'text', text: '', completeness: 'partial' },
+          { type: 'reasoning', text: 'R', completeness: 'partial' },
+        ],
+        interruption: undefined,
+      }),
+      processing: true,
+    });
     const prior = flatten({ items: chatFlow.value }).find(p => p.type === 'message' && p.mode === 'thinking');
     const node = chat.value.root.items[0]!; const first = node.parts[0];
     if (first?.type !== 'text') throw new Error('Missing fixture part.');
@@ -117,10 +131,17 @@ describe('parts-based display flow', () => {
     const later = flatten({ items: chatFlow.value }).find(p => p.type === 'message' && p.mode === 'thinking');
     expect(later?.type === 'message' && later.key).toBe(prior?.type === 'message' && prior.key);
   });
+
   it('keeps reactive body identity when a late tool call is inserted before it', () => {
-    const { chat, chatFlow } = createFlow({ message: assistant({ parts: [
-      { type: 'text', text: 'body', completeness: 'partial' },
-    ], interruption: undefined }), processing: true });
+    const { chat, chatFlow } = createFlow({
+      message: assistant({
+        parts: [
+          { type: 'text', text: 'body', completeness: 'partial' },
+        ],
+        interruption: undefined,
+      }),
+      processing: true,
+    });
     const before = flatten({ items: chatFlow.value }).find(item => item.type === 'message' && item.partContent === 'body');
     const node = chat.value.root.items[0];
     if (node?.role !== 'assistant') throw new Error('Expected assistant fixture.');
@@ -133,12 +154,14 @@ describe('parts-based display flow', () => {
     expect(after?.type).toBe('message');
     expect(after?.type === 'message' && after.key).toBe(before?.type === 'message' && before.key);
   });
+
   it('keeps a stopped empty assistant visible without inventing body text', () => {
     const message = assistant({ parts: [], interruption: { type: 'error', message: '通信エラー' } });
     const { chatFlow } = createFlow({ message, processing: false });
     expect(chatFlow.value[0]).toMatchObject({ type: 'message', mode: 'content', partContent: '' });
     expect(message.parts).toEqual([]);
   });
+
   it('does not associate a stray tool result across a new user turn', () => {
     const callId = toToolCallId({ raw: 'same-id' });
     const a = assistant({ parts: [{ type: 'tool_call', toolCall: { id: callId, type: 'function', function: { name: 'old', arguments: '{}' } } }], interruption: undefined });

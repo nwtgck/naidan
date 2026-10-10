@@ -39,7 +39,8 @@ describe("Model Support Investigation Evidence Worker request", () => {
 
   it('rejects unvalidated runtime control receipts at both sides of the Evidence boundary', async () => {
     const run = {
-      runId: 'run-1', modelId: 'fixture/model',
+      runId: 'run-1',
+      modelId: 'fixture/model',
       runtimeAssets: { controlRuntimeBindings: { wasm: { arbitraryError: 'Do not retain unknown diagnostic payloads' } } },
     } as unknown as ModelSupportInvestigationRun;
     expect(() => createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery: undefined })).toThrow();
@@ -49,7 +50,10 @@ describe("Model Support Investigation Evidence Worker request", () => {
 
   it.each(['mjs', 'wasm'] as const)('rejects an injected configured URL in the %s receipt', async field => {
     const binding = {
-      format: 'runtime-control-binding-v1', executionProvider: 'wasm', constructorModule: 'onnxruntime-web/webgpu', environmentMatchesConfigured: true,
+      format: 'runtime-control-binding-v1',
+      executionProvider: 'wasm',
+      constructorModule: 'onnxruntime-web/webgpu',
+      environmentMatchesConfigured: true,
       mjs: { matchesSelected: true, byteConnection: 'configured-url-not-verified-import-bytes' },
       wasm: { matchesSelected: true, supplySource: 'preflight-verified-buffer', suppliedByteLength: 8, suppliedSha256: 'a'.repeat(64), suppliedMagicHex: '0061736d01000000', compilerConsumption: 'not-observed' },
     };

@@ -218,7 +218,6 @@ git branch -a --no-color`,
 `);
   });
 
-
   it('clones an explicitly selected local branch while preserving origin HEAD', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -306,7 +305,6 @@ test ! -e cloned`,
     expect(stderr.text).toBe('fatal: Remote branch missing not found in upstream origin\n');
   });
 
-
   it('accepts an explicit empty --branch value before branch resolution', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -319,7 +317,6 @@ test ! -e cloned`,
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe('fatal: Remote branch  not found in upstream origin\n');
   });
-
 
   it('accepts --depth on a plain local path with Git-compatible ignored-depth semantics', async () => {
     const { result, stdout, stderr } = await execute({
@@ -358,7 +355,6 @@ warning: --depth is ignored in local clones; use file:// instead.
 done.
 `);
   });
-
 
   it('rejects Internet-style repository locations before creating a destination', async () => {
     const { result, stdout, stderr } = await execute({

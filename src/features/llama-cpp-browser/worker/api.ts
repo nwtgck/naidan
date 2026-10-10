@@ -1,3 +1,4 @@
+import { beginGpuMeasurement } from '@/features/llama-cpp-browser/runtime/webgpu-request-diagnostics';
 import { createProgressQueue } from './progress-queue';
 import { audioGenerationResultSchema, audioPreviewEventSchema } from '@/features/audio-generation/types';
 import { generateAudio } from './audio-generation';
@@ -7,7 +8,7 @@ import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/
 import { verifyStorage } from '@/features/llama-cpp-browser/runtime/shared-storage-probe';
 import { deletionPlanSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { importModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
-import { logDiagnostic, logFailure, subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
+import { logDiagnostic, logFailure, subscribeDiagnostics, diagnosticSchema, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { z } from "zod";
 import type { WorkerServerApi } from "@/utils/worker-transport";
 import { errorCode, progressSchema, modelDirectoryInputSchema, generationResultSchema, generationEventSchema, LlamaCppBrowserError, modelSchema, modelsSchema, type LocalModel, type Progress } from "@/features/llama-cpp-browser/types";
@@ -24,6 +25,7 @@ async function guarded<T>({ operation }: { operation: () => Promise<T> }): Promi
     throw new LlamaCppBrowserError({ code: errorCode({ error }) });
   }
 }
+
 function eventQueue() {
   const pending = new Set<Promise<void>>(); let failed = false;
   return {
@@ -50,6 +52,7 @@ function eventQueue() {
     },
   };
 }
+
 export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
   let active: { generationId: number, controller: AbortController, finishAudio?: () => void, previewAudio?: ({ requestVersion }: { requestVersion: number }) => void } | undefined;
   // Single-file and folder imports must share this lifetime: cancellation is
@@ -63,11 +66,18 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     const controller = new AbortController(); active = { generationId, controller };
     const events = eventQueue();
     try {
-      return await guarded({ operation: async () => modelSchema.parse(await operation({ signal: controller.signal, onProgress: ({ progress }) => {
-        events.send({ operation: () => {
-          if (!controller.signal.aborted) return report({ progress });
-        } });
-      } })) });
+      return await guarded({
+        operation: async () => modelSchema.parse(await operation({
+          signal: controller.signal,
+          onProgress: ({ progress }) => {
+            events.send({
+              operation: () => {
+                if (!controller.signal.aborted) return report({ progress });
+              },
+            });
+          },
+        })),
+      });
     } finally {
       try {
         await events.finish();
@@ -84,13 +94,21 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       const controller = new AbortController(); active = { generationId, controller };
       const events = eventQueue();
       try {
-        await guarded({ operation: async () => {
-          await prepareSession({ request: accepted, signal: controller.signal, onProgress: ({ progress }) => {
-            events.send({ operation: () => {
-              if (!controller.signal.aborted) return onProgress(progress);
-            } });
-          } });
-        } });
+        await guarded({
+          operation: async () => {
+            await prepareSession({
+              request: accepted,
+              signal: controller.signal,
+              onProgress: ({ progress }) => {
+                events.send({
+                  operation: () => {
+                    if (!controller.signal.aborted) return onProgress(progress);
+                  },
+                });
+              },
+            });
+          },
+        });
       } finally {
         try {
           await events.finish();
@@ -104,35 +122,49 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       const { generationId, ...accepted } = workerAudioCallSchema.parse(request);
       if (active) throw new LlamaCppBrowserError({ code: 'busy' });
       const controller = new AbortController(); let finishRequested = false; let previewVersion = 0;
-      active = { generationId, controller, finishAudio: () => {
-        finishRequested = true;
-      }, previewAudio: ({ requestVersion }) => {
-        if (onPreview && !finishRequested && !controller.signal.aborted) previewVersion = Math.max(previewVersion, requestVersion);
-      } };
+      active = {
+        generationId,
+        controller,
+        finishAudio: () => {
+          finishRequested = true;
+        },
+        previewAudio: ({ requestVersion }) => {
+          if (onPreview && !finishRequested && !controller.signal.aborted) previewVersion = Math.max(previewVersion, requestVersion);
+        },
+      };
       const events = eventQueue();
-      const unsubscribe = subscribeDiagnostics({ debug: accepted.debug, listener: ({ diagnostic }) => {
-        if (!controller.signal.aborted) return Promise.resolve(onDiagnostic({ diagnostic }));
-        return undefined;
-      } });
+      const unsubscribe = subscribeDiagnostics({
+        debug: accepted.debug,
+        listener: ({ diagnostic }) => {
+          if (!controller.signal.aborted) return Promise.resolve(onDiagnostic({ diagnostic }));
+          return undefined;
+        },
+      });
       try {
-        const result = audioGenerationResultSchema.parse(await guarded({ operation: () => generateAudio({
-          request: accepted, cancellationSignal: controller.signal, shouldComplete: () => finishRequested,
-          preview: onPreview ? {
-            requestedVersion: () => previewVersion,
-            onPreview: async ({ ...event }) => {
-              if (controller.signal.aborted) return;
-              const acceptedEvent = audioPreviewEventSchema.parse(event);
-              // Acknowledge each user-requested copy before continuing. Do not
-              // build an unbounded event queue of large audio buffers.
-              await onPreview(workerTransfer({ value: acceptedEvent, transferables: [acceptedEvent.result.wav.buffer as ArrayBuffer] }));
+        const result = audioGenerationResultSchema.parse(await guarded({
+          operation: () => generateAudio({
+            request: accepted,
+            cancellationSignal: controller.signal,
+            shouldComplete: () => finishRequested,
+            preview: onPreview ? {
+              requestedVersion: () => previewVersion,
+              onPreview: async ({ event }) => {
+                if (controller.signal.aborted) return;
+                const acceptedEvent = audioPreviewEventSchema.parse(event);
+                // Acknowledge each user-requested copy before continuing. Do not
+                // build an unbounded event queue of large audio buffers.
+                await onPreview(workerTransfer({ value: acceptedEvent, transferables: [acceptedEvent.result.wav.buffer as ArrayBuffer] }));
+              },
+            } : undefined,
+            onProgress: ({ progress }) => {
+              events.send({
+                operation: () => {
+                  if (!controller.signal.aborted) return onProgress(progress);
+                },
+              });
             },
-          } : undefined,
-          onProgress: ({ progress }) => {
-            events.send({ operation: () => {
-              if (!controller.signal.aborted) return onProgress(progress);
-            } });
-          },
-        }) }));
+          }),
+        }));
         // Native memory was already copied and released. Transfer the owned bytes,
         // rather than cloning a second full waveform across the worker boundary.
         return workerTransfer({ value: result, transferables: [result.wav.buffer as ArrayBuffer] });
@@ -166,10 +198,12 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       return importWithCancellation({ generationId, report: ({ progress }) => onProgress(progress), operation: ({ signal, onProgress }) => importModelDirectory({ directory, signal, onProgress }) });
     },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature, validate the wire object before use.
-    removeModel: (request) => guarded({ operation: async () => {
-      const { plan } = z.object({ plan: deletionPlanSchema }).strict().parse(request);
-      await invalidateStoredModel({ id: plan.id }); return removeStoredModel({ plan });
-    } }),
+    removeModel: (request) => guarded({
+      operation: async () => {
+        const { plan } = z.object({ plan: deletionPlanSchema }).strict().parse(request);
+        await invalidateStoredModel({ id: plan.id }); return removeStoredModel({ plan });
+      },
+    }),
     // Like cancellation, this control must bypass the lock held by synthesis.
     // Only its owning audio request is affected, never a chat or import.
     async finishAudioGeneration({ generationId }) {
@@ -190,47 +224,91 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
       if (active?.generationId === id) active.controller.abort();
     },
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink server signature, callbacks are top-level arguments.
-    async generate(request, onEvent, onProgress, onDiagnostic) {
+    async generate(request, onEvent, onProgress, onDiagnostic, onSummary) {
       const { generationId, ...accepted } = workerGenerateCallSchema.parse(request);
+      let summary: Diagnostic | undefined;
+      let modelReads: Diagnostic['fileReads'];
+      const measuredAt = accepted.measurement ? performance.now() : undefined;
+      const preparationEvents: NonNullable<NonNullable<Diagnostic['performance']>['preparationEvents']> = [];
       if (active) throw new LlamaCppBrowserError({ code: "busy" });
       const controller = new AbortController(); active = { generationId, controller };
       const events = eventQueue();
       const progressQueue = createProgressQueue({ signal: controller.signal, deliver: ({ progress }) => onProgress(progress) });
-      const unsubscribe = subscribeDiagnostics({ debug: accepted.debug ?? 'off', listener: ({ diagnostic }) => {
-        if (onDiagnostic && (diagnostic.event === 'operation-start' || diagnostic.event === 'operation-complete' || diagnostic.event === 'native-error' || diagnostic.event === 'native-node-start' || diagnostic.event === 'native-node-complete' || (diagnostic.event === 'native-info' && diagnostic.nativeOperation !== undefined))) return Promise.resolve(onDiagnostic({ diagnostic }));
-        return undefined;
-      } });
+      const stopGpuMeasurement = accepted.measurement ? beginGpuMeasurement({ now: () => performance.now() }) : undefined;
+      const unsubscribe = subscribeDiagnostics({
+        debug: accepted.debug ?? 'off',
+        listener: ({ diagnostic }) => {
+          if (measuredAt !== undefined && diagnostic.event === 'file-read-performance' && diagnostic.fileReads?.target === 'model') {
+            modelReads = diagnostic.fileReads;
+          }
+          if (measuredAt !== undefined && preparationEvents.length < 64) {
+            switch (diagnostic.event) {
+            case 'runtime-ready': case 'load-start': case 'load-complete': case 'model-reused':
+            case 'context-start': case 'context-retry': case 'context-ready':
+              preparationEvents.push({
+                event: diagnostic.event,
+                observedMs: Math.max(0, performance.now() - measuredAt),
+                elapsedMs: diagnostic.elapsedMs,
+                contextTokens: diagnostic.contextTokens,
+                batchTokens: diagnostic.batchTokens,
+                reason: diagnostic.reason,
+              });
+              break;
+            default: break;
+            }
+          }
+          if (onDiagnostic && (diagnostic.event === 'operation-start' || diagnostic.event === 'operation-complete' || diagnostic.event === 'native-error' || diagnostic.event === 'native-node-start' || diagnostic.event === 'native-node-complete' || (diagnostic.event === 'native-info' && (diagnostic.nativeOperation !== undefined || (accepted.measurement !== undefined && diagnostic.nativeMetric !== undefined))))) return Promise.resolve(onDiagnostic({ diagnostic }));
+          return undefined;
+        },
+      });
       try {
-        const result = await guarded({ operation: () => generate({ request: accepted, signal: controller.signal,
-          onEvent: async ({ event }) => {
-            // Already accepted content is drained on Stop; consumer abandonment rejects the ACK.
-            const acceptedEvent = generationEventSchema.parse(event);
-            try {
-              await onEvent({ event: acceptedEvent });
-            } catch {
-              throw new LlamaCppBrowserError({ code: 'worker-failed' });
-            }
-          },
-          onProgress: ({ progress }) => {
-            const acceptedProgress = progressSchema.parse(progress);
-            switch (acceptedProgress.phase) {
-            case 'prefill': case 'generating':
-              progressQueue.send({ progress: { ...acceptedProgress, phase: acceptedProgress.phase } });
-              break;
-            case 'importing': case 'initializing': case 'loading': case 'decoding-audio':
-              // Preserve immediate native loading progress. Only the high-rate
-              // text-evaluation/generation snapshots use the bounded mailbox.
-              events.send({ operation: () => {
-                if (!controller.signal.aborted) return onProgress(acceptedProgress);
-              } });
-              break;
-            default: { const exhaustive: never = acceptedProgress.phase; throw new Error(String(exhaustive)); }
-            }
-          },
-        }) });
+        const result = await guarded({
+          operation: () => generate({
+            request: accepted,
+            signal: controller.signal,
+            onSummary: ({ diagnostic }) => {
+              summary = diagnostic;
+            },
+            onEvent: async ({ event }) => {
+              // Already accepted content is drained on Stop; consumer abandonment rejects the ACK.
+              const acceptedEvent = generationEventSchema.parse(event);
+              try {
+                await onEvent({ event: acceptedEvent });
+              } catch {
+                throw new LlamaCppBrowserError({ code: 'worker-failed' });
+              }
+            },
+            onProgress: ({ progress }) => {
+              const acceptedProgress = progressSchema.parse(progress);
+              switch (acceptedProgress.phase) {
+              case 'prefill': case 'generating':
+                progressQueue.send({ progress: { ...acceptedProgress, phase: acceptedProgress.phase } });
+                break;
+              case 'importing': case 'initializing': case 'loading': case 'decoding-audio':
+                // Preserve immediate native loading progress. Only the high-rate
+                // text-evaluation/generation snapshots use the bounded mailbox.
+                events.send({
+                  operation: () => {
+                    if (!controller.signal.aborted) return onProgress(acceptedProgress);
+                  },
+                });
+                break;
+              default: { const exhaustive: never = acceptedProgress.phase; throw new Error(String(exhaustive)); }
+              }
+            },
+          }),
+        });
         return generationResultSchema.parse(result);
       } finally {
         unsubscribe();
+        stopGpuMeasurement?.();
+        if (summary && onSummary && accepted.measurement) {
+          const value: Diagnostic = {
+            ...summary,
+            performance: summary.performance ? { ...summary.performance, preparationEvents, modelReads } : undefined,
+          };
+          events.send({ operation: () => onSummary({ diagnostic: diagnosticSchema.parse(value) }) });
+        }
         // Finish proxy callbacks before resolving RPC; otherwise an old progress
         // callback could overwrite the next request or the service's idle state.
         try {
@@ -255,5 +333,6 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
     },
   };
 }
+
 export const TEST_ONLY = {
 };

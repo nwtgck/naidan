@@ -6,7 +6,7 @@ import { snapshotChatRequest } from '@/features/lm/chat-request';
 import { LlamaCppBrowserError, type GenerateInput } from './types';
 
 /** Resolve local content before loading a model; never rebuild history from UI text. */
-export async function prepareLlamaCppRequest({ messages, model, parameters, tools, readBinaryObject, debug, signal }: Parameters<LmProvider['chat']>[0]): Promise<Omit<GenerateInput, 'options'>> {
+export async function prepareLlamaCppRequest({ messages, model, parameters, tools, readBinaryObject, debug, signal }: { messages: Parameters<LmProvider['chat']>[0]['messages'], model: Parameters<LmProvider['chat']>[0]['model'], parameters: Parameters<LmProvider['chat']>[0]['parameters'], tools: Parameters<LmProvider['chat']>[0]['tools'], readBinaryObject: Parameters<LmProvider['chat']>[0]['readBinaryObject'], debug: Parameters<LmProvider['chat']>[0]['debug'], signal: Parameters<LmProvider['chat']>[0]['signal'] }): Promise<Omit<GenerateInput, 'options'>> {
   const snapshot = snapshotChatRequest({ messages, parameters, tools });
   const accepted: GenerateInput['messages'] = [];
   const callNames = new Map<string, string>();
@@ -137,7 +137,10 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
     }
   }
   signal?.throwIfAborted();
-  return { model, debug, messages: accepted,
+  return {
+    model,
+    debug,
+    messages: accepted,
     tools: snapshot.tools?.map(tool => ({ type: 'function', function: { ...tool } })),
     reasoningEffort: snapshot.parameters?.reasoning.effort,
     temperature: snapshot.parameters?.temperature ?? 0.7,
@@ -148,5 +151,6 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
     stop: snapshot.parameters?.stop ?? [],
   };
 }
+
 export const TEST_ONLY = {
 };

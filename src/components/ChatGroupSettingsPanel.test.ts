@@ -109,6 +109,7 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 const globalStubs = {
+  RpcRegistrationSelect: true,
   'lucide-vue-next': true,
   'LmParametersEditor': {
     name: 'LmParametersEditor',
@@ -144,6 +145,31 @@ vi.mock('../features/global-search/composables/useGlobalSearch', () => ({
 }));
 
 describe('ChatGroupSettingsPanel.vue', () => {
+  it('hides disabled RPC choices while preserving existing chat and title references', async () => {
+    mockGroup.endpoint = { type: 'naidan_rpc', registrationId: undefined };
+    mockGroup.titleGeneration = { endpoint: { type: 'naidan_rpc', registrationId: undefined }, model: { id: 'title-model' }, lmParameters: { ...EMPTY_LM_PARAMETERS } };
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    try {
+      await flushPromises();
+      for (const name of ['group-setting-endpoint-type-select', 'group-setting-title-endpoint-type-select']) {
+        const select = wrapper.get(`[data-testid="${name}"]`);
+        expect(select.element).toHaveProperty('value', 'naidan_rpc');
+        expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', true);
+      }
+      mockSettings.experimental = { naidanRpc: 'enabled' }; await nextTick();
+      for (const name of ['group-setting-endpoint-type-select', 'group-setting-title-endpoint-type-select']) {
+        expect(wrapper.get(`[data-testid="${name}"]`).get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', false);
+      }
+      mockSettings.experimental = undefined;
+      mockGroup.endpoint = undefined; mockGroup.titleGeneration = 'inherit'; await nextTick();
+      for (const name of ['group-setting-endpoint-type-select', 'group-setting-title-endpoint-type-select']) {
+        expect(wrapper.get(`[data-testid="${name}"]`).find('option[value="naidan_rpc"]').exists()).toBe(false);
+      }
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   beforeEach(async () => {
     await ensureAllStringsForTest({ locale: 'en' });
     vi.clearAllMocks();
@@ -289,7 +315,9 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await wrapper.get('[data-testid="group-setting-endpoint-type-select"]').setValue('ollama');
     await flushPromises();
     expect(mockGroup.titleGeneration).toMatchObject({
-      endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: 0.4, reasoning: { effort } },
+      endpoint: 'same_scope',
+      model: 'same_scope',
+      lmParameters: { temperature: 0.4, reasoning: { effort } },
     });
     wrapper.unmount();
   });
@@ -884,7 +912,6 @@ describe('ChatGroupSettingsPanel.vue', () => {
     });
   });
 
-
   it('keeps editor text when switching through No Prompt while the panel is open', async () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await nextTick();
@@ -1362,12 +1389,14 @@ describe('ChatGroupSettingsPanel.vue', () => {
       await flushPromises();
 
       expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: 'vol-1' });
-      expect(mocks.openFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
-        kind: 'wesh-mounts',
-        rootName: 'Files',
-        title: 'Folders',
-        initialPath: ['home', 'user', 'work'],
-      }) });
+      expect(mocks.openFileExplorer).toHaveBeenCalledWith({
+        options: expect.objectContaining({
+          kind: 'wesh-mounts',
+          rootName: 'Files',
+          title: 'Folders',
+          initialPath: ['home', 'user', 'work'],
+        }),
+      });
     });
 
     it('opens explorer with correct initialPath derived from clicked mount', async () => {
@@ -1385,9 +1414,11 @@ describe('ChatGroupSettingsPanel.vue', () => {
       await explorerBtns[1]!.trigger('click');
       await flushPromises();
 
-      expect(mocks.openFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
-        initialPath: ['home', 'user', 'beta'],
-      }) });
+      expect(mocks.openFileExplorer).toHaveBeenCalledWith({
+        options: expect.objectContaining({
+          initialPath: ['home', 'user', 'beta'],
+        }),
+      });
     });
   });
 
@@ -1448,5 +1479,4 @@ describe('ChatGroupSettingsPanel.vue', () => {
       wrapper.unmount(); vi.unstubAllGlobals();
     }
   });
-
 });

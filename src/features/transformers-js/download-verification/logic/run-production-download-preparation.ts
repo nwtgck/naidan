@@ -80,9 +80,16 @@ export async function runProductionDownloadPreparation({
   const knownSizes = new Map((sizeHints ?? []).filter(size => Number.isSafeInteger(size.bytes) && size.bytes > 0).map(size => [size.path, size.bytes]));
   function observeSizes({ index, paths }: { index: number; paths: readonly string[] }): void {
     sizeClient?.dispose();
-    publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'sizes', index, sizes: paths.flatMap(path => {
-      const bytes = knownSizes.get(path); return bytes === undefined ? [] : [{ path, bytes }];
-    }) } });
+    publishDownloadProgress({
+      callback: onDownloadProgress,
+      event: {
+        kind: 'sizes',
+        index,
+        sizes: paths.flatMap(path => {
+          const bytes = knownSizes.get(path); return bytes === undefined ? [] : [{ path, bytes }];
+        }),
+      },
+    });
     const missing = paths.filter(path => !knownSizes.has(path)).slice(0, 256);
     if (quotaLimited || missing.length === 0 || signal?.aborted) return;
     const client = createDownloadSizeClient();
@@ -109,13 +116,22 @@ export async function runProductionDownloadPreparation({
         switch (plan.status) {
         case 'planning-failed': return { status: 'planning-failed', error: plan.error, prefetch: undefined };
         case 'ready': {
-          const prepared = await prepareProductionModelCandidate({ modelId, revision, candidate, progressCallback: ({ info }) => {
-            safeProgress({ info });
-            publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'file', index, info } });
-          }, signal, onTiming, requiredModelPaths: plan.paths, onPlan: ({ paths }) => {
-            publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'plan', index, paths } });
-            observeSizes({ index, paths });
-          } });
+          const prepared = await prepareProductionModelCandidate({
+            modelId,
+            revision,
+            candidate,
+            progressCallback: ({ info }) => {
+              safeProgress({ info });
+              publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'file', index, info } });
+            },
+            signal,
+            onTiming,
+            requiredModelPaths: plan.paths,
+            onPlan: ({ paths }) => {
+              publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'plan', index, paths } });
+              observeSizes({ index, paths });
+            },
+          });
           if (prepared.status === 'ready' && prepared.prefetch?.complete) publishDownloadProgress({ callback: onDownloadProgress, event: { kind: 'prefetch-complete', index } });
           return prepared;
         }

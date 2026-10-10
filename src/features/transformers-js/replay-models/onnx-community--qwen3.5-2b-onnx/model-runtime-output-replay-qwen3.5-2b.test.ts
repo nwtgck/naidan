@@ -18,19 +18,31 @@ type Context = Parameters<GenerationStrategy['generate']>[0];
 const modelId = 'onnx-community/Qwen3.5-2B-ONNX';
 // Synthetic output controls use the model's original tokenizer, not recorded inference.
 installRawReplay({ evidence: undefined });
+
 afterEach(() => {
   vi.doUnmock('@huggingface/transformers'); vi.resetModules();
 });
+
 function assistant(): AssistantMessageNode {
-  return { id: toMessageId({ raw: 'a1' }), role: 'assistant', parts: [], createdAt: 1,
-    modelId, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
+  return {
+    id: toMessageId({ raw: 'a1' }),
+    role: 'assistant',
+    parts: [],
+    createdAt: 1,
+    modelId,
+    lmParameters: undefined,
+    interruption: undefined,
+    replies: { items: [] },
+  };
 }
 
 describe('Qwen3.5 2B original tokenizer and native output controls', () => {
   it.each(['single', 'batch'] as const)('distinguishes atomic added delimiters from ordinary text with %s delivery', async delivery => {
     const archive = await archiveFor({ modelId }); const { harness } = await start({ archive, bodyPaths: [] });
     const tokenizer = (await harness.runtime.AutoTokenizer.from_pretrained(modelId, {
-      revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined,
+      revision: archive.summary.revision,
+      local_files_only: true,
+      progress_callback: () => undefined,
     })) as unknown as Context['tokenizer'];
     vi.doMock('@huggingface/transformers', () => harness.runtime);
     const { NativeProtocolStreamer } = await import('@/features/transformers-js/models/native-protocol-streamer');
@@ -45,28 +57,36 @@ describe('Qwen3.5 2B original tokenizer and native output controls', () => {
     expect(tokenizer.decode(ordinaryMarkers, { skip_special_tokens: false })).toBe('<think>literal</think>');
     expect(ordinaryMarkers).not.toContain(BigInt(tokenizer.encode('<think>', { add_special_tokens: false })[0]!));
     const events: InferenceGenerationEvent[] = [];
-    const decoder = createQwen3_5Generation({ prompt: `\
+    const decoder = createQwen3_5Generation({
+      prompt: `\
 <|im_start|>assistant
 <think>
-`, tools: undefined,
-    emit: ({ event }) => {
-      events.push(event);
-    },
+`,
+      tools: undefined,
+      emit: ({ event }) => {
+        events.push(event);
+      },
     });
-    const streamer = new NativeProtocolStreamer({ tokenizer: tokenizer as unknown as ConstructorParameters<typeof NativeProtocolStreamer>[0]['tokenizer'],
+    const streamer = new NativeProtocolStreamer({
+      tokenizer: tokenizer as unknown as ConstructorParameters<typeof NativeProtocolStreamer>[0]['tokenizer'],
       protocolTokens: qwen3_5ProtocolTokens,
-      onText: ({ text }) => decoder.text({ text }), onControl: ({ token }) => decoder.control({ token }),
+      onText: ({ text }) => decoder.text({ text }),
+      onControl: ({ token }) => decoder.control({ token }),
     });
-    const ids = [...encode({ text: `\
+    const ids = [...encode({
+      text: `\
   理由🙂
 
 </think>
 
-` }), ...ordinaryMarkers, ...encode({ text: 'Answer  <|im_end|>' })];
-    streamer.put([encode({ text: `\
+`,
+    }), ...ordinaryMarkers, ...encode({ text: 'Answer  <|im_end|>' })];
+    streamer.put([encode({
+      text: `\
 <|im_start|>assistant
 <think>
-` })]);
+`,
+    })]);
     switch (delivery) {
     case 'single': for (const id of ids) streamer.put([[id]]); break;
     case 'batch': streamer.put([ids]); break;
@@ -89,8 +109,11 @@ describe('Qwen3.5 2B original tokenizer and native output controls', () => {
     const { NativeProtocolStreamer } = await import('@/features/transformers-js/models/native-protocol-streamer');
     const token = 'not a model delimiter';
     expect(tokenizer.encode(token, { add_special_tokens: false }).length).toBeGreaterThan(1);
-    expect(() => new NativeProtocolStreamer({ tokenizer: tokenizer as unknown as ConstructorParameters<typeof NativeProtocolStreamer>[0]['tokenizer'],
-      protocolTokens: [token], onText: () => {}, onControl: () => {},
+    expect(() => new NativeProtocolStreamer({
+      tokenizer: tokenizer as unknown as ConstructorParameters<typeof NativeProtocolStreamer>[0]['tokenizer'],
+      protocolTokens: [token],
+      onText: () => {},
+      onControl: () => {},
     })).toThrow('atomic');
     expect(harness.sessions).not.toHaveBeenCalled();
   }, 20_000);
@@ -137,28 +160,49 @@ R
       if (shape === 'native_failure') throw fault;
       return { past_key_values: null };
     });
-    const state: Context['runtimeState'] = { activeModelId: modelId, gemma4Processor: null,
+    const state: Context['runtimeState'] = {
+      activeModelId: modelId,
+      gemma4Processor: null,
       qwen3_5Processor: processor as unknown as Context['runtimeState']['qwen3_5Processor'],
-      gptOssPastKeyValues: null, qwen3_5SequenceCache: undefined, qwen3_5ConversationState: undefined, generationStateOwner: {},
+      gptOssPastKeyValues: null,
+      qwen3_5SequenceCache: undefined,
+      qwen3_5ConversationState: undefined,
+      generationStateOwner: {},
     };
     const node = assistant(); const abortController = new AbortController();
     const { createInferenceEventDelivery } = await import('@/features/transformers-js/worker/inference-event-delivery');
-    const operation = consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController, onChange: () => {}, items: createInferenceGeneration({ signal: abortController.signal,
-      generate: async ({ onEvent }) => {
-        const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
-        try {
-          await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: modelId }).generate({
-            model: { config: {}, sessions: {}, generate: nativeGenerate } as unknown as Context['model'],
-            tokenizer: tokenizer as unknown as Context['tokenizer'], messages: [{ role: 'user', content: 'Calculate.' }], onChunk, onToolCalls, onRawChunk: () => {},
-            params: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } }, tools: [{ type: 'function', function: { name: 'calculator', description: 'Arithmetic', parameters: { type: 'object', properties: { expression: { type: 'string' } } } } }],
-            stoppingCriteria: { reset: () => {}, interrupt: () => {} }, runtimeState: state, debugLog: () => {},
-            observationSink: undefined, generationCapture: undefined, onGenerationEvent: ({ event }) => queue.enqueue({ event }),
-          });
-        } finally {
-          await queue.finish();
-        }
-      },
-    }) });
+    const operation = consumeChatGeneration({
+      onToolCallDraftsChange: undefined,
+      node,
+      abortController,
+      onChange: () => {},
+      items: createInferenceGeneration({
+        signal: abortController.signal,
+        generate: async ({ onEvent }) => {
+          const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
+          try {
+            await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: modelId }).generate({
+              model: { config: {}, sessions: {}, generate: nativeGenerate } as unknown as Context['model'],
+              tokenizer: tokenizer as unknown as Context['tokenizer'],
+              messages: [{ role: 'user', content: 'Calculate.' }],
+              onChunk,
+              onToolCalls,
+              onRawChunk: () => {},
+              params: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } },
+              tools: [{ type: 'function', function: { name: 'calculator', description: 'Arithmetic', parameters: { type: 'object', properties: { expression: { type: 'string' } } } } }],
+              stoppingCriteria: { reset: () => {}, interrupt: () => {} },
+              runtimeState: state,
+              debugLog: () => {},
+              observationSink: undefined,
+              generationCapture: undefined,
+              onGenerationEvent: ({ event }) => queue.enqueue({ event }),
+            });
+          } finally {
+            await queue.finish();
+          }
+        },
+      }),
+    });
     let settled = false; void operation.then(() => {
       settled = true;
     }, () => {
@@ -215,31 +259,56 @@ Calculate.<|im_end|>
 <think>
 `;
     const node = assistant();
-    const operation = consumeChatGeneration({ onToolCallDraftsChange: undefined, node, abortController: new AbortController(), onChange: () => {}, items: createInferenceGeneration({ signal: undefined,
-      generate: async ({ onEvent }) => {
-        const events: InferenceGenerationEvent[] = [];
-        const codec = createQwen3_5Generation({ prompt: prefix,
-          tools: [{ type: 'function', function: { name: 'calculator', description: '', parameters: { type: 'object', properties: { expression: { type: 'string' } } } } }],
-          emit: ({ event }) => {
-            events.push(event);
-          },
-        });
-        const streamer = new NativeProtocolStreamer({ tokenizer, protocolTokens: qwen3_5ProtocolTokens,
-          onText: ({ text }) => codec.text({ text }), onControl: ({ token }) => codec.control({ token }),
-        });
-        streamer.put([tokenizer.encode(prefix, { add_special_tokens: false }).map(BigInt)]);
-        streamer.put([tokenizer.encode(native, { add_special_tokens: false }).map(BigInt)]);
-        streamer.end(); codec.finish({ reason: 'unknown' });
-        for (const event of events) await onEvent({ event });
-      },
-    }) });
+    const operation = consumeChatGeneration({
+      onToolCallDraftsChange: undefined,
+      node,
+      abortController: new AbortController(),
+      onChange: () => {},
+      items: createInferenceGeneration({
+        signal: undefined,
+        generate: async ({ onEvent }) => {
+          const events: InferenceGenerationEvent[] = [];
+          const codec = createQwen3_5Generation({
+            prompt: prefix,
+            tools: [{ type: 'function', function: { name: 'calculator', description: '', parameters: { type: 'object', properties: { expression: { type: 'string' } } } } }],
+            emit: ({ event }) => {
+              events.push(event);
+            },
+          });
+          const streamer = new NativeProtocolStreamer({
+            tokenizer,
+            protocolTokens: qwen3_5ProtocolTokens,
+            onText: ({ text }) => codec.text({ text }),
+            onControl: ({ token }) => codec.control({ token }),
+          });
+          streamer.put([tokenizer.encode(prefix, { add_special_tokens: false }).map(BigInt)]);
+          streamer.put([tokenizer.encode(native, { add_special_tokens: false }).map(BigInt)]);
+          streamer.end(); codec.finish({ reason: 'unknown' });
+          for (const event of events) await onEvent({ event });
+        },
+      }),
+    });
     expect(await operation).toEqual({ type: 'finished', next: 'tool_results' });
     const call = node.parts.find(p => p.type === 'tool_call'); if (!call) throw new Error('Expected a native completed call.');
-    const tool: ToolMessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 2, modelId: undefined, lmParameters: undefined,
-      parts: [{ type: 'tool_result', result: { toolCallId: call.toolCall.id, status: 'success', content: { type: 'text', text: '391' } } }], replies: { items: [] } };
+    const tool: ToolMessageNode = {
+      id: toMessageId({ raw: 'tool' }),
+      role: 'tool',
+      createdAt: 2,
+      modelId: undefined,
+      lmParameters: undefined,
+      parts: [{ type: 'tool_result', result: { toolCallId: call.toolCall.id, status: 'success', content: { type: 'text', text: '391' } } }],
+      replies: { items: [] },
+    };
     node.replies.items.push(tool);
-    const user: UserMessageNode = { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 0, modelId: undefined, lmParameters: undefined,
-      parts: [{ type: 'text', text: 'Calculate.', completeness: 'complete' }], replies: { items: [node] } };
+    const user: UserMessageNode = {
+      id: toMessageId({ raw: 'user' }),
+      role: 'user',
+      createdAt: 0,
+      modelId: undefined,
+      lmParameters: undefined,
+      parts: [{ type: 'text', text: 'Calculate.', completeness: 'complete' }],
+      replies: { items: [node] },
+    };
     const chat: ChatContent = { root: { items: [user] }, currentLeafId: tool.id };
     const storage = new MemoryStorageProvider(); const id = toChatId({ raw: 'qwen-native' });
     await storage.saveChatContent({ id, content: chat }); const loaded = await storage.loadChatContent({ id }); if (!loaded) throw new Error('Expected saved content.');

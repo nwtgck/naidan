@@ -86,7 +86,6 @@ describe('standalone Worker session', () => {
     expect(worker.terminate).toHaveBeenCalledOnce();
   });
 
-
   it('makes repeated disposal idempotent', async () => {
     const worker = createWorkerMock();
     const remote = createRemoteMock({ release: async () => undefined });
@@ -116,9 +115,11 @@ describe('standalone Worker session', () => {
 
   it('attempts release even when logical cleanup fails', async () => {
     const worker = createWorkerMock();
-    const remote = createRemoteMock({ release: async () => {
-      throw new Error('release failed');
-    } });
+    const remote = createRemoteMock({
+      release: async () => {
+        throw new Error('release failed');
+      },
+    });
     vi.mocked(wrapWorkerRemote).mockReturnValue(remote as never);
     const session = await createStandaloneWorkerSession<Record<string, never>>({
       createWorker: async () => worker,

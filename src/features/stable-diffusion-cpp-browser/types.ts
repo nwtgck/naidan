@@ -4,6 +4,7 @@ import { profileOptions, samplerOptions, schedulerOptions, defaultPreviewSetting
 export { defaultPreviewSettings } from './form-options';
 
 export const profileSchema = z.enum(profileOptions);
+
 export function getProfileConfiguration({ profile }: { profile: z.infer<typeof profileSchema> }): { pointerBytes: 4 | 8, memory64: boolean, jspi: boolean, suspension: 'direct' | 'asyncify' } {
   switch (profile) {
   case 'webgpu-wasm32-asyncify': return { pointerBytes: 4, memory64: false, jspi: false, suspension: 'asyncify' };
@@ -12,6 +13,7 @@ export function getProfileConfiguration({ profile }: { profile: z.infer<typeof p
   default: { const exhaustive: never = profile; throw new Error(String(exhaustive)); }
   }
 }
+
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 export const artifactSchema = z.object({
   profile: profileSchema,
@@ -64,7 +66,8 @@ export type PreviewControl = z.infer<typeof previewControlSchema>;
 
 /** Cancellation is a run-scoped request, not Worker destruction. */
 export const cancelControlSchema = z.object({
-  type: z.literal('naidan-image-cancel-v1'), runId: z.number().int().positive(),
+  type: z.literal('naidan-image-cancel-v1'),
+  runId: z.number().int().positive(),
 }).strict();
 export type CancelControl = z.infer<typeof cancelControlSchema>;
 export const cancelledResultSchema = z.object({ cancelled: z.literal(true), modelResident: z.boolean() }).strict();
@@ -89,7 +92,6 @@ export const parametersSchema = z.object({
   qwenVaePolicy: z.enum(['bounded', 'native']).default('bounded'),
   conditioningCacheSize: z.number().int().min(0).max(32),
   modelArguments: z.string().max(4096).refine(value => !value.includes('\0')),
-
 });
 export const weightResidencySchema = z.enum(['auto', 'cpu', 'hybrid', 'disk', 'runtime']);
 export const modelSlotSchema = z.enum(['model', 'diffusion', 'vae', 'clipL', 'clipG', 't5', 'lm']);

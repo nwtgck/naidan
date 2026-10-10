@@ -174,5 +174,4 @@ describe('ChatSettingsPanel Error Handling', () => {
       .toBe('http://failed-background-save.example');
     expect(wrapper.get('[data-testid="chat-settings-save-error"]').text()).toContain('storage failed');
   });
-
 });

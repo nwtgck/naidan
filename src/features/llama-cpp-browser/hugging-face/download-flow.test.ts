@@ -11,30 +11,54 @@ const state = vi.hoisted(() => ({ support: 'unsupported' as 'supported' | 'unsup
 vi.mock('@/features/privacy-fetch', () => ({ privacyFetchStream: vi.fn() }));
 vi.mock('@/utils/worker-transport', async importOriginal => {
   const original = await importOriginal<typeof import('@/utils/worker-transport')>();
-  return { ...original, wrapWorkerRemote: () => {
-    const writer = createDownloadWriter(); const begin = writer.begin; writer.begin = async ({ selection }) => structuredClone(await begin({ selection })); const append = writer.append; writer.append = async ({ bytes }) => {
-      await state.appendGate; return append({ bytes });
-    }; return writer;
-  }, releaseWorkerRemote: () => {}, workerTransfer: ({ value }: { value: object }) => value,
-  workerProxy: ({ value }: { value: object }) => value, workerCapability: vi.fn(({ value }: { value: object }) => value), getReadableStreamTransferSupport: async () => state.support };
+  return {
+    ...original,
+    wrapWorkerRemote: () => {
+      const writer = createDownloadWriter(); const begin = writer.begin; writer.begin = async ({ selection }) => structuredClone(await begin({ selection })); const append = writer.append; writer.append = async ({ bytes }) => {
+        await state.appendGate; return append({ bytes });
+      }; return writer;
+    },
+    releaseWorkerRemote: () => {},
+    workerTransfer: ({ value }: { value: object }) => value,
+    workerProxy: ({ value }: { value: object }) => value,
+    workerCapability: vi.fn(({ value }: { value: object }) => value),
+    getReadableStreamTransferSupport: async () => state.support,
+  };
 });
 const selection: DownloadSelection = { repository: 'owner/repo', revision: 'a'.repeat(40), files: [{ path: 'model.gguf', size: 128 }] };
+
 function response({ status, offset, bytes }: { status: number, offset: number, bytes: Uint8Array<ArrayBuffer>[] }): Awaited<ReturnType<typeof privacyFetchStream>> {
-  return { status, statusText: '', ok: status < 400, url: '', redirected: false, responseType: 'basic', policyName: 'test', headers: new Headers(status === 206 ? { 'content-range': `bytes ${offset}-127/128` } : {}),
-    body: new ReadableStream<Uint8Array<ArrayBuffer>>({ pull(controller) {
-      const next = bytes.shift(); if (next) controller.enqueue(next); else controller.close();
-    } }, { highWaterMark: 0 }) };
+  return {
+    status,
+    statusText: '',
+    ok: status < 400,
+    url: '',
+    redirected: false,
+    responseType: 'basic',
+    policyName: 'test',
+    headers: new Headers(status === 206 ? { 'content-range': `bytes ${offset}-127/128` } : {}),
+    body: new ReadableStream<Uint8Array<ArrayBuffer>>({
+      pull(controller) {
+        const next = bytes.shift(); if (next) controller.enqueue(next); else controller.close();
+      },
+    }, { highWaterMark: 0 }),
+  };
 }
+
 beforeEach(() => {
   vi.clearAllMocks(); state.support = 'unsupported'; state.appendGate = undefined; const root = memoryDirectory({ name: '' });
   vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: { request: async (_name: string, _options: object, operation: (lock: object) => Promise<unknown>) => operation({}) } });
   vi.stubGlobal('Worker', class extends EventTarget {
     constructor() {
       super(); state.worker = this;
-    } terminate() {}
+    }
+
+    terminate() {}
   });
 });
+
 afterEach(() => vi.unstubAllGlobals());
+
 describe.each(['unsupported', 'supported'] as const)('download transport: %s', support => {
   it('publishes validated streamed bytes', async () => {
     state.support = support; vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 200, offset: 0, bytes: [ggufBytes().slice(0, 64), ggufBytes().slice(64)] }));
@@ -47,6 +71,7 @@ describe.each(['unsupported', 'supported'] as const)('download transport: %s', s
     }
     expect(vi.mocked(privacyFetchStream).mock.calls[0]?.[0].request.url).toContain(`/resolve/${selection.revision}/model.gguf`);
   });
+
   it('counts only current work across resumed shards and shared projector verification', async () => {
     state.support = support;
     const projector = { path: 'mmproj.gguf', size: 128 };
@@ -70,6 +95,7 @@ describe.each(['unsupported', 'supported'] as const)('download transport: %s', s
     expect(progress.filter(value => value.currentFileIndex !== undefined).every(value => value.currentFileIndex === 1 || value.currentFileIndex === 2)).toBe(true);
     expect(progress.at(-1)?.currentFileIndex).toBeUndefined();
   });
+
   it('keeps short and oversized responses unpublished', async () => {
     state.support = support; vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 200, offset: 0, bytes: [ggufBytes().slice(0, 64)] }));
     await expect(downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} })).rejects.toThrow();
@@ -79,13 +105,18 @@ describe.each(['unsupported', 'supported'] as const)('download transport: %s', s
     expect(await listHuggingFaceModels()).toEqual([]);
   });
 });
+
 describe('download orchestration', () => {
   it('pauses after acknowledged bytes and resumes a pinned SHA through validated 206', async () => {
     const controller = new AbortController();
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 200, offset: 0, bytes: [ggufBytes().slice(0, 64), ggufBytes().slice(64)] }));
-    await expect(downloadRepository({ selection, signal: controller.signal, onProgress: ({ progress }) => {
-      if (progress.completed === 64) controller.abort();
-    } })).rejects.toThrow();
+    await expect(downloadRepository({
+      selection,
+      signal: controller.signal,
+      onProgress: ({ progress }) => {
+        if (progress.completed === 64) controller.abort();
+      },
+    })).rejects.toThrow();
     expect((await listPendingDownloads())[0]?.bytes).toEqual([64]);
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 206, offset: 64, bytes: [ggufBytes().slice(64)] }));
     const progress: DownloadProgress[] = [];
@@ -94,6 +125,7 @@ describe('download orchestration', () => {
     expect(progress.at(-1)).toEqual({ completed: 128, total: 128, processed: 64, phase: 'verifying' });
     expect(vi.mocked(privacyFetchStream).mock.calls[1]?.[0].request.headers).toEqual([['Range', 'bytes=64-']]); expect(await listPendingDownloads()).toEqual([]);
   });
+
   it('restarts a 200 response and allows explicit cancel-delete of a paused job', async () => {
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 200, offset: 0, bytes: [ggufBytes().slice(0, 48)] }));
     await expect(downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} })).rejects.toThrow();
@@ -106,6 +138,7 @@ describe('download orchestration', () => {
     expect((await listHuggingFaceModels())[0]?.size).toBe(128);
     await cancelDownload({ repository: selection.repository, plan: { id: 'hf.co/owner/repo', files: (await scanDeletionTree({ folder: await repositoryFolder({ repository: selection.repository, create: false }) })).files } }); expect(await listHuggingFaceModels()).toEqual([]);
   });
+
   it('preserves typed conflicts from the worker without starting another network request', async () => {
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(response({ status: 200, offset: 0, bytes: [ggufBytes().slice(0, 64)] }));
     await expect(downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} })).rejects.toThrow();
@@ -116,20 +149,24 @@ describe('download orchestration', () => {
     await expect(downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} })).rejects.toMatchObject({ name: 'DownloadConflictError', reason: 'existing-files' });
     expect(privacyFetchStream).toHaveBeenCalledTimes(2);
   });
+
   it('does not read the next fallback chunk until the writer acknowledges the current chunk', async () => {
     const gate = Promise.withResolvers<void>(); state.appendGate = gate.promise;
     const entered = Promise.withResolvers<void>(); let pulls = 0;
     const source = response({ status: 200, offset: 0, bytes: [] });
-    source.body = new ReadableStream<Uint8Array<ArrayBuffer>>({ pull(controller) {
-      pulls++; if (pulls === 1) {
-        controller.enqueue(ggufBytes().slice(0, 64)); entered.resolve();
-      } else if (pulls === 2) controller.enqueue(ggufBytes().slice(64)); else controller.close();
-    } }, { highWaterMark: 0 });
+    source.body = new ReadableStream<Uint8Array<ArrayBuffer>>({
+      pull(controller) {
+        pulls++; if (pulls === 1) {
+          controller.enqueue(ggufBytes().slice(0, 64)); entered.resolve();
+        } else if (pulls === 2) controller.enqueue(ggufBytes().slice(64)); else controller.close();
+      },
+    }, { highWaterMark: 0 });
     vi.mocked(privacyFetchStream).mockResolvedValueOnce(source);
     const download = downloadRepository({ selection, signal: new AbortController().signal, onProgress: () => {} });
     await entered.promise; await Promise.resolve(); expect(pulls).toBe(1);
     gate.resolve(); await download; expect(pulls).toBe(3);
   });
+
   it('aborts a pending network request when the storage worker fails', async () => {
     vi.mocked(privacyFetchStream).mockImplementation(({ request }) => new Promise((_resolve, reject) => {
       request.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
@@ -142,8 +179,12 @@ describe('download orchestration', () => {
 
 it('can cancel when the next file is reported before any network request is made', async () => {
   const controller = new AbortController();
-  await expect(downloadRepository({ selection, signal: controller.signal, onProgress: ({ progress }) => {
-    if (progress.currentFileIndex === 0) controller.abort();
-  } })).rejects.toMatchObject({ name: 'AbortError' });
+  await expect(downloadRepository({
+    selection,
+    signal: controller.signal,
+    onProgress: ({ progress }) => {
+      if (progress.currentFileIndex === 0) controller.abort();
+    },
+  })).rejects.toMatchObject({ name: 'AbortError' });
   expect(privacyFetchStream).not.toHaveBeenCalled();
 });

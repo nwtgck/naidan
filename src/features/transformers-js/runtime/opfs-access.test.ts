@@ -7,6 +7,7 @@ import { writeToOpfs } from '@/features/transformers-js/utils';
 import { createLockQueue } from '@/features/transformers-js/replay-models/support/opfs-lock-test-platform';
 
 const path = 'models/huggingface.co/fixture/model/resolve/revision/onnx/model.onnx';
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe('Cooperative OPFS access', () => {
@@ -22,10 +23,16 @@ describe('Cooperative OPFS access', () => {
     const cache = createOpfsModelCache({ revisionAliases: [], mutationPolicy: 'read-only', onMatchObservation: observations });
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    const writer = withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async () => {
-      entered.resolve();
-      await release.promise;
-    } });
+    const writer = withOpfsFileLease({
+      path,
+      mode: 'exclusive',
+      availability: 'wait',
+      signal: undefined,
+      run: async () => {
+        entered.resolve();
+        await release.promise;
+      },
+    });
     await entered.promise;
     const url = 'https://huggingface.co/fixture/model/resolve/revision/onnx/model.onnx';
     try {
@@ -48,18 +55,32 @@ describe('Cooperative OPFS access', () => {
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const events: string[] = [];
-    const first = withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async () => {
-      entered.resolve();
-      await release.promise;
-      events.push('cleanup-complete');
-    } });
+    const first = withOpfsFileLease({
+      path,
+      mode: 'exclusive',
+      availability: 'wait',
+      signal: undefined,
+      run: async () => {
+        entered.resolve();
+        await release.promise;
+        events.push('cleanup-complete');
+      },
+    });
     await entered.promise;
-    const second = withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async () => {
-      events.push('second');
-    } });
-    const deletion = withOpfsRootDeletion({ run: async () => {
-      events.push('delete');
-    } });
+    const second = withOpfsFileLease({
+      path,
+      mode: 'exclusive',
+      availability: 'wait',
+      signal: undefined,
+      run: async () => {
+        events.push('second');
+      },
+    });
+    const deletion = withOpfsRootDeletion({
+      run: async () => {
+        events.push('delete');
+      },
+    });
     await Promise.resolve();
     expect(events).toEqual([]);
     expect(q.held.size).toBe(3);
@@ -77,10 +98,16 @@ describe('Cooperative OPFS access', () => {
     vi.stubGlobal('navigator', { locks: q.locks });
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
-    const first = withOpfsFileLease({ path, mode: 'shared', availability: 'immediate', signal: undefined, run: async () => {
-      entered.resolve();
-      await release.promise;
-    } });
+    const first = withOpfsFileLease({
+      path,
+      mode: 'shared',
+      availability: 'immediate',
+      signal: undefined,
+      run: async () => {
+        entered.resolve();
+        await release.promise;
+      },
+    });
     await entered.promise;
     const snapshot = await withOpfsFileLease({ path, mode: 'shared', availability: 'immediate', signal: undefined, run: async () => 4 });
     const other = await withOpfsFileLease({ path: `${path}_data`, mode: 'exclusive', availability: 'wait', signal: undefined, run: async () => 8 });
@@ -93,9 +120,13 @@ describe('Cooperative OPFS access', () => {
 
   it('does not downgrade a lock API failure to uncoordinated access', async () => {
     const failure = new DOMException('Synthetic denied lock', 'SecurityError');
-    vi.stubGlobal('navigator', { locks: { request: () => {
-      throw failure;
-    } } });
+    vi.stubGlobal('navigator', {
+      locks: {
+        request: () => {
+          throw failure;
+        },
+      },
+    });
     const run = vi.fn(async () => 4);
     await expect(withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run })).rejects.toBe(failure);
     expect(run).not.toHaveBeenCalled();
@@ -107,14 +138,23 @@ describe('Cooperative OPFS access', () => {
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     let deleted = false;
-    const reader = withOpfsFileLease({ path, mode: 'shared', availability: 'wait', signal: undefined, run: async () => {
-      entered.resolve();
-      await release.promise;
-    } });
+    const reader = withOpfsFileLease({
+      path,
+      mode: 'shared',
+      availability: 'wait',
+      signal: undefined,
+      run: async () => {
+        entered.resolve();
+        await release.promise;
+      },
+    });
     await entered.promise;
-    const deletion = withOpfsModelDeletion({ modelPath: 'models/huggingface.co/fixture/model', run: async () => {
-      deleted = true;
-    } });
+    const deletion = withOpfsModelDeletion({
+      modelPath: 'models/huggingface.co/fixture/model',
+      run: async () => {
+        deleted = true;
+      },
+    });
     const unrelated = await withOpfsFileLease({ path: 'models/huggingface.co/fixture/other/resolve/revision/onnx/model.onnx', mode: 'exclusive', availability: 'wait', signal: undefined, run: async () => 4 });
     expect(unrelated).toBe(4);
     expect(deleted).toBe(false);
@@ -147,11 +187,17 @@ describe('Cooperative OPFS access', () => {
   it('keeps unsupported legacy access explicit and revokes escaped file leases', async () => {
     vi.stubGlobal('navigator', {});
     let escaped: OpfsFileLease | undefined;
-    const result = await withOpfsFileLease({ path, mode: 'exclusive', availability: 'wait', signal: undefined, run: async ({ lease }) => {
-      escaped = lease;
-      assertOpfsFileLease({ path, mode: 'exclusive', lease });
-      return lease.coordinated;
-    } });
+    const result = await withOpfsFileLease({
+      path,
+      mode: 'exclusive',
+      availability: 'wait',
+      signal: undefined,
+      run: async ({ lease }) => {
+        escaped = lease;
+        assertOpfsFileLease({ path, mode: 'exclusive', lease });
+        return lease.coordinated;
+      },
+    });
     expect(result).toBe(false);
     expect(escaped).toBeDefined();
     expect(() => assertOpfsFileLease({ path, mode: 'exclusive', lease: escaped! })).toThrow('active matching lease');

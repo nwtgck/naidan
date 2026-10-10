@@ -1,16 +1,32 @@
-import type { PWAUpdateState } from '@/composables/usePWAUpdate';
-import { activateUpdate } from '@/logic/pwa/activate-update';
-import { requestNetworkUpdate } from '@/logic/pwa/worker-request';
+
+import type { PWAUpdateState } from './update-state';
+
+import { activateUpdate } from './activate-update';
+
+import { requestBuildId, requestNetworkUpdate, requestOfflineCompletion } from './worker-request';
 
 export interface PWAUpdatePlatform {
   serviceWorkers: ServiceWorkerContainer;
   reload: () => void;
 }
 
-/** Detection only; apply() below is the complete, two-path update transaction. */
-export function createPWAUpdateController({ platform, baseUrl, onState, onOfflineReady, onError, onWarning }: {
+type Observation = {
+  worker: ServiceWorker;
+  listener: () => void;
+  lifetime: AbortController;
+  buildId: string | undefined;
+  trusted: boolean;
+  observedAt: number;
+  queriedState: ServiceWorkerState | undefined;
+  querying: boolean;
+  completionController: ServiceWorker | undefined;
+};
+
+/** An executing build is never its own application update. Unknown is not different. */
+export function createPWAUpdateController({ platform, baseUrl, pageBuildId, onState, onOfflineReady, onError, onWarning }: {
   platform: PWAUpdatePlatform;
   baseUrl: URL;
+  pageBuildId: string;
   onState: ({ next }: { next: PWAUpdateState }) => void;
   onOfflineReady: () => void;
   onError: ({ message, error }: { message: string; error: unknown }) => void;
@@ -18,33 +34,42 @@ export function createPWAUpdateController({ platform, baseUrl, onState, onOfflin
 }): { dispose: () => void } {
   const sw = platform.serviceWorkers;
   const lifetime = new AbortController();
-  // Remember a worker, not a page version. A page first opened without a
-  // controller acquires its baseline when the initial worker becomes active.
-  let pageController = sw.controller;
-  const observed = new Map<ServiceWorker, () => void>();
+  const observed = new Map<ServiceWorker, Observation>();
   let registration: ServiceWorkerRegistration | undefined;
-  let updateSeen = false;
-  let firstInstallation = false;
+  let lastActive: ServiceWorker | null = null;
+  let lineageKnown = false;
+  let candidate: Observation | undefined;
   let offlineAnnounced = false;
+  let offlinePending = false;
+  let observationSequence = 0;
+  let updateAvailable = false;
+  let applying: Promise<void> | undefined;
   const disposed = () => lifetime.signal.aborted;
 
-  async function apply(): Promise<void> {
-    if (disposed() || !registration) throw new Error('The update runtime was stopped.');
+  function preparedWorker(): ServiceWorker | undefined {
+    const worker = candidate?.worker;
+    if (!worker || candidate?.buildId === pageBuildId) return undefined;
+    if (worker === registration?.waiting && worker.state === 'installed') return worker;
+    if (worker === registration?.active && (worker.state === 'activating' || worker.state === 'activated')) return worker;
+    return undefined;
+  }
+
+  // This is the ONLY path with reload capability; offline completion never calls it.
+  async function applyTransaction(): Promise<void> {
+    if (disposed() || !registration || !candidate || !updateAvailable) throw new Error('The update is no longer available.');
     try {
-      // Re-read slots at click time. The update may have become ready since the
-      // button appeared. No networking or cache changes on the prepared path.
       const prepared = preparedWorker();
       if (prepared) {
-        // Another tab may have moved it from waiting to active/activating.
-        // The same bounded activation wait handles both cases (and activated).
         await activateUpdate({ worker: prepared, signal: lifetime.signal });
       } else {
         const controller = sw.controller;
         if (!controller || controller !== registration.active) throw new Error('This page is not controlled by the application service worker. Reload and retry.');
         await requestNetworkUpdate({ worker: controller, signal: lifetime.signal });
+        // An acknowledgement from A says nothing about a replacement B's mode.
+        if (sw.controller !== controller || registration.active !== controller) throw new Error('The controlling service worker changed during the update. Retry.');
       }
       if (disposed()) throw new Error('The update runtime was stopped.');
-      platform.reload(); // Always a FULL document reload, including hash routes.
+      platform.reload();
     } catch (error) {
       if (!disposed()) onError({ message: 'Failed to apply the application update.', error });
       throw error;
@@ -53,74 +78,146 @@ export function createPWAUpdateController({ platform, baseUrl, onState, onOfflin
     }
   }
 
-  function preparedWorker(): ServiceWorker | undefined {
-    const waiting = registration?.waiting;
-    // A first installation is offline preparation, not an application update.
-    if (registration?.active && waiting && waiting !== registration.active
-      && (waiting.state === 'installed' || waiting.state === 'activating')) return waiting;
+  function apply(): Promise<void> {
+    // A stale handler or multiple callers still represents one user transaction.
+    applying ??= applyTransaction().finally(() => {
+      applying = undefined;
+    });
+    return applying;
+  }
+
+  function identify({ item }: { item: Observation }): void {
+    const worker = item.worker;
+    if (item.buildId || item.querying || item.queriedState === worker.state || worker.state === 'redundant') return;
+    item.querying = true;
+    item.queriedState = worker.state;
+    void requestBuildId({ worker, signal: item.lifetime.signal }).then(buildId => {
+      if (disposed() || observed.get(worker) !== item) return;
+      item.buildId = buildId;
+    }).catch(() => {
+      // Older workers need not understand this protocol. No invented identity,
+      // automatic activation, or immediate retry loop on a missing response.
+    }).finally(() => {
+      item.querying = false;
+      if (!disposed() && observed.get(worker) === item) synchronize();
+    });
+  }
+
+  function completeOffline({ item }: { item: Observation }): void {
     const active = registration?.active;
-    if (pageController && active && active !== pageController
-      && (active.state === 'activating' || active.state === 'activated')) return active;
-    return undefined;
+    if (!active || sw.controller !== active || item.worker !== registration?.waiting
+      || item.worker.state !== 'installed' || item.buildId !== pageBuildId
+      || item.completionController === active) return;
+    item.completionController = active;
+    // The ACTIVE worker owns every download session, including other tabs. It
+    // drains them before addressing this exact build, rather than blindly skipping.
+    void requestOfflineCompletion({ worker: active, buildId: pageBuildId, signal: item.lifetime.signal }).catch((error: unknown) => {
+      if (!disposed() && observed.get(item.worker) === item && item.worker.state === 'installed') {
+        onWarning({ message: error instanceof Error ? error.message : 'Automatic offline completion was unavailable.' });
+      }
+    });
   }
 
   function synchronize(): void {
     if (disposed() || !registration) return;
     const current = registration;
-    pageController ??= current.active;
     const workers = [current.installing, current.waiting, current.active].filter(worker => worker !== null);
-    for (const [worker, listener] of observed) {
+    for (const [worker, item] of observed) {
       if (workers.includes(worker)) continue;
-      worker.removeEventListener('statechange', listener);
+      worker.removeEventListener('statechange', item.listener);
       observed.delete(worker);
+      item.lifetime.abort();
     }
+    const observedAt = ++observationSequence;
     for (const worker of workers) {
       if (observed.has(worker)) continue;
       let previous = worker.state;
-      const activeWhenObserved = current.active;
-      const waitingWhenObserved = current.waiting;
-      const listener = () => {
-        const stopped = (previous === 'parsed' || previous === 'installing') && worker.state === 'redundant';
-        previous = worker.state;
-        const superseded = [current.installing, current.waiting].some(replacement =>
-          replacement && replacement !== worker && replacement !== waitingWhenObserved && replacement.state !== 'redundant')
-          || (current.active && current.active !== worker && current.active !== activeWhenObserved);
-        synchronize();
-        if (stopped && !superseded && !disposed()) onWarning({ message: 'Offline preparation stopped. The service worker console contains any resource-level error supplied by the browser.' });
+      const item: Observation = {
+        worker,
+        listener: () => {
+          const stopped = (previous === 'parsed' || previous === 'installing') && worker.state === 'redundant';
+          previous = worker.state;
+          synchronize();
+          if (stopped && !disposed() && ![current.installing, current.waiting, current.active].some(other => other && other !== worker && other.state !== 'redundant' && (observed.get(other)?.observedAt ?? 0) > item.observedAt)) {
+            onWarning({ message: 'Offline preparation stopped. The service worker console contains any resource-level error supplied by the browser.' });
+          }
+        },
+        lifetime: new AbortController(),
+        buildId: undefined,
+        trusted: lineageKnown && worker !== lastActive,
+        observedAt,
+        queriedState: undefined,
+        querying: false,
+        completionController: undefined,
       };
-      observed.set(worker, listener);
-      worker.addEventListener('statechange', listener);
+      observed.set(worker, item);
+      worker.addEventListener('statechange', item.listener);
     }
-    if (current.active && [current.installing, current.waiting].some(worker =>
-      worker && worker !== current.active && worker.state !== 'redundant')) updateSeen = true;
-    if (preparedWorker()) {
+    lastActive = current.active;
+    for (const item of observed.values()) identify({ item });
+    const newest = current.installing ?? current.waiting ?? current.active;
+    const latest = newest ? observed.get(newest) : undefined;
+    const ownActive = current.active && observed.get(current.active)?.buildId === pageBuildId;
+    if (ownActive || latest?.buildId === pageBuildId) lineageKnown = true;
+    if (latest && ownActive) latest.trusted = true;
+
+    if (latest?.buildId === pageBuildId) {
+      // Falling back to an OLDER slot after C fails is not a new observation of B.
+      if (!candidate || latest.observedAt > candidate.observedAt || candidate.worker.state !== 'redundant') candidate = undefined;
+    } else if (latest?.buildId && latest.trusted && latest.worker.state !== 'redundant') {
+      candidate = latest;
+    } else if (candidate && candidate.worker.state !== 'redundant' && candidate !== latest) {
+      candidate = undefined;
+    }
+    // A failed, known DIFFERENT build remains an explicit online choice. A live
+    // unknown replacement hides that choice until its identity has been checked.
+    const unknownReplacement = latest && latest.worker !== current.active && !latest.buildId;
+    updateAvailable = !!candidate && !unknownReplacement;
+    if (unknownReplacement) {
+      onState({ next: { kind: 'idle' } });
+    } else if (preparedWorker()) {
       onState({ next: { kind: 'ready', handler: apply } });
-    } else if (updateSeen) {
-      // Keep the deliberate network choice even if full precaching has failed.
-      onState({ next: { kind: 'preparing',
-        handler: sw.controller && sw.controller === current.active && current.active.state === 'activated' ? apply : undefined,
-      } });
+    } else if (candidate) {
+      onState({ next: { kind: 'preparing', handler: sw.controller === current.active && current.active?.state === 'activated' ? apply : undefined } });
     } else {
       onState({ next: { kind: 'idle' } });
-      if (firstInstallation && current.active?.state === 'activated' && !offlineAnnounced) {
-        offlineAnnounced = true;
-        onOfflineReady();
-      }
+    }
+    // Independent of C's update: waiting B can be this page's offline preparation.
+    const waiting = current.waiting ? observed.get(current.waiting) : undefined;
+    if ([current.installing, current.waiting].some(worker => worker && observed.get(worker)?.buildId === pageBuildId)) offlinePending = true;
+    if (waiting) completeOffline({ item: waiting });
+    if (offlinePending && ownActive && current.active?.state === 'activated' && !offlineAnnounced) {
+      offlineAnnounced = true;
+      onOfflineReady();
     }
   }
 
   function attach({ next }: { next: ServiceWorkerRegistration }): void {
-    if (disposed() || next.scope !== baseUrl.href) return;
-    if (!registration) firstInstallation = !next.active;
+    if (disposed() || next.scope !== baseUrl.href || registration === next) return;
     registration?.removeEventListener('updatefound', synchronize);
     registration = next;
-    registration.addEventListener('updatefound', synchronize);
+    offlinePending ||= !next.active;
+    const activeBeforeCheck = next.active;
+    lastActive = next.active;
+    next.addEventListener('updatefound', synchronize);
     synchronize();
+    // register() alone can return an unchanged registration. A successful update
+    // check authenticates the newest slot, NOT every old worker left in the scope.
+    void next.update().then(() => {
+      if (disposed() || registration !== next) return;
+      synchronize();
+      const newest = next.installing ?? next.waiting ?? next.active;
+      const item = newest ? observed.get(newest) : undefined;
+      if (item && (newest !== activeBeforeCheck || item.buildId === pageBuildId || item.trusted)) {
+        item.trusted = true; lineageKnown = true;
+      }
+      synchronize();
+    }).catch(() => {
+      // Offline checks do not invalidate known identities or block the page.
+    });
   }
 
   sw.addEventListener('controllerchange', synchronize);
-  // Observe an existing installer first: register/update jobs can queue behind
-  // its full download. Registration itself still starts only after surface paint.
   void sw.getRegistration(baseUrl.href).then(existing => {
     if (disposed()) return;
     if (existing?.scope === baseUrl.href) attach({ next: existing });
@@ -131,13 +228,18 @@ export function createPWAUpdateController({ platform, baseUrl, onState, onOfflin
     if (!disposed()) onError({ message: 'Failed to register the service worker.', error });
   });
 
-  return { dispose() {
-    lifetime.abort();
-    sw.removeEventListener('controllerchange', synchronize);
-    registration?.removeEventListener('updatefound', synchronize);
-    for (const [worker, listener] of observed) worker.removeEventListener('statechange', listener);
-    observed.clear();
-  } };
+  return {
+    dispose() {
+      lifetime.abort();
+      sw.removeEventListener('controllerchange', synchronize);
+      registration?.removeEventListener('updatefound', synchronize);
+      for (const [worker, item] of observed) {
+        worker.removeEventListener('statechange', item.listener);
+        item.lifetime.abort();
+      }
+      observed.clear();
+    },
+  };
 }
 
 export const TEST_ONLY = {

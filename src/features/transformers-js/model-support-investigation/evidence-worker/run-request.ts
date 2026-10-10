@@ -20,17 +20,21 @@ export function encodeEvidenceRun({ run }: { run: ModelSupportInvestigationRun }
   }
   const { productionProviderCapture, productionProviderInvestigation, ...body } = run;
   const providerCaptureEvidence = productionProviderCapture === undefined ? undefined : createProductionProviderCaptureEvidence({
-    capture: productionProviderCapture, runId: run.runId, modelId: run.modelId,
+    capture: productionProviderCapture,
+    runId: run.runId,
+    modelId: run.modelId,
   }).json;
   const providerInvestigationEvidence = productionProviderInvestigation === undefined ? undefined : createProductionProviderInvestigationSummaryEvidence({
-    summary: productionProviderInvestigation, runId: run.runId, modelId: run.modelId,
+    summary: productionProviderInvestigation,
+    runId: run.runId,
+    modelId: run.modelId,
   }).json;
   return { run: body, providerCaptureEvidence, providerInvestigationEvidence };
 }
 
 /** The ordinary Run graph retains its existing JSON validation contract. The
  * host-only Provider field is separately decoded and identity-validated here. */
-export function decodeEvidenceRun({ run, providerCaptureEvidence, providerInvestigationEvidence }: z.infer<typeof encodedEvidenceRunSchema>): ModelSupportInvestigationRun {
+export function decodeEvidenceRun({ run, providerCaptureEvidence, providerInvestigationEvidence }: { run: z.infer<typeof encodedEvidenceRunSchema>['run'], providerCaptureEvidence?: z.infer<typeof encodedEvidenceRunSchema>['providerCaptureEvidence'], providerInvestigationEvidence?: z.infer<typeof encodedEvidenceRunSchema>['providerInvestigationEvidence'] }): ModelSupportInvestigationRun {
   validateRuntimeControlBindings({ run });
   if (Object.hasOwn(run, 'productionProviderCapture') || Object.hasOwn(run, 'productionProviderInvestigation')) throw new Error('Raw Provider capture is not allowed in Evidence request JSON');
   if (providerCaptureEvidence === undefined && providerInvestigationEvidence === undefined) return run as unknown as ModelSupportInvestigationRun;

@@ -1,3 +1,5 @@
+import type { ImageInferenceLocationPreference, RemoteImageModelEditorPreference } from './image-generation-preferences';
+import type { NaidanRpcRegistrationId } from '@/01-models/ids';
 /**
  * Domain Definitions (Single Source of Truth)
  *
@@ -83,7 +85,9 @@ export type UnsupportedExperimentalEndpoint = {
   persistedType: string | undefined,
 };
 
-export type SupportedEndpoint = HttpEndpoint | TransformersJsEndpoint | BrowserProvidedLmEndpoint | LlamaCppBrowserEndpoint;
+export type NaidanRpcEndpoint = { type: 'naidan_rpc', registrationId: NaidanRpcRegistrationId | undefined };
+
+export type SupportedEndpoint = NaidanRpcEndpoint | HttpEndpoint | TransformersJsEndpoint | BrowserProvidedLmEndpoint | LlamaCppBrowserEndpoint;
 export type Endpoint = SupportedEndpoint | UnsupportedExperimentalEndpoint;
 export type EndpointType = SupportedEndpoint['type'];
 
@@ -416,6 +420,10 @@ export type BrowserImageModelSelection = {
   loras: { location: BrowserImageModelLocation, enabled: 'enabled' | 'disabled', strength: number }[],
 };
 
+export type LlamaCppBrowserSettings = {
+  modelDownloadDestination?: { kind: 'opfs' } | { kind: 'host', directoryId: HostModelDirectoryId },
+};
+
 export type BrowserImageGenerationSettings = {
   width?: number,
   height?: number,
@@ -426,6 +434,8 @@ export type BrowserImageGenerationSettings = {
   modelDownloadDestination?: { kind: 'opfs' } | { kind: 'host', directoryId: HostModelDirectoryId },
   imageDownload?: { format?: 'png' | 'webp' | 'jpeg', metadata?: 'include' | 'omit' },
   modelSelection?: BrowserImageModelSelection,
+  inferenceLocation?: ImageInferenceLocationPreference,
+  remoteModelEditors?: RemoteImageModelEditorPreference[],
   preview?: {
     enabled?: 'enabled' | 'disabled',
     mode?: 'projection' | 'vae',
@@ -450,6 +460,8 @@ export const DEFAULT_BROWSER_IMAGE_GENERATION_SETTINGS = {
   modelDownloadDestination: { kind: 'opfs' },
   imageDownload: { format: 'png', metadata: 'omit' },
   modelSelection: undefined,
+  inferenceLocation: { kind: 'local' },
+  remoteModelEditors: [],
   preview: { enabled: 'disabled', mode: 'vae', interval: 2, startStep: 1, maxEdge: 256 },
   keepPreviews: 'enabled',
   maxPreviews: 16,
@@ -481,6 +493,7 @@ export interface Settings {
     /** Global tool configuration. Missing keys use application defaults. */
     toolConfigs?: ToolConfig[],
     fakeLm?: 'disabled' | 'enabled',
+    naidanRpc?: 'disabled' | 'enabled',
     sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat',
     globalSearch?: {
       scope?: 'all' | 'current_thread' | 'title_only',
@@ -488,6 +501,7 @@ export interface Settings {
       previewMode?: 'always' | 'peek' | 'disabled',
       previewContextSize?: number | 'full',
     },
+    llamaCppBrowser?: LlamaCppBrowserSettings,
     browserImageGeneration?: BrowserImageGenerationSettings,
     readonly unreadable?: {
       readonly [key: string]: unknown,

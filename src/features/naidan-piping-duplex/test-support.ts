@@ -4,8 +4,6 @@ import { Pulse, joinBytes } from '@/features/naidan-piping-duplex/bytes';
 import { createNaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
 import { establishNaidanPipingKeys } from '@/features/naidan-piping-duplex/key-context';
 import type { NaidanPipingHandshakeChannel } from '@/features/naidan-piping-duplex/key-context';
-import { StreamSession } from '@/features/naidan-piping-duplex/session';
-import type { Snapshot } from '@/features/naidan-piping-duplex/wire';
 
 /** Unit tests never fall through to a real HTTP request. */
 export function useOfflineScope(): void {
@@ -42,10 +40,24 @@ export async function keyPair() {
   const stop = new AbortController();
   const timer = setTimeout(() => stop.abort(new Error('Test key exchange timed out')), 5000);
   const jobs = {
-    a: establishNaidanPipingKeys({ role: 'initiator', identity: a, expectedPeer: b.publicKey, binding,
-      channel: { send: toB.send, receive: toA.receive }, signal: stop.signal }),
-    b: establishNaidanPipingKeys({ role: 'responder', identity: b, expectedPeer: a.publicKey, binding,
-      channel: { send: toA.send, receive: toB.receive }, signal: stop.signal }),
+    a: establishNaidanPipingKeys({
+      responseTimeoutMs: 75_000,
+      role: 'initiator',
+      identity: a,
+      expectedPeer: b.publicKey,
+      binding,
+      channel: { send: toB.send, receive: toA.receive },
+      signal: stop.signal,
+    }),
+    b: establishNaidanPipingKeys({
+      responseTimeoutMs: 75_000,
+      role: 'responder',
+      identity: b,
+      expectedPeer: a.publicKey,
+      binding,
+      channel: { send: toA.send, receive: toB.receive },
+      signal: stop.signal,
+    }),
   };
   for (const job of Object.values(jobs)) void job.catch(error => stop.abort(error));
   try {
@@ -59,50 +71,6 @@ export async function keyPair() {
     stop.abort();
     await Promise.allSettled(Object.values(jobs));
   }
-}
-
-export async function sessionPair() {
-  const keys = await keyPair();
-  const sessions = await promiseAllKeyed({ a: StreamSession.create({ keys: keys.a }), b: StreamSession.create({ keys: keys.b }) });
-  onTestFinished(() => {
-    sessions.a.abort({ reason: 'Test cleanup' });
-    sessions.b.abort({ reason: 'Test cleanup' });
-  });
-  return sessions;
-}
-
-export async function exchange({ a, b }: { a: StreamSession; b: StreamSession }): Promise<void> {
-  const capsules = await promiseAllKeyed({ left: a.makeCapsule(), right: b.makeCapsule() });
-  await b.acceptCapsule({ capsule: capsules.left });
-  await a.acceptCapsule({ capsule: capsules.right });
-}
-
-/** A bounded local driver; no socket, retries on wall-clock races, or private-state writes. */
-export async function drive<T>({ a, b, operation, limit }: {
-  a: StreamSession; b: StreamSession; operation: () => Promise<T>; limit: number;
-}): Promise<T> {
-  let settled = false;
-  const pending = operation();
-  void pending.then(() => {
-    settled = true;
-  }, () => {
-    settled = true;
-  });
-  for (let step = 0; !settled && step < limit; step++) {
-    await exchange({ a, b });
-    // Real Web Crypto callbacks and native Streams must get an event-loop turn.
-    await new Promise<void>(resolve => setTimeout(resolve, 0));
-  }
-  if (!settled) throw new Error(`Local driver did not converge: ${JSON.stringify({ a: a.debug(), b: b.debug() })}`);
-  return pending;
-}
-
-export async function opened({ a, b }: { a: StreamSession; b: StreamSession }) {
-  const incoming = b.incomingStreams[Symbol.asyncIterator]();
-  const aStream = await drive({ a, b, operation: () => a.openStream({ signal: undefined }), limit: 30 });
-  const entry = await incoming.next();
-  if (entry.done) throw new Error('Missing incoming stream');
-  return { aStream, bStream: entry.value, incoming };
 }
 
 export function pattern({ size, seed }: { size: number; seed: number }): Uint8Array<ArrayBuffer> {
@@ -126,10 +94,6 @@ export async function readAll({ readable }: { readable: ReadableStream<Uint8Arra
   } finally {
     reader.releaseLock();
   }
-}
-
-export function emptySnapshot(): Snapshot {
-  return { goaway: false, finished: new Uint8Array(), reset: new Uint8Array(), states: [], data: [] };
 }
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

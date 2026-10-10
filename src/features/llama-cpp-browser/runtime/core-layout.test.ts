@@ -7,31 +7,42 @@ import { attachCore, createCore, type Core, type CoreModule } from './core';
 
 describe('module-local native ABI layouts', () => {
   let core: Core;
+
   beforeAll(async () => {
     const baseURL = pathToFileURL(path.resolve('node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles') + '/');
-    core = await createCore({ profile: 'cpu-wasm32', baseURL, moduleOptions: {
-      wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)), print() {}, printErr() {},
-    } });
+    core = await createCore({
+      profile: 'cpu-wasm32',
+      baseURL,
+      moduleOptions: {
+        wasmBinary: await readFile(new URL('cpu-wasm32/browser/core.wasm', baseURL)),
+        print() {},
+        printErr() {},
+      },
+    });
   });
+
   afterEach(() => vi.restoreAllMocks());
 
   function instrument({ overrides }: { overrides: Record<string, unknown> }) {
     const counts = new Map<string, number>();
-    const module: CoreModule = new Proxy(core.module, { get(target, property) {
-      if (typeof property === 'string' && Object.hasOwn(overrides, property)) return overrides[property];
-      const value: unknown = Reflect.get(target, property, target);
-      if (typeof property === 'string' && ['_lcb_sizeof_record', '_lcb_offsetof_field', '_lcb_sizeof_field'].includes(property)) {
-        if (typeof value !== 'function') throw new Error('Missing fixture native layout export');
-        // Instrument native scalar ABI without changing the call shape.
-        return (...args: (number | bigint)[]) => {
-          counts.set(property, (counts.get(property) ?? 0) + 1);
-          return Reflect.apply(value, target, args);
-        };
-      }
-      return value;
-    } });
+    const module: CoreModule = new Proxy(core.module, {
+      get(target, property) {
+        if (typeof property === 'string' && Object.hasOwn(overrides, property)) return overrides[property];
+        const value: unknown = Reflect.get(target, property, target);
+        if (typeof property === 'string' && ['_lcb_sizeof_record', '_lcb_offsetof_field', '_lcb_sizeof_field'].includes(property)) {
+          if (typeof value !== 'function') throw new Error('Missing fixture native layout export');
+          // Instrument native scalar ABI without changing the call shape.
+          return (...args: (number | bigint)[]) => {
+            counts.set(property, (counts.get(property) ?? 0) + 1);
+            return Reflect.apply(value, target, args);
+          };
+        }
+        return value;
+      },
+    });
     return { module, counts };
   }
+
   it('queries each used layout once but writes each actual record and value', () => {
     const { module, counts } = instrument({ overrides: {} });
     const bound = attachCore({ module, callMode: 'direct' });
@@ -59,12 +70,15 @@ describe('module-local native ABI layouts', () => {
       bound.free({ pointer: a }); bound.free({ pointer: b });
     }
   });
+
   it('reads the current heap after replacement, without caching a DataView or tensor address', () => {
     let heap = core.module.HEAPU8;
     const { module: source } = instrument({ overrides: {} });
-    const module = new Proxy(source, { get(target, property) {
-      return property === 'HEAPU8' ? heap : Reflect.get(target, property, target);
-    } });
+    const module = new Proxy(source, {
+      get(target, property) {
+        return property === 'HEAPU8' ? heap : Reflect.get(target, property, target);
+      },
+    });
     const bound = attachCore({ module, callMode: 'direct' });
     const pointer = bound.allocRecord({ name: 'llama_batch' });
     const layout = bound.fieldLayout({ name: 'llama_batch', field: 'n_tokens' });
@@ -82,6 +96,7 @@ describe('module-local native ABI layouts', () => {
       bound.free({ pointer });
     }
   });
+
   it('does not share layouts between module attachments or pointer widths', () => {
     const { module, counts } = instrument({ overrides: {} });
     const first = attachCore({ module, callMode: 'direct' });
@@ -90,21 +105,28 @@ describe('module-local native ABI layouts', () => {
     expect(second.fieldLayout({ name: 'llama_batch', field: 'token' })).toEqual(layout);
     expect(counts.get('_lcb_offsetof_field')).toBe(2);
     // Synthetic metadata only; this does not execute a wasm64 runtime.
-    const { module: wideModule } = instrument({ overrides: {
-      _lcb_pointer_bytes: () => 8, _lcb_offsetof_field: () => layout.offset + 8n,
-      _lcb_sizeof_field: () => 8, _lcb_sizeof_record: () => 128,
-    } });
+    const { module: wideModule } = instrument({
+      overrides: {
+        _lcb_pointer_bytes: () => 8,
+        _lcb_offsetof_field: () => layout.offset + 8n,
+        _lcb_sizeof_field: () => 8,
+        _lcb_sizeof_record: () => 128,
+      },
+    });
     const wide = attachCore({ module: wideModule, callMode: 'direct' });
     expect(wide.fieldLayout({ name: 'llama_batch', field: 'token' })).toEqual({ kind: 'pointer', offset: layout.offset + 8n, size: 8 });
     expect(wide.recordSize({ name: 'llama_batch' })).toBe(128);
     expect(first.fieldLayout({ name: 'llama_batch', field: 'token' })).toBe(layout);
   });
+
   it.each(['direct', 'asyncify'] as const)('checks serialization even on warm layout hits in %s mode', async callMode => {
     const gate = Promise.withResolvers<bigint>();
-    const { module } = instrument({ overrides: {
-      _lcb_ggml_backend_dev_count: () => gate.promise,
-      ccall: () => gate.promise,
-    } });
+    const { module } = instrument({
+      overrides: {
+        _lcb_ggml_backend_dev_count: () => gate.promise,
+        ccall: () => gate.promise,
+      },
+    });
     const bound = attachCore({ module, callMode });
     bound.recordSize({ name: 'llama_batch' });
     bound.fieldLayout({ name: 'llama_batch', field: 'token' });
@@ -123,6 +145,7 @@ describe('module-local native ABI layouts', () => {
     }
     expect(bound.fieldLayout({ name: 'llama_batch', field: 'token' }).kind).toBe('pointer');
   });
+
   it.each(['_lcb_sizeof_field', '_lcb_offsetof_field', '_lcb_sizeof_record'])('does not memoize a failed %s query', exportName => {
     const original = Reflect.get(core.module, exportName);
     if (typeof original !== 'function') throw new Error('Missing native export');
@@ -136,6 +159,7 @@ describe('module-local native ABI layouts', () => {
     expect(read).toThrow(failure);
     const valid = read(); expect(read()).toEqual(valid); expect(stub).toHaveBeenCalledTimes(2);
   });
+
   it.each([-1, NaN, Infinity, 0.5, Number.MAX_SAFE_INTEGER + 1])('rejects unsafe offsets or sizes before caching: %s', invalid => {
     for (const exportName of ['_lcb_sizeof_field', '_lcb_offsetof_field', '_lcb_sizeof_record']) {
       const original = Reflect.get(core.module, exportName);
@@ -147,6 +171,7 @@ describe('module-local native ABI layouts', () => {
       expect(read).toThrow('Unsafe memory index'); expect(read).not.toThrow(); expect(stub).toHaveBeenCalledTimes(2);
     }
   });
+
   it('rejects unknown schema names and still validates each write on cache hits', () => {
     const { module, counts } = instrument({ overrides: {} });
     const bound = attachCore({ module, callMode: 'direct' });

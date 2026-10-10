@@ -7,6 +7,7 @@ export type ModelPreset = { input: string, target: 'onboarding' | 'settings', cl
 type ModelPresetState = { preset: ShallowRef<ModelPreset | undefined>, previousInput: string | undefined };
 const states = new WeakMap<Router, ModelPresetState>();
 const presetKey: InjectionKey<Readonly<ShallowRef<ModelPreset | undefined>>> = Symbol('llama-cpp-browser-model-preset');
+
 function stateForRouter({ router }: { router: Router }): ModelPresetState {
   let state = states.get(router);
   if (!state) {
@@ -14,6 +15,7 @@ function stateForRouter({ router }: { router: Router }): ModelPresetState {
   }
   return state;
 }
+
 function coordinateModelPreset({ state, input, initialized, isOnboardingDismissed }: {
   state: ModelPresetState,
   input: Readonly<Ref<string | undefined>>,
@@ -32,12 +34,17 @@ function coordinateModelPreset({ state, input, initialized, isOnboardingDismisse
     // request to inspect this repository, so the UI may fetch metadata without
     // another click. This does NOT authorize background catalog discovery or
     // a model download; file transfer still requires a separate user action.
-    state.preset.value = { input: value, target: isOnboardingDismissed.value ? 'settings' : 'onboarding', claim: () => {
-      if (claimed) return false;
-      claimed = true; return true;
-    } };
+    state.preset.value = {
+      input: value,
+      target: isOnboardingDismissed.value ? 'settings' : 'onboarding',
+      claim: () => {
+        if (claimed) return false;
+        claimed = true; return true;
+      },
+    };
   }, { immediate: true });
 }
+
 export function useModelPresetCoordinator(): Readonly<ShallowRef<ModelPreset | undefined>> | undefined {
   const provided = inject(presetKey, undefined); if (provided) return provided;
   const router = inject(routerKey, undefined); if (!router) return undefined;
@@ -53,11 +60,13 @@ export function useModelPresetCoordinator(): Readonly<ShallowRef<ModelPreset | u
   coordinateModelPreset({ state, input, initialized, isOnboardingDismissed });
   return state.preset;
 }
+
 export function useModelPreset(): Readonly<ShallowRef<ModelPreset | undefined>> | undefined {
   const provided = inject(presetKey, undefined); if (provided) return provided;
   const router = inject(routerKey, undefined);
   return router ? stateForRouter({ router }).preset : undefined;
 }
+
 export const TEST_ONLY = {
   coordinateModelPreset,
   stateForRouter,

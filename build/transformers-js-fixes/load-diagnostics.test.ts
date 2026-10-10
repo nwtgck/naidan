@@ -5,6 +5,7 @@ import { applyTransformersJsFixes } from './transform';
 
 const original = readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8');
 const transformed = applyTransformersJsFixes({ code: original, version: '4.2.0' }).code;
+
 function reader({ observer, allocator }: { observer: unknown; allocator: typeof Uint8Array }) {
   const from = transformed.indexOf('function naidanCreateModelLoadObserver(');
   const to = transformed.indexOf('\nfunction isBlobURL(', from);
@@ -19,10 +20,12 @@ it('records the real large allocation request before refusing it without allocat
   const failure = new RangeError('Controlled large allocation refusal');
   const observed: unknown[] = [];
   const allocations: unknown[] = [];
-  const allocator = new Proxy(Uint8Array, { construct(_target, argumentsList) {
-    allocations.push(argumentsList[0]);
-    throw failure;
-  } });
+  const allocator = new Proxy(Uint8Array, {
+    construct(_target, argumentsList) {
+      allocations.push(argumentsList[0]);
+      throw failure;
+    },
+  });
   const response = new Response(new ReadableStream({}, { highWaterMark: 0 }), { headers: { 'Content-Length': String(requestedBytes) } });
   const getReader = vi.spyOn(response.body!, 'getReader');
   await expect(reader({ observer: (event: unknown) => observed.push(event), allocator })(response, () => {}, undefined, 'onnx/model_q4f16.onnx_data_5')).rejects.toBe(failure);
@@ -37,9 +40,11 @@ it('records the real large allocation request before refusing it without allocat
 
 it.each(['absent', 'throwing', 'rejecting'] as const)('preserves bytes and allocation behavior with an %s observer', async mode => {
   const values: number[] = [];
-  const allocator = new Proxy(Uint8Array, { construct(target, args) {
-    values.push(args[0] as number); return Reflect.construct(target, args);
-  } });
+  const allocator = new Proxy(Uint8Array, {
+    construct(target, args) {
+      values.push(args[0] as number); return Reflect.construct(target, args);
+    },
+  });
   const observer = mode === 'absent' ? undefined : () => {
     if (mode === 'throwing') throw new Error('Observer throw');
     return Promise.reject(new Error('Observer rejection'));
@@ -52,13 +57,18 @@ it.each(['absent', 'throwing', 'rejecting'] as const)('preserves bytes and alloc
 
 it('keeps a failed allocation exception identical even if its observer throws', async () => {
   const failure = new RangeError('Allocation refusal');
-  const allocator = new Proxy(Uint8Array, { construct() {
-    throw failure;
-  } });
+  const allocator = new Proxy(Uint8Array, {
+    construct() {
+      throw failure;
+    },
+  });
   const response = new Response(new ReadableStream({}, { highWaterMark: 0 }), { headers: { 'Content-Length': '7' } });
-  await expect(reader({ observer: () => {
-    throw new Error('Observer failure');
-  }, allocator })(response, () => {}, undefined, 'onnx/model.onnx')).rejects.toBe(failure);
+  await expect(reader({
+    observer: () => {
+      throw new Error('Observer failure');
+    },
+    allocator,
+  })(response, () => {}, undefined, 'onnx/model.onnx')).rejects.toBe(failure);
   await response.body!.cancel();
 });
 

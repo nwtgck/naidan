@@ -738,6 +738,7 @@ describe('parseBashArgv', () => {
       exitCode: 2,
     });
   });
+
   it('overlays supported SHELLOPTS and BASHOPTS after argv option state', () => {
     const parsed = parseBashArgv({
       args: ['+e', '+u', '+n', '+o', 'pipefail', '+O', 'extglob', '-c', 'true'],
@@ -811,5 +812,4 @@ describe('parseBashArgv', () => {
       expect(applied.plan.executionOptions.nounset, shellopts).toBe(shellopts.includes('nounset'));
     }
   });
-
 });

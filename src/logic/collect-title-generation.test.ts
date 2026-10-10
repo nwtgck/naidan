@@ -21,16 +21,19 @@ data: [DONE]
 const ollamaDone = `\
 {"message":{"content":"Title"},"done":true}
 `;
+
 function body({ index }: { index: number }): Record<string, unknown> {
   const raw = fetcher.mock.calls[index]?.[1]?.body;
   if (typeof raw !== 'string') throw new Error('Missing request body');
   return JSON.parse(raw);
 }
+
 function collect({ provider, endpoint, parameters, signal }: {
   provider: LmProvider, endpoint: Endpoint, parameters: LmParameters, signal: AbortSignal,
 }) {
   return collectTitleGeneration({ provider, endpoint, parameters, signal, messages, model: 'model' });
 }
+
 beforeEach(() => {
   fetcher.mockReset();
 });
@@ -56,9 +59,13 @@ describe('title-only thinking fallback', () => {
   it('retries a structured invalid enum only when it identifies reasoning_effort', async () => {
     const endpoint = { type: 'openai' as const, url: 'https://example.test' };
     const provider = new OpenAIProvider({ endpoint: endpoint.url, fetcher });
-    fetcher.mockResolvedValueOnce(Response.json({ error: {
-      code: 'invalid_enum_value', param: 'reasoning_effort', message: "Expected one of 'low', 'medium', 'high'.",
-    } }, { status: 422 }));
+    fetcher.mockResolvedValueOnce(Response.json({
+      error: {
+        code: 'invalid_enum_value',
+        param: 'reasoning_effort',
+        message: "Expected one of 'low', 'medium', 'high'.",
+      },
+    }, { status: 422 }));
     fetcher.mockResolvedValueOnce(new Response(openAiDone));
     expect((await collect({ provider, endpoint, parameters: off, signal: new AbortController().signal })).text).toBe('Title');
     expect(fetcher).toHaveBeenCalledTimes(2);
@@ -139,10 +146,13 @@ describe('title-only thinking fallback', () => {
   });
 
   it('does not retry after any generated reasoning or text', async () => {
-    const chat = vi.fn<LmProvider['chat']>().mockImplementation(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-      await writer.text({ type: 'reasoning', text: 'partial' });
-      throw new UnsupportedReasoningError({ message: 'late error' });
-    } }));
+    const chat = vi.fn<LmProvider['chat']>().mockImplementation(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'reasoning', text: 'partial' });
+        throw new UnsupportedReasoningError({ message: 'late error' });
+      },
+    }));
     const result = await collect({ provider: { chat, listModels: async () => [] }, endpoint: { type: 'openai', url: 'https://example.test' }, parameters: off, signal: new AbortController().signal });
     expect(result.result.type).toBe('error');
     expect(chat).toHaveBeenCalledTimes(1);

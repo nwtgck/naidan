@@ -12,6 +12,7 @@ beforeEach(() => {
   onError.mockReset();
   scheduler = createAutoTitleScheduler({ quietMs: 2500, now: () => Date.now(), onError });
 });
+
 afterEach(() => {
   scheduler.reset();
   vi.useRealTimers();
@@ -67,15 +68,24 @@ describe('automatic title scheduling', () => {
 
   it('keeps only the newest candidate per chat and prioritizes recent chats', async () => {
     const calls: string[] = [];
-    scheduler.schedule({ chatId: chatA, run: async () => {
-      calls.push('old');
-    } });
-    scheduler.schedule({ chatId: chatB, run: async () => {
-      calls.push('b');
-    } });
-    scheduler.schedule({ chatId: chatA, run: async () => {
-      calls.push('a');
-    } });
+    scheduler.schedule({
+      chatId: chatA,
+      run: async () => {
+        calls.push('old');
+      },
+    });
+    scheduler.schedule({
+      chatId: chatB,
+      run: async () => {
+        calls.push('b');
+      },
+    });
+    scheduler.schedule({
+      chatId: chatA,
+      run: async () => {
+        calls.push('a');
+      },
+    });
     await vi.advanceTimersByTimeAsync(2500);
     expect(calls).toEqual(['a']);
     await vi.advanceTimersByTimeAsync(2500);
@@ -125,9 +135,12 @@ describe('automatic title scheduling', () => {
 
   it('observes synchronous failures as well as asynchronous rejections', async () => {
     const error = new Error('synchronous');
-    scheduler.schedule({ chatId: chatA, run: () => {
-      throw error;
-    } });
+    scheduler.schedule({
+      chatId: chatA,
+      run: () => {
+        throw error;
+      },
+    });
     await vi.advanceTimersByTimeAsync(2500);
     expect(onError).toHaveBeenCalledExactlyOnceWith({ error });
   });
@@ -138,9 +151,12 @@ describe('automatic title scheduling', () => {
     });
     const completed = vi.fn().mockResolvedValue(undefined);
     scheduler.schedule({ chatId: chatA, run: completed });
-    scheduler.schedule({ chatId: chatB, run: async () => {
-      throw new Error('endpoint failed');
-    } });
+    scheduler.schedule({
+      chatId: chatB,
+      run: async () => {
+        throw new Error('endpoint failed');
+      },
+    });
     await vi.advanceTimersByTimeAsync(5000);
     expect(completed).toHaveBeenCalledOnce();
   });

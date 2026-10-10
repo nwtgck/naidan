@@ -1,3 +1,6 @@
+import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-storage/mapper/image-generation';
+import { ExperimentalImageGenerationSchemaDto, ExperimentalImageGenerationDraftSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
 import type { ImageGenerationSessionId } from '@/01-models/ids';
 import type { ImageGenerationExportSnapshot } from './image-generation-export';
 import type { ImageGenerationAsset, ImageGenerationSessionDraft, ImageGenerationRun } from '@/01-models/image-generation';
@@ -23,6 +26,9 @@ import { StorageSynchronizer, type ChangeListener, type StorageChangeEvent } fro
 import { idToRaw, toChatId, toBinaryObjectId } from '@/01-models/ids';
 import type { ImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
+import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
+import { readNaidanRpcRegistry, writeNaidanRpcRegistry, sameNaidanRpcRegistry } from './naidan-rpc-registry';
+import type { NaidanRpcRegistryAccess, NaidanRpcRegistrySnapshot } from './naidan-rpc-registry';
 
 
 // Match Wesh VFS lexical mount normalization without introducing a storage -> feature dependency.
@@ -58,6 +64,8 @@ export class StorageService {
   private provider: IStorageProvider | null = null;
   private currentType: 'local' | 'opfs' | 'memory' | null = null;
   private synchronizer: StorageSynchronizer;
+  private providerGeneration = 0;
+  private readonly rpcRegistryListeners = new Set<() => void>();
 
   constructor() {
     this.synchronizer = new StorageSynchronizer();
@@ -74,33 +82,39 @@ export class StorageService {
   }
 
   async init({ type }: { type: 'local' | 'opfs' | 'memory' }) {
-    await this.synchronizer.withLock({ fn: async () => {
-      const isOPFSSupported = await checkOPFSSupport();
-      let targetType: 'local' | 'opfs' | 'memory' = type;
+    await this.synchronizer.withLock({
+      fn: async () => {
+        this.providerGeneration++;
+        if (this.provider) this.emitRpcRegistryChange();
+        const isOPFSSupported = await checkOPFSSupport();
+        let targetType: 'local' | 'opfs' | 'memory' = type;
 
-      if (targetType === 'opfs' && !isOPFSSupported) {
-        targetType = 'local';
-      }
+        if (targetType === 'opfs' && !isOPFSSupported) {
+          targetType = 'local';
+        }
 
-      this.currentType = targetType;
+        this.currentType = targetType;
 
-      switch (this.currentType) {
-      case 'opfs':
-        this.provider = new OPFSStorageProvider();
-        break;
-      case 'local':
-        this.provider = new LocalStorageProvider();
-        break;
-      case 'memory':
-        this.provider = new MemoryStorageProvider();
-        break;
-      default: {
-        const _exhaustiveCheck: never = this.currentType;
-        throw new Error(`Unhandled currentType: ${_exhaustiveCheck}`);
-      }
-      }
-      await this.provider.init();
-    }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'init' }) });
+        switch (this.currentType) {
+        case 'opfs':
+          this.provider = new OPFSStorageProvider();
+          break;
+        case 'local':
+          this.provider = new LocalStorageProvider();
+          break;
+        case 'memory':
+          this.provider = new MemoryStorageProvider();
+          break;
+        default: {
+          const _exhaustiveCheck: never = this.currentType;
+          throw new Error(`Unhandled currentType: ${_exhaustiveCheck}`);
+        }
+        }
+        await this.provider.init();
+      },
+      lockKey: SYNC_LOCK_KEY,
+      ...this.getLockOptions({ source: 'init' }),
+    });
   }
 
   getCurrentType(): 'local' | 'opfs' | 'memory' {
@@ -121,7 +135,34 @@ export class StorageService {
   }
 
   notify({ event }: { event: StorageChangeEvent }): void {
+    if (event.type === 'naidan_rpc_registry' || event.type === 'migration') this.emitRpcRegistryChange();
     this.synchronizer.notify({ event });
+  }
+
+  /** Observe both this page's changes and synchronization hints from other
+   * pages. A hint requires reading storage; it never contains authority. */
+  subscribeNaidanRpcRegistryChanges({ listener }: { listener(): void }): () => void {
+    this.rpcRegistryListeners.add(listener);
+    const unsubscribe = this.synchronizer.subscribe({
+      listener: ({ event }) => {
+        if (event.type === 'naidan_rpc_registry' || event.type === 'migration') {
+          try {
+            listener();
+          } catch { /* Synchronization hints are observation only. */ }
+        }
+      },
+    });
+    return () => {
+      this.rpcRegistryListeners.delete(listener); unsubscribe();
+    };
+  }
+
+  private emitRpcRegistryChange(): void {
+    for (const listener of this.rpcRegistryListeners) {
+      try {
+        listener();
+      } catch { /* Observers cannot change a storage commit's outcome. */ }
+    }
   }
 
   // --- Hierarchy Management (Atomic) ---
@@ -137,13 +178,17 @@ export class StorageService {
    */
   async updateHierarchy({ updater }: { updater: ({ current }: { current: Hierarchy }) => Hierarchy | Promise<Hierarchy> }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
-        const current = await this.loadHierarchy();
-        const before = structuredClone(current);
-        const updated = await updater({ current: current });
-        await detachRemovedModelLaunchOwners({ provider: this.getProvider(), before, after: updated });
-        await this.getProvider().saveHierarchy({ hierarchy: hierarchyToDto({ domain: updated }) });
-      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateHierarchy' }) });
+      await this.synchronizer.withLock({
+        fn: async () => {
+          const current = await this.loadHierarchy();
+          const before = structuredClone(current);
+          const updated = await updater({ current: current });
+          await detachRemovedModelLaunchOwners({ provider: this.getProvider(), before, after: updated });
+          await this.getProvider().saveHierarchy({ hierarchy: hierarchyToDto({ domain: updated }) });
+        },
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'updateHierarchy' }),
+      });
       this.notify({ event: { type: 'chat_meta_and_chat_group', timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'updateHierarchy' });
@@ -157,20 +202,59 @@ export class StorageService {
     return () => provider === this.getProvider();
   }
 
+  /** Replacing or restoring a provider invalidates queued editor writes even
+   * when its storage type and underlying provider instance stay the same. */
+  captureSettingsStorage(): () => boolean {
+    const provider = this.getProvider(), generation = this.providerGeneration;
+    return () => provider === this.getProvider() && generation === this.providerGeneration;
+  }
+
+  async updateSettingsForStorage({ isCurrent, updater }: {
+    isCurrent(): boolean,
+    updater({ current }: { current: Settings | null }): Settings | Promise<Settings>,
+  }): Promise<'saved' | 'changed'> {
+    try {
+      const outcome = await this.synchronizer.withLock({
+        fn: async () => {
+          if (!isCurrent()) return 'changed' as const;
+          const provider = this.getProvider();
+          const current = await provider.loadSettings();
+          if (!isCurrent()) return 'changed' as const;
+          const updated = await updater({ current });
+          if (!isCurrent()) return 'changed' as const;
+          await provider.saveSettings({ settings: updated });
+          return 'saved' as const;
+        },
+        lockKey: SYNC_LOCK_KEY,
+        ...this.getLockOptions({ source: 'updateSettingsForStorage' }),
+      });
+      switch (outcome) {
+      case 'saved': this.notify({ event: { type: 'settings', timestamp: Date.now() } }); return outcome;
+      case 'changed': return outcome;
+      default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+      }
+    } catch (error) {
+      await this.handleStorageError({ error, source: 'updateSettingsForStorage' }); throw error;
+    }
+  }
+
   /** Setup state is session-local; it is never part of stored Chat data. */
   getModelLaunch({ chatId }: { chatId: ChatId }) {
     return this.provider === null ? undefined : readModelLaunch({ provider: this.provider, chatId });
   }
 
-  async restoreModelLaunch({ chatId, input, requestedVariant, target, signal }: Omit<Parameters<typeof restoreModelLaunch>[0], 'provider'> & { signal: AbortSignal }) {
+  async restoreModelLaunch({ chatId, input, requestedVariant, target, signal }: { chatId: Parameters<typeof restoreModelLaunch>[0]['chatId'], input: Parameters<typeof restoreModelLaunch>[0]['input'], requestedVariant: Parameters<typeof restoreModelLaunch>[0]['requestedVariant'], target: Parameters<typeof restoreModelLaunch>[0]['target'], signal: AbortSignal }) {
     const provider = this.getProvider();
-    return this.synchronizer.withLock({ lockKey: LOCK_METADATA, fn: async () => {
-      signal.throwIfAborted();
-      if (provider !== this.getProvider()) return undefined;
-      const restored = await restoreModelLaunch({ provider, chatId, input, requestedVariant, target });
-      signal.throwIfAborted();
-      return provider === this.getProvider() ? restored : undefined;
-    } });
+    return this.synchronizer.withLock({
+      lockKey: LOCK_METADATA,
+      fn: async () => {
+        signal.throwIfAborted();
+        if (provider !== this.getProvider()) return undefined;
+        const restored = await restoreModelLaunch({ provider, chatId, input, requestedVariant, target });
+        signal.throwIfAborted();
+        return provider === this.getProvider() ? restored : undefined;
+      },
+    });
   }
 
   /** A launch never holds a storage lock across metadata or payload requests. */
@@ -178,17 +262,21 @@ export class StorageService {
     const provider = this.getProvider();
     if (this.currentType !== 'memory' && (typeof navigator === 'undefined' || !navigator.locks?.request)) throw new Error('Model launch requires storage locking');
     try {
-      const chat = await this.synchronizer.withLock({ lockKey: LOCK_METADATA, fn: () => this.synchronizer.withLock({
-        lockKey: SYNC_LOCK_KEY, fn: () => this.synchronizer.withLock({
-          lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id: request.chatId })}`,
-          fn: async () => {
-            signal.throwIfAborted();
-            if (provider !== this.getProvider()) throw new Error('Model launch storage changed');
-            // Finish a started durable write sequence even if navigation changes.
-            return prepareModelLaunchChat({ provider, request });
-          },
+      const chat = await this.synchronizer.withLock({
+        lockKey: LOCK_METADATA,
+        fn: () => this.synchronizer.withLock({
+          lockKey: SYNC_LOCK_KEY,
+          fn: () => this.synchronizer.withLock({
+            lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id: request.chatId })}`,
+            fn: async () => {
+              signal.throwIfAborted();
+              if (provider !== this.getProvider()) throw new Error('Model launch storage changed');
+              // Finish a started durable write sequence even if navigation changes.
+              return prepareModelLaunchChat({ provider, request });
+            },
+          }),
         }),
-      }) });
+      });
       this.notify({ event: { type: 'chat_meta_and_chat_group', timestamp: Date.now() } });
       return chat;
     } catch (error) {
@@ -204,13 +292,17 @@ export class StorageService {
   async updateChatMeta({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatMeta | null }) => ChatMeta | undefined | Promise<ChatMeta | undefined> }): Promise<void> {
     try {
       let written = false;
-      await this.synchronizer.withLock({ fn: async () => {
-        const current = await this.loadChatMeta({ id });
-        const updated = await updater({ current: current });
-        if (updated === undefined) return;
-        await this.getProvider().saveChatMeta({ meta: updated });
-        written = true;
-      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatMeta' }) });
+      await this.synchronizer.withLock({
+        fn: async () => {
+          const current = await this.loadChatMeta({ id });
+          const updated = await updater({ current: current });
+          if (updated === undefined) return;
+          await this.getProvider().saveChatMeta({ meta: updated });
+          written = true;
+        },
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'updateChatMeta' }),
+      });
       if (written) this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'updateChatMeta' });
@@ -232,11 +324,15 @@ export class StorageService {
 
   async updateChatContent({ id, updater }: { id: ChatId, updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent> }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
-        const current = await this.loadChatContent({ id });
-        const updated = await updater({ current: current });
-        await this.getProvider().saveChatContent({ id, content: updated });
-      }, lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id })}`, ...this.getLockOptions({ source: 'updateChatContent' }) });
+      await this.synchronizer.withLock({
+        fn: async () => {
+          const current = await this.loadChatContent({ id });
+          const updated = await updater({ current: current });
+          await this.getProvider().saveChatContent({ id, content: updated });
+        },
+        lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id })}`,
+        ...this.getLockOptions({ source: 'updateChatContent' }),
+      });
       this.notify({ event: { type: 'chat_content', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'updateChatContent' });
@@ -250,9 +346,13 @@ export class StorageService {
 
   async deleteChat({ id }: { id: ChatId }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
-        await this.getProvider().deleteChat({ id });
-      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteChat' }) });
+      await this.synchronizer.withLock({
+        fn: async () => {
+          await this.getProvider().deleteChat({ id });
+        },
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'deleteChat' }),
+      });
       this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'deleteChat' });
@@ -262,11 +362,15 @@ export class StorageService {
 
   async updateChatGroup({ id, updater }: { id: ChatGroupId, updater: ({ current }: { current: ChatGroup | null }) => ChatGroup | Promise<ChatGroup> }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
-        const current = await this.loadChatGroup({ id });
-        const updated = await updater({ current: current });
-        await this.getProvider().saveChatGroup({ chatGroup: updated });
-      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatGroup' }) });
+      await this.synchronizer.withLock({
+        fn: async () => {
+          const current = await this.loadChatGroup({ id });
+          const updated = await updater({ current: current });
+          await this.getProvider().saveChatGroup({ chatGroup: updated });
+        },
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'updateChatGroup' }),
+      });
       this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'updateChatGroup' });
@@ -280,9 +384,13 @@ export class StorageService {
 
   async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
-        await this.getProvider().deleteChatGroup({ id });
-      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteChatGroup' }) });
+      await this.synchronizer.withLock({
+        fn: async () => {
+          await this.getProvider().deleteChatGroup({ id });
+        },
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'deleteChatGroup' }),
+      });
       this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'deleteChatGroup' });
@@ -304,21 +412,82 @@ export class StorageService {
 
   // --- Settings & Bulk ---
 
+  private rpcRegistryPersistence(): NaidanRpcRegistryAccess['persistence'] {
+    const type = this.getCurrentType();
+    switch (type) {
+    case 'local': case 'opfs': return 'durable';
+    case 'memory': return 'session';
+    default: { const exhaustive: never = type; throw new Error(String(exhaustive)); }
+    }
+  }
+
+  async loadNaidanRpcRegistry(): Promise<NaidanRpcRegistrySnapshot> {
+    return this.synchronizer.withLock({
+      lockKey: SYNC_LOCK_KEY,
+      fn: async () => readNaidanRpcRegistry({
+        provider: this.getProvider(),
+        providerGeneration: this.providerGeneration,
+        persistence: this.rpcRegistryPersistence(),
+      }),
+    });
+  }
+
+  async updateNaidanRpcRegistry({ access, updater }: {
+    access: NaidanRpcRegistryAccess,
+    updater({ registrations }: { registrations: readonly NaidanRpcRegistration[] }): Promise<readonly NaidanRpcRegistration[]>,
+  }): Promise<NaidanRpcRegistryAccess> {
+    const persistence = this.rpcRegistryPersistence();
+    switch (persistence) {
+    case 'durable':
+      if (typeof navigator === 'undefined' || !navigator.locks?.request) throw new Error('Saving RPC registrations requires Web Locks');
+      break;
+    case 'session': break;
+    default: { const exhaustive: never = persistence; throw new Error(String(exhaustive)); }
+    }
+    const updated = await this.synchronizer.withLock({
+      lockKey: SYNC_LOCK_KEY,
+      fn: async () => {
+        const provider = this.getProvider();
+        const current = await readNaidanRpcRegistry({
+          provider,
+          providerGeneration: this.providerGeneration,
+          persistence: this.rpcRegistryPersistence(),
+        });
+        if (!sameNaidanRpcRegistry({ left: access, right: current.access })) throw new Error('The RPC storage registry changed. Reload before saving.');
+        const registrations = await updater({ registrations: current.registrations });
+        return writeNaidanRpcRegistry({ provider, current, registrations });
+      },
+    });
+    this.notify({ event: { type: 'naidan_rpc_registry', timestamp: Date.now() } });
+    return updated;
+  }
+
   /**
    * Performs an atomic update on the global settings.
    */
   async updateSettings({ updater }: { updater: ({ current }: { current: Settings | null }) => Settings | Promise<Settings> }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
-        const current = await this.loadSettings();
-        const updated = await updater({ current: current });
-        await this.getProvider().saveSettings({ settings: updated });
-      }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'updateSettings' }) });
+      await this.synchronizer.withLock({
+        fn: async () => {
+          const current = await this.loadSettings();
+          const updated = await updater({ current: current });
+          await this.getProvider().saveSettings({ settings: updated });
+        },
+        lockKey: SYNC_LOCK_KEY,
+        ...this.getLockOptions({ source: 'updateSettings' }),
+      });
       this.notify({ event: { type: 'settings', timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'updateSettings' });
       throw e;
     }
+  }
+
+  /** Model inventory may render before storage initialization. Registration
+   * metadata is absent then; actual provider failures must remain observable. */
+  async loadHostModelDirectories(): Promise<NonNullable<NonNullable<Settings['experimental']>['hostModelDirectories']>> {
+    if (!this.provider) return [];
+    return (await this.provider.loadSettings())?.experimental?.hostModelDirectories ?? [];
   }
 
   async loadSettings(): Promise<Settings | null> {
@@ -327,9 +496,15 @@ export class StorageService {
 
   async clearAll(): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
-        await this.getProvider().clearAll();
-      }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'clearAll' }) });
+      await this.synchronizer.withLock({
+        fn: async () => {
+          this.providerGeneration++;
+          this.notify({ event: { type: 'naidan_rpc_registry', timestamp: Date.now() } });
+          await this.getProvider().clearAll();
+        },
+        lockKey: SYNC_LOCK_KEY,
+        ...this.getLockOptions({ source: 'clearAll' }),
+      });
       this.notify({ event: { type: 'migration', timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'clearAll' });
@@ -345,14 +520,18 @@ export class StorageService {
     name: string,
   }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
-        await this.getProvider().saveFile({
-          blob,
-          binaryObjectId,
-          name,
-          mimeType: blob.type || undefined,
-        });
-      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'saveFile' }) });
+      await this.synchronizer.withLock({
+        fn: async () => {
+          await this.getProvider().saveFile({
+            blob,
+            binaryObjectId,
+            name,
+            mimeType: blob.type || undefined,
+          });
+        },
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'saveFile' }),
+      });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'saveFile' });
       throw e;
@@ -378,9 +557,13 @@ export class StorageService {
   async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<void> {
     try {
       const provider = this.getProvider();
-      await this.synchronizer.withLock({ fn: async () => {
-        await provider.deleteBinaryObject({ binaryObjectId });
-      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteBinaryObject' }) });
+      await this.synchronizer.withLock({
+        fn: async () => {
+          await provider.deleteBinaryObject({ binaryObjectId });
+        },
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'deleteBinaryObject' }),
+      });
       this.notify({ event: { type: 'binary_objects', timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'deleteBinaryObject' });
@@ -394,60 +577,84 @@ export class StorageService {
     record: ImageGenerationRecord,
     files: { binaryObjectId: BinaryObjectId, blob: Blob, name: string }[],
   }): Promise<void> {
-    if (__BUILD_MODE_IS_STANDALONE__) throw new Error('Image generation history is unavailable in standalone builds');
+    const writer = this.createImageGenerationHistoryWriter();
+    return writer.save({ record, files });
+  }
+
+  /** Pin the binary provider and history directory before starting computation.
+   * The returned writer owns persistence, not a component or current settings.
+   * A removed/replaced directory is an error; retries must never recreate it. */
+  createImageGenerationHistoryWriter() {
     const storageType = this.getCurrentType();
     switch (storageType) {
     case 'opfs': break;
     case 'local': case 'memory': throw new Error('Image generation history requires OPFS storage');
     default: { const exhaustive: never = storageType; throw new Error(String(exhaustive)); }
     }
-    // Capture the provider before awaiting. A storage switch must not split
-    // one generation's bytes between OPFS and another storage provider.
     const provider = this.getProvider();
-    const snapshot = structuredClone(record);
-    const images = files.map(file => ({ ...file }));
-    const { saveImageGenerationRecord } = await import('./image-generation-history');
-    await this.synchronizer.withLock({
-      lockKey: LOCK_METADATA,
-      ...this.getLockOptions({ source: 'saveImageGeneration' }),
-      fn: () => saveImageGenerationRecord({
-        storageType,
-        record: snapshot,
-        writeImages: async () => {
-          const referenced = new Set([
-            snapshot.result.binaryObjectId,
-            ...snapshot.previews.map(image => image.binaryObjectId),
-            ...(snapshot.request.imageInputs.initImage ? [snapshot.request.imageInputs.initImage.binaryObjectId] : []),
-            ...snapshot.request.imageInputs.referenceImages.map(image => image.binaryObjectId),
-          ].map(binaryObjectId => idToRaw({ id: binaryObjectId })));
-          const supplied = new Set<string>();
-          for (const image of images) {
-            const rawId = idToRaw({ id: image.binaryObjectId });
-            if (supplied.has(rawId) || !referenced.has(rawId)) throw new Error('Image history files must match unique record references');
-            supplied.add(rawId);
-          }
-          for (const { binaryObjectId, blob, name } of images) {
-            const metadata = await provider.getBinaryObject({ binaryObjectId });
-            const existing = await provider.getFile({ binaryObjectId });
-            if (metadata && !existing) throw new Error('Image history binary object is missing or unreadable');
-            if (existing) {
-              if (existing.size !== blob.size || metadata && existing.type !== blob.type) throw new Error('Image history binary objects are immutable');
-              for (let offset = 0; offset < blob.size; offset += 65536) {
-                const left = new Uint8Array(await existing.slice(offset, offset + 65536).arrayBuffer());
-                const right = new Uint8Array(await blob.slice(offset, offset + 65536).arrayBuffer());
-                if (left.some((byte, index) => byte !== right[index])) throw new Error('Image history binary objects are immutable');
+    const historyModule = import('./image-generation-history');
+    const target = historyModule.then(service => service.captureImageGenerationHistoryTarget({ storageType }));
+    // Preparing a writer need not await storage before the caller can retain
+    // pixels. A failed open remains a rejected target, never a silent new store.
+    void target.catch(() => {});
+    return {
+      ready: async (): Promise<void> => {
+        await target;
+      },
+      save: async ({ record, files }: {
+      record: ImageGenerationRecord,
+      files: { binaryObjectId: BinaryObjectId, blob: Blob, name: string }[],
+    }): Promise<void> => {
+        // Capture the provider before awaiting. A storage switch must not split
+        // one generation's bytes between OPFS and another storage provider.
+        const snapshot = imageGenerationToDomain({ dto: ExperimentalImageGenerationSchemaDto.parse(imageGenerationToDto({ record })) });
+        const images = files.map(file => ({ ...file }));
+        const { saveImageGenerationRecord } = await historyModule;
+        const expectedDirectory = await target;
+        await this.synchronizer.withLock({
+          lockKey: LOCK_METADATA,
+          ...this.getLockOptions({ source: 'saveImageGeneration' }),
+          fn: () => saveImageGenerationRecord({
+            storageType,
+            expectedDirectory,
+            record: snapshot,
+            writeImages: async () => {
+              const referenced = new Set([
+                snapshot.result.binaryObjectId,
+                ...snapshot.previews.map(image => image.binaryObjectId),
+                ...(snapshot.request.imageInputs.initImage ? [snapshot.request.imageInputs.initImage.binaryObjectId] : []),
+                ...snapshot.request.imageInputs.referenceImages.map(image => image.binaryObjectId),
+              ].map(binaryObjectId => idToRaw({ id: binaryObjectId })));
+              const supplied = new Set<string>();
+              for (const image of images) {
+                const rawId = idToRaw({ id: image.binaryObjectId });
+                if (supplied.has(rawId) || !referenced.has(rawId)) throw new Error('Image history files must match unique record references');
+                supplied.add(rawId);
               }
-            }
-            if (!existing || !metadata) {
-              await provider.saveFile({ binaryObjectId, blob, name, mimeType: blob.type || undefined });
-            }
-          }
-          for (const rawId of referenced) {
-            if (!await provider.getFile({ binaryObjectId: toBinaryObjectId({ raw: rawId }) })) throw new Error('Image history references a missing binary object');
-          }
-        },
-      }),
-    });
+              for (const { binaryObjectId, blob, name } of images) {
+                const metadata = await provider.getBinaryObject({ binaryObjectId });
+                const existing = await provider.getFile({ binaryObjectId });
+                if (metadata && !existing) throw new Error('Image history binary object is missing or unreadable');
+                if (existing) {
+                  if (existing.size !== blob.size || metadata && existing.type !== blob.type) throw new Error('Image history binary objects are immutable');
+                  for (let offset = 0; offset < blob.size; offset += 65536) {
+                    const left = new Uint8Array(await existing.slice(offset, offset + 65536).arrayBuffer());
+                    const right = new Uint8Array(await blob.slice(offset, offset + 65536).arrayBuffer());
+                    if (left.some((byte, index) => byte !== right[index])) throw new Error('Image history binary objects are immutable');
+                  }
+                }
+                if (!existing || !metadata) {
+                  await provider.saveFile({ binaryObjectId, blob, name, mimeType: blob.type || undefined });
+                }
+              }
+              for (const rawId of referenced) {
+                if (!await provider.getFile({ binaryObjectId: toBinaryObjectId({ raw: rawId }) })) throw new Error('Image history references a missing binary object');
+              }
+            },
+          }),
+        });
+      },
+    };
   }
 
   /** Pin binary publication and metadata to one store. Never call saveFile from
@@ -460,9 +667,20 @@ export class StorageService {
       | { type: 'draft', draft: ImageGenerationSessionDraft, expectedRevision: number | undefined },
     files: ImageGenerationBinaryFile[],
   }): Promise<void> {
-    if (__BUILD_MODE_IS_STANDALONE__ || this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation requires the original OPFS storage provider.');
+    if (this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation requires the original OPFS storage provider.');
     const provider = this.getProvider();
-    const accepted = structuredClone(publication);
+    const accepted = (() => {
+      switch (publication.type) {
+      case 'run': case 'asset': return structuredClone(publication);
+      case 'draft': return {
+        ...publication,
+        draft: imageGenerationDraftToDomain({
+          dto: ExperimentalImageGenerationDraftSchemaDto.parse(imageGenerationDraftToDto({ draft: publication.draft })),
+        }),
+      };
+      default: { const exhaustive: never = publication; throw new Error(String(exhaustive)); }
+      }
+    })();
     const images = files.map(file => ({ ...file }));
     const service = await import('./image-generation');
     const { publishImageGenerationBinaries } = await import('./image-generation-binaries');
@@ -481,30 +699,38 @@ export class StorageService {
       }
     })();
     const write = () => publishImageGenerationBinaries({ provider, referenced, files: images });
-    await this.synchronizer.withLock({ lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'publishImageGeneration' }), fn: async () => {
+    await this.synchronizer.withLock({
+      lockKey: LOCK_METADATA,
+      ...this.getLockOptions({ source: 'publishImageGeneration' }),
+      fn: async () => {
       // A queued callback must not publish through a provider that was replaced
       // before it acquired its lock. Once started, write uses only this provider.
-      if (this.getProvider() !== provider) throw new Error('Image Generation storage changed before publication.');
-      switch (accepted.type) {
-      case 'run': return service.createImageGenerationRun({ store, run: accepted.run, writeInputs: write });
-      case 'asset': return service.commitImageGenerationAsset({ store, asset: accepted.asset, writeImages: write });
-      case 'draft': return service.saveImageGenerationDraft({ store, draft: accepted.draft, expectedRevision: accepted.expectedRevision, writeInputs: write });
-      default: { const exhaustive: never = accepted; throw new Error(String(exhaustive)); }
-      }
-    } });
+        if (this.getProvider() !== provider) throw new Error('Image Generation storage changed before publication.');
+        switch (accepted.type) {
+        case 'run': return service.createImageGenerationRun({ store, run: accepted.run, writeInputs: write });
+        case 'asset': return service.commitImageGenerationAsset({ store, asset: accepted.asset, writeImages: write });
+        case 'draft': return service.saveImageGenerationDraft({ store, draft: accepted.draft, expectedRevision: accepted.expectedRevision, writeInputs: write });
+        default: { const exhaustive: never = accepted; throw new Error(String(exhaustive)); }
+        }
+      },
+    });
   }
 
   async deleteImageGenerationOutput({ store, sessionId, assetId, expectedRevision }: {
     store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, assetId: import('@/01-models/ids').ImageGenerationAssetId, expectedRevision: number,
   }): Promise<void> {
-    if (__BUILD_MODE_IS_STANDALONE__ || this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation deletion requires the original OPFS provider.');
+    if (this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation deletion requires the original OPFS provider.');
     const provider = this.getProvider();
     const { deleteImageGenerationAsset } = await import('./image-generation-curation');
     try {
-      await this.synchronizer.withLock({ lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteImageGenerationOutput' }), fn: async () => {
-        if (this.getProvider() !== provider) throw new Error('The storage provider changed before deletion.');
-        await deleteImageGenerationAsset({ store, sessionId, assetId, expectedRevision, removeBinary: ({ binaryObjectId }) => provider.deleteBinaryObject({ binaryObjectId }) });
-      } });
+      await this.synchronizer.withLock({
+        lockKey: LOCK_METADATA,
+        ...this.getLockOptions({ source: 'deleteImageGenerationOutput' }),
+        fn: async () => {
+          if (this.getProvider() !== provider) throw new Error('The storage provider changed before deletion.');
+          await deleteImageGenerationAsset({ store, sessionId, assetId, expectedRevision, removeBinary: ({ binaryObjectId }) => provider.deleteBinaryObject({ binaryObjectId }) });
+        },
+      });
     } finally {
       // Notify even on partial failure: completed byte removals are irreversible.
       this.notify({ event: { type: 'binary_objects', timestamp: Date.now() } });
@@ -512,30 +738,32 @@ export class StorageService {
   }
 
   async captureImageGenerationExport({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): Promise<ImageGenerationExportSnapshot> {
-    if (__BUILD_MODE_IS_STANDALONE__ || this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation export requires OPFS.');
+    if (this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation export requires OPFS.');
     const provider = this.getProvider();
     const { collectImageGenerationSessionMetadata } = await import('./image-generation-export');
-    return this.synchronizer.withLock({ lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'captureImageGenerationExport' }), fn: async () => {
-      if (this.getProvider() !== provider) throw new Error('The storage provider changed before export.');
-      const { metadata, binaryObjectIds } = await collectImageGenerationSessionMetadata({ store, sessionId });
-      const binaries: ImageGenerationExportSnapshot['binaries'] = [];
-      for (const id of binaryObjectIds) {
-        const blob = await provider.getFile({ binaryObjectId: id });
-        if (!blob) throw new Error(`A referenced image is missing: ${idToRaw({ id })}`);
-        binaries.push({ id, blob });
-      }
-      return { metadata, binaries };
-    } });
+    return this.synchronizer.withLock({
+      lockKey: LOCK_METADATA,
+      ...this.getLockOptions({ source: 'captureImageGenerationExport' }),
+      fn: async () => {
+        if (this.getProvider() !== provider) throw new Error('The storage provider changed before export.');
+        const { metadata, binaryObjectIds } = await collectImageGenerationSessionMetadata({ store, sessionId });
+        const binaries: ImageGenerationExportSnapshot['binaries'] = [];
+        for (const id of binaryObjectIds) {
+          const blob = await provider.getFile({ binaryObjectId: id });
+          if (!blob) throw new Error(`A referenced image is missing: ${idToRaw({ id })}`);
+          binaries.push({ id, blob });
+        }
+        return { metadata, binaries };
+      },
+    });
   }
 
   async loadImageGeneration({ id }: { id: ImageGenerationId }): Promise<ImageGenerationRecord | undefined> {
-    if (__BUILD_MODE_IS_STANDALONE__) throw new Error('Image generation history is unavailable in standalone builds');
     const { loadImageGenerationRecord } = await import('./image-generation-history');
     return loadImageGenerationRecord({ storageType: this.getCurrentType(), id });
   }
 
   async deleteImageGeneration({ id }: { id: ImageGenerationId }): Promise<void> {
-    if (__BUILD_MODE_IS_STANDALONE__) throw new Error('Image generation history is unavailable in standalone builds');
     const { deleteImageGenerationRecord } = await import('./image-generation-history');
     return deleteImageGenerationRecord({ storageType: this.getCurrentType(), id });
   }
@@ -611,34 +839,41 @@ export class StorageService {
     mountPath: string,
     readOnly: boolean,
   }): Promise<void> {
-    await this.updateSettings({ updater: ({ current: settings }) => {
-      if (!settings) throw new Error('Settings not initialized');
-      const exists = settings.mounts.some(m => m.type === 'volume' && m.volumeId === volumeId);
-      if (exists) return settings;
+    await this.updateSettings({
+      updater: ({ current: settings }) => {
+        if (!settings) throw new Error('Settings not initialized');
+        const exists = settings.mounts.some(m => m.type === 'volume' && m.volumeId === volumeId);
+        if (exists) return settings;
 
-      return {
-        ...settings,
-        mounts: [...settings.mounts, { type: 'volume', volumeId, mountPath, readOnly }],
-      };
-    } });
+        return {
+          ...settings,
+          mounts: [...settings.mounts, { type: 'volume', volumeId, mountPath, readOnly }],
+        };
+      },
+    });
   }
 
   async unmountVolume({ volumeId }: { volumeId: VolumeId }): Promise<void> {
-    await this.updateSettings({ updater: ({ current: settings }) => {
-      if (!settings) return null as unknown as Settings;
-      return {
-        ...settings,
-        mounts: settings.mounts.filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
-      };
-    } });
+    await this.updateSettings({
+      updater: ({ current: settings }) => {
+        if (!settings) return null as unknown as Settings;
+        return {
+          ...settings,
+          mounts: settings.mounts.filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
+        };
+      },
+    });
   }
 
   async addMountToChat({ chatId, mount }: { chatId: ChatId, mount: Mount }): Promise<void> {
-    await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
-      if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
-      const existing = current.mounts ?? [];
-      return { ...current, mounts: [...existing, mount] };
-    } });
+    await this.updateChatMeta({
+      id: chatId,
+      updater: ({ current }) => {
+        if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
+        const existing = current.mounts ?? [];
+        return { ...current, mounts: [...existing, mount] };
+      },
+    });
   }
 
   async addMountToChatIfPathAvailable({ chatId, mount }: { chatId: ChatId, mount: Mount }): Promise<'added' | 'path_occupied'> {
@@ -690,160 +925,179 @@ export class StorageService {
   }
 
   async removeMountFromChat({ chatId, volumeId }: { chatId: ChatId, volumeId: VolumeId }): Promise<void> {
-    await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
-      if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
-      return {
-        ...current,
-        mounts: (current.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
-      };
-    } });
+    await this.updateChatMeta({
+      id: chatId,
+      updater: ({ current }) => {
+        if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
+        return {
+          ...current,
+          mounts: (current.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
+        };
+      },
+    });
   }
 
   async updateChatMount({ chatId, volumeId, readOnly }: { chatId: ChatId, volumeId: VolumeId, readOnly: boolean }): Promise<void> {
-    await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
-      if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
-      return {
-        ...current,
-        mounts: (current.mounts ?? []).map(m =>
-          m.type === 'volume' && m.volumeId === volumeId ? { ...m, readOnly } : m,
-        ),
-      };
-    } });
+    await this.updateChatMeta({
+      id: chatId,
+      updater: ({ current }) => {
+        if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
+        return {
+          ...current,
+          mounts: (current.mounts ?? []).map(m =>
+            m.type === 'volume' && m.volumeId === volumeId ? { ...m, readOnly } : m,
+          ),
+        };
+      },
+    });
   }
 
   async addMountToChatGroup({ groupId, mount }: { groupId: ChatGroupId, mount: Mount }): Promise<void> {
-    await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
-      if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
-      const existing = current.mounts ?? [];
-      return { ...current, mounts: [...existing, mount] };
-    } });
+    await this.updateChatGroup({
+      id: groupId,
+      updater: ({ current }) => {
+        if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
+        const existing = current.mounts ?? [];
+        return { ...current, mounts: [...existing, mount] };
+      },
+    });
   }
 
   async removeMountFromChatGroup({ groupId, volumeId }: { groupId: ChatGroupId, volumeId: VolumeId }): Promise<void> {
-    await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
-      if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
-      return {
-        ...current,
-        mounts: (current.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
-      };
-    } });
+    await this.updateChatGroup({
+      id: groupId,
+      updater: ({ current }) => {
+        if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
+        return {
+          ...current,
+          mounts: (current.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
+        };
+      },
+    });
   }
 
   async updateChatGroupMount({ groupId, volumeId, mountPath, readOnly }: { groupId: ChatGroupId, volumeId: VolumeId, mountPath: string, readOnly: boolean }): Promise<void> {
-    await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
-      if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
-      return {
-        ...current,
-        mounts: (current.mounts ?? []).map(m =>
-          m.type === 'volume' && m.volumeId === volumeId ? { ...m, mountPath, readOnly } : m,
-        ),
-      };
-    } });
+    await this.updateChatGroup({
+      id: groupId,
+      updater: ({ current }) => {
+        if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
+        return {
+          ...current,
+          mounts: (current.mounts ?? []).map(m =>
+            m.type === 'volume' && m.volumeId === volumeId ? { ...m, mountPath, readOnly } : m,
+          ),
+        };
+      },
+    });
   }
 
   async switchProvider({ type }: { type: 'local' | 'opfs' | 'memory' }) {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
-        const activeProvider = this.getProvider();
-        if (this.currentType === type) return;
+      await this.synchronizer.withLock({
+        fn: async () => {
+          const activeProvider = this.getProvider();
+          if (this.currentType === type) return;
 
-        const oldProvider = activeProvider;
-        const snapshot = await oldProvider.dump();
+          const oldProvider = activeProvider;
+          const rpcRegistry = await oldProvider.loadNaidanRpcRegistry();
+          const snapshot = await oldProvider.dump();
 
-        const isOPFSSupported = await checkOPFSSupport();
-        const newProvider = (() => {
-          switch (type) {
-          case 'opfs':
-            return isOPFSSupported ? new OPFSStorageProvider() : new LocalStorageProvider();
-          case 'memory':
-            return new MemoryStorageProvider();
-          case 'local':
-            return new LocalStorageProvider();
-          default: {
-            const _ex: never = type;
-            throw new Error(`Unhandled storage type: ${_ex}`);
-          }
-          }
-        })();
-
-        await newProvider.init();
-
-        const oldType = this.currentType;
-        this.provider = newProvider;
-        this.currentType = type;
-
-        // Wrap content stream to rescue memory blobs
-        const migrationStream = async function* (): AsyncGenerator<MigrationChunkDto> {
-          for await (const chunk of snapshot.contentStream) {
-            const chunkType = chunk.type;
-            switch (chunkType) {
-            case 'chat':
-              if (newProvider.canPersistBinary) {
-                const chat = await oldProvider.loadChat({ id: toChatId({ raw: chunk.data.id }) });
-                if (!chat) {
-                  yield chunk; continue;
-                }
-
-                const rescued: MigrationChunkDto[] = [];
-                for (const part of iterateAttachmentParts({ nodes: chat.root.items })) {
-                  const att = part.attachment;
-                  switch (att.status) {
-                  case 'memory':
-                    if (att.blob) {
-                      rescued.push({
-                        type: 'binary_object',
-                        id: idToRaw({ id: att.binaryObjectId }),
-                        name: att.originalName,
-                        mimeType: att.mimeType,
-                        size: att.size,
-                        createdAt: att.uploadedAt,
-                        blob: att.blob,
-                      });
-                      const { blob: _blob, ...persisted } = att;
-                      part.attachment = { ...persisted, status: 'persisted' };
-                    }
-                    break;
-                  case 'persisted':
-                  case 'missing':
-                    break;
-                  default: {
-                    const _ex: never = att;
-                    throw new Error(`Unhandled attachment status: ${_ex}`);
-                  }
-                  }
-                }
-                for (const r of rescued) yield r;
-                yield { type: 'chat', data: chatToDto({ domain: chat }) };
-              } else {
-                yield chunk;
-              }
-              break;
-            case 'binary_object':
-              yield chunk;
-              break;
+          const isOPFSSupported = await checkOPFSSupport();
+          const newProvider = (() => {
+            switch (type) {
+            case 'opfs':
+              return isOPFSSupported ? new OPFSStorageProvider() : new LocalStorageProvider();
+            case 'memory':
+              return new MemoryStorageProvider();
+            case 'local':
+              return new LocalStorageProvider();
             default: {
-              const _ex: never = chunkType;
-              throw new Error(`Unhandled migration chunk type: ${_ex}`);
+              const _ex: never = type;
+              throw new Error(`Unhandled storage type: ${_ex}`);
             }
             }
+          })();
+
+          await newProvider.init();
+
+          // Wrap content stream to rescue memory blobs
+          const migrationStream = async function* (): AsyncGenerator<MigrationChunkDto> {
+            for await (const chunk of snapshot.contentStream) {
+              const chunkType = chunk.type;
+              switch (chunkType) {
+              case 'chat':
+                if (newProvider.canPersistBinary) {
+                  const chat = await oldProvider.loadChat({ id: toChatId({ raw: chunk.data.id }) });
+                  if (!chat) {
+                    yield chunk; continue;
+                  }
+
+                  const rescued: MigrationChunkDto[] = [];
+                  for (const part of iterateAttachmentParts({ nodes: chat.root.items })) {
+                    const att = part.attachment;
+                    switch (att.status) {
+                    case 'memory':
+                      if (att.blob) {
+                        rescued.push({
+                          type: 'binary_object',
+                          id: idToRaw({ id: att.binaryObjectId }),
+                          name: att.originalName,
+                          mimeType: att.mimeType,
+                          size: att.size,
+                          createdAt: att.uploadedAt,
+                          blob: att.blob,
+                        });
+                        const { blob: _blob, ...persisted } = att;
+                        part.attachment = { ...persisted, status: 'persisted' };
+                      }
+                      break;
+                    case 'persisted':
+                    case 'missing':
+                      break;
+                    default: {
+                      const _ex: never = att;
+                      throw new Error(`Unhandled attachment status: ${_ex}`);
+                    }
+                    }
+                  }
+                  for (const r of rescued) yield r;
+                  yield { type: 'chat', data: chatToDto({ domain: chat }) };
+                } else {
+                  yield chunk;
+                }
+                break;
+              case 'binary_object':
+                yield chunk;
+                break;
+              default: {
+                const _ex: never = chunkType;
+                throw new Error(`Unhandled migration chunk type: ${_ex}`);
+              }
+              }
+            }
+          };
+
+          await newProvider.restore({
+            snapshot: {
+              structure: snapshot.structure,
+              contentStream: migrationStream(),
+            },
+          });
+          // Transfer local trust only during an explicit provider switch. It is
+          // absent from general JSON backups, which cannot carry CryptoKey.
+          await newProvider.saveNaidanRpcRegistry({ registry: rpcRegistry });
+          const actualType = type === 'opfs' && !isOPFSSupported ? 'local' : type;
+
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(STORAGE_BOOTSTRAP_KEY, actualType);
           }
-        };
-
-        try {
-          await newProvider.restore({ snapshot: {
-            structure: snapshot.structure,
-            contentStream: migrationStream(),
-          } });
-        } catch (e) {
-          this.provider = oldProvider;
-          this.currentType = oldType;
-          throw e;
-        }
-
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem(STORAGE_BOOTSTRAP_KEY, type);
-        }
-      }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'switchProvider', custom: { notifyLockWaitAfterMs: 5000 } }) });
+          this.provider = newProvider;
+          this.currentType = actualType;
+          this.providerGeneration++;
+        },
+        lockKey: SYNC_LOCK_KEY,
+        ...this.getLockOptions({ source: 'switchProvider', custom: { notifyLockWaitAfterMs: 5000 } }),
+      });
 
       this.notify({ event: { type: 'migration', timestamp: Date.now() } });
     } catch (e) {
@@ -870,9 +1124,15 @@ export class StorageService {
    */
   async restore({ snapshot }: { snapshot: StorageSnapshot }): Promise<void> {
     try {
-      await this.synchronizer.withLock({ fn: async () => {
-        await this.getProvider().restore({ snapshot });
-      }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'restore', custom: { notifyLockWaitAfterMs: 5000 } }) });
+      await this.synchronizer.withLock({
+        fn: async () => {
+          this.providerGeneration++;
+          this.notify({ event: { type: 'naidan_rpc_registry', timestamp: Date.now() } });
+          await this.getProvider().restore({ snapshot });
+        },
+        lockKey: SYNC_LOCK_KEY,
+        ...this.getLockOptions({ source: 'restore', custom: { notifyLockWaitAfterMs: 5000 } }),
+      });
       this.notify({ event: { type: 'migration', timestamp: Date.now() } });
     } catch (e) {
       await this.handleStorageError({ error: e, source: 'restore' });

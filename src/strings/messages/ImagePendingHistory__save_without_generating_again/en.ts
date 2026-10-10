@@ -1,0 +1,1 @@
+export const ImagePendingHistory__save_without_generating_again = (): string => "Retry saving the original images without generating them again. Unsaved images are lost when this browser tab closes.";

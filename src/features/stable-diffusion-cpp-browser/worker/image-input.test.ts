@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { writeImageInputs } from './image-input';
-import { emptyImageInputs } from '@/features/stable-diffusion-cpp-browser/image-input-form';
+import { emptyImageInputs } from '@/features/image-generation/image-input-form';
 
 function harness({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   const memory = new Uint8Array(8192), fields = new Map<string, number | bigint>();
@@ -13,9 +13,11 @@ function harness({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   vi.stubGlobal('OffscreenCanvas', class {
     width: number;
     height: number;
+
     constructor(width: number, height: number) {
       this.width = width; this.height = height; canvases.push(this);
     }
+
     getContext() {
       return context;
     }
@@ -32,19 +34,35 @@ function harness({ pointerBytes }: { pointerBytes: 4 | 8 }) {
       fields.set(`${record}:${pointer}:${field}`, value);
     }),
   };
-  return { core, fields, memory, bitmap, canvases, context, owned,
+  return {
+    core,
+    fields,
+    memory,
+    bitmap,
+    canvases,
+    context,
+    owned,
     keep({ pointer }: { pointer: bigint }) {
       owned.push(pointer); return pointer;
-    } };
+    },
+  };
 }
+
 const file = new File(['encoded image bytes'], 'source.png', { type: 'image/png' });
+
 afterEach(() => vi.unstubAllGlobals());
 
 it.each([4, 8] as const)('writes independent init and ordered reference records using %i-byte generated layout', async pointerBytes => {
   const h = harness({ pointerBytes });
   const decoded = vi.fn();
-  await writeImageInputs({ core: h.core, params: 8n,
-    inputs: { initImage: file, strength: 0.4, referenceImages: [file, file] }, keep: h.keep, checkCancelled() {}, onDecoded: decoded });
+  await writeImageInputs({
+    core: h.core,
+    params: 8n,
+    inputs: { initImage: file, strength: 0.4, referenceImages: [file, file] },
+    keep: h.keep,
+    checkCancelled() {},
+    onDecoded: decoded,
+  });
   expect(h.fields.get('sd_img_gen_params_t:8:strength')).toBe(0.4);
   expect(h.fields.get('sd_image_t:64:width')).toBe(2);
   expect(h.fields.get('sd_image_t:64:channel')).toBe(3);
@@ -61,24 +79,34 @@ it.each([4, 8] as const)('writes independent init and ordered reference records 
   // Native memory remains owned by the enclosing generation through its call.
   expect(h.owned).toHaveLength(4);
 });
+
 it('does no decoding or allocation for text-only generation', async () => {
   const h = harness({ pointerBytes: 4 });
   await writeImageInputs({ core: h.core, params: 8n, inputs: emptyImageInputs(), keep: h.keep, checkCancelled() {}, onDecoded() {} });
   expect(createImageBitmap).not.toHaveBeenCalled(); expect(h.core.alloc).not.toHaveBeenCalled();
 });
+
 it('closes a decoded bitmap when cancelled before copying pixels', async () => {
   const h = harness({ pointerBytes: 8 }); let checks = 0;
-  await expect(writeImageInputs({ core: h.core, params: 8n, inputs: { ...emptyImageInputs(), initImage: file }, keep: h.keep,
+  await expect(writeImageInputs({
+    core: h.core,
+    params: 8n,
+    inputs: { ...emptyImageInputs(), initImage: file },
+    keep: h.keep,
     checkCancelled() {
       if (++checks === 2) throw new DOMException('Stopped', 'AbortError');
-    }, onDecoded() {} })).rejects.toMatchObject({ name: 'AbortError' });
+    },
+    onDecoded() {},
+  })).rejects.toMatchObject({ name: 'AbortError' });
   expect(h.bitmap.close).toHaveBeenCalledOnce(); expect(h.core.alloc).not.toHaveBeenCalled(); expect(h.canvases).toHaveLength(0);
 });
+
 it('rejects unsafe native dimensions before canvas/native allocation and closes the bitmap', async () => {
   const h = harness({ pointerBytes: 4 }); h.bitmap.width = 2147483647;
   await expect(writeImageInputs({ core: h.core, params: 8n, inputs: { ...emptyImageInputs(), initImage: file }, keep: h.keep, checkCancelled() {}, onDecoded() {} })).rejects.toThrow('addressable');
   expect(h.bitmap.close).toHaveBeenCalledOnce(); expect(h.core.alloc).not.toHaveBeenCalled();
 });
+
 it('does not publish a zero native allocation and still releases the bitmap/canvas', async () => {
   const h = harness({ pointerBytes: 8 }); h.core.alloc.mockReturnValue(0n);
   await expect(writeImageInputs({ core: h.core, params: 8n, inputs: { ...emptyImageInputs(), initImage: file }, keep: h.keep, checkCancelled() {}, onDecoded() {} })).rejects.toThrow('allocate input');

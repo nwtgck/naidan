@@ -408,7 +408,6 @@ git reflog -1`,
     );
   });
 
-
   it('flattens merge commits while replaying their non-merge ancestry in topo parent order', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -455,5 +454,4 @@ base
 `);
     expect(stderr.text).toBe('Successfully rebased and updated refs/heads/topic.\n');
   });
-
 });

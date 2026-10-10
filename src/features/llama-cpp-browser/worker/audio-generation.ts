@@ -9,6 +9,7 @@ import { readAudioField, readAudioScalar } from './audio-memory';
 import type { WorkerAudioInput } from './types';
 
 type AudioCapabilities = { pipeline: AudioGenerationResult['pipeline'], reference: 'optional' | 'required', language: 'selectable' | 'weights', sampling: 'token' | 'continuous' };
+
 export function audioCapabilities({ core, nativeType }: { core: Core, nativeType: number }): AudioCapabilities {
   if (nativeType === core.constant({ name: 'MTMD_GEN_AUDIO_TYPE_QWEN3TTS' })) return { pipeline: 'qwen3-tts', reference: 'optional', language: 'selectable', sampling: 'token' };
   if (nativeType === core.constant({ name: 'MTMD_GEN_AUDIO_TYPE_POCKETTTS' })) return { pipeline: 'pocket-tts', reference: 'required', language: 'weights', sampling: 'continuous' };
@@ -17,8 +18,9 @@ export function audioCapabilities({ core, nativeType }: { core: Core, nativeType
 
 type NativeAudioPreview = {
   requestedVersion: () => number,
-  onPreview: ({ result, requestVersion }: AudioPreviewEvent) => Promise<void>,
+  onPreview: ({ event }: { event: AudioPreviewEvent }) => Promise<void>,
 };
+
 /** Reviewed public-helper call timing for the pinned b29c606e upstream.
  * Qwen automatically flushes 72-code-frame blocks. get_output() at that boundary
  * only serializes accumulated PCM: an arbitrary tail flush would advance decoder
@@ -173,7 +175,7 @@ export async function synthesizeAudio({ core, context, projector, request, onPro
           const output = await readOutput();
           if (output.samples > lastPreviewSamples) {
             const result = audioGenerationPreviewSchema.parse({ ...output, frames, finishReason: 'preview', pipeline: capabilities.pipeline });
-            await preview.onPreview({ result, requestVersion });
+            await preview.onPreview({ event: { result, requestVersion } });
             deliveredVersion = requestVersion; lastPreviewSamples = output.samples;
             await yieldControl({ force: true });
             checkCancelled();
@@ -257,5 +259,6 @@ async function createAudioSampler({ core, temperature, topK, topP, seed }: {
     core.free({ pointer: options });
   }
 }
+
 export const TEST_ONLY = {
 };

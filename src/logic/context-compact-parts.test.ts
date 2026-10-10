@@ -6,10 +6,20 @@ import { buildCompactRequestMessages, createCompactChatMessagesFromPrefix, creat
 vi.mock('@/00-storage/service', () => ({ storageService: { getFile: vi.fn() } }));
 
 function assistant(): AssistantMessageNode {
-  return { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 7, modelId: 'model', lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.2, reasoning: { effort: 'low' } }, interruption: { type: 'error', message: '中断' },
-    parts: [{ type: 'reasoning', text: '  理由\n', completeness: 'complete' }, { type: 'text', text: '<think>literal</think>途中', completeness: 'partial' }], replies: { items: [] } };
+  return {
+    id: toMessageId({ raw: 'a' }),
+    role: 'assistant',
+    createdAt: 7,
+    modelId: 'model',
+    lmParameters: { ...EMPTY_LM_PARAMETERS, temperature: 0.2, reasoning: { effort: 'low' } },
+    interruption: { type: 'error', message: '中断' },
+    parts: [{ type: 'reasoning', text: '  理由\n', completeness: 'complete' }, { type: 'text', text: '<think>literal</think>途中', completeness: 'partial' }],
+    replies: { items: [] },
+  };
 }
+
 beforeEach(() => vi.clearAllMocks());
+
 describe('context compaction parts', () => {
   it('keeps native reasoning, literal text, status, and order without lookup annotation', async () => {
     const a = assistant(); const before = structuredClone(a);
@@ -21,16 +31,21 @@ describe('context compaction parts', () => {
     sourcePart.text = 'edited';
     expect(messages[0]!.parts[0]).toEqual(before.parts[0]);
   });
+
   it('adds lookup text to a copied text part without tagging reasoning', async () => {
     const a = assistant(); const before = structuredClone(a);
     const messages = await createCompactChatMessagesFromPrefix({ prefix: [a], promptMode: 'with_message_ids' });
     expect(messages[0]!.parts[0]).toEqual(a.parts[0]);
-    expect(messages[0]!.parts[1]).toMatchObject({ text: `\
+    expect(messages[0]!.parts[1]).toMatchObject({
+      text: `\
 messageId=a
 
-<think>literal</think>途中`, completeness: 'partial' });
+<think>literal</think>途中`,
+      completeness: 'partial',
+    });
     expect(a).toEqual(before);
   });
+
   it('inserts a lookup part after reasoning and before calls without changing the source', async () => {
     const a = assistant(); a.parts = [{ type: 'reasoning', text: 'R', completeness: 'complete' }, { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{ "x": 1 }' } } }];
     const [message] = await createCompactChatMessagesFromPrefix({ prefix: [a], promptMode: 'with_message_ids' });
@@ -38,12 +53,14 @@ messageId=a
     expect(message!.parts[1]).toEqual({ type: 'text', text: 'messageId=a\n\n', completeness: 'complete' });
     expect(a.parts).toHaveLength(2);
   });
+
   it('keeps non-image and missing attachment references for provider validation', async () => {
     const attachment = { id: toAttachmentId({ raw: 'a1' }), binaryObjectId: toBinaryObjectId({ raw: 'b1' }), originalName: 'file.txt', mimeType: 'text/plain', size: 3, uploadedAt: 1, status: 'missing' as const };
     const user: MessageNode = { id: toMessageId({ raw: 'u' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ type: 'attachment', attachment }], replies: { items: [] } };
     const [copy] = await createCompactChatMessagesFromPrefix({ prefix: [user], promptMode: 'without_message_ids' });
     expect(copy!.parts).toEqual(user.parts); expect(storageService.getFile).not.toHaveBeenCalled();
   });
+
   it('snapshots later messages before waiting for a tool binary result', async () => {
     const deferred = Promise.withResolvers<Blob>(); vi.mocked(storageService.getFile).mockReturnValueOnce(deferred.promise);
     const tool: MessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] }, parts: [{ type: 'tool_result', result: { status: 'success', toolCallId: toToolCallId({ raw: 'call' }), content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'binary' }) } } }] };
@@ -51,17 +68,26 @@ messageId=a
     a.parts = []; deferred.resolve(new Blob(['  Result  ']));
     const messages = await pending;
     expect(messages[1]!.parts).toHaveLength(2);
-    expect(messages[0]!.parts[0]).toMatchObject({ result: { content: { type: 'text', text: `\
+    expect(messages[0]!.parts[0]).toMatchObject({
+      result: {
+        content: {
+          type: 'text',
+          text: `\
 messageId=tool
 
-  Result  ` } } });
+  Result  `,
+        },
+      },
+    });
     expect(tool.parts[0]).toMatchObject({ result: { content: { type: 'binary_object' } } });
   });
+
   it('does not substitute a fabricated successful result when binary content is missing', async () => {
     vi.mocked(storageService.getFile).mockResolvedValueOnce(null);
     const tool: MessageNode = { id: toMessageId({ raw: 't' }), role: 'tool', createdAt: 1, modelId: undefined, lmParameters: undefined, replies: { items: [] }, parts: [{ type: 'tool_result', result: { status: 'success', toolCallId: toToolCallId({ raw: 'c' }), content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'b' }) } } }] };
     await expect(createCompactChatMessagesFromPrefix({ prefix: [tool], promptMode: 'with_message_ids' })).rejects.toThrow('missing');
   });
+
   it('keeps suffix content, causes, references, and parameter independence', () => {
     const a = assistant(); const before = structuredClone(a); const ids = ['summary', 'copy'];
     const branch = createCompactBranchFromResponse({ compactContent: '  summary  ', suffix: [a], compactModelId: 'm', createMessageId: () => toMessageId({ raw: ids.shift()! }), now: () => 42 });
@@ -74,6 +100,7 @@ messageId=tool
     copiedPart.text = 'changed';
     expect(a).toEqual(before);
   });
+
   it('builds independent request instructions with a collision-free id', () => {
     const a = assistant(); const source = { id: toMessageId({ raw: 'compact_instruction' }), role: 'assistant' as const, parts: a.parts };
     const messages = buildCompactRequestMessages({ prefix: [source], promptMode: 'without_message_ids', instructionContent: '  custom  ' });
@@ -94,11 +121,18 @@ describe('context compaction tool text storage parity', () => {
   }): import('@/01-models/types').ToolMessageNode {
     const toolCallId = toToolCallId({ raw: 'c' });
     return {
-      id: toMessageId({ raw: 'tool' }), role: 'tool', createdAt: 3,
-      modelId: undefined, lmParameters: undefined, replies: { items: [] },
-      parts: [{ type: 'tool_result', result: status === 'success'
-        ? { toolCallId, status, content }
-        : { toolCallId, status, error: { code: 'other', message: content } } }],
+      id: toMessageId({ raw: 'tool' }),
+      role: 'tool',
+      createdAt: 3,
+      modelId: undefined,
+      lmParameters: undefined,
+      replies: { items: [] },
+      parts: [{
+        type: 'tool_result',
+        result: status === 'success'
+          ? { toolCallId, status, content }
+          : { toolCallId, status, error: { code: 'other', message: content } },
+      }],
     };
   }
   for (const status of ['success', 'error'] as const) {
@@ -124,6 +158,7 @@ describe('context compaction tool text storage parity', () => {
       expect(restored).toEqual(direct);
       expect(stored).toEqual(before);
     });
+
     it.each([
       { name: 'invalid UTF-8', bytes: [0xff] },
       { name: 'truncated UTF-8', bytes: [0xe3, 0x81] },
@@ -135,6 +170,7 @@ describe('context compaction tool text storage parity', () => {
       expect(stored).toEqual(before);
     });
   }
+
   it('does not read or rewrite the binary reference when no lookup annotation is requested', async () => {
     const node = toolNode({ status: 'success', content: { type: 'binary_object', id: toBinaryObjectId({ raw: 'tool-body' }) } });
     const [message] = await createCompactChatMessagesFromPrefix({ prefix: [node], promptMode: 'without_message_ids' });

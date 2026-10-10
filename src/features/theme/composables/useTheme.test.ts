@@ -17,7 +17,9 @@ class FakeMediaQueryList extends EventTarget {
   }
 
   addListener(): void {}
+
   removeListener(): void {}
+
   override dispatchEvent(event: Event): boolean {
     return super.dispatchEvent(event);
   }

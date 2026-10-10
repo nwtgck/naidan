@@ -1,3 +1,5 @@
+import { sampleMemoryDiagnostics } from '@/features/llama-cpp-browser/runtime/memory-diagnostics';
+import { createCheckpointPerformance } from './checkpoint-performance';
 import { copyNativeUtf8 } from '@/features/llama-cpp-browser/runtime/native-utf8';
 import { createDeliveryDecode } from './delivery-decode';
 import { createGenerationYieldPacing } from './generation-yield-pacing';
@@ -9,7 +11,7 @@ import { createGenerationPerformance } from './generation-performance';
 import { tokenizePrompt } from './tokenize-prompt';
 import { prepareMultimodal } from './multimodal';
 import { errorCode, LlamaCppBrowserError, usesWebGpu, type GenerationResult, type GenerationCallback, type Progress } from '@/features/llama-cpp-browser/types';
-import { logDiagnostic, logFailure, type Diagnostic, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
+import { classifyFailure, logDiagnostic, logFailure, type Diagnostic, type DiagnosticStage } from '@/features/llama-cpp-browser/debug-log';
 import type { WorkerGenerateInput } from './types';
 import { createOutputStream } from './output-stream';
 import { prepareGenerationSession } from './session';
@@ -32,44 +34,89 @@ function failureOutcome({ error }: { error: unknown }): 'aborted' | 'failed' {
 }
 
 /** Reuse only a verified decoded prefix; sampling and parsing stay request-local. */
-export async function generate({ request, onEvent, onProgress, signal }: {
+export async function generate({ request, onEvent, onProgress, signal, onSummary }: {
   request: WorkerGenerateInput,
+  onSummary?: ({ diagnostic }: { diagnostic: Diagnostic }) => void,
   signal: AbortSignal | undefined,
   onEvent: GenerationCallback,
   onProgress: ({ progress }: { progress: Progress }) => void,
 }): Promise<GenerationResult> {
   const started = performance.now();
   let stage: DiagnosticStage = 'session';
-  const measurements = createGenerationPerformance({ enabled: request.debug === 'on', now: () => performance.now() });
-  measurements.counters.sampling = { temperature: request.temperature, topP: request.topP,
-    presencePenalty: request.presencePenalty, frequencyPenalty: request.frequencyPenalty };
+  let session: Awaited<ReturnType<typeof prepareGenerationSession>> | undefined;
+  const measurements = createGenerationPerformance({ enabled: request.debug === 'on' || request.measurement !== undefined, now: () => performance.now() });
+  const checkpointObservation = request.measurement ? createCheckpointPerformance({ now: () => performance.now() }) : undefined;
+  measurements.counters.runtimeAssetBaseURL = request.assetBaseURL;
+  measurements.counters.sampling = {
+    temperature: request.temperature,
+    topP: request.topP,
+    presencePenalty: request.presencePenalty,
+    frequencyPenalty: request.frequencyPenalty,
+  };
   const setStage = ({ value }: { value: DiagnosticStage }): void => {
     stage = value;
     measurements.enter({ next: value });
+    if (session?.census) {
+      switch (value) {
+      case 'prefill-decode': session.census.setPhase({ value: 'prefill' }); break;
+      case 'generation-decode': case 'generation-overlap': session.census.setPhase({ value: 'decode' }); break;
+      case 'audio-info': case 'audio-reference': case 'audio-input': case 'audio-prompt': case 'audio-frame': case 'audio-output':
+      case 'media-encode': case 'media-decode': case 'model-resolve': case 'projector-trace': case 'projector-load':
+      case 'image-decode': case 'image-tokenize': case 'image-evaluate': case 'session': case 'cache-prepare': case 'cache-probe':
+      case 'cache-checkpoint': case 'prefill': case 'template': case 'tokenize': case 'sampler-create': case 'reasoning-state':
+      case 'grammar-switch': case 'native-sample': case 'reasoning-accept': case 'reasoning-replay': case 'token-render':
+      case 'partial-parse': case 'stream-emit': case 'final-parse': case 'cleanup': case 'event-loop-yield':
+      case 'worker-operation': case 'worker-callback': case 'worker-rpc': case 'worker-error': case 'worker-messageerror':
+        session.census.setPhase({ value: 'other' }); break;
+      default: { const exhaustive: never = value; throw new Error(String(exhaustive)); }
+      }
+    }
   };
   let outcome: 'completed' | 'aborted' | 'failed' = 'failed';
+  let failure: Pick<Diagnostic, 'stage' | 'failureKind'> | undefined;
+  const recordFailure = ({ error, stage }: { error: unknown, stage: DiagnosticStage }) => {
+    if (request.measurement && !failure) failure = { stage, failureKind: classifyFailure({ error }) };
+  };
   const reportPerformance = (): void => {
     try {
+      if (session && request.measurement) {
+        measurements.counters.backendCensus = session.census?.snapshot();
+        const memory = measurements.counters.memoryObservation;
+        if (memory) {
+          memory.wasmHeapAfterBytes = session.core.module.HEAPU8.byteLength; memory.checkpointRetainedBytes = session.cache.checkpoint?.bytes ?? 0;
+        }
+      }
+      measurements.counters.checkpoint = checkpointObservation?.snapshot();
       const diagnostic = measurements.finish({ outcome, profile: request.options.profile });
-      if (diagnostic) logDiagnostic({ diagnostic });
+      if (diagnostic) {
+        if (request.measurement) onSummary?.({ diagnostic: { ...diagnostic, ...failure } });
+        switch (request.debug) {
+        case 'on': logDiagnostic({ diagnostic }); break;
+        case 'off': case undefined: break;
+        default: { const exhaustive: never = request.debug; void exhaustive; }
+        }
+      }
     } catch { /* A performance report must not replace an inference result/error. */ }
   };
   let generated = 0;
   let flushPartial: (() => Promise<void>) | undefined;
-  const progress = ({ phase, completed, total }: Progress): void => onProgress({ progress: { phase, completed, total } });
+  const progress = ({ phase, completed, total }: { phase: Progress['phase'], completed: Progress['completed'], total: Progress['total'] }): void => onProgress({ progress: { phase, completed, total } });
   const checkCancelled = (): void => {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   };
-  let session: Awaited<ReturnType<typeof prepareGenerationSession>>;
   try {
     session = await prepareGenerationSession({ request, onProgress, signal });
   } catch (error) {
     outcome = failureOutcome({ error });
+    recordFailure({ error, stage });
     reportPerformance();
     throw error;
   }
   const { core, model, context, sequenceRemoval, slidingWindow, cache, projector, vocab, contextTokens: capacity, memory, nativeRollbackTokens, prefillBatchTokens } = session;
+  const measuredMemory = request.measurement ? { wasmHeapBeforeBytes: core.module.HEAPU8.byteLength } : undefined;
+  measurements.counters.memoryObservation = measuredMemory;
   measurements.counters.sessionPreparation = session.preparation;
+  measurements.counters.prefillBatchTokens = session.prefillBatchTokens;
   const api = core.api;
   // Consume before template/media preparation, cancellation or any native
   // mutation. A failed request must never lend this proof to its successor.
@@ -123,6 +170,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       }
     } catch (error) {
       outcome = 'failed';
+      recordFailure({ error, stage: 'cleanup' });
       cache.validity = 'invalid';
       discardCheckpoint();
       logFailure({ stage: 'cleanup', error }); throw error;
@@ -130,7 +178,17 @@ export async function generate({ request, onEvent, onProgress, signal }: {
   };
   try {
     checkCancelled();
+    const measurementSequence = request.measurement?.sequence;
+    switch (measurementSequence) {
+    case 'fresh':
+      cache.validity = 'invalid'; cache.tokens = [];
+      discardCheckpoint();
+      break;
+    case 'continue': case undefined: break;
+    default: { const exhaustive: never = measurementSequence; throw new Error(String(exhaustive)); }
+    }
     // Prompt preparation is an ordinary response wait, not another model load.
+    sampleMemoryDiagnostics({ core, checkpoint: 'prefill-start' });
     setStage({ value: 'prefill' });
     progress({ phase: 'prefill', completed: 0, total: 0 });
     logDiagnostic({ diagnostic: { event: 'prefill-start' } });
@@ -167,9 +225,16 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       const bytes = core.bytes({ pointer: tokens, length: promptTokens.length * 4 }); const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       promptTokens.forEach((token, index) => view.setInt32(index * 4, token, true));
     } else {
-      const tokenized = await tokenizePrompt({ core, vocab, prompt: promptPointer, promptBytes: promptLength, contextTokens: capacity, onTokenize: () => {
-        measurements.counters.tokenizeCalls++;
-      } });
+      const tokenized = await tokenizePrompt({
+        core,
+        vocab,
+        prompt: promptPointer,
+        promptBytes: promptLength,
+        contextTokens: capacity,
+        onTokenize: () => {
+          measurements.counters.tokenizeCalls++;
+        },
+      });
       tokens = tokenized.pointer;
       // The helper transfers ownership only after native tokenization has settled.
       allocations.push(tokens);
@@ -253,26 +318,40 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       } else reason = 'cache-window';
     }
     const checkpoint = cache.checkpoint;
+    let restoredCheckpoint = false;
     // A failed direct mutation may have damaged ordinary attention, which a
     // partial snapshot cannot replace. Only restore an untouched native prefix.
     if (!reuse && reusedTokens === 0 && !attemptedRemoval && checkpointEnabled && cacheValid && cachePositionMatches
       && checkpoint && checkpoint.tokens.length <= commonPrefixTokens && checkpoint.tokens.length < tokenCount
       && checkpoint.tokens.every((token, index) => token === promptTokens[index])) {
       setStage({ value: 'cache-checkpoint' });
-      if (await restorePromptCheckpoint({ core, context, checkpoint })) {
+      if (await restorePromptCheckpoint({ core, context, checkpoint, observer: checkpointObservation })) {
         reusedTokens = checkpoint.tokens.length;
         cache.tokens = checkpoint.tokens.slice();
         reason = 'checkpoint-match';
+        restoredCheckpoint = true;
       } else reason = 'checkpoint-invalid';
     }
     // Full-prefix appends need no restoration. Keeping their earlier checkpoint
     // avoids repeated copies and preserves a boundary before generated thinking.
-    if (!reuse) discardCheckpoint();
+    if (!reuse && !restoredCheckpoint) discardCheckpoint();
     measurements.counters.reusedTokens = reusedTokens;
-    logDiagnostic({ diagnostic: { event: 'cache-reuse', reusedTokens, evaluatedTokens: tokenCount - reusedTokens,
-      tokens: tokenCount, cachedTokens, commonPrefixTokens, cacheComparison,
-      nativeMemoryKind, nativePositionMin, nativePositionMax, nativeRollbackTokens,
-      reason } });
+    logDiagnostic({
+      diagnostic: {
+        event: 'cache-reuse',
+        reusedTokens,
+        evaluatedTokens: tokenCount - reusedTokens,
+        tokens: tokenCount,
+        cachedTokens,
+        commonPrefixTokens,
+        cacheComparison,
+        nativeMemoryKind,
+        nativePositionMin,
+        nativePositionMax,
+        nativeRollbackTokens,
+        reason,
+      },
+    });
     if (reusedTokens === 0) {
       cache.tokens = [];
       if (memory !== 0n) {
@@ -288,20 +367,41 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       }
     }
     let checkpointBoundary: number | undefined;
-    if (checkpointEnabled && !cache.checkpoint) {
+    if (checkpointEnabled && (!cache.checkpoint || restoredCheckpoint)) {
       setStage({ value: 'cache-checkpoint' });
-      const boundary = await promptCheckpointBoundary({ core, vocab, prompt: promptText, promptPointer,
-        generationPrompt: chat.params.generation_prompt, tokens: promptTokens, onTokenize: () => {
-          measurements.counters.checkpointTokenizeCalls++;
-        } });
-      if (boundary > 0 && boundary < tokenCount && boundary >= reusedTokens) checkpointBoundary = boundary;
+      checkpointObservation?.enter({ phase: 'boundary-tokenize' });
+      let boundary: number;
+      try {
+        boundary = await promptCheckpointBoundary({
+          core,
+          vocab,
+          prompt: promptText,
+          promptPointer,
+          generationPrompt: chat.params.generation_prompt,
+          tokens: promptTokens,
+          onTokenize: () => {
+            measurements.counters.checkpointTokenizeCalls++;
+          },
+        });
+      } finally {
+        checkpointObservation?.end();
+      }
+      // The successfully restored host snapshot is still the exact checkpoint
+      // when the new generation boundary is unchanged. Do not serialize the
+      // very same native state back to the host before decoding any new token.
+      // A moved boundary still gets a new checkpoint, preserving retry behavior.
+      if (restoredCheckpoint) {
+        if (cache.checkpoint?.tokens.length !== boundary) discardCheckpoint();
+        else checkpointObservation?.retained();
+      }
+      if (!cache.checkpoint && boundary > 0 && boundary < tokenCount && boundary >= reusedTokens) checkpointBoundary = boundary;
     }
     const captureAtBoundary = async ({ offset }: { offset: number }): Promise<void> => {
       if (offset !== checkpointBoundary) return;
       setStage({ value: 'cache-checkpoint' });
       // The pointer is published only after the native writer has finished.
       // Cancellation cannot free a buffer while that writer still owns it.
-      cache.checkpoint = await capturePromptCheckpoint({ core, context, tokens: cache.tokens });
+      cache.checkpoint = await capturePromptCheckpoint({ core, context, tokens: cache.tokens, observer: checkpointObservation });
       checkCancelled();
     };
     await captureAtBoundary({ offset: reusedTokens });
@@ -325,6 +425,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       await api.llama_batch_get_one(batch, tokens + BigInt(offset * 4), count);
       prefillOutputs!.configure({ batch, count, final: offset + count === tokenCount });
       const status = await api.llama_decode(context, batch);
+      sampleMemoryDiagnostics({ core, checkpoint: 'decode' });
       measurements.counters.prefillDecodeCalls++;
       measurements.counters.maximumPrefillBatchTokens = Math.max(measurements.counters.maximumPrefillBatchTokens, count);
       if (status === 0) measurements.counters.prefillDecodedTokens += count;
@@ -347,6 +448,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     checkCancelled();
     progress({ phase: 'prefill', completed: tokenCount, total: tokenCount });
     checkCancelled();
+    sampleMemoryDiagnostics({ core, checkpoint: 'prefill-complete' });
     logDiagnostic({ diagnostic: { event: 'prefill-complete', tokens: tokenCount, reusedTokens, evaluatedTokens: tokenCount - reusedTokens } });
     setStage({ value: 'sampler-create' });
     const sp = record({ name: 'llama_sampler_chain_params' }); await api.llama_sampler_chain_default_params(sp);
@@ -388,8 +490,12 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       now: () => performance.now(),
     });
     const streaming = measurements.counters.streaming = {
-      mode: outputPacing.mode, partialParseCalls: 0, finalParseCalls: 0,
-      parsedCodeUnits: 0, skippedPartialParses: 0, deliveredEvents: 0,
+      mode: outputPacing.mode,
+      partialParseCalls: 0,
+      finalParseCalls: 0,
+      parsedCodeUnits: 0,
+      skippedPartialParses: 0,
+      deliveredEvents: 0,
     };
     const parseOutput = ({ partial }: { partial: boolean }): Omit<GenerationResult, 'finishReason'> => {
       outputPacing.parsed({ outputLength: output.length });
@@ -401,10 +507,11 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     let deliveryDecodeActive = false;
     const deliveryDecode = createDeliveryDecode({
       mode: usesWebGpu({ profile: request.options.profile }) && !multimodal && !request.tools?.length ? 'overlap' : 'serial',
-      signal, now: (() => {
+      signal,
+      now: (() => {
         switch (request.debug) {
         case 'on': return () => performance.now();
-        case 'off': case undefined: return undefined;
+        case 'off': case undefined: return request.measurement ? () => performance.now() : undefined;
         default: { const exhaustive: never = request.debug; throw new Error(String(exhaustive)); }
         }
       })(),
@@ -423,8 +530,14 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     };
     const validateParsed = ({ parsed }: { parsed: Omit<GenerationResult, 'finishReason'> }): void => {
       if (!parsed.content.startsWith(content) || !parsed.reasoningContent.startsWith(reasoning) || parsed.toolCalls.length < pendingCalls) {
-        logDiagnostic({ diagnostic: { event: 'failed', stage, tokens: generated,
-          reason: !parsed.content.startsWith(content) ? 'non-monotonic-content' : 'non-monotonic-reasoning' } });
+        logDiagnostic({
+          diagnostic: {
+            event: 'failed',
+            stage,
+            tokens: generated,
+            reason: !parsed.content.startsWith(content) ? 'non-monotonic-content' : 'non-monotonic-reasoning',
+          },
+        });
         throw new LlamaCppBrowserError({ code: 'runtime-error' });
       }
     };
@@ -485,7 +598,8 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     // Cooperation is independent of parse pacing: enabling tool-preview
     // coalescing later must not also relax the task-yield policy implicitly.
     const generationYield = createGenerationYieldPacing({
-      mode: chat.images.length || request.tools?.length ? 'per-token' : 'coalesced', now: () => performance.now(),
+      mode: chat.images.length || request.tools?.length ? 'per-token' : 'coalesced',
+      now: () => performance.now(),
     });
     measurements.counters.generationYield = generationYield.counters;
     const decodeToken = async ({ token }: { token: number }): Promise<void> => {
@@ -503,6 +617,7 @@ export async function generate({ request, onEvent, onProgress, signal }: {
         core.setField({ name: 'llama_batch', pointer: batch, field: 'pos', value: position });
       }
       const status = await api.llama_decode(context, batch);
+      sampleMemoryDiagnostics({ core, checkpoint: 'decode' });
       if (status === 0) measurements.counters.decodedTokens++;
       if (status === 2) checkCancelled();
       if (status !== 0) {
@@ -515,17 +630,25 @@ export async function generate({ request, onEvent, onProgress, signal }: {
       checkCancelled();
       setStage({ value: 'native-sample' });
       const token = await chatSampler.sample({ context });
-      measurements.sampled();
+      const throughput = measurements.sampled();
+      if (throughput) {
+        try {
+          logDiagnostic({ diagnostic: { ...throughput, profile: request.options.profile } });
+        } catch { /* Progress telemetry must not interrupt inference. */ }
+      }
       if (generated === 0) logDiagnostic({ diagnostic: { event: 'first-token-sampled' } });
       setStage({ value: 'token-render' });
       checkCancelled();
       const { text: tokenText, endOfGeneration } = await renderer.render({ token, special: chatSampler.preservedTokens.has(token) });
+      measurements.rendered({ endOfGeneration: Boolean(endOfGeneration) });
       const rendered = stream.push({ text: tokenText });
       checkCancelled();
       output += rendered.text;
       let partial: Omit<GenerationResult, 'finishReason'> | undefined;
-      if (outputPacing.shouldParse({ outputLength: output.length,
-        force: rendered.done || Boolean(endOfGeneration) || generated + 1 === maximum })) {
+      if (outputPacing.shouldParse({
+        outputLength: output.length,
+        force: rendered.done || Boolean(endOfGeneration) || generated + 1 === maximum,
+      })) {
         setStage({ value: 'partial-parse' });
         partial = parseOutput({ partial: true });
         // Finish every native read before pairing. emitParsed validates the
@@ -596,13 +719,16 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     default: { const exhaustive: never = finishReason; throw new Error(`Unknown completion: ${exhaustive}`); }
     }
     flushPartial = undefined;
+    sampleMemoryDiagnostics({ core, checkpoint: 'generation-complete' });
     logDiagnostic({ diagnostic: { event: 'generation-complete', tokens: generated, elapsedMs: performance.now() - started } });
     cache.validity = !multimodal && memory !== 0n ? 'valid' : 'invalid';
     outcome = 'completed';
     return { ...parsed, finishReason };
   } catch (error) {
+    sampleMemoryDiagnostics({ core, checkpoint: 'generation-interrupted' });
     outcome = failureOutcome({ error });
     const failedStage = stage;
+    recordFailure({ error, stage: failedStage });
     // Drain already accepted bytes before reporting a cooperative cancellation or failure.
     // Do not retry delivery after a consumer failure or replace the original error.
     try {
@@ -620,10 +746,12 @@ export async function generate({ request, onEvent, onProgress, signal }: {
     try {
       await cleanup();
     } finally {
+      sampleMemoryDiagnostics({ core, checkpoint: 'generation-cleaned' });
       reportPerformance();
     }
     // The owning worker or a model/profile/file change releases the resident cache.
   }
 }
+
 export const TEST_ONLY = {
 };

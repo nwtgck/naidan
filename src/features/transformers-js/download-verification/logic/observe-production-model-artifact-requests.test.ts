@@ -62,8 +62,6 @@ describe('observeProductionModelArtifactRequests', () => {
     ]);
   });
 
-
-
   it('preserves a successful observation when dedicated worker disposal reports a remote release failure', async () => {
     vi.mocked(createDownloadVerificationModelArtifactRequestWorkerClient).mockReturnValue({
       observeModelArtifactRequests: vi.fn(async ({ modelId, revision, candidate }: Parameters<DownloadVerificationModelArtifactRequestWorkerClient['observeModelArtifactRequests']>[0]): Promise<DownloadVerificationModelArtifactRequestObservation> => ({

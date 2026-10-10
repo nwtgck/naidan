@@ -8,7 +8,7 @@ import type { ImageDownloadWorker } from './types';
  * cannot create a Worker or start metadata requests. Cancellation normally lets
  * the writer checkpoint. A crashed/stalled Worker cannot keep the UI busy forever.
  */
-export async function downloadImageRecipeInWorker({ files, signal, onProgress, destination }: ImageRecipeDownloadRequest): Promise<void> {
+export async function downloadImageRecipeInWorker({ files, signal, onProgress, destination }: { files: ImageRecipeDownloadRequest['files'], signal: ImageRecipeDownloadRequest['signal'], onProgress: ImageRecipeDownloadRequest['onProgress'], destination?: ImageRecipeDownloadRequest['destination'] }): Promise<void> {
   signal.throwIfAborted();
   const worker = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module', name: 'naidan-image-model-download' });
   const remote = (() => {
@@ -30,14 +30,16 @@ export async function downloadImageRecipeInWorker({ files, signal, onProgress, d
   signal.addEventListener('abort', abort, { once: true });
   worker.addEventListener('error', crash); worker.addEventListener('messageerror', crash);
   try {
-    const operation = remote.download({ files: files.map(file => ({ ...file })), destination }, workerProxy({ value: ({ progress }) => {
-      const parsed = catalogDownloadProgressSchema.safeParse(progress);
-      if (parsed.success && !signal.aborted) {
-        try {
-          onProgress({ progress: parsed.data });
-        } catch { /* presentation only */ }
-      }
-    } }), workerProxy({ value: bridge.open }));
+    const operation = remote.download({ files: files.map(file => ({ ...file })), destination }, workerProxy({
+      value: ({ progress }) => {
+        const parsed = catalogDownloadProgressSchema.safeParse(progress);
+        if (parsed.success && !signal.aborted) {
+          try {
+            onProgress({ progress: parsed.data });
+          } catch { /* presentation only */ }
+        }
+      },
+    }), workerProxy({ value: bridge.open }));
     if (signal.aborted) abort();
     await Promise.race([operation, stopped.promise]); signal.throwIfAborted();
   } finally {
@@ -50,5 +52,6 @@ export async function downloadImageRecipeInWorker({ files, signal, onProgress, d
     bridge.dispose(); worker.terminate();
   }
 }
+
 export const TEST_ONLY = {
 };

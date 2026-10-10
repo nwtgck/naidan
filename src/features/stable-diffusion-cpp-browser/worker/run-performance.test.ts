@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { createRunPerformance } from './run-performance';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import { createImageTrace, createImageDiagnosticBuffer, imageDiagnosticSchema } from '@/features/stable-diffusion-cpp-browser/diagnostics';
+
 it('uses only native sampling zero as the step start and records rounded preview time separately', () => {
   let time = 0; const emit = vi.fn(), checkpoint = vi.fn();
   const request = requestFixture(); request.parameters.steps = 8;
@@ -22,6 +23,7 @@ it('uses only native sampling zero as the step start and records rounded preview
   expect(summary).toMatchObject({ metric: 'run-wall', milliseconds: 190, conditioning: 30, sampling: 70, decoding: 20, encoding: 10, nativePreviewDecodeMs: 20, nativeFinalDecodeMs: 10 });
   for (const [entry] of emit.mock.calls) expect(imageDiagnosticSchema.safeParse({ ...entry, elapsedMs: 0 }).success).toBe(true);
 });
+
 it('does not leak prompt, model arguments, native labels or raw user-agent suffixes', () => {
   const emit = vi.fn(), request = requestFixture(); request.parameters.prompt = 'private text'; request.parameters.modelArguments = 'key=private';
   const meter = createRunPerformance({ enabled: true, request, emit, checkpoint: vi.fn(), now: () => 0 }); meter.settings();
@@ -31,6 +33,7 @@ it('does not leak prompt, model arguments, native labels or raw user-agent suffi
   const text = JSON.stringify(emit.mock.calls); expect(text).not.toContain('private'); expect(text).not.toContain('user_secret');
   expect(emit.mock.calls.at(-1)![0].fields.otherGraphStarts).toBe(1);
 });
+
 it('has no timing/parsing/logging work while disabled and emits no late measurements after close', () => {
   const now = vi.fn(() => 0), emit = vi.fn(), checkpoint = vi.fn();
   const disabled = createRunPerformance({ enabled: false, request: requestFixture(), now, emit, checkpoint });
@@ -51,9 +54,23 @@ it('distinguishes absent native summaries from measured zero and retains partial
 });
 
 const placementFields = {
-  nodes: 3, cpu: 1, webgpu: 2, other: 0, bf16: 1, inspected: 1, cpu_bf16: 1, webgpu_bf16: 0, other_bf16: 0,
-  cpu_unsupported_bf16: 1, webgpu_weights: 1, host_weights: 0, other_weights: 0, webgpu_cpu_bf16: 1, webgpu_cpu_bf16_use_bytes: 2048,
+  nodes: 3,
+  cpu: 1,
+  webgpu: 2,
+  other: 0,
+  bf16: 1,
+  inspected: 1,
+  cpu_bf16: 1,
+  webgpu_bf16: 0,
+  other_bf16: 0,
+  cpu_unsupported_bf16: 1,
+  webgpu_weights: 1,
+  host_weights: 0,
+  other_weights: 0,
+  webgpu_cpu_bf16: 1,
+  webgpu_cpu_bf16_use_bytes: 2048,
 };
+
 function placementLog({ fields }: { fields: Partial<typeof placementFields> }): string {
   return 'compute_workspace.cpp:91 - browser-placement-v1 ' + Object.entries({ ...placementFields, ...fields }).map(([name, value]) => `${name}=${value}`).join(' ') + '\n';
 }
@@ -75,10 +92,20 @@ it('reports allocated BF16 CPU boundaries separately from measured GPU transfers
   ]);
   const summary = emit.mock.calls.find(([entry]) => entry.fields.metric === 'graph-placement-summary')![0].fields;
   expect(summary).toMatchObject({
-    allocationReports: 3, assignedNodes: 9, cpuNodes: 3, webgpuNodes: 6, bf16WeightMatmuls: 3, inspectedBf16WeightMatmuls: 3,
-    cpuBf16WebgpuUnsupported: 3, webgpuBf16WeightUses: 3, scheduledWebgpuToCpuBf16WeightUses: 3,
-    scheduledWebgpuToCpuBf16WeightUseBytes: 5 * 1024 ** 3 + 4096, observation: 'allocation-metadata',
-    weightBytesMeaning: 'operand-uses-not-unique-residency', actualTransfersMeasured: false, coverage: 'observed-allocations',
+    allocationReports: 3,
+    assignedNodes: 9,
+    cpuNodes: 3,
+    webgpuNodes: 6,
+    bf16WeightMatmuls: 3,
+    inspectedBf16WeightMatmuls: 3,
+    cpuBf16WebgpuUnsupported: 3,
+    webgpuBf16WeightUses: 3,
+    scheduledWebgpuToCpuBf16WeightUses: 3,
+    scheduledWebgpuToCpuBf16WeightUseBytes: 5 * 1024 ** 3 + 4096,
+    observation: 'allocation-metadata',
+    weightBytesMeaning: 'operand-uses-not-unique-residency',
+    actualTransfersMeasured: false,
+    coverage: 'observed-allocations',
   });
   for (const [entry] of emit.mock.calls) expect(imageDiagnosticSchema.safeParse({ ...entry, elapsedMs: 0 }).success).toBe(true);
 });

@@ -453,6 +453,7 @@ function handleClickOutside({ event }: { event: MouseEvent }) {
     activeActionGroupId.value = null;
   }
 }
+
 useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 onMounted(() => {

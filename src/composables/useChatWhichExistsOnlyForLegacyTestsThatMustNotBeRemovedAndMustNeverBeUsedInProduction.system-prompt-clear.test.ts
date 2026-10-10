@@ -24,7 +24,8 @@ vi.mock('../00-storage/service', () => ({
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn().mockResolvedValue(undefined),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatMeta: vi.fn(),
+    loadChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
@@ -67,15 +68,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     }));
     vi.mocked(storageService.getSidebarStructure).mockImplementation(() => Promise.resolve(chatStore.rootItems.value));
     chatStore.TEST_ONLY.__testOnlySetCurrentChat({ chat: null });
-    __testOnlySetSettings({ newSettings: {
-      endpoint: { type: 'openai', url: 'http://global' },
-      defaultModelId: 'gpt',
-      systemPrompt: 'Global System Prompt',
-      titleGeneration: 'disabled',
-      storageType: 'local',
-      providerProfiles: [],
-      mounts: [],
-    } });
+    __testOnlySetSettings({
+      newSettings: {
+        endpoint: { type: 'openai', url: 'http://global' },
+        defaultModelId: 'gpt',
+        systemPrompt: 'Global System Prompt',
+        titleGeneration: 'disabled',
+        storageType: 'local',
+        providerProfiles: [],
+        mounts: [],
+      },
+    });
   });
 
   it('Policy: Override with null (Clear) should result in empty system message', async () => {
@@ -91,9 +94,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     }));
 
     // 2. Chat-level Clear (behavior: override, content: null)
-    await updateChatSettings({ id: idToRaw({ id }), updates: {
-      systemPrompt: { behavior: 'override', content: null },
-    } });
+    await updateChatSettings({
+      id: idToRaw({ id }),
+      updates: {
+        systemPrompt: { behavior: 'override', content: null },
+      },
+    });
     await sendMessage({ content: 'Hello again' });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
 
@@ -111,9 +117,12 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await openChat({ id: idToRaw({ id }) });
 
     // Chat-level override with empty string
-    await updateChatSettings({ id: idToRaw({ id }), updates: {
-      systemPrompt: { behavior: 'override', content: '' },
-    } });
+    await updateChatSettings({
+      id: idToRaw({ id }),
+      updates: {
+        systemPrompt: { behavior: 'override', content: '' },
+      },
+    });
     await sendMessage({ content: 'Empty string override' });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));
 
@@ -129,7 +138,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // Create a group that Clears system prompt
     const group = reactive({
-      id: toChatGroupId({ raw: 'g-clear' }), name: 'Clear Group', items: [], updatedAt: Date.now(), isCollapsed: false,
+      id: toChatGroupId({ raw: 'g-clear' }),
+      name: 'Clear Group',
+      items: [],
+      updatedAt: Date.now(),
+      isCollapsed: false,
       systemPrompt: { behavior: 'override', content: null },
     }) as any;
     chatStore.rootItems.value = [{ id: 'chat_group:g-clear', type: 'chat_group', chatGroup: group }];
@@ -151,16 +164,23 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     await openChat({ id: idToRaw({ id }) });
 
     const group = reactive({
-      id: toChatGroupId({ raw: 'g-clear' }), name: 'Clear Group', items: [], updatedAt: Date.now(), isCollapsed: false,
+      id: toChatGroupId({ raw: 'g-clear' }),
+      name: 'Clear Group',
+      items: [],
+      updatedAt: Date.now(),
+      isCollapsed: false,
       systemPrompt: { behavior: 'override', content: null },
     }) as any;
     chatStore.rootItems.value = [{ id: 'chat_group:g-clear', type: 'chat_group', chatGroup: group }];
     await updateChatGroupOverride({ id: idToRaw({ id }), groupId: 'g-clear' });
 
     // Chat overrides with its own prompt
-    await updateChatSettings({ id: idToRaw({ id }), updates: {
-      systemPrompt: { behavior: 'override', content: 'Chat Specific Prompt' },
-    } });
+    await updateChatSettings({
+      id: idToRaw({ id }),
+      updates: {
+        systemPrompt: { behavior: 'override', content: 'Chat Specific Prompt' },
+      },
+    });
 
     await sendMessage({ content: 'Override' });
     await vi.waitUntil(() => !chatStore.isProcessing({ chatId: id }));

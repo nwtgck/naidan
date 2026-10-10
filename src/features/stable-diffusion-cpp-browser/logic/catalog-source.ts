@@ -11,9 +11,14 @@ export const imageFileIdentitySchema = imageDownloadSourceSchema.extend({ size: 
 export type ImageFileIdentity = z.infer<typeof imageFileIdentitySchema>;
 const treeSchema = z.array(z.discriminatedUnion('type', [
   z.object({ type: z.literal('directory'), path: z.string() }),
-  z.object({ type: z.literal('file'), path: z.string(), size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-    lfs: z.object({ oid: z.string().regex(/^[a-f0-9]{64}$/), size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) }).optional() }),
+  z.object({
+    type: z.literal('file'),
+    path: z.string(),
+    size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    lfs: z.object({ oid: z.string().regex(/^[a-f0-9]{64}$/), size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) }).optional(),
+  }),
 ])).max(10_000);
+
 /** The caller must have a user download action; NEVER call on mount/focus/expand. */
 export async function imageFileIdentity({ file, signal, fetch }: { file: ImageDownloadSource, signal: AbortSignal, fetch: CatalogFetch }): Promise<ImageFileIdentity> {
   const source = imageDownloadSourceSchema.parse(file);
@@ -74,5 +79,6 @@ export async function imageFileIdentity({ file, signal, fetch }: { file: ImageDo
   }
   throw new Error(`Catalog file is unavailable at the pinned revision: ${source.repository}/${source.path}`);
 }
+
 export const TEST_ONLY = {
 };

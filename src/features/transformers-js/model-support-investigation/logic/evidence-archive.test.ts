@@ -9,6 +9,7 @@ beforeEach(() => {
     throw new Error('Evidence transport must not fetch resources');
   }));
 });
+
 afterEach(() => {
   try {
     expect(fetch).not.toHaveBeenCalled();
@@ -37,7 +38,8 @@ describe('Evidence transport over the shared streaming ZIP core', () => {
     const opened = vi.spyOn(file, 'stream').mockImplementation(() => new ReadableStream({
       pull() {
         return new Promise(() => undefined);
-      }, cancel,
+      },
+      cancel,
     }));
     const stream = createEvidenceArchiveStream({ files: new Map([['slow.txt', file]]) });
     const reader = stream.getReader();
@@ -74,6 +76,7 @@ describe('Evidence transport over the shared streaming ZIP core', () => {
     expect(read).not.toHaveBeenCalled();
     expect(await reader.read({ path: 'timing.json', maximumBytes: 5 })).toBe(file);
   });
+
   it('refuses the ZIP64 entry-count marker before reading or compressing any retained file', async () => {
     const body = new Blob(['retained']);
     const files = new Map(Array.from({ length: 65535 }, (_, index) => [`entry-${index}.bin`, body] as const));

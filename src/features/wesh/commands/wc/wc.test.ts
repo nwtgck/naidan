@@ -130,10 +130,13 @@ second
 
   it('supports bytes, chars, and max line length selections', async () => {
     await writeFile({ path: 'emoji.txt', data: '😀' });
-    await writeFile({ path: 'long.txt', data: `\
+    await writeFile({
+      path: 'long.txt',
+      data: `\
 ab
 abcd
-` });
+`,
+    });
 
     const charsAndBytes = await execute({
       script: 'wc -cm emoji.txt',
@@ -224,10 +227,13 @@ abcd
   });
 
   it('supports GNU-style long counting options', async () => {
-    await writeFile({ path: 'sample.txt', data: `\
+    await writeFile({
+      path: 'sample.txt',
+      data: `\
 alpha beta
 second
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'wc --lines --words --bytes sample.txt',
@@ -240,10 +246,13 @@ second
   });
 
   it('reads root-relative files correctly from /', async () => {
-    await writeFile({ path: 'sample.txt', data: `\
+    await writeFile({
+      path: 'sample.txt',
+      data: `\
 alpha beta
 second
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'cd /; wc sample.txt',
@@ -365,6 +374,7 @@ second
     expect(stderr.text).toBe('wc: dir: Is a directory\n');
     expect(result.exitCode).toBe(1);
   });
+
   it('counts bytes as characters in the C locale', async () => {
     const cLocale = await execute({
       script: 'LC_ALL=C wc -m',
@@ -546,7 +556,6 @@ second
     expect(splitIncompleteSequence.result.exitCode).toBe(0);
   });
 
-
   it('uses GNU field width when stdin is one of multiple operands', async () => {
     const { result, stdout, stderr } = await execute({
       script: `printf 'alpha\nbeta\ngamma\n' | wc -l - -`,
@@ -615,10 +624,13 @@ name.txt`;
 
   it('supports GNU total output modes and keeps hidden totals in column sizing', async () => {
     await writeFile({ path: 'a.txt', data: 'a b\n' });
-    await writeFile({ path: 'b.txt', data: `\
+    await writeFile({
+      path: 'b.txt',
+      data: `\
 xx
 yy
-` });
+`,
+    });
 
     const auto = await execute({ script: 'wc -c --total=auto a.txt b.txt' });
     const always = await execute({ script: 'wc -c --total=always a.txt' });
@@ -666,5 +678,4 @@ yy
     expect(emptyList.result.exitCode).toBe(0);
     expect(ambiguous.result.exitCode).toBe(1);
   });
-
 });

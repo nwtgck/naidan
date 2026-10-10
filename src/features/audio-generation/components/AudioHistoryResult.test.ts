@@ -6,23 +6,34 @@ import { defaultAudioParameters } from '@/features/audio-generation/types';
 import { audioResult } from '@/features/audio-generation/test-utils/wav';
 import AudioHistoryResult from './AudioHistoryResult.vue';
 const text = '  First line\n日本語のテキスト。\nSecond line\twith spacing.  ';
+
 function entry(): AudioHistoryEntry {
   const { wav, ...result } = audioResult();
-  return { id: 1, url: 'blob:history', createdAt: 1, bytes: wav.byteLength, result,
-    settings: captureAudioSettings({ input: { ...defaultAudioParameters(), text, model: 'voice', options: { profile: 'auto' }, debug: 'off' }, modelName: 'Voice' }) };
+  return {
+    id: 1,
+    url: 'blob:history',
+    createdAt: 1,
+    bytes: wav.byteLength,
+    result,
+    settings: captureAudioSettings({ input: { ...defaultAudioParameters(), text, model: 'voice', options: { profile: 'auto' }, debug: 'off' }, modelName: 'Voice' }),
+  };
 }
+
 let wrapper: VueWrapper | undefined;
 const copy = vi.fn<(text: string) => Promise<void>>();
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' }); copy.mockReset(); copy.mockResolvedValue();
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: copy } });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
   Reflect.deleteProperty(navigator, 'clipboard'); window.getSelection()?.removeAllRanges(); document.body.innerHTML = ''; vi.restoreAllMocks();
 });
+
 describe('compact history controls', () => {
   it('keeps the preview and player/save row outside the collapsed settings', () => {
     wrapper = mount(AudioHistoryResult, { props: { entry: entry() } });
@@ -35,6 +46,7 @@ describe('compact history controls', () => {
     expect(actions.find('[data-testid="audio-download"]').exists()).toBe(true);
     expect(actions.get('[data-testid="audio-download"]').attributes('aria-label')).toBeTruthy();
   });
+
   it('copies the original text including whitespace without changing the result', async () => {
     wrapper = mount(AudioHistoryResult, { props: { entry: entry() } });
     await wrapper.get('[data-testid="audio-copy-text"]').trigger('click'); await flushPromises();
@@ -43,6 +55,7 @@ describe('compact history controls', () => {
     expect(wrapper.get('[data-testid="audio-result-text"]').element.textContent).toBe(text);
     expect(wrapper.emitted('remove')).toBeUndefined();
   });
+
   it.each(['denied', 'unavailable'])('offers a selected-text fallback when clipboard is %s', async reason => {
     if (reason === 'denied') copy.mockRejectedValueOnce(new Error('denied'));
     else Reflect.deleteProperty(navigator, 'clipboard');
@@ -53,6 +66,7 @@ describe('compact history controls', () => {
     expect(document.activeElement).toBe(wrapper.get('[data-testid="audio-result-text"]').element);
     expect(wrapper.get('[data-testid="audio-copy-text"]').attributes('disabled')).toBeUndefined();
   });
+
   it('does not select another page or update state when a delayed copy fails after deletion', async () => {
     const gate = Promise.withResolvers<void>(); copy.mockReturnValueOnce(gate.promise);
     wrapper = mount(AudioHistoryResult, { props: { entry: entry() }, attachTo: document.body });

@@ -27,7 +27,8 @@ export async function restoreModelLaunchTarget({ view, signal }: { view: ModelLa
     const directory = (await repositoryDirectories({ repository })).find(candidate => candidate.id === modelId);
     signal.throwIfAborted();
     if (directory !== undefined) return modelLaunchTargetSchema.parse({
-      modelId, mainFilePath,
+      modelId,
+      mainFilePath,
       selection: { repository, revision: view.revision, files: directory.files.map(file => ({ path: file.path, size: file.file.size })) },
     });
   } catch (error) {
@@ -42,5 +43,6 @@ export async function restoreModelLaunchTarget({ view, signal }: { view: ModelLa
   rememberLaunchCatalog({ catalog });
   return target;
 }
+
 export const TEST_ONLY = {
 };

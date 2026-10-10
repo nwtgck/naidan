@@ -237,7 +237,10 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
       id: 'chat_group:group-x',
       type: 'chat_group',
       chatGroup: {
-        id: toChatGroupId({ raw: 'group-x' }), name: 'X', isCollapsed: false, updatedAt: 0,
+        id: toChatGroupId({ raw: 'group-x' }),
+        name: 'X',
+        isCollapsed: false,
+        updatedAt: 0,
         items: [{ id: `chat:${idToRaw({ id: chatId })}`, type: 'chat', chat: { id: chatId, title: 'T', updatedAt: 0, groupId: toChatGroupId({ raw: 'group-x' }) } }],
       },
     });

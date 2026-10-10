@@ -25,13 +25,15 @@ describe('WelcomeScreen.vue', () => {
   });
 
   it('renders ephemeral storage message when memory storage is active', async () => {
-    TEST_ONLY.__testOnlySetSettings({ newSettings: {
-      storageType: 'memory',
-      endpoint: { type: 'openai', url: '' },
-      titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
-      providerProfiles: [],
-      mounts: [],
-    } as Settings });
+    TEST_ONLY.__testOnlySetSettings({
+      newSettings: {
+        storageType: 'memory',
+        endpoint: { type: 'openai', url: '' },
+        titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+        providerProfiles: [],
+        mounts: [],
+      } as Settings,
+    });
 
     const wrapper = mount(WelcomeScreen);
     await vi.waitFor(() => {
@@ -111,7 +113,6 @@ describe('WelcomeScreen.vue', () => {
   });
 });
 
-
 describe('WelcomeScreen primary slot', () => {
   it('replaces only the privacy and portable section while retaining suggestions', async () => {
     const wrapper = mount(WelcomeScreen, { slots: { primary: '<section data-testid="launch-slot">Linked model</section>' } });
@@ -138,7 +139,6 @@ describe('model-link discovery opt-out', () => {
     wrapper.unmount();
   });
 });
-
 
 describe('ordinary Chat recovery slot', () => {
   it('supplements rather than replaces the usual welcome and keeps discovery links', () => {

@@ -72,8 +72,10 @@ export function buildQwen3_5Prompt({
   })();
   // Undefined effort is intentionally absent: different native model templates
   // have different defaults. Never add whitespace to the rendered suffix.
-  return renderThinkingTemplate({ offRequested: thinking.enable_thinking === false, render: () => tokenizer.apply_chat_template(messages.map(message => {
-    const { role, content, tool_calls, tool_call_id, reasoning: _reasoning, ...unhandled } = message;
+  return renderThinkingTemplate({
+    offRequested: thinking.enable_thinking === false,
+    render: () => tokenizer.apply_chat_template(messages.map(message => {
+      const { role, content, tool_calls, tool_call_id, reasoning: _reasoning, ...unhandled } = message;
     unhandled satisfies Record<PropertyKey, never>;
     const reasoning = readCompleteInferenceReasoning({ message });
     return {
@@ -83,7 +85,8 @@ export function buildQwen3_5Prompt({
       ...(tool_calls === undefined ? {} : { tool_calls: normalizeQwen3_5ToolCallsForTemplate({ toolCalls: tool_calls }) }),
       ...(reasoning === undefined ? {} : { reasoning_content: reasoning }),
     };
-  }), { tokenize: false, add_generation_prompt: true, ...thinking, ...(tools?.length ? { tools } : {}) }) });
+    }), { tokenize: false, add_generation_prompt: true, ...thinking, ...(tools?.length ? { tools } : {}) }),
+  });
 }
 
 export type Qwen3_5NoToolContinuationEligibility =

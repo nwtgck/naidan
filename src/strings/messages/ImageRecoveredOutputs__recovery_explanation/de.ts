@@ -1,0 +1,1 @@
+export const ImageRecoveredOutputs__recovery_explanation = (): string => "Die vollständigen Bilddaten wurden empfangen, der Abschluss der Erzeugung konnte jedoch nicht bestätigt werden. Speichern oder Herunterladen macht den Vorgang nicht erfolgreich. Die Daten bleiben beim Schließen des Arbeitsbereichs erhalten, aber nicht beim Schließen dieses Browser-Tabs.";

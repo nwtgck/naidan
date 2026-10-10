@@ -143,8 +143,8 @@ export function downloadedModelCandidatePlanError({
     // miss would authorize the explicit Download coordinator to fetch again.
     return new DownloadedModelResourcePlanningError({ modelId, revision, details });
   }
-  return new MissingDownloadedModelArtifactError({ message:
-    `Downloaded model is incomplete; loadDownloadedModel() MUST NOT fetch model artifacts, `
+  return new MissingDownloadedModelArtifactError({
+    message: `Downloaded model is incomplete; loadDownloadedModel() MUST NOT fetch model artifacts, `
     + `and offline Load will not download or repair files `
     + `(model=${modelId}, revision=${revision ?? 'main'}): ${details}`,
   });
@@ -154,6 +154,7 @@ export const MISSING_DOWNLOADED_MODEL_ARTIFACT_ERROR_NAME = 'MissingDownloadedMo
 
 export class MissingDownloadedModelArtifactError extends Error {
   override readonly name = MISSING_DOWNLOADED_MODEL_ARTIFACT_ERROR_NAME;
+
   constructor({ message }: { message: string }) {
     super(message);
   }
@@ -161,6 +162,7 @@ export class MissingDownloadedModelArtifactError extends Error {
 
 export class DownloadedModelResourcePlanningError extends Error {
   override readonly name = 'DownloadedModelResourcePlanningError';
+
   constructor({ modelId, revision, details }: { modelId: string; revision: string | undefined; details: string }) {
     super(`No Production candidate could be planned (model=${modelId}, revision=${revision ?? 'main'}): ${details}`);
   }

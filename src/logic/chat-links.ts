@@ -1,5 +1,6 @@
 import { idToRaw } from '@/01-models/ids';
 import type { ChatId, MessageId } from '@/01-models/ids';
+
 export function generateMessageLink({ chatId, messageId }: { chatId: ChatId, messageId: MessageId }): string {
   const baseUrl = (() => {
     const loc = window.location;

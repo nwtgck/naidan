@@ -1,0 +1,1 @@
+export const LlamaCppMemoryPanel__gpu_requests_since_load_started = ({ bufferBytes, bufferCount, writeBytes, writeCount }: { bufferBytes: string, bufferCount: number, writeBytes: string, writeCount: number }): string => `Requests since latest load started: createBuffer ${bufferBytes} / ${bufferCount} calls; writeBuffer ${writeBytes} / ${writeCount} calls`;

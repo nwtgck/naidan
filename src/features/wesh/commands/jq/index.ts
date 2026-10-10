@@ -1620,8 +1620,10 @@ export const jqCommandImplementation: WeshCommandImplementation = {
         jsonArguments: earlyArgumentConfiguration.jsonArguments,
       });
       if (!earlyExitVariables.ok) {
-        await context.text().error({ text: `${earlyExitVariables.message}
-` });
+        await context.text().error({
+          text: `${earlyExitVariables.message}
+`,
+        });
         return { exitCode: 2 };
       }
 
@@ -1842,8 +1844,10 @@ export const jqCommandImplementation: WeshCommandImplementation = {
         message: string,
       }): Promise<void> => {
         await stdout.flush();
-        await context.text().error({ text: `${message}
-` });
+        await context.text().error({
+          text: `${message}
+`,
+        });
         inputExitCode = 2;
       };
 

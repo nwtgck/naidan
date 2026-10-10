@@ -12,7 +12,8 @@ vi.mock('../00-storage/service', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatMeta: vi.fn(),
+    loadChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     deleteChat: vi.fn(),
@@ -85,10 +86,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   });
 
   it('should trigger onboarding if endpointUrl is missing when sending a message', async () => {
-    __testOnlySetCurrentChat({ chat: reactive({
-      id: 'chat-1', title: 'Test', root: { items: [] }, modelId: '',
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any });
+    __testOnlySetCurrentChat({
+      chat: reactive({
+        id: 'chat-1',
+        title: 'Test',
+        root: { items: [] },
+        modelId: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        debugEnabled: false,
+      }) as any,
+    });
 
     await sendMessage({ content: 'Hello' });
 
@@ -97,10 +105,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   it('should trigger onboarding and populate draft if modelId is missing when sending a message', async () => {
     mockSettings.value.endpoint = { type: 'openai', url: 'http://localhost:11434' };
-    __testOnlySetCurrentChat({ chat: reactive({
-      id: 'chat-1', title: 'Test', root: { items: [] }, modelId: '',
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any });
+    __testOnlySetCurrentChat({
+      chat: reactive({
+        id: 'chat-1',
+        title: 'Test',
+        root: { items: [] },
+        modelId: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        debugEnabled: false,
+      }) as any,
+    });
 
     await sendMessage({ content: 'Hello' });
 
@@ -116,10 +131,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
   it('should NOT use gpt-3.5-turbo as fallback model anymore', async () => {
     mockSettings.value.endpoint = { type: 'openai', url: 'http://localhost:11434' };
     // No default model in settings and no model in chat
-    __testOnlySetCurrentChat({ chat: reactive({
-      id: 'chat-1', title: 'Test', root: { items: [] }, modelId: '',
-      createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any });
+    __testOnlySetCurrentChat({
+      chat: reactive({
+        id: 'chat-1',
+        title: 'Test',
+        root: { items: [] },
+        modelId: '',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        debugEnabled: false,
+      }) as any,
+    });
 
     await sendMessage({ content: 'Hello' });
 

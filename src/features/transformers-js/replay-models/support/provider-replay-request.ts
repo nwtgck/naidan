@@ -33,7 +33,9 @@ type RejectedRequestObservation =
   | { status: 'fulfilled'; result: ChatGenerationResult | undefined }
   | { status: 'rejected'; error: unknown };
 const nativeParameterSnapshotSchema = z.object({
-  maxCompletionTokens: z.number().int().positive(), temperature: z.number(), topP: z.number(),
+  maxCompletionTokens: z.number().int().positive(),
+  temperature: z.number(),
+  topP: z.number(),
 });
 export interface ProviderRequestReplay extends ProviderReplayTestRuntime {
   beginNativeRequest({ caseId, parameters }: { caseId: RequestReplayArguments['caseIds'][number]; parameters: PublicParameters }): void;
@@ -43,20 +45,16 @@ export interface ProviderRequestReplay extends ProviderReplayTestRuntime {
 }
 
 /** Prepare native replay only. Public chat calls and expectations belong to the model test. */
-export async function createProviderRequestReplay({ ...args }: RequestReplayArguments): Promise<ProviderRequestReplay> {
+export async function createProviderRequestReplay({ ...args }: { catalog: RequestReplayArguments['catalog'], caseIds: RequestReplayArguments['caseIds'], artifactPaths: RequestReplayArguments['artifactPaths'], imagePlatform: RequestReplayArguments['imagePlatform'] }): Promise<ProviderRequestReplay> {
   return createNativeRequestReplay({ ...args, nativeController: undefined });
 }
 
 /** Explicit synthetic-cache ownership; zero-cache callers never acquire this state. */
-export async function createProviderRequestReplayWithOwnedCacheControl({ createNativeController, ...args }: RequestReplayArguments & {
-  createNativeController: () => ProviderRequestNativeController;
-}): Promise<ProviderRequestReplay> {
+export async function createProviderRequestReplayWithOwnedCacheControl({ createNativeController, ...args }: { createNativeController: () => ProviderRequestNativeController, catalog: RequestReplayArguments['catalog'], caseIds: RequestReplayArguments['caseIds'], artifactPaths: RequestReplayArguments['artifactPaths'], imagePlatform: RequestReplayArguments['imagePlatform'] }): Promise<ProviderRequestReplay> {
   return createNativeRequestReplay({ ...args, nativeController: createNativeController() });
 }
 
-async function createNativeRequestReplay({ catalog, caseIds, artifactPaths, imagePlatform, nativeController }: RequestReplayArguments & {
-  nativeController: ProviderRequestNativeController | undefined;
-}): Promise<ProviderRequestReplay> {
+async function createNativeRequestReplay({ catalog, caseIds, artifactPaths, imagePlatform, nativeController }: { catalog: RequestReplayArguments['catalog'], caseIds: RequestReplayArguments['caseIds'], artifactPaths: RequestReplayArguments['artifactPaths'], imagePlatform: RequestReplayArguments['imagePlatform'], nativeController: ProviderRequestNativeController | undefined }): Promise<ProviderRequestReplay> {
   if (caseIds.length === 0 || new Set(caseIds).size !== caseIds.length) throw new Error('Missing or duplicate explicit native request plan');
   const selected = caseIds.map(caseId => readProviderRequestEvidence({ catalog, caseId }));
   const context = selected[0]!.context;
@@ -73,8 +71,11 @@ async function createNativeRequestReplay({ catalog, caseIds, artifactPaths, imag
   let completedNativeCalls = 0;
   let active: { evidence: typeof selected[number]['evidence']; parameters: Readonly<z.infer<typeof nativeParameterSnapshotSchema>>; attempted: number; completed: number } | undefined;
   const harness = await createProviderReplayTestRuntime({
-    modelId: context.modelId, expectedRevision: context.metadataRevision, cacheRevision: context.observedCacheRevision,
-    metadataCache: context.localMetadataPaths, imagePlatform,
+    modelId: context.modelId,
+    expectedRevision: context.metadataRevision,
+    cacheRevision: context.observedCacheRevision,
+    metadataCache: context.localMetadataPaths,
+    imagePlatform,
     artifacts: artifactPaths.map(path => ({ path, bytes: createSyntheticModelBody({ modelId: context.modelId, revision: context.metadataRevision, path }) })),
     generate: async ({ options, runtime, model }) => {
       ++nativeCalls;

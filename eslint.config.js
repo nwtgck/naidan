@@ -1,3 +1,4 @@
+import requireDtozod from './eslint-local-rules/require-dtozod.js';
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import pluginVue from 'eslint-plugin-vue';
@@ -6,6 +7,8 @@ import ensureReadyStateAwareAppBootstrap from './eslint-local-rules/ensure-ready
 import ensureVueErrorHandler from './eslint-local-rules/ensure-vue-error-handler.js';
 import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js';
 import preferMultilineTemplateLiterals from './eslint-local-rules/prefer-multiline-template-literals.js';
+import objectLayout from './eslint-local-rules/object-layout.js';
+import functionSpacing from './eslint-local-rules/function-spacing.js';
 import requireTestOnlyForComposableReturn from './eslint-local-rules/require-test-only-for-composable-return.js';
 import requireTestOnlyForModuleExport from './eslint-local-rules/require-test-only-for-module-export.js';
 import requireTestOnlyForDefineExpose from './eslint-local-rules/require-test-only-for-define-expose.js';
@@ -26,6 +29,7 @@ import noRawDompurify from './eslint-local-rules/no-raw-dompurify.js';
 import noXssProneBrowserApis from './eslint-local-rules/no-xss-prone-browser-apis.js';
 import preferRootAliasImports from './eslint-local-rules/prefer-root-alias-imports.js';
 import enforceDependencyDirections from './eslint-local-rules/enforce-dependency-directions.js';
+import testStructureSpacing from './eslint-local-rules/test-structure-spacing.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -87,7 +91,8 @@ import enforceDependencyDirections from './eslint-local-rules/enforce-dependency
 export default tseslint.config(
   {
     // Preserve upstream structure; Naidan-owned fix integration code and tests remain linted.
-    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts', 'eslint-local-rules/fixtures/**', 'scripts/**', 'build/transformers-js-fixes/upstream/**'],
+    // Temporary test support is excluded from tsconfig.app.json and uses isolated lint configurations.
+    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts', 'eslint-local-rules/fixtures/**', 'src/test-tmp/**', 'scripts/**', 'build/transformers-js-fixes/upstream/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -178,6 +183,8 @@ export default tseslint.config(
   ensureVueErrorHandler,
   forceSwitchForUnion,
   preferMultilineTemplateLiterals,
+  objectLayout,
+  functionSpacing,
   requireTestOnlyForComposableReturn,
   requireTestOnlyForModuleExport,
   requireTestOnlyForDefineExpose,
@@ -198,6 +205,8 @@ export default tseslint.config(
   noXssProneBrowserApis,
   preferRootAliasImports,
   enforceDependencyDirections,
+  testStructureSpacing,
+  requireDtozod,
   {
     files: ['**/*.test.ts'],
     languageOptions: {

@@ -7,9 +7,11 @@ import os from 'node:os';
 import { gunzipSync } from 'node:zlib';
 import { assertStandaloneImageModule, readImageArtifacts } from './build-runtime';
 const directories: string[] = [];
+
 afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
+
 function fixture({ omitFunction }: { omitFunction?: string } = {}) {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'naidan-image-artifact-')); directories.push(directory);
   const sourceCommit = 'a'.repeat(40);
@@ -35,22 +37,27 @@ function fixture({ omitFunction }: { omitFunction?: string } = {}) {
   writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify(root));
   return { directory, sourceCommit };
 }
+
 describe('optional image build integration', () => {
-  it('allows the passive engine panel without admitting the hosted observer or native reader', () => {
+  it('allows the passive engine panel and pure observer without admitting native readers', () => {
     const rootDir = '/fixture';
     const id = ({ file }: { file: string }) => path.join(rootDir, 'src/features/stable-diffusion-cpp-browser', file);
     expect(() => assertStandaloneImageModule({ rootDir, id: id({ file: 'components/ImageEngineState.vue' }) })).not.toThrow();
-    for (const file of ['engine-state.ts', 'use-image-engine-state.ts', 'worker/engine-state.ts', 'worker/client-hosted.ts', 'worker/impl.ts']) {
+    expect(() => assertStandaloneImageModule({ rootDir, id: id({ file: 'use-image-engine-state.ts' }) })).not.toThrow();
+    for (const file of ['engine-state.ts', 'worker/engine-state.ts', 'worker/client-hosted.ts', 'worker/impl.ts']) {
       expect(() => assertStandaloneImageModule({ rootDir, id: id({ file }) })).toThrow('Hosted image implementation');
     }
   });
+
   it('does not require artifacts in standalone or when not installed', () => {
     expect(readImageArtifacts({ rootDir: '/missing', mode: 'standalone', artifactDir: '/invalid' }).configuration).toEqual({ kind: 'unavailable', reason: 'standalone' });
     expect(readImageArtifacts({ rootDir: '/missing', mode: 'hosted', artifactDir: undefined }).files.size).toBe(0);
   });
+
   it('does not silently ignore an explicit invalid install path', () => {
     expect(() => readImageArtifacts({ rootDir: '/missing', mode: 'hosted', artifactDir: '/invalid-image-artifacts' })).toThrow('does not exist');
   });
+
   it('validates source-bound artifacts and emits gzip plus all notices', () => {
     const { directory, sourceCommit } = fixture();
     const { configuration, files } = readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory });
@@ -60,10 +67,12 @@ describe('optional image build integration', () => {
     expect(wasm && gunzipSync(wasm)).toEqual(Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
     expect([...files.keys()].some(file => file.endsWith('.wasm'))).toBe(false);
   });
+
   it('rejects modified code rather than using a cached/fallback runtime', () => {
     const { directory } = fixture(); writeFileSync(path.join(directory, 'stable-diffusion-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.mjs'), 'changed');
     expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('size mismatch');
   });
+
   it('rejects a different parent source identity', () => {
     const { directory } = fixture(); const file = path.join(directory, 'manifest.json'); const root = JSON.parse(readFileSync(file, 'utf8')); root.sourceCommit = 'b'.repeat(40); writeFileSync(file, JSON.stringify(root));
     expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('Mixed runtime');
@@ -89,17 +98,20 @@ function changeImageManifest({ directory, change }: { directory: string, change:
   const entry = root.files.find((item: { path: string }) => item.path === 'stable-diffusion-cpp-browser-core/manifest.json');
   entry.bytes = bytes.length; entry.sha256 = createHash('sha256').update(bytes).digest('hex'); writeFileSync(rootPath, JSON.stringify(root));
 }
+
 it('rejects compiled-only artifacts until actual browser smoke has passed', () => {
   const { directory } = fixture();
   changeImageManifest({ directory, change: json => json.replace('"browserSmoke":true', '"browserSmoke":false') });
   expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('browser smoke validation');
 });
+
 it('detects same-size module corruption with its digest', () => {
   const { directory } = fixture();
   const file = path.join(directory, 'stable-diffusion-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.mjs');
   const bytes = readFileSync(file); bytes[0] = bytes[0]! ^ 1; writeFileSync(file, bytes);
   expect(() => readImageArtifacts({ rootDir: directory, mode: 'hosted', artifactDir: directory })).toThrow('integrity mismatch');
 });
+
 it('rejects an oversized payload before loading that payload into memory', () => {
   const { directory } = fixture();
   const file = path.join(directory, 'stable-diffusion-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.wasm');

@@ -4,19 +4,20 @@ import { effectScope } from 'vue';
 import { useImageLibrary } from './use-image-library';
 import { imageModelRecipes } from './model-recipes';
 import { scanImageRepositories } from './logic/model-candidates';
-import type { LocalImageRepository } from './logic/repository-store';
+import type { LocalImageRepository, listImageRepositories } from './logic/repository-store';
 import { ggufFixture, safetensorsFixture, flux2KleinTensors, flux2VaeTensors, animaTensors, wanVaeTensors, qwenTextTensors } from './test-utils/weights';
 import { benchmarkParameters } from './benchmark/plan';
 import { parametersFixture } from './test-fixtures';
 import { recommendationForSelection } from './recommendations';
 
 const scopes: ReturnType<typeof effectScope>[] = [];
+
 afterEach(() => {
   for (const scope of scopes.splice(0)) scope.stop();
 });
 
 // Synthetic sparse headers exercise composition, not native model compatibility.
-function repositories({ id }: { id: 'flux2-klein-4b' | 'anima-turbo-1.1' }): LocalImageRepository[] {
+function repositories({ id, storageRevision }: { id: 'flux2-klein-4b' | 'anima-turbo-1.1', storageRevision: 'main' | 'pinned' }): LocalImageRepository[] {
   const recipe = imageModelRecipes.find(recipe => recipe.id === id)!;
   const klein = id === 'flux2-klein-4b';
   return recipe.files.map(entry => {
@@ -25,19 +26,41 @@ function repositories({ id }: { id: 'flux2-klein-4b' | 'anima-turbo-1.1' }): Loc
         : qwenTextTensors({ width: klein ? 2560 : 1024, layers: klein ? 36 : 28 });
     const file = entry.path.endsWith('.safetensors') ? safetensorsFixture({ name: entry.path, tensors }).file
       : ggufFixture({ name: entry.path, tensors, metadata: entry.role === 'lm' ? { 'general.architecture': 'qwen3' } : {}, extraBytes: 0 }).file;
-    return { id: `huggingface.co/${entry.repository}/resolve/${entry.revision}`, name: entry.repository,
-      files: [{ path: entry.path, file, receipt: { version: 1, kind: 'naidan-model-file', size: file.size, lastModified: file.lastModified,
-        source: { kind: 'hugging-face', repository: entry.repository, revision: entry.revision, path: entry.path, sha256: '0'.repeat(64) } } }] };
+    // The downloader stores under main; pinned directories remain valid for
+    // already-present inventory. The receipt keeps the source commit in both.
+    return {
+      id: `huggingface.co/${entry.repository}/resolve/${storageRevision === 'main' ? 'main' : entry.revision}`,
+      name: entry.repository,
+      files: [{
+        path: entry.path,
+        file,
+        receipt: {
+          version: 1,
+          kind: 'naidan-model-file',
+          size: file.size,
+          lastModified: file.lastModified,
+          source: { kind: 'hugging-face', repository: entry.repository, revision: entry.revision, path: entry.path, sha256: '0'.repeat(64) },
+        },
+      }],
+    };
   });
 }
 
 it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps original %s files and explicit companions in main and diagnostics', async id => {
-  const entries = repositories({ id });
+  const entries = repositories({ id, storageRevision: 'pinned' });
   const scope = effectScope(); scopes.push(scope);
   const download = vi.fn();
-  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
-    list: async () => entries, scan: scanImageRepositories, import: vi.fn(), download,
-  } }))!;
+  const library = scope.run(() => useImageLibrary({
+    downloadsBlocked: () => false,
+    blocked: () => false,
+    onSelection() {},
+    dependencies: {
+      list: async () => entries,
+      scan: scanImageRepositories,
+      import: vi.fn(),
+      download,
+    },
+  }))!;
   await library.refresh(); library.chooseRecipe({ recipeId: id, selections: {} });
   expect(library.ready.value).toBe(true);
   expect(library.selectedFacts.value?.family).toBe(id === 'anima-turbo-1.1' ? 'anima' : id);
@@ -59,14 +82,23 @@ it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps original %s files
 });
 
 it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps %s unavailable until every requested companion has been downloaded and inspected', async id => {
-  const entries = repositories({ id }); let available = entries.slice(0, 1);
+  const entries = repositories({ id, storageRevision: 'main' }); let available = entries.slice(0, 1);
   const scope = effectScope(); scopes.push(scope);
   const download = vi.fn(async () => {
     available = entries;
   });
-  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
-    list: async () => available, scan: scanImageRepositories, import: vi.fn(), download,
-  } }))!;
+  const list = vi.fn<typeof listImageRepositories>(async ({ repositoryIds }) => repositoryIds ? available.filter(entry => repositoryIds.includes(entry.id)) : available);
+  const library = scope.run(() => useImageLibrary({
+    downloadsBlocked: () => false,
+    blocked: () => false,
+    onSelection() {},
+    dependencies: {
+      list,
+      scan: scanImageRepositories,
+      import: vi.fn(),
+      download,
+    },
+  }))!;
   await library.refresh(); library.chooseRecipe({ recipeId: id, selections: {} });
   expect(library.ready.value).toBe(false);
   expect(library.selectedModels()).toBeUndefined();
@@ -74,17 +106,27 @@ it.each(['flux2-klein-4b', 'anima-turbo-1.1'] as const)('keeps %s unavailable un
   await library.downloadRecipe({ recipeId: id, selections: {} });
   expect(download).toHaveBeenCalledOnce();
   expect(download).toHaveBeenCalledWith(expect.objectContaining({ files: imageModelRecipes.find(recipe => recipe.id === id)!.files }));
+  expect(list).toHaveBeenCalledTimes(2);
+  expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ repositoryIds: [...new Set(entries.map(entry => entry.id))] }));
   expect(library.downloadState.value).toBe('complete');
   expect(library.ready.value).toBe(true);
   expect(library.selectedModels()?.map(model => model.slot)).toEqual(['diffusion', 'vae', 'lm']);
 });
 
 it('rejects cross-family companion overrides in main and diagnostics', async () => {
-  const entries = [...repositories({ id: 'flux2-klein-4b' }), ...repositories({ id: 'anima-turbo-1.1' })];
+  const entries = [...repositories({ id: 'flux2-klein-4b', storageRevision: 'pinned' }), ...repositories({ id: 'anima-turbo-1.1', storageRevision: 'pinned' })];
   const scope = effectScope(); scopes.push(scope);
-  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
-    list: async () => entries, scan: scanImageRepositories, import: vi.fn(), download: vi.fn(),
-  } }))!;
+  const library = scope.run(() => useImageLibrary({
+    downloadsBlocked: () => false,
+    blocked: () => false,
+    onSelection() {},
+    dependencies: {
+      list: async () => entries,
+      scan: scanImageRepositories,
+      import: vi.fn(),
+      download: vi.fn(),
+    },
+  }))!;
   await library.refresh(); library.chooseRecipe({ recipeId: 'flux2-klein-4b', selections: {} });
   const original = library.selectedModels();
   const wrongVae = JSON.stringify([entries[4]!.id, entries[4]!.files[0]!.path]);

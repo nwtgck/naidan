@@ -38,13 +38,19 @@ export function validateProductionProviderInvestigationLiveProgress({ value, run
     // A completed v2 script can skip dependent continuity after a failed first
     // request. Aggregate completion is not proof that every selected request ran.
     if (provider.run.status === 'completed' && active !== undefined) invalid();
-    return Object.freeze({ progress: Object.freeze({ ...progress, stopReason: progress.stopReason,
-      provider: Object.freeze({ ...provider, activeRequest: active === undefined ? undefined : Object.freeze(active) }),
-    }), deadlines: Object.freeze(deadlines) });
+    return Object.freeze({
+      progress: Object.freeze({
+        ...progress,
+        stopReason: progress.stopReason,
+        provider: Object.freeze({ ...provider, activeRequest: active === undefined ? undefined : Object.freeze(active) }),
+      }),
+      deadlines: Object.freeze(deadlines),
+    });
   } catch {
     throw new Error('Invalid Production Provider investigation progress');
   }
 }
+
 const maximumCharacters = 65536;
 const id = z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/u);
 const modelIdSchema = z.string().max(256).regex(/^(?:hf\.co\/)?[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u);
@@ -63,23 +69,37 @@ const encodedSchema = z.object({
   stopReason: z.union([z.enum(['user-requested', 'disposed', 'run-deadline', 'collection-deadline', 'sealing-deadline', 'execution-failed']), undefinedTag]),
   providerEvidence: z.enum(['available', 'refused']),
   providerProgress: z.object({
-    runId: id, modelId: modelIdSchema, plan: capturePlanSchema, run: runSchema,
-    lifetime: z.enum(['open', 'closing', 'closed']), activeRequest: z.union([identity, undefinedTag]),
-    totalRequests: z.number().int().min(1).max(13), selectedRequests: z.number().int().min(1).max(13),
-    settledRequests: z.number().int().min(0).max(13), loadStatus: z.enum(['idle', 'loading', 'ready', 'error']),
+    runId: id,
+    modelId: modelIdSchema,
+    plan: capturePlanSchema,
+    run: runSchema,
+    lifetime: z.enum(['open', 'closing', 'closed']),
+    activeRequest: z.union([identity, undefinedTag]),
+    totalRequests: z.number().int().min(1).max(13),
+    selectedRequests: z.number().int().min(1).max(13),
+    settledRequests: z.number().int().min(0).max(13),
+    loadStatus: z.enum(['idle', 'loading', 'ready', 'error']),
   }).strict(),
   requests: z.array(z.object({
-    requestId: id, scenario: captureScenarioSchema, status: z.enum(['not-started', 'awaiting-settlement', 'settled']),
-    notStartedReason: z.union([notStartedReason, undefinedTag]), outcome: z.union([z.enum(['fulfilled', 'rejected']), undefinedTag]),
-    settledCompleteness: z.union([z.enum(['complete', 'incomplete']), undefinedTag]), completeness: z.enum(['complete', 'incomplete']),
+    requestId: id,
+    scenario: captureScenarioSchema,
+    status: z.enum(['not-started', 'awaiting-settlement', 'settled']),
+    notStartedReason: z.union([notStartedReason, undefinedTag]),
+    outcome: z.union([z.enum(['fulfilled', 'rejected']), undefinedTag]),
+    settledCompleteness: z.union([z.enum(['complete', 'incomplete']), undefinedTag]),
+    completeness: z.enum(['complete', 'incomplete']),
     limits: z.object({ maximumEvents: z.literal(1024), maximumCharacters: z.literal(65536), maximumFieldCharacters: z.literal(16384) }).strict(),
-    retainedCharacters: z.number().int().min(0).max(65536), eventCount: z.number().int().min(0).max(1024),
+    retainedCharacters: z.number().int().min(0).max(65536),
+    eventCount: z.number().int().min(0).max(1024),
   }).strict()).min(1).max(13),
   cutoff: z.object({
-    format: z.literal('production-provider-native-cutoff-v1'), runId: id,
+    format: z.literal('production-provider-native-cutoff-v1'),
+    runId: id,
     reason: z.enum(['normal-completion', 'run-deadline', 'collection-deadline', 'user-requested', 'disposed']),
-    phaseAtCutoff: z.enum(['not-requested', 'collecting', 'finished']), maximumWorkerEpochs: z.number().int().min(1).max(8),
-    unrecordedWorkerCreations: count, incompleteReasons: z.array(z.literal('epoch-limit')).max(1),
+    phaseAtCutoff: z.enum(['not-requested', 'collecting', 'finished']),
+    maximumWorkerEpochs: z.number().int().min(1).max(8),
+    unrecordedWorkerCreations: count,
+    incompleteReasons: z.array(z.literal('epoch-limit')).max(1),
     epochs: z.array(z.object({
       workerEpoch: z.number().int().min(1).max(8),
       lifetime: z.union([
@@ -90,7 +110,9 @@ const encodedSchema = z.object({
     }).strict()).max(8),
   }).strict(),
   nativeEvidenceStatus: z.enum(['not-attempted', 'available', 'provider-evidence-refused', 'sealing-deadline', 'sealing-interrupted', 'sealing-failed']),
-  cleanup: z.enum(['not-requested', 'pending', 'completed', 'failed']), sealOwnership: z.enum(['settled', 'pending']), progressCallbackFailures: count,
+  cleanup: z.enum(['not-requested', 'pending', 'completed', 'failed']),
+  sealOwnership: z.enum(['settled', 'pending']),
+  progressCallbackFailures: count,
 }).strict();
 
 const liveProgressSchema = z.object({
@@ -140,7 +162,18 @@ function encode({ summary }: { summary: Summary }) {
   if (!Object.hasOwn(summary, 'stopReason') || !Object.hasOwn(providerProgress, 'activeRequest')
     || requests.some(request => ['notStartedReason', 'outcome', 'settledCompleteness'].some(key => !Object.hasOwn(request, key)))) invalid();
   const tag = { captureValue: 'undefined' } as const;
-  return { ...rest, format, policy, completion, providerEvidence, cutoff, nativeEvidenceStatus, cleanup, sealOwnership, progressCallbackFailures, stopReason: stopReason ?? tag,
+  return {
+    ...rest,
+    format,
+    policy,
+    completion,
+    providerEvidence,
+    cutoff,
+    nativeEvidenceStatus,
+    cleanup,
+    sealOwnership,
+    progressCallbackFailures,
+    stopReason: stopReason ?? tag,
     providerProgress: { ...providerProgress, activeRequest: providerProgress.activeRequest ?? tag },
     requests: requests.map(request => ({ ...request, notStartedReason: request.notStartedReason ?? tag, outcome: request.outcome ?? tag, settledCompleteness: request.settledCompleteness ?? tag })),
   };
@@ -150,13 +183,23 @@ function decode({ encoded, runId, modelId }: { encoded: z.infer<typeof encodedSc
   const { format, policy, completion, stopReason, providerEvidence, providerProgress, requests, cutoff, nativeEvidenceStatus, cleanup, sealOwnership, progressCallbackFailures, ...rest } = encoded;
   rest satisfies Record<PropertyKey, never>;
   const summary: Summary = {
-    format, policy, completion, stopReason: typeof stopReason === 'string' ? stopReason : undefined, providerEvidence,
+    format,
+    policy,
+    completion,
+    stopReason: typeof stopReason === 'string' ? stopReason : undefined,
+    providerEvidence,
     providerProgress: { ...providerProgress, activeRequest: 'captureValue' in providerProgress.activeRequest ? undefined : providerProgress.activeRequest },
-    requests: requests.map(request => ({ ...request,
+    requests: requests.map(request => ({
+      ...request,
       notStartedReason: typeof request.notStartedReason === 'string' ? request.notStartedReason : undefined,
       outcome: typeof request.outcome === 'string' ? request.outcome : undefined,
       settledCompleteness: typeof request.settledCompleteness === 'string' ? request.settledCompleteness : undefined,
-    })), cutoff, nativeEvidenceStatus, cleanup, sealOwnership, progressCallbackFailures,
+    })),
+    cutoff,
+    nativeEvidenceStatus,
+    cleanup,
+    sealOwnership,
+    progressCallbackFailures,
   };
   if (providerProgress.runId !== runId || providerProgress.modelId !== modelId || cutoff.runId !== runId || policy.plan !== providerProgress.plan) invalid();
   if (JSON.stringify(policy) !== JSON.stringify(encodedSchema.shape.policy.parse(createProductionProviderCapturePolicy({ plan: policy.plan })))) invalid();

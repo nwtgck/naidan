@@ -336,7 +336,6 @@ right.bin: xyz
     }
   });
 
-
   it('accepts an explicit positive sign in minimum lengths', async () => {
     const execution = await execute({
       script: 'strings -n +1',
@@ -347,5 +346,4 @@ right.bin: xyz
     expect(execution.stderr.text).toBe('');
     expect(execution.result.exitCode).toBe(0);
   });
-
 });

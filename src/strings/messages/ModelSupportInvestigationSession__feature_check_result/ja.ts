@@ -12,7 +12,7 @@ export const ModelSupportInvestigationSession__feature_check_result = ({ kind, o
     "tool-probe": "強制したツール形式",
     "tool-parser": "ツールの解析",
     "tool-template": "ツール結果のテンプレート",
-    "stage": "調査工程"
+    "stage": "調査工程",
   };
   const outcomes = {
     "passed": "実行成功",
@@ -22,7 +22,7 @@ export const ModelSupportInvestigationSession__feature_check_result = ({ kind, o
     "not-run": "未実行",
     "not-selected": "未選択",
     "not-recorded": "未記録",
-    "unavailable": "利用不可"
+    "unavailable": "利用不可",
   };
   return `${features[kind]} · ${outcomes[outcome]} (${context})`;
 };

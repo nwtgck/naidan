@@ -552,12 +552,14 @@ describe('createPrivacyFetchBrokerClient', () => {
 
     client.dispose();
   });
+
   it('bootstraps a stream through the broker iframe and disposes its active body', async () => {
     const { client, brokerWindow, dispatchBrokerMessage } = createClientHarness();
     const url = 'https://huggingface.co/owner/model/resolve/main/model.gguf';
     const cancel = vi.fn();
     const response = new Response(new ReadableStream({ cancel }), {
-      status: 206, headers: { 'Content-Range': 'bytes 3-9/10' },
+      status: 206,
+      headers: { 'Content-Range': 'bytes 3-9/10' },
     });
     Object.defineProperty(response, 'url', { value: url });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
@@ -568,10 +570,14 @@ describe('createPrivacyFetchBrokerClient', () => {
       const { type: _type, protocol: _protocol, ...request } = parsed;
       servePrivacyStream({ port, request });
     });
-    dispatchBrokerMessage({ source: brokerWindow, data: {
-      protocol: PRIVACY_FETCH_PROTOCOL, type: 'ready',
-      capabilities: { responseBody: 'arrayBuffer', transferArrayBuffer: true, headers: 'entries' },
-    } });
+    dispatchBrokerMessage({
+      source: brokerWindow,
+      data: {
+        protocol: PRIVACY_FETCH_PROTOCOL,
+        type: 'ready',
+        capabilities: { responseBody: 'arrayBuffer', transferArrayBuffer: true, headers: 'entries' },
+      },
+    });
     const streamed = await client.fetchStream({ request: { url, headers: [['Range', 'bytes=3-']] } });
     expect(streamed.status).toBe(206);
     expect(streamed.headers.get('content-range')).toBe('bytes 3-9/10');
@@ -583,13 +589,15 @@ describe('createPrivacyFetchBrokerClient', () => {
   it('aborts streaming requests while waiting for broker readiness', async () => {
     const { client, brokerWindow } = createClientHarness();
     const controller = new AbortController();
-    const response = client.fetchStream({ request: {
-      url: 'https://huggingface.co/api/models/owner/model', signal: controller.signal,
-    } });
+    const response = client.fetchStream({
+      request: {
+        url: 'https://huggingface.co/api/models/owner/model',
+        signal: controller.signal,
+      },
+    });
     controller.abort();
     await expect(response).rejects.toMatchObject({ code: 'aborted' });
     expect(brokerWindow.postMessage).not.toHaveBeenCalled();
     client.dispose();
   });
-
 });

@@ -58,10 +58,13 @@ export function useModelLaunchCoordinator(): void {
       const chat = await storageService.prepareModelLaunchChat({
         signal: controller.signal,
         request: {
-          ...reservation, input, ...resolved,
+          ...reservation,
+          input,
+          ...resolved,
           chatGroupName: modelLaunchChatGroupName({ target: resolved.target }),
           titleGeneration: settings.value.titleGeneration,
-          mode: 'create-or-resume', expectedTarget: undefined,
+          mode: 'create-or-resume',
+          expectedTarget: undefined,
         },
       });
       if (!isCurrent()) return;
@@ -82,5 +85,6 @@ export function useModelLaunchCoordinator(): void {
     }
   }, { immediate: true });
 }
+
 export const TEST_ONLY = {
 };

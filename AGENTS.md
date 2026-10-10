@@ -1,6 +1,7 @@
 # Development Principles
 
 *   **Zod**: Must be used for all data persistence and API communication to ensure safe serialization. All API responses MUST be validated to protect the application from unreliable external data structures. Persisted data must maintain backward compatibility.
+*   **Persisted DTOs**: Use `@/utils/dtozod`, the type-restricted aliases of native Zod. DTOs describe TypeScript structures, not domain validation. Do not restore `strict`/`strictObject` (downgrade loads may discard unknown fields), add `unwrap`/`fromZod`, or recreate every removed check elsewhere. `default`, `exactOptional`, and the existing experimental/missing-as-undefined compatibility helpers are intentional. See the policy beside the types in `src/utils/dtozod/index.ts`. Its Zod-compatible signatures use local named-argument lint suppressions, not a change to the lint rule. Do not alias or re-export native domain schemas as DTOs; the DTO boundary also checks exported value types.
 *   **Strong Typing**: Prefer strict static typing to catch errors at build-time. Avoid `any`.
 *   **Keyed Promise Aggregation**: Use `promiseAllKeyed` from `@/utils/promise` instead of `Promise.all` for a fixed set of concurrent operations that produce values. Use `Promise.all` only for fixed operations that produce no values or for dynamic collections.
 *   **LM Terminology**: Use `LM` rather than `LLM` for generative language-model domain terminology, regardless of model size. In identifiers, use `Lm` or `lm` (for example, `LmProvider` and `lmParameters`). User-facing prose may intentionally use `LLM` when it is clearer to a general audience; explain ambiguous cases to the user before changing them.
@@ -99,7 +100,8 @@ Zero-argument Naidan-owned callables may use an empty parameter list. Use `()` w
 
 - **Why single-argument objects?**: Function requirements frequently evolve. Starting with an object ensures that adding a second or third parameter is a non-breaking, consistent change. This prevents "parameter creep" where developers might otherwise add positional arguments to avoid refactoring, leading to inconsistent and hard-to-read signatures.
 - **Explicit > Implicit**: Avoid property defaults. They hide intent and create "implicit knowledge". Require explicit values (including `undefined`) so the state is fully visible at the call site.
-- **Inline Types**: Prefer inline destructuring and type definitions in signatures.
+- **Inline Types**: Require inline outer object types for explicitly annotated Naidan-owned destructured parameters; `({ id }: Args)` is not allowed. Shared property types such as `{ id: Args['id'] }` are allowed. Wrap a cohesive value as `({ value }: { value: Value })`; keep genuine external callback contracts. Contextually typed implementations may infer parameters from a canonical inline signature. See `.codex/skills/naidan-named-args-lint/SKILL.md`.
+- **Signature Layout**: Do not add line breaks just because inlining an argument type makes a line longer. Preserve existing layout and avoid unrelated formatting.
 - **No Nulls**: Use `undefined` for missing values.
 
 ### Examples

@@ -11,19 +11,26 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 const fetchMock = vi.fn<LmFetch>();
 const finishedOpenAi = 'data: [DONE]\n\n';
 const finishedOllama = '{"done":true}\n';
+
 function request({ parameters }: { parameters: LmParameters | undefined }): Parameters<LmProvider['chat']>[0] {
   return {
     debug: undefined,
     messages: [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [{ type: 'text', text: 'Hi', completeness: 'complete' }] }],
-    model: 'test-model', parameters, tools: undefined, readBinaryObject: undefined, signal: undefined,
+    model: 'test-model',
+    parameters,
+    tools: undefined,
+    readBinaryObject: undefined,
+    signal: undefined,
   };
 }
+
 function body({ index }: { index: number }): Record<string, unknown> {
   const raw = fetchMock.mock.calls[index]?.[1]?.body;
   expect(typeof raw).toBe('string');
   if (typeof raw !== 'string') throw new Error('Expected a serialized request.');
   return JSON.parse(raw);
 }
+
 function failure({ message }: { message: string }): Response {
   return Response.json({ error: message }, { status: 400 });
 }
@@ -33,6 +40,7 @@ describe('LM Providers Reasoning', () => {
     fetchMock.mockReset();
     useGlobalEvents().clearEvents();
   });
+
   afterEach(() => useGlobalEvents().clearEvents());
 
   describe('OpenAIProvider reasoning', () => {

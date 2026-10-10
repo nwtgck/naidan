@@ -85,18 +85,21 @@ const emit = defineEmits<{
 const sessionView = props.sessionView;
 // Retained results keep their original observation, even if a newer Download
 // occurred before reopening this modal. No timing is reconstructed from OPFS.
-const ordinaryDownloadTiming = parseDownloadTiming({ schema: downloadTimingSnapshotSchema, value: toRaw((() => {
-  const snapshot = sessionView.initialSnapshot;
-  if (snapshot === undefined) return props.ordinaryDownloadTiming;
-  switch (snapshot.view) {
-  case 'setup': return props.ordinaryDownloadTiming;
-  case 'results': return snapshot.ordinaryDownloadTiming;
-  default: {
-    const exhaustive: never = snapshot;
-    return exhaustive;
-  }
-  }
-})()) });
+const ordinaryDownloadTiming = parseDownloadTiming({
+  schema: downloadTimingSnapshotSchema,
+  value: toRaw((() => {
+    const snapshot = sessionView.initialSnapshot;
+    if (snapshot === undefined) return props.ordinaryDownloadTiming;
+    switch (snapshot.view) {
+    case 'setup': return props.ordinaryDownloadTiming;
+    case 'results': return snapshot.ordinaryDownloadTiming;
+    default: {
+      const exhaustive: never = snapshot;
+      return exhaustive;
+    }
+    }
+  })()),
+});
 const retainedTimingAvailable = (ordinaryDownloadTiming?.records.length ?? 0) > 0;
 const retainedTimingTruncated = ordinaryDownloadTiming !== undefined && (ordinaryDownloadTiming.droppedOperations > 0 || ordinaryDownloadTiming.records.some(record => record.truncated));
 const retainedTimingExportError = ref<string | undefined>(undefined);
@@ -278,6 +281,7 @@ const toolTemplateProvenanceSummary = computed(() => {
   }
   }
 });
+
 function toolParserSummaryArguments({ observation }: {
   observation: Extract<ModelSupportInvestigationLoadAttempt["toolProtocolProbe"], { status: "observed" }>["parserObservation"],
 }): {
@@ -420,6 +424,7 @@ const productionLaneRouteSummary = computed(() => {
     modelType: route.modelType,
   });
 });
+
 function formatActiveProductionLoadAttempt({
   attempt,
 }: {
@@ -682,6 +687,7 @@ const cacheSummary = computed(() => {
     zeroByteFileCount: cache.zeroByteFileCount,
   });
 });
+
 function initialInvestigationSteps(): ModelSupportInvestigationStep[] {
   return [
     { id: "runtime-assets", status: "not-run", detail: undefined },
@@ -1077,8 +1083,11 @@ async function runSingleTarget({ target, configuration, timeoutMs, replayMetadat
     if (size.binaryBytes > PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES) throw new Error('Invalid checkpoint recording capacity');
     let admission = nativeAdmissions.get(evidence);
     if (admission === undefined) {
-      admission = { runId: sourceRun.runId, modelId: sourceRun.modelId,
-        result: verifyProductionProviderNativeEvidenceSidecar({ evidence, provider, maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES }) };
+      admission = {
+        runId: sourceRun.runId,
+        modelId: sourceRun.modelId,
+        result: verifyProductionProviderNativeEvidenceSidecar({ evidence, provider, maximumBinaryBytes: PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES }),
+      };
       nativeAdmissions.set(evidence, admission);
     }
     if (admission.runId !== sourceRun.runId || admission.modelId !== sourceRun.modelId) throw new Error('Invalid checkpoint recording identity');
@@ -1460,10 +1469,12 @@ async function startInvestigation(): Promise<void> {
           if (resourceFailure.value === undefined) {
             const observedRun = runByTarget.get(target);
             const nativeEvidence = nativeEvidenceByTarget.get(target);
-            reservation.release({ retained: measureInvestigationProviderRetention({
-              runs: observedRun === undefined ? new Map() : new Map([[target, observedRun]]),
-              nativeEvidence: nativeEvidence === undefined ? new Map() : new Map([[target, nativeEvidence]]),
-            }) });
+            reservation.release({
+              retained: measureInvestigationProviderRetention({
+                runs: observedRun === undefined ? new Map() : new Map([[target, observedRun]]),
+                nativeEvidence: nativeEvidence === undefined ? new Map() : new Map([[target, nativeEvidence]]),
+              }),
+            });
             providerRetention.value = providerBudget.snapshot();
           }
           const actualBytes = settledReplayMetadataBytes({ summary: runByTarget.get(target)?.replayMetadata, freshMetadata: runByTarget.get(target)?.freshMetadata, recovery: recoveryByTarget.get(target) });
@@ -1505,12 +1516,14 @@ async function startInvestigation(): Promise<void> {
 function rememberCurrentSession(): void {
   if (!sessionView.isActive() || batchRunId.value === undefined) return;
   if (!started.value) {
-    sessionView.remember({ snapshot: {
-      view: 'setup',
-      batchId: batchRunId.value,
-      targets: [...committedTargets.value],
-      configuration: structuredClone(toRaw(investigationConfiguration.value)),
-    } });
+    sessionView.remember({
+      snapshot: {
+        view: 'setup',
+        batchId: batchRunId.value,
+        targets: [...committedTargets.value],
+        configuration: structuredClone(toRaw(investigationConfiguration.value)),
+      },
+    });
     return;
   }
   if (targetExecutions.value.length === 0) return;
@@ -1548,20 +1561,22 @@ function rememberCurrentSession(): void {
     rememberedRuns.set(execution.target, interrupted.run);
     rememberedRecoveries.set(execution.target, interrupted.recovery);
   }
-  sessionView.remember({ snapshot: {
-    view: 'results',
-    batchId: batchRunId.value,
-    targets: targetExecutions.value.map(execution => execution.target),
-    configuration: structuredClone(batchConfiguration ?? toRaw(investigationConfiguration.value)),
-    executions,
-    runs: [...rememberedRuns.entries()],
-    recoveries: [...rememberedRecoveries.entries()].map(([target, value]) => [target, value === undefined ? undefined : toRaw(value)]),
-    replayMetadata: [...replayMetadataByTarget.entries()],
-    nativeEvidence: [...nativeEvidenceByTarget.entries()],
-    ordinaryDownloadTiming,
-    reservedProviderRetention: providerRetention.value?.reserved ?? emptyInvestigationProviderRetentionUsage(),
-    selectedTarget: selectedTarget.value,
-  } });
+  sessionView.remember({
+    snapshot: {
+      view: 'results',
+      batchId: batchRunId.value,
+      targets: targetExecutions.value.map(execution => execution.target),
+      configuration: structuredClone(batchConfiguration ?? toRaw(investigationConfiguration.value)),
+      executions,
+      runs: [...rememberedRuns.entries()],
+      recoveries: [...rememberedRecoveries.entries()].map(([target, value]) => [target, value === undefined ? undefined : toRaw(value)]),
+      replayMetadata: [...replayMetadataByTarget.entries()],
+      nativeEvidence: [...nativeEvidenceByTarget.entries()],
+      ordinaryDownloadTiming,
+      reservedProviderRetention: providerRetention.value?.reserved ?? emptyInvestigationProviderRetentionUsage(),
+      selectedTarget: selectedTarget.value,
+    },
+  });
 }
 
 function restorePreviousSession(): void {
@@ -1586,8 +1601,10 @@ function restorePreviousSession(): void {
   for (const [target, value] of snapshot.replayMetadata) replayMetadataByTarget.set(target, value);
   for (const [target, value] of snapshot.nativeEvidence) nativeEvidenceByTarget.set(target, value);
   nativeEvidenceVersion.value++;
-  providerRetention.value = { retained: measureInvestigationProviderRetention({ runs: runByTarget, nativeEvidence: nativeEvidenceByTarget }),
-    reserved: sessionReady.value ? emptyInvestigationProviderRetentionUsage() : snapshot.reservedProviderRetention };
+  providerRetention.value = {
+    retained: measureInvestigationProviderRetention({ runs: runByTarget, nativeEvidence: nativeEvidenceByTarget }),
+    reserved: sessionReady.value ? emptyInvestigationProviderRetentionUsage() : snapshot.reservedProviderRetention,
+  };
   const target = normalizedSeededTarget ?? snapshot.selectedTarget ?? snapshot.runs.at(-1)?.[0];
   const previousRun = target === undefined ? undefined : runByTarget.get(target);
   if (target !== undefined && previousRun !== undefined) {
@@ -1671,14 +1688,16 @@ async function downloadPartialEvidence(): Promise<void> {
             status: "passed",
             detail: passedDetail,
           });
-          return await evidenceClient.openEvidenceStream({ input: {
-            kind: "partial",
-            run: exportedRun,
-            recovery: sourceSnapshot.recovery,
-            replayMetadata: sourceSnapshot.replayMetadata,
-            nativeEvidence: sourceSnapshot.nativeEvidence,
-            ordinaryDownloadTiming,
-          } });
+          return await evidenceClient.openEvidenceStream({
+            input: {
+              kind: "partial",
+              run: exportedRun,
+              recovery: sourceSnapshot.recovery,
+              replayMetadata: sourceSnapshot.replayMetadata,
+              nativeEvidence: sourceSnapshot.nativeEvidence,
+              ordinaryDownloadTiming,
+            },
+          });
         }
 
         const items: ModelSupportInvestigationBatchEvidenceItem[] = capturedItems.map(item => {
@@ -1694,12 +1713,14 @@ async function downloadPartialEvidence(): Promise<void> {
             run: packagedRun,
           };
         });
-        return await evidenceClient.openEvidenceStream({ input: {
-          kind: "batch",
-          batchId,
-          items,
-          ordinaryDownloadTiming,
-        } });
+        return await evidenceClient.openEvidenceStream({
+          input: {
+            kind: "batch",
+            batchId,
+            items,
+            ordinaryDownloadTiming,
+          },
+        });
       })();
       if (!sessionView.isActive()) {
         void stream.cancel(new DOMException('Investigation view closed', 'AbortError')).catch(() => undefined);
@@ -1735,9 +1756,13 @@ async function downloadRetainedTiming(): Promise<void> {
     const client = createModelSupportInvestigationEvidenceWorkerClient();
     ownedClients.add(client);
     try {
-      const { stream, fileName } = await client.openEvidenceStream({ input: {
-        kind: 'retained-timing', snapshot: ordinaryDownloadTiming, exportId: crypto.randomUUID(),
-      } });
+      const { stream, fileName } = await client.openEvidenceStream({
+        input: {
+          kind: 'retained-timing',
+          snapshot: ordinaryDownloadTiming,
+          exportId: crypto.randomUUID(),
+        },
+      });
       if (!sessionView.isActive()) {
         void stream.cancel(new DOMException('Investigation view closed', 'AbortError')).catch(() => undefined);
         return;

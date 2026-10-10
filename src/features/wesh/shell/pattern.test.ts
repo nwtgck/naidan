@@ -19,7 +19,6 @@ describe('containsShellPatternMeta', () => {
   });
 });
 
-
 describe('compileShellPattern', () => {
   it('coalesces adjacent literal tokens around pattern operators', () => {
     expect(compileShellPattern({

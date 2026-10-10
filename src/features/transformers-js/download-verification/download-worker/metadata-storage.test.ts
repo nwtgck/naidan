@@ -12,6 +12,7 @@ const marker = `${base}.tokenizer_config.json.complete`;
 beforeEach(() => {
   vi.stubGlobal('self', { location: { origin: 'http://localhost' } });
 });
+
 afterEach(() => vi.unstubAllGlobals());
 
 async function fixture() {
@@ -52,7 +53,8 @@ it('rejects partial metadata before touching an existing complete file or marker
   fs.activity.length = 0;
   const cancel = vi.fn();
   const response = new Response(new ReadableStream({ cancel }, { highWaterMark: 0 }), {
-    status: 206, headers: { 'Content-Range': 'bytes 0-1/100', 'Content-Length': '2' },
+    status: 206,
+    headers: { 'Content-Range': 'bytes 0-1/100', 'Content-Length': '2' },
   });
   await expect(storage.write({ url, response })).rejects.toThrow('HTTP 206');
   expect(fs.files.get(path)).toBe(before);
@@ -104,9 +106,13 @@ it('checks completeness and size without reading metadata bodies', async () => {
 
 it('preserves permission failures rather than converting them to cache misses', async () => {
   const failure = new DOMException('Fixture permission denied', 'NotAllowedError');
-  vi.stubGlobal('navigator', { storage: { getDirectory: async () => {
-    throw failure;
-  } } });
+  vi.stubGlobal('navigator', {
+    storage: {
+      getDirectory: async () => {
+        throw failure;
+      },
+    },
+  });
   const storage = createRuntimeMetadataStorage();
   await expect(storage.stat({ url })).rejects.toBe(failure);
   await expect(storage.read({ url })).rejects.toBe(failure);

@@ -74,7 +74,8 @@ describe('OpenAIProvider Integration Tests', () => {
 
       const provider = new OpenAIProvider({ endpoint: `${baseUrl}/v1` });
       let result = '';
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [{ role: 'user', content: 'Hi' }],
         model: 'gpt-4',
         onChunk: ({ chunk: chunk }) => {
@@ -100,7 +101,8 @@ data: [DONE]
       });
 
       const provider = new OpenAIProvider({ endpoint: `${baseUrl}/` });
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'any',
         onChunk: () => {},
@@ -115,7 +117,8 @@ data: [DONE]
       });
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
-      await expect(runProviderConversationForTest({ provider,
+      await expect(runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'invalid',
         onChunk: () => {},
@@ -127,7 +130,8 @@ data: [DONE]
 
     it('should handle network errors gracefully', async () => {
       const provider = new OpenAIProvider({ endpoint: 'http://127.0.0.1:1' });
-      await expect(runProviderConversationForTest({ provider,
+      await expect(runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'any',
         onChunk: () => {},
@@ -162,7 +166,8 @@ data: [DONE]
         endpoint: baseUrl,
         headers: [['Authorization', 'Bearer test-token']],
       });
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'any',
         onChunk: () => {},
@@ -220,7 +225,8 @@ data: [DONE]
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
@@ -242,7 +248,8 @@ data: [DONE]
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
-      await expect(runProviderConversationForTest({ provider,
+      await expect(runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
@@ -263,12 +270,16 @@ data: [DONE]
       const provider = new OpenAIProvider({ endpoint: baseUrl });
 
       // Array version
-      await runProviderConversationForTest({ provider,
-        messages: [], model: 'm', onChunk: () => {},
+      await runProviderConversationForTest({
+        provider,
+        messages: [],
+        model: 'm',
+        onChunk: () => {},
         parameters: { ...EMPTY_LM_PARAMETERS, stop: ['A', 'B'] },
       });
       expect(capturedRequests[0]!.body.stop).toEqual(['A', 'B']);
     });
+
     it('should handle complex parameters in chat request', async () => {
       await startServer((_req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
@@ -281,7 +292,8 @@ data: [DONE]
       });
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'test-model',
         onChunk: () => {},
@@ -320,7 +332,8 @@ data: [DONE]
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
-      await expect(runProviderConversationForTest({ provider,
+      await expect(runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
@@ -344,7 +357,8 @@ data: [DONE]
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
@@ -369,7 +383,8 @@ data: [DONE]
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
@@ -393,7 +408,8 @@ data: [DONE]
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
@@ -417,7 +433,8 @@ data: [DONE]
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
-      await runProviderConversationForTest({ provider,
+      await runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
@@ -440,7 +457,8 @@ data: [DONE]
       const provider = new OpenAIProvider({ endpoint: baseUrl });
       let result = '';
       try {
-        await runProviderConversationForTest({ provider,
+        await runProviderConversationForTest({
+          provider,
           messages: [],
           model: 'any',
           onChunk: ({ chunk: chunk }) => {
@@ -463,7 +481,8 @@ data: [DONE]
       const controller = new AbortController();
       const provider = new OpenAIProvider({ endpoint: baseUrl });
 
-      const chatPromise = runProviderConversationForTest({ provider,
+      const chatPromise = runProviderConversationForTest({
+        provider,
         messages: [],
         model: 'any',
         onChunk: ({ chunk: chunk }) => {

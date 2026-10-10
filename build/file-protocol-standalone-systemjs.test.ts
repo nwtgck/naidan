@@ -328,7 +328,6 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
     expect(harness.deletedUrls).toEqual([]);
   });
 
-
   it('recovers a real file:// child load after the missing file is created', async () => {
     const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'));
     try {
@@ -533,7 +532,6 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
     expect(harness.deletedUrls).toEqual([]);
   });
 });
-
 
 describe('fileProtocolStandalone bundled SystemJS runtime contract', () => {
   it('provides the registry and loader APIs required by both file:// hooks', () => {

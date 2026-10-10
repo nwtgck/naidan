@@ -5,16 +5,25 @@ import { toAttachmentId, toBinaryObjectId, toMessageId, toToolCallId } from './i
 
 function assistant(): AssistantMessageNode {
   return {
-    id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 15,
-    modelId: 'model', lmParameters: undefined, interruption: { type: 'error', message: '日本語の失敗' },
+    id: toMessageId({ raw: 'a' }),
+    role: 'assistant',
+    createdAt: 15,
+    modelId: 'model',
+    lmParameters: undefined,
+    interruption: { type: 'error', message: '日本語の失敗' },
     parts: [
-      { type: 'reasoning', text: `\
+      {
+        type: 'reasoning',
+        text: `\
   R\\r
-🙂`, completeness: 'complete' },
+🙂`,
+        completeness: 'complete',
+      },
       { type: 'text', text: '<think>literal</think>', completeness: 'partial' },
       { type: 'reasoning', text: '', completeness: 'partial' },
       { type: 'tool_call', toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' { "x": 1 } ' } } },
-    ], replies: { items: [] },
+    ],
+    replies: { items: [] },
   };
 }
 
@@ -39,9 +48,13 @@ describe('createChatMessageSnapshot', () => {
     reasoning.text = 'changed';
     reasoning.completeness = 'partial';
     node.parts.reverse();
-    expect(snapshot.parts[0]).toEqual({ type: 'reasoning', text: `\
+    expect(snapshot.parts[0]).toEqual({
+      type: 'reasoning',
+      text: `\
   R\\r
-🙂`, completeness: 'complete' });
+🙂`,
+      completeness: 'complete',
+    });
     expect(snapshot.parts[3]).toMatchObject({ toolCall: { function: { name: 'f', arguments: ' { "x": 1 } ' } } });
   });
 
@@ -76,13 +89,21 @@ describe('createChatMessageSnapshot', () => {
   it('preserves every tool status and binary reference, copying nested error/text payloads', () => {
     const callId = toToolCallId({ raw: 'c' });
     const binaryId = toBinaryObjectId({ raw: 'b' });
-    const node: ToolMessageNode = { id: toMessageId({ raw: 'tool' }), role: 'tool', modelId: undefined, lmParameters: undefined, createdAt: 1, replies: { items: [] }, parts: [
-      { type: 'tool_result', result: { toolCallId: callId, status: 'executing' } },
-      { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: '  result\n' } } },
-      { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryId } } },
-      { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'other', message: { type: 'text', text: '失敗' } } } },
-      { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'timeout', message: { type: 'binary_object', id: binaryId } } } },
-    ] };
+    const node: ToolMessageNode = {
+      id: toMessageId({ raw: 'tool' }),
+      role: 'tool',
+      modelId: undefined,
+      lmParameters: undefined,
+      createdAt: 1,
+      replies: { items: [] },
+      parts: [
+        { type: 'tool_result', result: { toolCallId: callId, status: 'executing' } },
+        { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'text', text: '  result\n' } } },
+        { type: 'tool_result', result: { toolCallId: callId, status: 'success', content: { type: 'binary_object', id: binaryId } } },
+        { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'other', message: { type: 'text', text: '失敗' } } } },
+        { type: 'tool_result', result: { toolCallId: callId, status: 'error', error: { code: 'timeout', message: { type: 'binary_object', id: binaryId } } } },
+      ],
+    };
     const expected = structuredClone(node.parts);
     const snapshot = createChatMessageSnapshot({ node });
     for (const part of node.parts) {

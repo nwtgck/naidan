@@ -15,12 +15,25 @@ import { createOrdinaryDownloadTimingEvidenceFile, ORDINARY_DOWNLOAD_TIMING_EVID
 // Synthetic lifecycle scalars, not browser performance measurements.
 function snapshot() {
   return downloadTimingSnapshotSchema.parse({
-    format: 'transformers-js-download-timing-v1', measurementVersion: 1, source: 'ordinary-download',
-    serviceEpoch: '11111111-1111-4111-8111-111111111111', identityStatus: 'available', sequence: 1,
-    availability: 'recorded', droppedOperations: 2,
-    records: [{ operationId: '11111111-1111-4111-8111-111111111111/1', modelId: 'org/previous', runtimeEpoch: 3,
-      outcome: 'failed', timingStatus: 'measured', wallMs: 23000, truncated: true,
-      droppedObservations: 1, observations: [] }],
+    format: 'transformers-js-download-timing-v1',
+    measurementVersion: 1,
+    source: 'ordinary-download',
+    serviceEpoch: '11111111-1111-4111-8111-111111111111',
+    identityStatus: 'available',
+    sequence: 1,
+    availability: 'recorded',
+    droppedOperations: 2,
+    records: [{
+      operationId: '11111111-1111-4111-8111-111111111111/1',
+      modelId: 'org/previous',
+      runtimeEpoch: 3,
+      outcome: 'failed',
+      timingStatus: 'measured',
+      wallMs: 23000,
+      truncated: true,
+      droppedObservations: 1,
+      observations: [],
+    }],
   });
 }
 

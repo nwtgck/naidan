@@ -7,6 +7,7 @@ let runtime: typeof import('@huggingface/transformers');
 const fetch = vi.fn(() => {
   throw new Error('External network forbidden in Qwen cache tests');
 });
+
 beforeAll(async () => {
   vi.stubGlobal('fetch', fetch);
   const artifact = await getProductionTransformersArtifact();
@@ -18,6 +19,7 @@ beforeAll(async () => {
     Object.defineProperty(globalThis, 'process', descriptor);
   }
 }, 30_000);
+
 afterAll(() => {
   expect(fetch).not.toHaveBeenCalled(); vi.unstubAllGlobals();
 });
@@ -42,12 +44,15 @@ function nativePrepare({ pastLength }: { pastLength: number }) {
   // Execute the actual inherited Qwen prepare method, without an ORT session
   // or model weights. This tiny synthetic attention tensor is not recorded KV.
   const model = Object.assign(Object.create(runtime.Qwen3_5ForConditionalGeneration.prototype) as InstanceType<typeof runtime.Qwen3_5ForConditionalGeneration>, {
-    config: { vision_config: { spatial_merge_size: 2 } }, sessions: { model: { inputNames: ['position_ids'] } },
+    config: { vision_config: { spatial_merge_size: 2 } },
+    sessions: { model: { inputNames: ['position_ids'] } },
   });
   const ids = [10n, 11n, 12n, 13n, 14n, 15n];
   const past = new runtime.DynamicCache({ 'past_key_values.0.key': new runtime.Tensor('float32', new Float32Array(pastLength), [1, 1, pastLength, 1]) });
   return model.prepare_inputs_for_generation([ids], {
-    input_ids: new runtime.Tensor('int64', ids, [1, 6]), attention_mask: new runtime.Tensor('int64', [1n, 1n, 1n, 1n, 1n, 1n], [1, 6]), past_key_values: past,
+    input_ids: new runtime.Tensor('int64', ids, [1, 6]),
+    attention_mask: new runtime.Tensor('int64', [1n, 1n, 1n, 1n, 1n, 1n], [1, 6]),
+    past_key_values: past,
   }, {});
 }
 

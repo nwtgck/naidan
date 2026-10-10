@@ -121,12 +121,23 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
     // Setup Chat 1 with one user message and one assistant message
     const chat1: Chat = {
-      id: toChatId({ raw: 'c1' }), title: 'C1',
-      root: { items: [{
-        id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'Hi', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, createdAt: 0,
-        replies: { items: [{ id: toMessageId({ raw: 'm2' }), role: 'assistant', parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] }, createdAt: 0 }] },
-      }] },
-      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: toMessageId({ raw: 'm2' }),
+      id: toChatId({ raw: 'c1' }),
+      title: 'C1',
+      root: {
+        items: [{
+          id: toMessageId({ raw: 'm1' }),
+          role: 'user',
+          parts: [{ type: 'text', text: 'Hi', completeness: 'complete' }],
+          modelId: undefined,
+          lmParameters: undefined,
+          createdAt: 0,
+          replies: { items: [{ id: toMessageId({ raw: 'm2' }), role: 'assistant', parts: [{ type: 'text', text: 'Hello', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] }, createdAt: 0 }] },
+        }],
+      },
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
+      currentLeafId: toMessageId({ raw: 'm2' }),
     };
     mocks.mockChatStorage.set('c1', chat1);
 
@@ -158,9 +169,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chatStoreB = useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction();
 
     const chat1: Chat = {
-      id: toChatId({ raw: 'c1' }), title: 'Original Title',
+      id: toChatId({ raw: 'c1' }),
+      title: 'Original Title',
       root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', parts: [{ type: 'text', text: 'Hi', completeness: 'complete' }], modelId: undefined, lmParameters: undefined, replies: { items: [] }, createdAt: 0 }] },
-      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: toMessageId({ raw: 'm1' }),
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
+      currentLeafId: toMessageId({ raw: 'm1' }),
     };
     mocks.mockChatStorage.set('c1', chat1);
 

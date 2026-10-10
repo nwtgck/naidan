@@ -4,13 +4,27 @@ import { assessSupportBoundaries } from "./assess-support-boundaries";
 
 function baseRun(): ModelSupportInvestigationRun {
   return {
-    schemaVersion: 1, runId: "run", modelId: "org/model", scope: "partial-runtime-preflight",
-    startedAt: "2026-08-06T00:00:00.000Z", completedAt: "2026-08-06T00:00:01.000Z",
-    status: "passed", currentOperation: "done", steps: [], runtimeAssets: undefined,
-    repository: undefined, runtimeTarget: undefined, downloadEvidence: undefined, cache: undefined, declarations: undefined, templateBehavior: undefined,
-    modelFilePlan: undefined, loadAttempts: [],
+    schemaVersion: 1,
+    runId: "run",
+    modelId: "org/model",
+    scope: "partial-runtime-preflight",
+    startedAt: "2026-08-06T00:00:00.000Z",
+    completedAt: "2026-08-06T00:00:01.000Z",
+    status: "passed",
+    currentOperation: "done",
+    steps: [],
+    runtimeAssets: undefined,
+    repository: undefined,
+    runtimeTarget: undefined,
+    downloadEvidence: undefined,
+    cache: undefined,
+    declarations: undefined,
+    templateBehavior: undefined,
+    modelFilePlan: undefined,
+    loadAttempts: [],
     productionLane: { status: "not-run", observation: undefined, partialObservation: undefined, error: undefined },
-    laneComparison: undefined, error: undefined,
+    laneComparison: undefined,
+    error: undefined,
   };
 }
 
@@ -18,37 +32,70 @@ describe("assessSupportBoundaries", () => {
   it("classifies missing public Auto class support without guessing a runtime root cause", () => {
     const run = baseRun();
     run.declarations = {
-      normalizedModelId: "org/model", resolvedRevision: "a".repeat(40), files: [],
+      normalizedModelId: "org/model",
+      resolvedRevision: "a".repeat(40),
+      files: [],
       fileFailures: [],
-      config: { model_type: "new-model" }, modelType: "new-model", architectures: [],
-      autoMap: undefined, transformersJsConfig: undefined,
+      config: { model_type: "new-model" },
+      modelType: "new-model",
+      architectures: [],
+      autoMap: undefined,
+      transformersJsConfig: undefined,
       classCapabilities: [{ autoClass: "AutoModelForCausalLM", supports: false, notEvaluatedReason: undefined }],
     };
     expect(assessSupportBoundaries({ run })).toEqual([expect.objectContaining({
-      boundary: "transformers-js-capability", basis: "exact-observation",
+      boundary: "transformers-js-capability",
+      basis: "exact-observation",
     })]);
   });
 
   it("classifies missing required repository files", () => {
     const run = baseRun();
     run.repository = {
-      requestedModelId: "hf.co/org/model", normalizedModelId: "org/model", requestedRevision: "main",
-      resolvedRevision: "a".repeat(40), apiUrl: "https://huggingface.co/api/models/org/model/revision/main?blobs=true",
-      responseUrl: "https://huggingface.co/api/models/org/model/revision/main?blobs=true", fileCount: 0, files: [],
-      pipelineTag: undefined, libraryName: undefined, metadata: {},
+      requestedModelId: "hf.co/org/model",
+      normalizedModelId: "org/model",
+      requestedRevision: "main",
+      resolvedRevision: "a".repeat(40),
+      apiUrl: "https://huggingface.co/api/models/org/model/revision/main?blobs=true",
+      responseUrl: "https://huggingface.co/api/models/org/model/revision/main?blobs=true",
+      fileCount: 0,
+      files: [],
+      pipelineTag: undefined,
+      libraryName: undefined,
+      metadata: {},
     };
     run.runtimeTarget = {
-      normalizedModelId: "org/model", evidenceRevision: "a".repeat(40), loaderRevisionOption: null,
-      source: "repository", revisionIdentity: "exact-resolved-revision", pipelineTag: undefined,
+      normalizedModelId: "org/model",
+      evidenceRevision: "a".repeat(40),
+      loaderRevisionOption: null,
+      source: "repository",
+      revisionIdentity: "exact-resolved-revision",
+      pipelineTag: undefined,
     };
     run.modelFilePlan = {
-      normalizedModelId: "org/model", resolvedRevision: "a".repeat(40), modelType: "model",
-      registrySource: "ModelRegistry.get_model_files", cacheRevisionProvenance: "not-observed",
-      cacheRevisionProvenanceReason: "not observed", candidates: [{
-        candidateId: "wasm-q4", device: "wasm", dtype: "q4", registryStatus: "planned", registryError: undefined,
-        registryReturnedFileCount: 1, duplicatePaths: [], files: [], requiredFileCount: 1, optionalFileCount: 0,
-        missingRequiredFileCount: 1, zeroByteRequiredFileCount: 0, missingOptionalFileCount: 0,
-        cacheObservedRequiredFileCount: 0, cacheCompleteMarkerRequiredFileCount: 0, eligibility: "ineligible",
+      normalizedModelId: "org/model",
+      resolvedRevision: "a".repeat(40),
+      modelType: "model",
+      registrySource: "ModelRegistry.get_model_files",
+      cacheRevisionProvenance: "not-observed",
+      cacheRevisionProvenanceReason: "not observed",
+      candidates: [{
+        candidateId: "wasm-q4",
+        device: "wasm",
+        dtype: "q4",
+        registryStatus: "planned",
+        registryError: undefined,
+        registryReturnedFileCount: 1,
+        duplicatePaths: [],
+        files: [],
+        requiredFileCount: 1,
+        optionalFileCount: 0,
+        missingRequiredFileCount: 1,
+        zeroByteRequiredFileCount: 0,
+        missingOptionalFileCount: 0,
+        cacheObservedRequiredFileCount: 0,
+        cacheCompleteMarkerRequiredFileCount: 0,
+        eligibility: "ineligible",
         ineligibleReasons: ["missing required file"],
       }],
     };
@@ -58,17 +105,37 @@ describe("assessSupportBoundaries", () => {
   it("keeps incomplete local-cache artifacts unresolved without claiming repository absence", () => {
     const run = baseRun();
     run.runtimeTarget = {
-      normalizedModelId: "org/model", evidenceRevision: "b".repeat(40), loaderRevisionOption: "b".repeat(40),
-      source: "local-cache", revisionIdentity: "local-immutable-revision", pipelineTag: undefined,
+      normalizedModelId: "org/model",
+      evidenceRevision: "b".repeat(40),
+      loaderRevisionOption: "b".repeat(40),
+      source: "local-cache",
+      revisionIdentity: "local-immutable-revision",
+      pipelineTag: undefined,
     };
     run.modelFilePlan = {
-      normalizedModelId: "org/model", resolvedRevision: "b".repeat(40), modelType: "model",
-      registrySource: "ModelRegistry.get_model_files", cacheRevisionProvenance: "not-observed",
-      cacheRevisionProvenanceReason: "not observed", candidates: [{
-        candidateId: "wasm-q4", device: "wasm", dtype: "q4", registryStatus: "planned", registryError: undefined,
-        registryReturnedFileCount: 1, duplicatePaths: [], files: [], requiredFileCount: 1, optionalFileCount: 0,
-        missingRequiredFileCount: 1, zeroByteRequiredFileCount: 0, missingOptionalFileCount: 0,
-        cacheObservedRequiredFileCount: 0, cacheCompleteMarkerRequiredFileCount: 0, eligibility: "ineligible",
+      normalizedModelId: "org/model",
+      resolvedRevision: "b".repeat(40),
+      modelType: "model",
+      registrySource: "ModelRegistry.get_model_files",
+      cacheRevisionProvenance: "not-observed",
+      cacheRevisionProvenanceReason: "not observed",
+      candidates: [{
+        candidateId: "wasm-q4",
+        device: "wasm",
+        dtype: "q4",
+        registryStatus: "planned",
+        registryError: undefined,
+        registryReturnedFileCount: 1,
+        duplicatePaths: [],
+        files: [],
+        requiredFileCount: 1,
+        optionalFileCount: 0,
+        missingRequiredFileCount: 1,
+        zeroByteRequiredFileCount: 0,
+        missingOptionalFileCount: 0,
+        cacheObservedRequiredFileCount: 0,
+        cacheCompleteMarkerRequiredFileCount: 0,
+        eligibility: "ineligible",
         ineligibleReasons: ["missing required file"],
       }],
     };
@@ -85,43 +152,81 @@ describe("assessSupportBoundaries", () => {
   it("keeps real-model failures unresolved after the runtime control passes", () => {
     const run = baseRun();
     run.runtimeAssets = {
-      variant: "asyncify", baseUrl: "https://naidan.example/", mjsUrl: "https://naidan.example/ort.mjs",
-      wasmUrl: "https://naidan.example/ort.wasm", wasmByteLength: 4, mjsOrigin: "https://naidan.example",
-      wasmOrigin: "https://naidan.example", applicationOrigin: "https://naidan.example",
+      variant: "asyncify",
+      baseUrl: "https://naidan.example/",
+      mjsUrl: "https://naidan.example/ort.mjs",
+      wasmUrl: "https://naidan.example/ort.wasm",
+      wasmByteLength: 4,
+      mjsOrigin: "https://naidan.example",
+      wasmOrigin: "https://naidan.example",
+      applicationOrigin: "https://naidan.example",
       environment: { userAgent: "Browser", vendor: "Vendor", hardwareConcurrency: 8, deviceMemoryGiB: undefined, crossOriginIsolated: true, webGpu: { availability: "unavailable", adapterInfo: {}, features: [], limits: {}, error: undefined } },
       control: { fixtureId: "identity-float32-v1", fixtureSha256: "sha", executionProvider: "wasm", status: "passed", inputName: "x", outputName: "y", inputValue: 7, outputValue: 7, error: undefined },
       webGpuControl: { fixtureId: "identity-float32-v1", fixtureSha256: "sha", executionProvider: "webgpu", status: "not-available", inputName: "x", outputName: "y", inputValue: 7, outputValue: undefined, error: undefined },
     };
     run.loadAttempts = [{
-      attemptId: "attempt", candidateId: "wasm-q4", device: "wasm", dtype: "q4", autoClass: "AutoModelForCausalLM",
-      resolvedRevision: "a".repeat(40), startedAt: run.startedAt, completedAt: run.completedAt!, status: "failed",
+      attemptId: "attempt",
+      candidateId: "wasm-q4",
+      device: "wasm",
+      dtype: "q4",
+      autoClass: "AutoModelForCausalLM",
+      resolvedRevision: "a".repeat(40),
+      startedAt: run.startedAt,
+      completedAt: run.completedAt!,
+      status: "failed",
       inputStrategyAttempts: [],
       selectedInputStrategy: undefined,
-      failureStage: "model-load", events: [], inputTokenCount: undefined, inputTokenIds: [], inputTensors: [], loadedModel: undefined,
-      generatedTokenIds: [], generatedText: undefined, naturalGeneration: undefined, toolProtocolProbe: undefined, modelType: undefined,
+      failureStage: "model-load",
+      events: [],
+      inputTokenCount: undefined,
+      inputTokenIds: [],
+      inputTensors: [],
+      loadedModel: undefined,
+      generatedTokenIds: [],
+      generatedText: undefined,
+      naturalGeneration: undefined,
+      toolProtocolProbe: undefined,
+      modelType: undefined,
       error: { name: "Error", message: "failed", stack: undefined },
     }];
     expect(assessSupportBoundaries({ run })[0]).toEqual(expect.objectContaining({
-      boundary: "unresolved", basis: "differential-observation",
+      boundary: "unresolved",
+      basis: "differential-observation",
     }));
   });
 
   it("does not classify an input-build failure as a real-model load failure when the model loaded", () => {
     const run = baseRun();
     run.runtimeAssets = {
-      variant: "asyncify", baseUrl: "https://naidan.example/", mjsUrl: "https://naidan.example/ort.mjs",
-      wasmUrl: "https://naidan.example/ort.wasm", wasmByteLength: 4, mjsOrigin: "https://naidan.example",
-      wasmOrigin: "https://naidan.example", applicationOrigin: "https://naidan.example",
+      variant: "asyncify",
+      baseUrl: "https://naidan.example/",
+      mjsUrl: "https://naidan.example/ort.mjs",
+      wasmUrl: "https://naidan.example/ort.wasm",
+      wasmByteLength: 4,
+      mjsOrigin: "https://naidan.example",
+      wasmOrigin: "https://naidan.example",
+      applicationOrigin: "https://naidan.example",
       environment: { userAgent: "Browser", vendor: "Vendor", hardwareConcurrency: 8, deviceMemoryGiB: undefined, crossOriginIsolated: true, webGpu: { availability: "unavailable", adapterInfo: {}, features: [], limits: {}, error: undefined } },
       control: { fixtureId: "identity-float32-v1", fixtureSha256: "sha", executionProvider: "wasm", status: "passed", inputName: "x", outputName: "y", inputValue: 7, outputValue: 7, error: undefined },
       webGpuControl: { fixtureId: "identity-float32-v1", fixtureSha256: "sha", executionProvider: "webgpu", status: "not-available", inputName: "x", outputName: "y", inputValue: 7, outputValue: undefined, error: undefined },
     };
     run.loadAttempts = [{
-      attemptId: "attempt", candidateId: "wasm-q4", device: "wasm", dtype: "q4", autoClass: "AutoModelForCausalLM",
-      resolvedRevision: "a".repeat(40), startedAt: run.startedAt, completedAt: run.completedAt!, status: "failed",
+      attemptId: "attempt",
+      candidateId: "wasm-q4",
+      device: "wasm",
+      dtype: "q4",
+      autoClass: "AutoModelForCausalLM",
+      resolvedRevision: "a".repeat(40),
+      startedAt: run.startedAt,
+      completedAt: run.completedAt!,
+      status: "failed",
       inputStrategyAttempts: [],
       selectedInputStrategy: undefined,
-      failureStage: "input-build", events: [], inputTokenCount: 0, inputTokenIds: [], inputTensors: [],
+      failureStage: "input-build",
+      events: [],
+      inputTokenCount: 0,
+      inputTokenIds: [],
+      inputTensors: [],
       loadedModel: {
         modelType: "model",
         isEncoderDecoder: false,
@@ -136,37 +241,63 @@ describe("assessSupportBoundaries", () => {
           decoderStartTokenId: undefined,
         },
       },
-      generatedTokenIds: [], generatedText: undefined, naturalGeneration: undefined, toolProtocolProbe: undefined, modelType: "model",
+      generatedTokenIds: [],
+      generatedText: undefined,
+      naturalGeneration: undefined,
+      toolProtocolProbe: undefined,
+      modelType: "model",
       error: { name: "TemplateInputUnavailableError", message: "input unavailable", stack: undefined },
     }];
 
     expect(assessSupportBoundaries({ run }).some(item => item.assessmentId === "real-model-attempts-failed-after-runtime-control")).toBe(false);
   });
 
-
   it("attributes Reference input-strategy exhaustion to the probe path when Production succeeds", () => {
     const run = baseRun();
     run.loadAttempts = [{
-      attemptId: "reference", candidateId: "webgpu-q4f16", device: "webgpu", dtype: "q4f16",
-      autoClass: "AutoModelForCausalLM", resolvedRevision: "a".repeat(40),
-      startedAt: run.startedAt, completedAt: run.completedAt!, status: "failed", failureStage: "first-generation",
+      attemptId: "reference",
+      candidateId: "webgpu-q4f16",
+      device: "webgpu",
+      dtype: "q4f16",
+      autoClass: "AutoModelForCausalLM",
+      resolvedRevision: "a".repeat(40),
+      startedAt: run.startedAt,
+      completedAt: run.completedAt!,
+      status: "failed",
+      failureStage: "first-generation",
       events: [],
       inputStrategyAttempts: [{
-        strategy: "chat-template-tensor-dict", status: "failed", failureStage: "first-generation",
-        inputTokenIds: [1, 2], inputTensors: [],
+        strategy: "chat-template-tensor-dict",
+        status: "failed",
+        failureStage: "first-generation",
+        inputTokenIds: [1, 2],
+        inputTensors: [],
         error: { name: "TypeError", message: "adapter failed", stack: undefined },
       }, {
-        strategy: "observed-token-ids-transformers-tensor", status: "failed", failureStage: "first-generation",
-        inputTokenIds: [1, 2], inputTensors: [],
+        strategy: "observed-token-ids-transformers-tensor",
+        status: "failed",
+        failureStage: "first-generation",
+        inputTokenIds: [1, 2],
+        inputTensors: [],
         error: { name: "TypeError", message: "fallback failed", stack: undefined },
       }],
-      selectedInputStrategy: undefined, inputTokenCount: undefined, inputTokenIds: [], inputTensors: [],
+      selectedInputStrategy: undefined,
+      inputTokenCount: undefined,
+      inputTokenIds: [],
+      inputTensors: [],
       loadedModel: {
-        modelType: "llama", isEncoderDecoder: false, sessions: [], sessionFileCorrelations: [],
+        modelType: "llama",
+        isEncoderDecoder: false,
+        sessions: [],
+        sessionFileCorrelations: [],
         effectiveMinimumGenerationConfig: { maxNewTokens: 1, doSample: false, bosTokenId: undefined, eosTokenId: undefined, padTokenId: undefined, decoderStartTokenId: undefined },
       },
-      generatedTokenIds: [], generatedText: undefined, naturalGeneration: undefined, toolProtocolProbe: undefined,
-      modelType: "llama", error: { name: "ReferenceInputStrategiesExhaustedError", message: "all failed", stack: undefined },
+      generatedTokenIds: [],
+      generatedText: undefined,
+      naturalGeneration: undefined,
+      toolProtocolProbe: undefined,
+      modelType: "llama",
+      error: { name: "ReferenceInputStrategiesExhaustedError", message: "all failed", stack: undefined },
     }];
     run.productionLane = {
       status: "passed",
@@ -289,29 +420,58 @@ describe("assessSupportBoundaries", () => {
   it("does not manufacture an assessment when no boundary evidence exists", () => {
     expect(assessSupportBoundaries({ run: baseRun() })).toEqual([]);
   });
+
   it("classifies an exact template-derived sequence rejected by the production parser at the Naidan adapter boundary", () => {
     const run = baseRun();
     run.loadAttempts = [{
-      attemptId: "reference", candidateId: "webgpu-q4", device: "webgpu", dtype: "q4",
-      autoClass: "AutoModelForCausalLM", resolvedRevision: "a".repeat(40),
-      startedAt: run.startedAt, completedAt: run.completedAt!, status: "passed", failureStage: undefined,
+      attemptId: "reference",
+      candidateId: "webgpu-q4",
+      device: "webgpu",
+      dtype: "q4",
+      autoClass: "AutoModelForCausalLM",
+      resolvedRevision: "a".repeat(40),
+      startedAt: run.startedAt,
+      completedAt: run.completedAt!,
+      status: "passed",
+      failureStage: undefined,
       inputStrategyAttempts: [],
       selectedInputStrategy: undefined,
-      events: [], inputTokenCount: 2, inputTokenIds: [1, 2], inputTensors: [], loadedModel: undefined,
-      generatedTokenIds: [3], generatedText: "reference", naturalGeneration: undefined,
+      events: [],
+      inputTokenCount: 2,
+      inputTokenIds: [1, 2],
+      inputTensors: [],
+      loadedModel: undefined,
+      generatedTokenIds: [3],
+      generatedText: "reference",
+      naturalGeneration: undefined,
       toolProtocolProbe: {
-        status: "observed", forced: true, source: "chat-template-render",
-        generationCaseId: "tools-generation", assistantToolCallCaseId: "assistant-tool-call-history",
-        toolResultContinuationCaseId: "tool-result-continuation", inputTokenIds: [1, 2],
-        forcedTokenIds: [3], generatedTokenIds: [3], generatedText: "tool", exactMatch: true,
-        firstMismatchIndex: undefined, termination: "complete-forced-sequence",
+        status: "observed",
+        forced: true,
+        source: "chat-template-render",
+        generationCaseId: "tools-generation",
+        assistantToolCallCaseId: "assistant-tool-call-history",
+        toolResultContinuationCaseId: "tool-result-continuation",
+        inputTokenIds: [1, 2],
+        forcedTokenIds: [3],
+        generatedTokenIds: [3],
+        generatedText: "tool",
+        exactMatch: true,
+        firstMismatchIndex: undefined,
+        termination: "complete-forced-sequence",
         parserObservation: {
-          status: "observed", strategy: "standard", parserKind: "standard-tool-call-stream-parser",
-          inputMode: "production-text-streamer-reconstruction", inputChunks: ["tool"], visibleText: "tool",
-          callBoundaryCount: undefined, toolCalls: [], recognized: false,
+          status: "observed",
+          strategy: "standard",
+          parserKind: "standard-tool-call-stream-parser",
+          inputMode: "production-text-streamer-reconstruction",
+          inputChunks: ["tool"],
+          visibleText: "tool",
+          callBoundaryCount: undefined,
+          toolCalls: [],
+          recognized: false,
         },
       },
-      modelType: "model", error: undefined,
+      modelType: "model",
+      error: undefined,
     }];
 
     expect(assessSupportBoundaries({ run })).toContainEqual(expect.objectContaining({
@@ -324,14 +484,29 @@ describe("assessSupportBoundaries", () => {
   it("classifies a Production failure after Reference success at the Naidan adapter boundary", () => {
     const run = baseRun();
     run.loadAttempts = [{
-      attemptId: "reference", candidateId: "webgpu-q4", device: "webgpu", dtype: "q4",
-      autoClass: "AutoModelForCausalLM", resolvedRevision: "a".repeat(40),
-      startedAt: run.startedAt, completedAt: run.completedAt!, status: "passed", failureStage: undefined,
+      attemptId: "reference",
+      candidateId: "webgpu-q4",
+      device: "webgpu",
+      dtype: "q4",
+      autoClass: "AutoModelForCausalLM",
+      resolvedRevision: "a".repeat(40),
+      startedAt: run.startedAt,
+      completedAt: run.completedAt!,
+      status: "passed",
+      failureStage: undefined,
       inputStrategyAttempts: [],
       selectedInputStrategy: undefined,
-      events: [], inputTokenCount: 2, inputTokenIds: [1, 2], inputTensors: [], loadedModel: undefined,
-      generatedTokenIds: [3], generatedText: "reference", naturalGeneration: undefined, toolProtocolProbe: undefined,
-      modelType: "model", error: undefined,
+      events: [],
+      inputTokenCount: 2,
+      inputTokenIds: [1, 2],
+      inputTensors: [],
+      loadedModel: undefined,
+      generatedTokenIds: [3],
+      generatedText: "reference",
+      naturalGeneration: undefined,
+      toolProtocolProbe: undefined,
+      modelType: "model",
+      error: undefined,
     }];
     run.productionLane = {
       status: "failed",
@@ -349,12 +524,29 @@ describe("assessSupportBoundaries", () => {
   it("isolates a Production first-turn failure after Reference success without discarding later probes", () => {
     const run = baseRun();
     run.loadAttempts = [{
-      attemptId: "reference", candidateId: "webgpu-q4", device: "webgpu", dtype: "q4",
-      autoClass: "AutoModelForCausalLM", resolvedRevision: "a".repeat(40),
-      startedAt: run.startedAt, completedAt: run.completedAt!, status: "passed", failureStage: undefined,
-      inputStrategyAttempts: [], selectedInputStrategy: undefined, events: [], inputTokenCount: 2,
-      inputTokenIds: [1, 2], inputTensors: [], loadedModel: undefined, generatedTokenIds: [3],
-      generatedText: "reference", naturalGeneration: undefined, toolProtocolProbe: undefined, modelType: "model", error: undefined,
+      attemptId: "reference",
+      candidateId: "webgpu-q4",
+      device: "webgpu",
+      dtype: "q4",
+      autoClass: "AutoModelForCausalLM",
+      resolvedRevision: "a".repeat(40),
+      startedAt: run.startedAt,
+      completedAt: run.completedAt!,
+      status: "passed",
+      failureStage: undefined,
+      inputStrategyAttempts: [],
+      selectedInputStrategy: undefined,
+      events: [],
+      inputTokenCount: 2,
+      inputTokenIds: [1, 2],
+      inputTensors: [],
+      loadedModel: undefined,
+      generatedTokenIds: [3],
+      generatedText: "reference",
+      naturalGeneration: undefined,
+      toolProtocolProbe: undefined,
+      modelType: "model",
+      error: undefined,
     }];
     run.productionLane = {
       status: "passed",
@@ -379,11 +571,15 @@ describe("assessSupportBoundaries", () => {
   it("classifies persistence serialization that changes model-visible history at the Naidan adapter boundary", () => {
     const run = baseRun();
     run.persistenceRoundTrip = {
-      status: 'observed', fixtureId: 'tool-call-history-v1', method: 'chat-content-dto-json-roundtrip-v1',
-      serializedByteLength: 64, serializedSha256: 'b'.repeat(64),
+      status: 'observed',
+      fixtureId: 'tool-call-history-v1',
+      method: 'chat-content-dto-json-roundtrip-v1',
+      serializedByteLength: 64,
+      serializedSha256: 'b'.repeat(64),
       originalMessages: [{ role: 'assistant', content: 'before', tool_calls: undefined, tool_call_id: undefined }],
       restoredMessages: [{ role: 'assistant', content: 'after', tool_calls: undefined, tool_call_id: undefined }],
-      exactModelVisibleMatch: false, firstMismatchIndex: 0,
+      exactModelVisibleMatch: false,
+      firstMismatchIndex: 0,
     };
 
     expect(assessSupportBoundaries({ run })).toContainEqual(expect.objectContaining({
@@ -396,7 +592,9 @@ describe("assessSupportBoundaries", () => {
   it("keeps a failed persistence serialization probe cross-boundary", () => {
     const run = baseRun();
     run.persistenceRoundTrip = {
-      status: 'failed', fixtureId: 'tool-call-history-v1', method: 'chat-content-dto-json-roundtrip-v1',
+      status: 'failed',
+      fixtureId: 'tool-call-history-v1',
+      method: 'chat-content-dto-json-roundtrip-v1',
       error: { name: 'FixturePersistenceError', message: 'roundtrip failed' },
     };
 
@@ -557,14 +755,29 @@ describe("assessSupportBoundaries", () => {
   it("classifies a Reference and Production input-token divergence without guessing a parser root cause", () => {
     const run = baseRun();
     run.loadAttempts = [{
-      attemptId: "reference", candidateId: "webgpu-q4", device: "webgpu", dtype: "q4",
-      autoClass: "AutoModelForCausalLM", resolvedRevision: "a".repeat(40),
-      startedAt: run.startedAt, completedAt: run.completedAt!, status: "passed", failureStage: undefined,
+      attemptId: "reference",
+      candidateId: "webgpu-q4",
+      device: "webgpu",
+      dtype: "q4",
+      autoClass: "AutoModelForCausalLM",
+      resolvedRevision: "a".repeat(40),
+      startedAt: run.startedAt,
+      completedAt: run.completedAt!,
+      status: "passed",
+      failureStage: undefined,
       inputStrategyAttempts: [],
       selectedInputStrategy: undefined,
-      events: [], inputTokenCount: 2, inputTokenIds: [1, 2], inputTensors: [], loadedModel: undefined,
-      generatedTokenIds: [3], generatedText: "reference", naturalGeneration: undefined, toolProtocolProbe: undefined,
-      modelType: "model", error: undefined,
+      events: [],
+      inputTokenCount: 2,
+      inputTokenIds: [1, 2],
+      inputTensors: [],
+      loadedModel: undefined,
+      generatedTokenIds: [3],
+      generatedText: "reference",
+      naturalGeneration: undefined,
+      toolProtocolProbe: undefined,
+      modelType: "model",
+      error: undefined,
     }];
     run.productionLane = {
       status: "passed",
@@ -575,9 +788,14 @@ describe("assessSupportBoundaries", () => {
       error: undefined,
     };
     run.laneComparison = {
-      scenarioCaseId: "user-generation", referenceAttemptId: "reference", exactInputMatch: false,
-      firstInputMismatchIndex: 1, referenceInputTokenIds: [1, 2], productionInputTokenIds: [1, 9],
-      referenceGeneratedTokenIds: [3], productionGeneratedTokenIds: [4],
+      scenarioCaseId: "user-generation",
+      referenceAttemptId: "reference",
+      exactInputMatch: false,
+      firstInputMismatchIndex: 1,
+      referenceInputTokenIds: [1, 2],
+      productionInputTokenIds: [1, 9],
+      referenceGeneratedTokenIds: [3],
+      productionGeneratedTokenIds: [4],
       productionRoute: { autoClass: "AutoModelForCausalLM", processor: "tokenizer", strategy: "standard", modelType: "model" },
     };
 
@@ -587,5 +805,4 @@ describe("assessSupportBoundaries", () => {
       basis: "differential-observation",
     }));
   });
-
 });

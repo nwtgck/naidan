@@ -11,9 +11,11 @@ describe('BlockMarkdownRenderer: Basic Syntax', () => {
   };
 
   it('renders a simple paragraph', () => {
-    const wrapper = mountRenderer({ content: `\
+    const wrapper = mountRenderer({
+      content: `\
 Hello World
-` });
+`,
+    });
     expect(normalizeDom({
       element: wrapper.element,
       trimWhitespaceNodes: true,
@@ -23,9 +25,11 @@ Hello World
   });
 
   it('renders bold and italic text', () => {
-    const wrapper = mountRenderer({ content: `\
+    const wrapper = mountRenderer({
+      content: `\
 **Bold** and *Italic*
-` });
+`,
+    });
     expect(normalizeDom({
       element: wrapper.element,
       trimWhitespaceNodes: true,
@@ -35,9 +39,11 @@ Hello World
   });
 
   it('renders headings (h1-h6)', () => {
-    const h1 = mountRenderer({ content: `\
+    const h1 = mountRenderer({
+      content: `\
 # Heading 1
-` });
+`,
+    });
     expect(normalizeDom({
       element: h1.element,
       trimWhitespaceNodes: true,
@@ -45,9 +51,11 @@ Hello World
       whitespaceSensitiveTags: undefined,
     })).toBe('<div><h1><span>Heading 1</span></h1></div>');
 
-    const h2 = mountRenderer({ content: `\
+    const h2 = mountRenderer({
+      content: `\
 ## Heading 2
-` });
+`,
+    });
     expect(normalizeDom({
       element: h2.element,
       trimWhitespaceNodes: true,
@@ -55,9 +63,11 @@ Hello World
       whitespaceSensitiveTags: undefined,
     })).toBe('<div><h2><span>Heading 2</span></h2></div>');
 
-    const h6 = mountRenderer({ content: `\
+    const h6 = mountRenderer({
+      content: `\
 ###### Heading 6
-` });
+`,
+    });
     expect(normalizeDom({
       element: h6.element,
       trimWhitespaceNodes: true,
@@ -67,9 +77,11 @@ Hello World
   });
 
   it('renders links', () => {
-    const wrapper = mountRenderer({ content: `\
+    const wrapper = mountRenderer({
+      content: `\
 [Google](https://google.com)
-` });
+`,
+    });
     expect(normalizeDom({
       element: wrapper.element,
       trimWhitespaceNodes: true,
@@ -85,9 +97,11 @@ Hello World
   });
 
   it('renders images', () => {
-    const wrapper = mountRenderer({ content: `\
+    const wrapper = mountRenderer({
+      content: `\
 ![Alt text](https://example.com/image.png)
-` });
+`,
+    });
     // Should render the placeholder now for external URLs
     expect(wrapper.find('.naidan-external-image-placeholder').exists()).toBe(true);
     expect(wrapper.text()).toContain('Alt text');
@@ -102,18 +116,22 @@ Hello World
   });
 
   it('renders raw HTML <img> tags as ExternalImage placeholders', () => {
-    const wrapper = mountRenderer({ content: `\
+    const wrapper = mountRenderer({
+      content: `\
 <img src="https://example.com/html-image.png" alt="HTML Alt Text">
-` });
+`,
+    });
     // Should be intercepted by DOMPurify hook and rendered via MarkdownInline -> ExternalImage
     expect(wrapper.find('.naidan-external-image-placeholder').exists()).toBe(true);
     expect(wrapper.text()).toContain('HTML Alt Text');
   });
 
   it('renders horizontal rules', () => {
-    const wrapper = mountRenderer({ content: `\
+    const wrapper = mountRenderer({
+      content: `\
 ---
-` });
+`,
+    });
     expect(normalizeDom({
       element: wrapper.element,
       trimWhitespaceNodes: true,
@@ -123,9 +141,11 @@ Hello World
   });
 
   it('renders inline code', () => {
-    const wrapper = mountRenderer({ content: `\
+    const wrapper = mountRenderer({
+      content: `\
 Use \`code\` here
-` });
+`,
+    });
     expect(normalizeDom({
       element: wrapper.element,
       trimWhitespaceNodes: true,

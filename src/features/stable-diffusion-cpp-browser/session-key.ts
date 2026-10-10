@@ -14,10 +14,18 @@ export function createImageSessionKeys() {
   function key({ request }: { request: Request }): string {
     const { flashAttention, bf16WeightType, conditioningCacheSize, modelArguments } = request.parameters;
     return JSON.stringify({
-      artifact: request.artifact, baseUrl: request.baseUrl, debug: request.debug ?? 'off',
-      weightResidency: request.weightResidency, gpuBudgetMiB: request.gpuBudgetMiB,
-      flashAttention, bf16WeightType, conditioningCacheSize, modelArguments,
-      models: request.models.map(model => ({ slot: model.slot, path: model.path ?? model.file.name,
+      artifact: request.artifact,
+      baseUrl: request.baseUrl,
+      debug: request.debug ?? 'off',
+      weightResidency: request.weightResidency,
+      gpuBudgetMiB: request.gpuBudgetMiB,
+      flashAttention,
+      bf16WeightType,
+      conditioningCacheSize,
+      modelArguments,
+      models: request.models.map(model => ({
+        slot: model.slot,
+        path: model.path ?? model.file.name,
         // Library identity covers the publication and all companions. Manual
         // File objects with identical names/size/time are still distinct.
         source: model.sourceId ?? [token({ file: model.file }), ...(model.companions ?? []).map(entry => [entry.path, token({ file: entry.file })])],
@@ -32,5 +40,6 @@ export function createImageSessionKeys() {
   }
   return { key };
 }
+
 export const TEST_ONLY = {
 };

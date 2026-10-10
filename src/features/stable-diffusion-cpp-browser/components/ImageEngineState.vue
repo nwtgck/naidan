@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, watch } from 'vue';
-import ImageSettingsSection from './ImageSettingsSection.vue';
+import ImageSettingsSection from '@/features/image-generation/components/ImageSettingsSection.vue';
 import { lazyStrings } from '@/strings';
-import type { ImageGenerationView } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
+import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
 
 const props = defineProps<{ view: ImageGenerationView, active: boolean }>();
 const state = props.view.engineState;
@@ -46,6 +46,7 @@ const summary = computed(() => {
   if (!props.view.modelResident.value) return lazyStrings.ImageEngineState__no_model_loaded();
   return lazyStrings.ImageEngineState__not_observed_yet();
 });
+
 function formatBytes({ bytes }: { bytes: string | number }): string {
   const value = BigInt(bytes);
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
@@ -57,6 +58,7 @@ function formatBytes({ bytes }: { bytes: string | number }): string {
   const amount = Number(value / scale) + Number(value % scale) / Number(scale);
   return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: unit ? 1 : 0 }).format(amount)} ${units[unit]}`;
 }
+
 const observedTime = computed(() => {
   const at = state.snapshot.value?.collectedAt;
   return at === undefined ? undefined : new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' }).format(new Date(at));

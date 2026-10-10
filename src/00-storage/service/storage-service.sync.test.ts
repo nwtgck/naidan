@@ -3,6 +3,7 @@ import { StorageService } from './index';
 import { MemoryStorageProvider } from './memory-storage';
 import { SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '@/constants';
 import { toBinaryObjectId, toChatGroupId, toChatId, toVolumeId } from '@/01-models/ids';
+import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Test-only generic mock keeps Boundary Strings loading out of storage service tests without adding a runtime dependency.
 vi.mock('@/strings', () => ({
@@ -65,6 +66,8 @@ const mockProvider = {
   hasAttachments: vi.fn().mockResolvedValue(false),
   loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
   saveHierarchy: vi.fn().mockResolvedValue(undefined),
+  loadNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
+  saveNaidanRpcRegistry: vi.fn().mockResolvedValue(undefined),
   dump: vi.fn(),
   restore: vi.fn(),
 };
@@ -195,6 +198,25 @@ describe('StorageService Synchronization Wrapper', () => {
     expect(updater).toHaveBeenCalled();
     expect(mockProvider.saveSettings).toHaveBeenCalledWith({ settings });
     expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'settings' }) });
+  });
+
+  it('rejects a settings owner captured before clearing the same provider', async () => {
+    const isCurrent = service.captureSettingsStorage();
+    await service.clearAll();
+    const updater = vi.fn((): Settings => ({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } }));
+    await expect(service.updateSettingsForStorage({ isCurrent, updater })).resolves.toBe('changed');
+    expect(updater).not.toHaveBeenCalled(); expect(mockProvider.saveSettings).not.toHaveBeenCalled();
+  });
+
+  it('checks settings ownership again after a delayed provider read', async () => {
+    const isCurrent = service.captureSettingsStorage();
+    const reading = Promise.withResolvers<Settings | null>();
+    mockProvider.loadSettings.mockReturnValueOnce(reading.promise);
+    const updater = vi.fn((): Settings => ({ ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } }));
+    const saving = service.updateSettingsForStorage({ isCurrent, updater });
+    await vi.waitFor(() => expect(mockProvider.loadSettings).toHaveBeenCalledOnce());
+    await service.init({ type: 'memory' }); reading.resolve(null);
+    await expect(saving).resolves.toBe('changed'); expect(updater).not.toHaveBeenCalled(); expect(mockProvider.saveSettings).not.toHaveBeenCalled();
   });
 
   it('should wrap clearAll with lock and notify migration', async () => {
@@ -416,8 +438,6 @@ describe('StorageService Synchronization Wrapper', () => {
     expect(mockProvider.saveChatMeta).toHaveBeenCalledWith({ meta });
     expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group', id: 'c1' }) });
   });
-
-
 
   it('should preserve saved tool configs during ordinary chat meta updates regardless of the UI persistence mode', async () => {
     const meta = {

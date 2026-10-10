@@ -12,7 +12,7 @@ export const ModelSupportInvestigationSession__feature_check_result = ({ kind, o
     "tool-probe": "强制工具格式",
     "tool-parser": "工具解析器",
     "tool-template": "工具结果模板",
-    "stage": "调查阶段"
+    "stage": "调查阶段",
   };
   const outcomes = {
     "passed": "执行成功",
@@ -22,7 +22,7 @@ export const ModelSupportInvestigationSession__feature_check_result = ({ kind, o
     "not-run": "未执行",
     "not-selected": "未选择",
     "not-recorded": "未记录",
-    "unavailable": "不可用"
+    "unavailable": "不可用",
   };
   return `${features[kind]} · ${outcomes[outcome]} (${context})`;
 };

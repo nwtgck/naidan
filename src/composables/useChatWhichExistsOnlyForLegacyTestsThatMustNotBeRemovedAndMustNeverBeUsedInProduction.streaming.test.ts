@@ -15,7 +15,8 @@ vi.mock('../00-storage/service', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     saveChat: vi.fn(),
-    updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
+    updateChatMeta: vi.fn(),
+    loadChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } }))),
     updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
@@ -93,13 +94,16 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const chat = currentChat.value!;
     const accepted = Promise.withResolvers<void>();
     const finish = Promise.withResolvers<void>();
-    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-      await writer.text({ type: 'text', text: 'Start' });
-      accepted.resolve();
-      await finish.promise;
-      await writer.text({ type: 'text', text: 'End' });
-      return { type: 'finished', next: 'user' };
-    } }));
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Start' });
+        accepted.resolve();
+        await finish.promise;
+        await writer.text({ type: 'text', text: 'End' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
     const sendPromise = sendMessage({ content: 'Hello' });
     try {
       await accepted.promise;
@@ -123,14 +127,17 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
     const started = Promise.withResolvers<void>();
     const finish = Promise.withResolvers<void>();
     const sawAbort = Promise.withResolvers<void>();
-    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({ signal, run: async ({ writer, signal }) => {
-      await writer.text({ type: 'text', text: 'Unfinished' });
-      signal.addEventListener('abort', () => sawAbort.resolve(), { once: true });
-      started.resolve();
-      // A stop request is not permission to release an uncooperative producer early.
-      await finish.promise;
-      return { type: 'interrupted', reason: 'aborted' };
-    } }));
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer, signal }) => {
+        await writer.text({ type: 'text', text: 'Unfinished' });
+        signal.addEventListener('abort', () => sawAbort.resolve(), { once: true });
+        started.resolve();
+        // A stop request is not permission to release an uncooperative producer early.
+        await finish.promise;
+        return { type: 'interrupted', reason: 'aborted' };
+      },
+    }));
     const sendPromise = sendMessage({ content: 'Hello' });
     try {
       await started.promise;

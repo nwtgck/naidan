@@ -7,7 +7,8 @@ describe('searchChatTree', () => {
   const createNode = ({ id, content, replies }: { id: string, content: string, replies: MessageNode[] }): MessageNode => ({
     id: toMessageId({ raw: id }),
     role: 'user',
-    modelId: undefined, lmParameters: undefined,
+    modelId: undefined,
+    lmParameters: undefined,
     parts: [{ type: 'text', text: content, completeness: 'complete' }],
     replies: { items: replies },
     createdAt: Date.now(),
@@ -97,7 +98,8 @@ describe('searchLinearBranch', () => {
   const createNode = ({ id, content, replies }: { id: string, content: string, replies: MessageNode[] }): MessageNode => ({
     id: toMessageId({ raw: id }),
     role: 'user',
-    modelId: undefined, lmParameters: undefined,
+    modelId: undefined,
+    lmParameters: undefined,
     parts: [{ type: 'text', text: content, completeness: 'complete' }],
     replies: { items: replies },
     createdAt: Date.now(),

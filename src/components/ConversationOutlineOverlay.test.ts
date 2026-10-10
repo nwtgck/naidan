@@ -31,8 +31,13 @@ function messageFlowItem({ id, role, content }: {
     key: JSON.stringify([id, 'p1']),
     partContent: content,
     node: {
-      id: toMessageId({ raw: id }), role, createdAt: 0, replies: { items: [] },
-      modelId: undefined, lmParameters: undefined, interruption: undefined,
+      id: toMessageId({ raw: id }),
+      role,
+      createdAt: 0,
+      replies: { items: [] },
+      modelId: undefined,
+      lmParameters: undefined,
+      interruption: undefined,
       parts: [{ type: 'text', text: content, completeness: 'complete' }],
     },
     mode: 'content',
@@ -240,26 +245,38 @@ describe('ConversationOutlineOverlay', () => {
   });
 });
 
-
 function structuredFlow({ parts }: { parts: AssistantMessageNode['parts'] }) {
   const node: AssistantMessageNode = {
-    id: toMessageId({ raw: 'parts-assistant' }), role: 'assistant', createdAt: 0,
-    modelId: undefined, lmParameters: undefined, interruption: { type: 'cancelled' },
-    parts, replies: { items: [] },
+    id: toMessageId({ raw: 'parts-assistant' }),
+    role: 'assistant',
+    createdAt: 0,
+    modelId: undefined,
+    lmParameters: undefined,
+    interruption: { type: 'cancelled' },
+    parts,
+    replies: { items: [] },
   };
-  const chat: Chat = { id: toChatId({ raw: 'parts-chat' }), title: 'Parts', createdAt: 0, updatedAt: 0,
-    debugEnabled: false, root: { items: [node] }, currentLeafId: node.id,
+  const chat: Chat = {
+    id: toChatId({ raw: 'parts-chat' }),
+    title: 'Parts',
+    createdAt: 0,
+    updatedAt: 0,
+    debugEnabled: false,
+    root: { items: [node] },
+    currentLeafId: node.id,
   };
   return { node, chat, ...useChatDisplayFlow({ getToolCallDrafts: undefined, chat: computed(() => chat), isProcessing: () => false }) };
 }
 
 describe('outline navigation over message parts', () => {
   it('keeps one navigation row and one peek for several text parts of the same assistant', async () => {
-    const { node, chat, chatFlow } = structuredFlow({ parts: [
-      { type: 'text', text: 'First ', completeness: 'complete' },
-      { type: 'reasoning', text: 'Do not put this in the outline.', completeness: 'complete' },
-      { type: 'text', text: 'second', completeness: 'partial' },
-    ] });
+    const { node, chat, chatFlow } = structuredFlow({
+      parts: [
+        { type: 'text', text: 'First ', completeness: 'complete' },
+        { type: 'reasoning', text: 'Do not put this in the outline.', completeness: 'complete' },
+        { type: 'text', text: 'second', completeness: 'partial' },
+      ],
+    });
     const before = structuredClone(node);
     const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: chat.id, visibility: 'visible', flowItems: chatFlow.value } });
     expect(wrapper.findAll('[data-testid="conversation-outline-item"]')).toHaveLength(1);
@@ -303,9 +320,11 @@ describe('outline navigation over message parts', () => {
     const raw = `<think>Displayed separately</think> A
 
 B `;
-    const { node, chat, chatFlow } = structuredFlow({ parts: [
-      { type: 'text', text: raw, completeness: 'partial' },
-    ] });
+    const { node, chat, chatFlow } = structuredFlow({
+      parts: [
+        { type: 'text', text: raw, completeness: 'partial' },
+      ],
+    });
     const before = structuredClone(node);
     const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: chat.id, visibility: 'visible', flowItems: chatFlow.value } });
     expect(wrapper.text()).toContain('A B');
@@ -319,29 +338,38 @@ B `);
   });
 
   it('keeps identical text in distinct messages as separate navigation rows', () => {
-    const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: toChatId({ raw: 'c' }), visibility: 'visible', flowItems: [
-      messageFlowItem({ id: 'first', role: 'assistant', content: 'Same' }),
-      messageFlowItem({ id: 'second', role: 'assistant', content: 'Same' }),
-    ] } });
+    const wrapper = mount(ConversationOutlineOverlay, {
+      props: {
+        chatId: toChatId({ raw: 'c' }),
+        visibility: 'visible',
+        flowItems: [
+          messageFlowItem({ id: 'first', role: 'assistant', content: 'Same' }),
+          messageFlowItem({ id: 'second', role: 'assistant', content: 'Same' }),
+        ],
+      },
+    });
     expect(wrapper.findAll('[data-testid="conversation-outline-item"]')).toHaveLength(2);
     wrapper.unmount();
   });
 });
 
-
 describe('outline identity during generation and history changes', () => {
   it('retains the row and its open peek when an earlier empty part starts emitting text', async () => {
-    const initial = structuredFlow({ parts: [
-      { type: 'text', text: '', completeness: 'partial' },
-      { type: 'text', text: 'B', completeness: 'complete' },
-    ] });
+    const initial = structuredFlow({
+      parts: [
+        { type: 'text', text: '', completeness: 'partial' },
+        { type: 'text', text: 'B', completeness: 'complete' },
+      ],
+    });
     const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: initial.chat.id, visibility: 'visible', flowItems: initial.chatFlow.value } });
     const row = wrapper.find('[data-testid="conversation-outline-item"]').element;
     await wrapper.find('[data-testid="conversation-outline-peek-button"]').trigger('click');
-    const updated = structuredFlow({ parts: [
-      { type: 'text', text: 'A ', completeness: 'partial' },
-      { type: 'text', text: 'B', completeness: 'complete' },
-    ] });
+    const updated = structuredFlow({
+      parts: [
+        { type: 'text', text: 'A ', completeness: 'partial' },
+        { type: 'text', text: 'B', completeness: 'complete' },
+      ],
+    });
     await wrapper.setProps({ flowItems: updated.chatFlow.value });
     expect(wrapper.findAll('[data-testid="conversation-outline-item"]')).toHaveLength(1);
     expect(wrapper.find('[data-testid="conversation-outline-item"]').element).toBe(row);
@@ -351,10 +379,12 @@ describe('outline identity during generation and history changes', () => {
   });
 
   it('keeps an empty cancelled assistant navigable without treating partial as live generation', () => {
-    const { node, chat, chatFlow } = structuredFlow({ parts: [
-      { type: 'text', text: '', completeness: 'partial' },
-      { type: 'text', text: '', completeness: 'complete' },
-    ] });
+    const { node, chat, chatFlow } = structuredFlow({
+      parts: [
+        { type: 'text', text: '', completeness: 'partial' },
+        { type: 'text', text: '', completeness: 'complete' },
+      ],
+    });
     const before = structuredClone(node);
     const wrapper = mount(ConversationOutlineOverlay, { props: { chatId: chat.id, visibility: 'visible', flowItems: chatFlow.value } });
     expect(wrapper.findAll('[data-testid="conversation-outline-item"]')).toHaveLength(1);

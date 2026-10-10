@@ -217,7 +217,6 @@ describe('runCachedRevisionAcceptanceOrchestration', () => {
     });
   });
 
-
   it('lets explicit Download skip a missing current exact cache and reuse a complete legacy main cache', async () => {
     const cached = inventory([
       revision({ revision: 'main', kind: 'legacy-main', lastModified: 10 }),

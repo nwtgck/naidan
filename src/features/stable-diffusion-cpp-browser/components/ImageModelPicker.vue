@@ -4,7 +4,7 @@ import { CheckIcon, ChevronDownIcon, SearchIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import type { ImageModelChoice } from '@/features/stable-diffusion-cpp-browser/library-view';
-import ImageSettingsSection from './ImageSettingsSection.vue';
+import ImageSettingsSection from '@/features/image-generation/components/ImageSettingsSection.vue';
 
 // Pure local choices: opening/searching this picker never contacts a provider,
 // reads model files, or changes the chat endpoint's settings.
@@ -35,6 +35,7 @@ const rows = computed(() => [
   ...visible.value.map(choice => ({ value: choice.id, choice, disabled: choice.status === 'incompatible' })),
 ]);
 const highlightedRow = computed(() => rows.value[highlighted.value]);
+
 function status({ choice }: { choice: ImageModelChoice }): string | undefined {
   switch (choice.status) {
   case 'matching': return lazyStrings.stableDiffusionCppBrowser__structural_match();
@@ -43,6 +44,7 @@ function status({ choice }: { choice: ImageModelChoice }): string | undefined {
   default: { const exhaustive: never = choice.status; throw new Error(String(exhaustive)); }
   }
 }
+
 function place(): void {
   if (!trigger.value) return;
   const rect = trigger.value.getBoundingClientRect();
@@ -59,10 +61,12 @@ function place(): void {
     zIndex: 9999,
   };
 }
+
 function close({ restoreFocus }: { restoreFocus: boolean }): void {
   open.value = false;
   if (restoreFocus && props.active && !props.disabled) trigger.value?.focus();
 }
+
 async function show({ last }: { last: boolean }): Promise<void> {
   if (props.disabled || !props.active) return;
   search.value = '';
@@ -76,10 +80,12 @@ async function show({ last }: { last: boolean }): Promise<void> {
   input.value?.focus();
   scrollHighlighted();
 }
+
 function toggle(): void {
   if (open.value) close({ restoreFocus: false });
   else void show({ last: false });
 }
+
 function scrollHighlighted(): void {
   const option = document.getElementById(`${id}-option-${highlighted.value}`);
   if (!option || !list.value) return;
@@ -88,6 +94,7 @@ function scrollHighlighted(): void {
   if (item.top < bounds.top) list.value.scrollTop -= bounds.top - item.top;
   else if (item.bottom > bounds.bottom) list.value.scrollTop += item.bottom - bounds.bottom;
 }
+
 function move({ direction }: { direction: -1 | 1 }): void {
   for (let count = 1; count <= rows.value.length; count++) {
     const index = (highlighted.value + count * direction + rows.value.length) % rows.value.length;
@@ -98,17 +105,20 @@ function move({ direction }: { direction: -1 | 1 }): void {
     }
   }
 }
+
 function choose({ value }: { value: string }): void {
   if (props.disabled || !props.active || !open.value) return;
   if (value && !props.choices.some(choice => choice.id === value && choice.status !== 'incompatible')) return;
   emit('update:modelValue', value);
   close({ restoreFocus: true });
 }
+
 function triggerKey({ event }: { event: KeyboardEvent }): void {
   if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
   event.preventDefault();
   void show({ last: event.key === 'ArrowUp' });
 }
+
 function keydown({ event }: { event: KeyboardEvent }): void {
   if (event.isComposing) return;
   switch (event.key) {
@@ -124,10 +134,12 @@ function keydown({ event }: { event: KeyboardEvent }): void {
   case 'Tab': close({ restoreFocus: true }); break; // Continue natural tab order from the trigger.
   }
 }
+
 function outside({ event }: { event: Event }): void {
   if (!open.value || !(event.target instanceof Node)) return;
   if (!trigger.value?.contains(event.target) && !popup.value?.contains(event.target)) close({ restoreFocus: false });
 }
+
 useEventTargetListener(document, 'pointerdown', event => outside({ event }), true);
 useEventTargetListener(document, 'focusin', event => outside({ event }));
 useEventTargetListener(document, 'toggle', event => {

@@ -1,0 +1,1 @@
+export const ImagePendingHistory__save_without_generating_again = (): string => "Speichern Sie die ursprünglichen Bilder erneut, ohne sie neu zu erzeugen. Nicht gespeicherte Bilder gehen beim Schließen dieses Tabs verloren.";

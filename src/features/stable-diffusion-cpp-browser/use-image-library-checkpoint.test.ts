@@ -8,10 +8,13 @@ import type { LocalImageRepository } from './logic/repository-store';
 import { safetensorsFixture, sdCheckpointTensors, sdVaeTensors, fluxVaeTensors } from './test-utils/weights';
 
 const scopes: ReturnType<typeof effectScope>[] = [];
+
 afterEach(() => {
   for (const scope of scopes.splice(0)) scope.stop();
 });
+
 const recipe = imageModelRecipes.find(recipe => recipe.id === 'sdxl-base-1.0')!;
+
 // Synthetic headers exercise composition and original-file ownership, not real
 // trained-weight compatibility or browser inference quality.
 function repositories(): LocalImageRepository[] {
@@ -20,14 +23,25 @@ function repositories(): LocalImageRepository[] {
     return { id: `huggingface.co/${entry.repository}/resolve/main`, name: entry.repository, files: [{ path: entry.path, file }] };
   });
 }
+
 function harness({ initial }: { initial: LocalImageRepository[] }) {
   let entries = initial;
   const scope = effectScope(); scopes.push(scope);
   const download = vi.fn(async (): Promise<void> => {});
-  const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
-    list: async () => entries, scan: scanImageRepositories, import: vi.fn(), download,
-  } }))!;
-  return { library, download,
+  const library = scope.run(() => useImageLibrary({
+    downloadsBlocked: () => false,
+    blocked: () => false,
+    onSelection() {},
+    dependencies: {
+      list: async () => entries,
+      scan: scanImageRepositories,
+      import: vi.fn(),
+      download,
+    },
+  }))!;
+  return {
+    library,
+    download,
     update({ repositories }: { repositories: LocalImageRepository[] }) {
       entries = repositories;
     },

@@ -2,11 +2,13 @@ import { z } from 'zod';
 import { productionLoadReceiptSchema, type ProductionLoadReceipt } from '@/features/transformers-js/runtime/production-load-receipt';
 
 export const productionLoadReceiptOwnerSchema = z.object({
-  runId: z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/u), workerEpoch: z.number().int().min(1).max(8),
+  runId: z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/u),
+  workerEpoch: z.number().int().min(1).max(8),
 }).strict();
 export type ProductionLoadReceiptOwner = z.infer<typeof productionLoadReceiptOwnerSchema>;
 export const productionLoadObservationSchema = z.object({
-  format: z.literal('production-load-observation-v1'), owner: productionLoadReceiptOwnerSchema,
+  format: z.literal('production-load-observation-v1'),
+  owner: productionLoadReceiptOwnerSchema,
   loadOrdinal: z.number().int().positive().safe(),
   outcome: z.discriminatedUnion('status', [
     z.object({ status: z.literal('accepted'), receipt: productionLoadReceiptSchema }).strict(),
@@ -38,7 +40,10 @@ export function createProductionLoadReceiptSlot() {
       })();
       active++;
       observation = parsed?.success && active === 1 ? {
-        format: 'production-load-observation-v1', owner: parsed.data, loadOrdinal: ordinal, outcome: { status: 'loading' },
+        format: 'production-load-observation-v1',
+        owner: parsed.data,
+        loadOrdinal: ordinal,
+        outcome: { status: 'loading' },
       } : undefined;
       let finished = false;
       return {

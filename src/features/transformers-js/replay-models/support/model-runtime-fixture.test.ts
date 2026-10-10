@@ -31,9 +31,12 @@ it('reads identity assets as fresh browser byte arrays without changing the orig
   const bytes = new TextEncoder().encode('{"model_type":"fixture"}');
   const directory = resourceDirectory({ asset: 'config.json', bytes });
   const resource = {
-    path: 'config.json', status: 'recorded' as const,
-    asset: 'config.json', encoding: 'identity' as const,
-    byteLength: bytes.byteLength, sha256: sha256({ bytes }),
+    path: 'config.json',
+    status: 'recorded' as const,
+    asset: 'config.json',
+    encoding: 'identity' as const,
+    byteLength: bytes.byteLength,
+    sha256: sha256({ bytes }),
   };
   const first = TEST_ONLY.readRecordedResource({ directory, resource });
   expect(first).toEqual(bytes);
@@ -48,9 +51,12 @@ it('verifies the decoded bytes of a losslessly compressed asset', () => {
   const actual = TEST_ONLY.readRecordedResource({
     directory,
     resource: {
-      path: 'tokenizer.json', status: 'recorded',
-      asset: 'tokenizer.json.gz', encoding: 'gzip',
-      byteLength: bytes.byteLength, sha256: sha256({ bytes }),
+      path: 'tokenizer.json',
+      status: 'recorded',
+      asset: 'tokenizer.json.gz',
+      encoding: 'gzip',
+      byteLength: bytes.byteLength,
+      sha256: sha256({ bytes }),
     },
   });
   expect(actual.constructor).toBe(Uint8Array);
@@ -65,9 +71,12 @@ it('rejects same-length corrupted data instead of replaying it', () => {
   expect(() => TEST_ONLY.readRecordedResource({
     directory,
     resource: {
-      path: 'tokenizer.json', status: 'recorded',
-      asset: 'tokenizer.json', encoding: 'identity',
-      byteLength: original.byteLength, sha256: sha256({ bytes: original }),
+      path: 'tokenizer.json',
+      status: 'recorded',
+      asset: 'tokenizer.json',
+      encoding: 'identity',
+      byteLength: original.byteLength,
+      sha256: sha256({ bytes: original }),
     },
   })).toThrow('Invalid checked-in original bytes: tokenizer.json');
 });
@@ -78,9 +87,12 @@ it('rejects a size disagreement even when the checksum describes the stored byte
   expect(() => TEST_ONLY.readRecordedResource({
     directory,
     resource: {
-      path: 'config.json', status: 'recorded',
-      asset: 'config.json', encoding: 'identity',
-      byteLength: bytes.byteLength + 1, sha256: sha256({ bytes }),
+      path: 'config.json',
+      status: 'recorded',
+      asset: 'config.json',
+      encoding: 'identity',
+      byteLength: bytes.byteLength + 1,
+      sha256: sha256({ bytes }),
     },
   })).toThrow('Invalid checked-in original bytes: config.json');
 });
@@ -92,9 +104,12 @@ it('rejects a truncated gzip asset rather than producing an incomplete vocabular
   expect(() => TEST_ONLY.readRecordedResource({
     directory,
     resource: {
-      path: 'tokenizer.json', status: 'recorded',
-      asset: 'tokenizer.json.gz', encoding: 'gzip',
-      byteLength: bytes.byteLength, sha256: sha256({ bytes }),
+      path: 'tokenizer.json',
+      status: 'recorded',
+      asset: 'tokenizer.json.gz',
+      encoding: 'gzip',
+      byteLength: bytes.byteLength,
+      sha256: sha256({ bytes }),
     },
   })).toThrow();
 });
@@ -105,9 +120,12 @@ it('bounds gzip expansion by the declared decoded length', () => {
   expect(() => TEST_ONLY.readRecordedResource({
     directory,
     resource: {
-      path: 'tokenizer.json', status: 'recorded',
-      asset: 'tokenizer.json.gz', encoding: 'gzip',
-      byteLength: 32, sha256: sha256({ bytes }),
+      path: 'tokenizer.json',
+      status: 'recorded',
+      asset: 'tokenizer.json.gz',
+      encoding: 'gzip',
+      byteLength: 32,
+      sha256: sha256({ bytes }),
     },
   })).toThrow(expect.objectContaining({ code: 'ERR_BUFFER_TOO_LARGE' }));
 });

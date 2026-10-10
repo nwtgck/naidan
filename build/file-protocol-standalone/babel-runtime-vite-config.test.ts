@@ -134,9 +134,6 @@ describe('file protocol standalone Vite config Babel interop', () => {
     expect(bundle['assets/probe.js'].code).toContain('_context.import("./dependency.js")');
   });
 
-
-
-
   it('uses parsed HTML semantics for an unquoted, reordered Vite application entry', async () => {
     const { generateBundle } = await createSystemJsOutputHarness();
     const bundle = {
@@ -204,12 +201,21 @@ describe('file protocol standalone Vite config Babel interop', () => {
     const { generateBundle } = await createSystemJsOutputHarness();
     const bundle = {
       'index.html': {
-        type: 'asset', fileName: 'index.html',
+        type: 'asset',
+        fileName: 'index.html',
         source: '<!doctype html><html><head></head><body><script type=module src=./assets/index.js></script></body></html>',
       },
       'assets/index.js': {
-        type: 'chunk', fileName: 'assets/index.js', name: 'index', isEntry: true, facadeModuleId: '/tmp/index.ts',
-        imports: [], dynamicImports: [], modules: { '/tmp/index.ts': {} }, code: 'export {};', map: null,
+        type: 'chunk',
+        fileName: 'assets/index.js',
+        name: 'index',
+        isEntry: true,
+        facadeModuleId: '/tmp/index.ts',
+        imports: [],
+        dynamicImports: [],
+        modules: { '/tmp/index.ts': {} },
+        code: 'export {};',
+        map: null,
         viteMetadata: { importedCss: new Set(['assets/empty.css']), importedAssets: ['assets/empty.css'] },
       },
       'assets/empty.css': { type: 'asset', fileName: 'assets/empty.css', source: '' },
@@ -222,12 +228,21 @@ describe('file protocol standalone Vite config Babel interop', () => {
     const { generateBundle } = await createSystemJsOutputHarness();
     const bundle = {
       'index.html': {
-        type: 'asset', fileName: 'index.html',
+        type: 'asset',
+        fileName: 'index.html',
         source: '<!doctype html><html><head></head><body><script type=module src=./assets/index.js></script></body></html>',
       },
       'assets/index.js': {
-        type: 'chunk', fileName: 'assets/index.js', name: 'index', isEntry: true, facadeModuleId: '/tmp/index.ts',
-        imports: [], dynamicImports: [], modules: { '/tmp/index.ts': {} }, code: 'export {};', map: null,
+        type: 'chunk',
+        fileName: 'assets/index.js',
+        name: 'index',
+        isEntry: true,
+        facadeModuleId: '/tmp/index.ts',
+        imports: [],
+        dynamicImports: [],
+        modules: { '/tmp/index.ts': {} },
+        code: 'export {};',
+        map: null,
         viteMetadata: { importedCss: new Set(['assets/index.css']), importedAssets: ['unused-in-this-path'] },
       },
       'assets/index.css': { type: 'asset', fileName: 'assets/index.css', source: '.index {}' },
@@ -242,12 +257,21 @@ describe('file protocol standalone Vite config Babel interop', () => {
     const { generateBundle } = await createSystemJsOutputHarness();
     const bundle = {
       'index.html': {
-        type: 'asset', fileName: 'index.html',
+        type: 'asset',
+        fileName: 'index.html',
         source: '<!doctype html><html><head></head><body><script type=module src=./assets/index.js></script></body></html>',
       },
       'assets/index.js': {
-        type: 'chunk', fileName: 'assets/index.js', name: 'index', isEntry: true, facadeModuleId: '/tmp/index.ts',
-        imports: [], dynamicImports: [], modules: { '/tmp/index.ts': {} }, code: 'export {};', map: null,
+        type: 'chunk',
+        fileName: 'assets/index.js',
+        name: 'index',
+        isEntry: true,
+        facadeModuleId: '/tmp/index.ts',
+        imports: [],
+        dynamicImports: [],
+        modules: { '/tmp/index.ts': {} },
+        code: 'export {};',
+        map: null,
         viteMetadata: { importedCss: new Set(['assets/empty.css']), importedAssets: new Set([42]) },
       },
       'assets/empty.css': { type: 'asset', fileName: 'assets/empty.css', source: '' },
@@ -555,7 +579,6 @@ describe('file protocol standalone Vite config Babel interop', () => {
     expect(html).not.toContain('rel="modulepreload"');
   });
 
-
   it('preserves Vite importedCss insertion order for the initial static closure without eager dynamic CSS', async () => {
     const { generateBundle } = await createSystemJsOutputHarness();
     const bundle = {
@@ -633,8 +656,16 @@ describe('file protocol standalone Vite config Babel interop', () => {
         source: '<!doctype html><html><head><link rel=stylesheet media=print href=./assets/base.css></head><body><script type=module src=./assets/index.js></script></body></html>',
       },
       'assets/index.js': {
-        type: 'chunk', fileName: 'assets/index.js', name: 'index', isEntry: true, facadeModuleId: '/tmp/index.ts',
-        imports: [], dynamicImports: [], modules: { '/tmp/index.ts': {} }, code: 'export {};', map: null,
+        type: 'chunk',
+        fileName: 'assets/index.js',
+        name: 'index',
+        isEntry: true,
+        facadeModuleId: '/tmp/index.ts',
+        imports: [],
+        dynamicImports: [],
+        modules: { '/tmp/index.ts': {} },
+        code: 'export {};',
+        map: null,
         viteMetadata: { importedCss: new Set(['assets/base.css']) },
       },
       'assets/base.css': { type: 'asset', fileName: 'assets/base.css', source: '.base {}' },
@@ -654,8 +685,16 @@ describe('file protocol standalone Vite config Babel interop', () => {
         source: '<!doctype html><html><head></head><body><link rel=stylesheet href=./assets/base.css><script type=module src=./assets/index.js></script></body></html>',
       },
       'assets/index.js': {
-        type: 'chunk', fileName: 'assets/index.js', name: 'index', isEntry: true, facadeModuleId: '/tmp/index.ts',
-        imports: [], dynamicImports: [], modules: { '/tmp/index.ts': {} }, code: 'export {};', map: null,
+        type: 'chunk',
+        fileName: 'assets/index.js',
+        name: 'index',
+        isEntry: true,
+        facadeModuleId: '/tmp/index.ts',
+        imports: [],
+        dynamicImports: [],
+        modules: { '/tmp/index.ts': {} },
+        code: 'export {};',
+        map: null,
         viteMetadata: { importedCss: new Set(['assets/base.css']) },
       },
       'assets/base.css': { type: 'asset', fileName: 'assets/base.css', source: '.base {}' },
@@ -787,6 +826,4 @@ describe('file protocol standalone Vite config Babel interop', () => {
 
     await expect(generateBundle(bundle)).rejects.toThrow('Unexpected Vite importedCss metadata entry for assets/index.js: 42');
   });
-
-
 });

@@ -185,7 +185,6 @@ single
     expect(charsResult.result.exitCode).toBe(0);
   });
 
-
   it('matches GNU byte-oriented character selection for multibyte input', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'cut -c1-2',
@@ -441,7 +440,6 @@ f1
     expect(suppress.result.exitCode).toBe(1);
   });
 
-
   it('preserves arbitrary bytes in selected fields', async () => {
     await writeFile({
       path: 'input',
@@ -584,7 +582,6 @@ f1
     expect(complemented.stderr.text).toBe('');
     expect(complemented.result.exitCode).toBe(0);
   });
-
 });
 
 describe('wesh cut field byte compatibility', () => {

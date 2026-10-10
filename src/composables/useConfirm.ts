@@ -22,7 +22,7 @@ const confirmIcon = shallowRef<Component | undefined>(undefined); // Use shallow
 let resolvePromise: ReturnType<typeof Promise.withResolvers<boolean>>['resolve'] | undefined;
 
 export function useConfirm() {
-  const showConfirm = async ({ title, message, confirmButtonText, cancelButtonText, confirmButtonVariant: buttonVariant, icon, details }: ConfirmOptions): Promise<boolean> => {
+  const showConfirm = async ({ title, message, confirmButtonText, cancelButtonText, confirmButtonVariant: buttonVariant, icon, details }: { title?: ConfirmOptions['title'], message?: ConfirmOptions['message'], confirmButtonText?: ConfirmOptions['confirmButtonText'], cancelButtonText?: ConfirmOptions['cancelButtonText'], confirmButtonVariant?: ConfirmOptions['confirmButtonVariant'], icon?: ConfirmOptions['icon'], details?: ConfirmOptions['details'] }): Promise<boolean> => {
     const resolvedTitle = title || await ensureStrings.SHARED__confirm();
     const resolvedConfirmButtonText = confirmButtonText || await ensureStrings.SHARED__confirm();
     const resolvedCancelButtonText = cancelButtonText || await ensureStrings.SHARED__cancel();

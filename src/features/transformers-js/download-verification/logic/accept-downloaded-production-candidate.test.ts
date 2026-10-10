@@ -12,6 +12,7 @@ const CANDIDATE = { device: 'webgpu', dtype: 'q4f16' } as const;
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
 afterEach(() => vi.restoreAllMocks());
 
 describe('acceptDownloadedProductionCandidate', () => {
@@ -30,7 +31,10 @@ describe('acceptDownloadedProductionCandidate', () => {
         entered.resolve(); await release.promise; now = 123_000;
       }),
     });
-    const running = acceptDownloadedProductionCandidate({ modelId: 'org/model', resolvedRevision: REVISION, candidate: CANDIDATE,
+    const running = acceptDownloadedProductionCandidate({
+      modelId: 'org/model',
+      resolvedRevision: REVISION,
+      candidate: CANDIDATE,
       onTiming: ({ observation }: { observation: unknown }) => {
         observations.push(observation);
       },
@@ -52,7 +56,10 @@ describe('acceptDownloadedProductionCandidate', () => {
         throw cleanupFailure;
       }),
     });
-    const running = acceptDownloadedProductionCandidate({ modelId: 'org/model', resolvedRevision: REVISION, candidate: CANDIDATE,
+    const running = acceptDownloadedProductionCandidate({
+      modelId: 'org/model',
+      resolvedRevision: REVISION,
+      candidate: CANDIDATE,
       onTiming: ({ observation }: { observation: unknown }) => {
         observations.push(observation); throw new Error('observer failure');
       },
@@ -89,8 +96,6 @@ describe('acceptDownloadedProductionCandidate', () => {
     }));
     expect(dispose).toHaveBeenCalledOnce();
   });
-
-
 
   it('does not infer successful physical retirement from an error mentioning remote release', async () => {
     const disposalFailure = new Error('remote release failed');
@@ -130,7 +135,6 @@ describe('acceptDownloadedProductionCandidate', () => {
     expect(result.error?.message).not.toContain('secret');
     expect(dispose).toHaveBeenCalledOnce();
   });
-
 
   it('treats a cache-only missing artifact as a verification failure instead of a runtime rejection', async () => {
     const dispose = vi.fn(async () => {});

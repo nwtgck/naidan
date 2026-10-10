@@ -8,11 +8,24 @@ import { STORAGE_KEY_PREFIX } from '@/constants';
 
 function user({ id, replies }: { id: string, replies: MessageNode[] }): UserMessageNode {
   return {
-    id: toMessageId({ raw: id }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined,
-    parts: [{ type: 'attachment', attachment: {
-      id: toAttachmentId({ raw: `${id}-attachment` }), binaryObjectId: toBinaryObjectId({ raw: `${id}-binary` }),
-      originalName: `${id}.txt`, mimeType: 'text/plain', size: 1, uploadedAt: 1, status: 'persisted',
-    } }], replies: { items: replies },
+    id: toMessageId({ raw: id }),
+    role: 'user',
+    createdAt: 1,
+    modelId: undefined,
+    lmParameters: undefined,
+    parts: [{
+      type: 'attachment',
+      attachment: {
+        id: toAttachmentId({ raw: `${id}-attachment` }),
+        binaryObjectId: toBinaryObjectId({ raw: `${id}-binary` }),
+        originalName: `${id}.txt`,
+        mimeType: 'text/plain',
+        size: 1,
+        uploadedAt: 1,
+        status: 'persisted',
+      },
+    }],
+    replies: { items: replies },
   };
 }
 

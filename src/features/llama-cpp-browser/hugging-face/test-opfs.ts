@@ -9,10 +9,13 @@ type MemoryDirectory = {
   removeEntry: FileSystemDirectoryHandle['removeEntry'],
   entries: () => AsyncGenerator<[string, MemoryDirectory | ReturnType<typeof memoryFile>]>,
 };
+
 export function memoryDirectory({ name }: { name: string }): MemoryDirectory {
   const children = new Map<string, ReturnType<typeof memoryDirectory> | ReturnType<typeof memoryFile>>();
   return {
-    kind: 'directory' as const, name, children,
+    kind: 'directory' as const,
+    name,
+    children,
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Test implementation of the native OPFS API.
     async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<ReturnType<typeof memoryDirectory>> {
       let entry = children.get(name); if (!entry && options?.create) {
@@ -32,7 +35,6 @@ export function memoryDirectory({ name }: { name: string }): MemoryDirectory {
       }
     },
 
-
     async removeEntry(name: string, options?: { recursive?: boolean }) {
       const entry = children.get(name);
       if (entry?.kind === 'directory' && entry.children.size && !options?.recursive) throw new DOMException('not empty', 'InvalidModificationError');
@@ -43,10 +45,12 @@ export function memoryDirectory({ name }: { name: string }): MemoryDirectory {
     },
   };
 }
+
 function memoryFile({ name }: { name: string }) {
   let bytes = new Uint8Array(); let opened = false;
   return {
-    kind: 'file' as const, name,
+    kind: 'file' as const,
+    name,
     async getFile() {
       return new NodeFile([bytes], name, { lastModified: 123 });
     },
@@ -54,18 +58,22 @@ function memoryFile({ name }: { name: string }) {
       // Local imports stream binary chunks; journals write strings. In both
       // cases the destination stays unchanged until close, just like OPFS.
       const parts: Uint8Array[] = [];
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Test implementation of the native OPFS API.
-      return { async write(value: string | Uint8Array) {
-        parts.push(typeof value === 'string' ? new TextEncoder().encode(value) : value.slice());
-      }, async close() {
-        bytes = new Uint8Array(parts.reduce((size, part) => size + part.byteLength, 0));
-        let offset = 0;
-        for (const part of parts) {
-          bytes.set(part, offset); offset += part.byteLength;
-        }
-      }, async abort() {
-        parts.length = 0;
-      } };
+      return {
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Test implementation of the native OPFS API.
+        async write(value: string | Uint8Array) {
+          parts.push(typeof value === 'string' ? new TextEncoder().encode(value) : value.slice());
+        },
+        async close() {
+          bytes = new Uint8Array(parts.reduce((size, part) => size + part.byteLength, 0));
+          let offset = 0;
+          for (const part of parts) {
+            bytes.set(part, offset); offset += part.byteLength;
+          }
+        },
+        async abort() {
+          parts.length = 0;
+        },
+      };
     },
     async createSyncAccessHandle() {
       if (opened) throw new Error('locked'); opened = true;
@@ -81,15 +89,18 @@ function memoryFile({ name }: { name: string }) {
         write(value: Uint8Array, { at }: { at: number }) {
           const next = new Uint8Array(Math.max(bytes.length, at + value.length)); next.set(bytes); next.set(value, at); bytes = next; return value.length;
         },
-        flush() {}, close() {
+        flush() {},
+        close() {
           opened = false;
         },
       };
     },
   };
 }
+
 export function ggufBytes(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(128); bytes.set([71, 71, 85, 70, 3, 0, 0, 0]); return bytes;
 }
+
 export const TEST_ONLY = {
 };

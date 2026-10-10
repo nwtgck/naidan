@@ -18,8 +18,12 @@ import type { OwnedReplayCacheControl } from '@/features/transformers-js/replay-
 const modelId = 'onnx-community/gpt-oss-20b-ONNX';
 const caseId = 'natural-tool-representative';
 const parameters: LmParameters = {
-  temperature: 0, topP: 1, maxCompletionTokens: 128,
-  presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined,
+  temperature: 0,
+  topP: 1,
+  maxCompletionTokens: 128,
+  presencePenalty: undefined,
+  frequencyPenalty: undefined,
+  stop: undefined,
   reasoning: { effort: undefined },
 };
 const catalog = {
@@ -37,7 +41,10 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
   let cache: OwnedReplayCacheControl | undefined;
   const nativeInputs: { ids: bigint[], attentionMask: bigint[], reusedCache: boolean }[] = [];
   const replay = await createProviderRequestReplayWithOwnedCacheControl({
-    catalog, caseIds: [caseId], artifactPaths, imagePlatform: undefined,
+    catalog,
+    caseIds: [caseId],
+    artifactPaths,
+    imagePlatform: undefined,
     createNativeController: () => ({
       cacheForInvocation({ localOrdinal, call }) {
         const { input_ids, attention_mask, past_key_values } = call.options;
@@ -76,10 +83,16 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
     }),
   });
   const user: UserMessageNode = {
-    id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 1,
-    modelId: undefined, lmParameters: undefined,
-    parts: [{ type: 'text', completeness: 'complete',
-      text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.' }],
+    id: toMessageId({ raw: 'user' }),
+    role: 'user',
+    createdAt: 1,
+    modelId: undefined,
+    lmParameters: undefined,
+    parts: [{
+      type: 'text',
+      completeness: 'complete',
+      text: 'Use lookup_weather for Tokyo, then give a short answer based on the tool result.',
+    }],
     replies: { items: [] },
   };
   const content: ChatContent = { currentLeafId: user.id, root: { items: [user] } };
@@ -91,30 +104,50 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
     content.currentLeafId = node.id;
   }
   const execute = vi.fn<Tool['execute']>(async () => ({
-    status: 'success', content: '{"temperatureC":20,"condition":"clear"}',
+    status: 'success',
+    content: '{"temperatureC":20,"condition":"clear"}',
   }));
   const tool: Tool = {
-    name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-    parametersSchema: z.object({ city: z.string() }), execute,
+    name: 'lookup_weather',
+    description: 'Return deterministic weather fixture data.',
+    parametersSchema: z.object({ city: z.string() }),
+    execute,
   };
   try {
     replay.beginNativeRequest({ caseId, parameters });
     const outcome = await generateChatTurn({
       onToolCallDraftsChange: undefined,
-      provider: replay.provider, model: modelId, parameters, tools: [tool],
-      readBinaryObject: undefined, debug: undefined, abortController: new AbortController(), approvalContext: undefined,
+      provider: replay.provider,
+      model: modelId,
+      parameters,
+      tools: [tool],
+      readBinaryObject: undefined,
+      debug: undefined,
+      abortController: new AbortController(),
+      approvalContext: undefined,
       createAssistantMessage: () => {
         const node: AssistantMessageNode = {
-          id: toMessageId({ raw: `message_${history.length}` }), role: 'assistant', createdAt: history.length,
-          modelId, lmParameters: parameters, interruption: undefined, parts: [], replies: { items: [] },
+          id: toMessageId({ raw: `message_${history.length}` }),
+          role: 'assistant',
+          createdAt: history.length,
+          modelId,
+          lmParameters: parameters,
+          interruption: undefined,
+          parts: [],
+          replies: { items: [] },
         };
         append({ node });
         return node;
       },
       createToolMessage: () => {
         const node: ToolMessageNode = {
-          id: toMessageId({ raw: `message_${history.length}` }), role: 'tool', createdAt: history.length,
-          modelId: undefined, lmParameters: undefined, parts: [], replies: { items: [] },
+          id: toMessageId({ raw: `message_${history.length}` }),
+          role: 'tool',
+          createdAt: history.length,
+          modelId: undefined,
+          lmParameters: undefined,
+          parts: [],
+          replies: { items: [] },
         };
         append({ node });
         return node;
@@ -129,7 +162,8 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
         snapshots.push(structuredClone(restored));
         return buildChatGenerationMessages({ chat: restored, excludedMessageId, systemPromptMessages: [] });
       },
-      onChange: () => {}, onToolEvent: () => {},
+      onChange: () => {},
+      onToolEvent: () => {},
       persistToolContent: async ({ text }) => ({ type: 'text', text }),
       describeError: ({ error }) => error.message,
     });
@@ -139,7 +173,9 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
     expect(nativeInputs.map(input => input.reusedCache)).toEqual([false, true]);
     expect(snapshots).toHaveLength(2);
     const continuation = buildChatGenerationMessages({
-      chat: snapshots[1]!, excludedMessageId: history[3]!.id, systemPromptMessages: [],
+      chat: snapshots[1]!,
+      excludedMessageId: history[3]!.id,
+      systemPromptMessages: [],
     });
     expect(continuation.map(message => message.role)).toEqual(['user', 'assistant', 'tool']);
     const assistant = continuation[1];
@@ -147,15 +183,28 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
     if (assistant?.role !== 'assistant' || call?.type !== 'tool_call') throw new Error('Missing captured tool call');
     expect(assistant.parts).toEqual([
       { type: 'reasoning', text: 'We need to call the function lookup_weather with city "Tokyo".', completeness: 'complete' },
-      { type: 'tool_call', toolCall: {
-        id: call.toolCall.id, type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      } },
+      {
+        type: 'tool_call',
+        toolCall: {
+          id: call.toolCall.id,
+          type: 'function',
+          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+        },
+      },
     ]);
-    expect(continuation[2]?.parts).toEqual([{ type: 'tool_result', result: {
-      toolCallId: call.toolCall.id, status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-    } }]);
-    expect(history[3]?.parts).toEqual([{ type: 'text',
-      text: 'Tokyo is clear with a comfortable temperature of about 20\u202f°C.', completeness: 'complete' }]);
+    expect(continuation[2]?.parts).toEqual([{
+      type: 'tool_result',
+      result: {
+        toolCallId: call.toolCall.id,
+        status: 'success',
+        content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+      },
+    }]);
+    expect(history[3]?.parts).toEqual([{
+      type: 'text',
+      text: 'Tokyo is clear with a comfortable temperature of about 20\u202f°C.',
+      completeness: 'complete',
+    }]);
     expect(execute).toHaveBeenCalledExactlyOnceWith({ args: { city: 'Tokyo' }, signal: expect.any(AbortSignal), approvalContext: undefined, onEvent: expect.any(Function) });
     return nativeInputs;
   } finally {

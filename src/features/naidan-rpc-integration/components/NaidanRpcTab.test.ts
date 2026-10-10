@@ -1,0 +1,385 @@
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { mount, flushPromises } from '@vue/test-utils';
+import NaidanRpcTab from './NaidanRpcTab.vue';
+import type { RpcRegistrationView, NaidanPeerManager } from '@/features/naidan-rpc-integration/runtime/manager';
+import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
+
+const fixture = vi.hoisted(() => ({
+  rows: [] as RpcRegistrationView[],
+  reload: vi.fn(),
+  pair: vi.fn(),
+  remember: vi.fn(),
+  updateInboundAllowedMethods: vi.fn(),
+  confirm: vi.fn(),
+  connect: vi.fn(),
+  setConnectOnStartup: vi.fn(),
+  getPeerProvidedMethods: vi.fn(),
+  prepareDisconnect: vi.fn(),
+  disconnect: vi.fn(),
+  cancelPairing: vi.fn(),
+  rename: vi.fn(),
+  edit: vi.fn(),
+  forget: vi.fn(),
+  listeners: new Set<() => void>(),
+}));
+vi.mock('@/strings', () => ({ lazyStrings: new Proxy({}, { get: (_, name) => () => String(name) }), ensureStrings: new Proxy({}, { get: (_, name) => async () => String(name) }) }));
+vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: fixture.confirm }) }));
+vi.mock('../runtime/feature', () => ({
+  getRpcManager: async () => ({ ...fixture, list: () => fixture.rows }),
+  subscribeRpcState: ({ listener }: { listener(): void }) => {
+    fixture.listeners.add(listener); return () => fixture.listeners.delete(listener);
+  },
+}));
+const wrappers: ReturnType<typeof mount>[] = [];
+
+function panel() {
+  const wrapper = mount(NaidanRpcTab); wrappers.push(wrapper); return wrapper;
+}
+
+const id = toNaidanRpcRegistrationId({ raw: 'registration-1' });
+
+function row({ phase = 'connected', persistence = 'temporary' }: { phase?: RpcRegistrationView['phase'], persistence?: RpcRegistrationView['persistence'] } = {}): RpcRegistrationView {
+  return {
+    registration: {
+      id,
+      peerPublicKey: toNaidanRpcPeerPublicKey({ raw: 'B'.repeat(43) }),
+      connectOnStartup: 'disabled',
+      localPublicKey: 'A'.repeat(43),
+      label: 'Peer 1234',
+      transport: { type: 'naidan_piping_duplex', serverUrl: 'https://relay.example', headers: [{ name: 'Authorization', value: 'private-token' }] },
+      inboundAllowedMethods: [],
+      revision: 0,
+    },
+    phase,
+    desiredConnection: phase === 'disconnected' ? 'disconnected' : 'connected',
+    recoveryStatus: 'ready',
+    health: undefined,
+    persistence,
+    registryPersistence: persistence === 'saved' ? 'durable' : undefined,
+    access: { effective: [], desired: [], saved: [], revision: 0, persistence },
+    failure: undefined,
+    connectionToken: phase === 'connected' ? {} : undefined,
+  };
+}
+
+beforeEach(() => {
+  fixture.rows = []; vi.clearAllMocks(); fixture.reload.mockResolvedValue(undefined); fixture.connect.mockResolvedValue(undefined);
+  fixture.confirm.mockResolvedValue(true);
+  fixture.getPeerProvidedMethods.mockResolvedValue({ status: 'ready', methods: [] });
+  fixture.prepareDisconnect.mockImplementation(({ id }: { id: Parameters<NaidanPeerManager['disconnect']>[0]['id'] }) => () => fixture.disconnect({ id }));
+});
+
+afterEach(() => {
+  for (const wrapper of wrappers.splice(0)) wrapper.unmount(); fixture.listeners.clear();
+});
+
+it('opens the pairing form for an empty registry without pairing, connecting or remembering a peer', async () => {
+  const wrapper = panel(); await flushPromises(); expect(wrapper.find('[data-testid="naidan-rpc-tab"]').exists()).toBe(true);
+  expect(wrapper.find('[data-testid="rpc-code"]').exists()).toBe(true);
+  expect(wrapper.find('select').exists()).toBe(false);
+  expect(wrapper.get('[data-testid="rpc-start"]').element).toHaveProperty('disabled', true);
+  expect(fixture.reload).toHaveBeenCalledOnce(); expect(fixture.pair).not.toHaveBeenCalled(); expect(fixture.connect).not.toHaveBeenCalled(); expect(fixture.remember).not.toHaveBeenCalled();
+});
+
+it('waits for the registry to load before opening the empty pairing form', async () => {
+  const loading = Promise.withResolvers<void>();
+  fixture.reload.mockReturnValueOnce(loading.promise);
+  const wrapper = panel(); await flushPromises();
+  expect(wrapper.find('[data-testid="rpc-code"]').exists()).toBe(false);
+  loading.resolve(); await flushPromises();
+  expect(wrapper.find('[data-testid="rpc-code"]').exists()).toBe(true);
+  expect(fixture.pair).not.toHaveBeenCalled(); expect(fixture.connect).not.toHaveBeenCalled();
+});
+
+it('does not treat a failed registry load as an empty registry', async () => {
+  fixture.reload.mockRejectedValueOnce(new Error('Storage unavailable'));
+  const wrapper = panel(); await flushPromises();
+  expect(wrapper.get('[role="alert"]').text()).toBe('naidanRpc__failed');
+  expect(wrapper.find('[data-testid="rpc-code"]').exists()).toBe(false);
+  expect(fixture.pair).not.toHaveBeenCalled(); expect(fixture.connect).not.toHaveBeenCalled();
+});
+
+it('preserves an open pairing form when the registry is refreshed', async () => {
+  const wrapper = panel(); await flushPromises();
+  await wrapper.get('[data-testid="rpc-code"]').setValue('0042');
+  await wrapper.get('[data-testid="rpc-server"]').setValue('https://new.example');
+  fixture.rows = [row({ persistence: 'saved' })];
+  await wrapper.get('[data-testid="rpc-refresh"]').trigger('click'); await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-code"]').element).toHaveProperty('value', '0042');
+  expect(wrapper.get('[data-testid="rpc-server"]').element).toHaveProperty('value', 'https://new.example');
+  expect(fixture.reload).toHaveBeenCalledTimes(2);
+  expect(fixture.pair).not.toHaveBeenCalled(); expect(fixture.connect).not.toHaveBeenCalled();
+});
+
+it('requires no display name or trust choice before first comparison, then offers remembering', async () => {
+  fixture.pair.mockImplementation(async (args: Parameters<NaidanPeerManager['pair']>[0]) => {
+    const approved = await args.verifyPeer({ comparison: new Uint8Array(32).map((_, i) => i), peerIdentity: new Uint8Array(32).fill(2), signal: new AbortController().signal });
+    if (!approved) throw new Error('rejected'); fixture.rows = [row()]; return id;
+  });
+  const wrapper = panel(); await flushPromises(); await wrapper.get('[data-testid="rpc-new"]').trigger('click');
+  expect(wrapper.find('[data-testid="rpc-remember-card"]').exists()).toBe(false);
+  await wrapper.get('[data-testid="rpc-code"]').setValue('家のPC 🔌'); await wrapper.get('[data-testid="rpc-server"]').setValue('https://relay.example');
+  await wrapper.get('[data-testid="rpc-start"]').trigger('click'); await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-comparison"]').text().replaceAll(' ', '')).toBe(Array.from({ length: 32 }, (_, i) => i.toString(16).padStart(2, '0')).join(''));
+  expect(fixture.remember).not.toHaveBeenCalled(); await wrapper.get('[data-testid="rpc-approve"]').trigger('click'); await flushPromises();
+  expect(wrapper.find('[data-testid="rpc-remember-card"]').exists()).toBe(true); expect(fixture.updateInboundAllowedMethods).not.toHaveBeenCalled();
+  expect(fixture.pair.mock.calls[0]![0].code).toBe('家のPC 🔌');
+  await wrapper.get('[data-testid="rpc-remember"]').trigger('click'); await flushPromises(); expect(fixture.remember).toHaveBeenCalledWith({ id, label: 'Peer 1234' });
+});
+
+it('closes a pending comparison and declines once when its signal aborts', async () => {
+  const stop = new AbortController(), decided = vi.fn();
+  const removeListener = vi.spyOn(stop.signal, 'removeEventListener');
+  fixture.pair.mockImplementation(async (args: Parameters<NaidanPeerManager['pair']>[0]) => {
+    const approved = await args.verifyPeer({ comparison: new Uint8Array(32).fill(1), peerIdentity: new Uint8Array(32).fill(2), signal: stop.signal });
+    decided(approved);
+    if (!approved) throw new Error('Comparison cancelled');
+    fixture.rows = [row()]; return id;
+  });
+  const wrapper = panel(); await flushPromises();
+  await wrapper.get('[data-testid="rpc-code"]').setValue('0042');
+  await wrapper.get('[data-testid="rpc-server"]').setValue('https://relay.example');
+  await wrapper.get('[data-testid="rpc-start"]').trigger('click'); await flushPromises();
+  expect(wrapper.find('[data-testid="rpc-verification"]').exists()).toBe(true);
+  expect(decided).not.toHaveBeenCalled();
+  stop.abort(); await flushPromises();
+  expect(wrapper.find('[data-testid="rpc-verification"]').exists()).toBe(false);
+  expect(decided).toHaveBeenCalledExactlyOnceWith(false);
+  expect(removeListener).toHaveBeenCalledWith('abort', expect.any(Function));
+  stop.abort(); await flushPromises();
+  expect(decided).toHaveBeenCalledOnce();
+  expect(fixture.rows).toEqual([]);
+  expect(fixture.remember).not.toHaveBeenCalled(); expect(fixture.updateInboundAllowedMethods).not.toHaveBeenCalled(); expect(fixture.connect).not.toHaveBeenCalled();
+  removeListener.mockRestore();
+});
+
+it('declines an already-aborted comparison without opening its panel', async () => {
+  const stop = new AbortController(), decided = vi.fn(); stop.abort();
+  fixture.pair.mockImplementation(async (args: Parameters<NaidanPeerManager['pair']>[0]) => {
+    const approved = await args.verifyPeer({ comparison: new Uint8Array(32).fill(1), peerIdentity: new Uint8Array(32).fill(2), signal: stop.signal });
+    decided(approved);
+    if (!approved) throw new Error('Comparison already cancelled');
+    fixture.rows = [row()]; return id;
+  });
+  const wrapper = panel(); await flushPromises();
+  await wrapper.get('[data-testid="rpc-code"]').setValue('0042');
+  await wrapper.get('[data-testid="rpc-server"]').setValue('https://relay.example');
+  await wrapper.get('[data-testid="rpc-start"]').trigger('click');
+  expect(wrapper.find('[data-testid="rpc-verification"]').exists()).toBe(false);
+  await flushPromises();
+  expect(wrapper.find('[data-testid="rpc-verification"]').exists()).toBe(false);
+  expect(decided).toHaveBeenCalledExactlyOnceWith(false);
+  expect(fixture.rows).toEqual([]);
+  expect(fixture.remember).not.toHaveBeenCalled(); expect(fixture.updateInboundAllowedMethods).not.toHaveBeenCalled(); expect(fixture.connect).not.toHaveBeenCalled();
+});
+
+it('aborts pairing and declines its pending comparison when the panel unmounts', async () => {
+  const decided = vi.fn();
+  fixture.pair.mockImplementation(async (args: Parameters<NaidanPeerManager['pair']>[0]) => {
+    const approved = await args.verifyPeer({ comparison: new Uint8Array(32).fill(1), peerIdentity: new Uint8Array(32).fill(2), signal: args.signal });
+    decided(approved);
+    if (!approved) throw new Error('Comparison closed');
+    fixture.rows = [row()]; return id;
+  });
+  const wrapper = panel(); await flushPromises();
+  await wrapper.get('[data-testid="rpc-code"]').setValue('0042');
+  await wrapper.get('[data-testid="rpc-server"]').setValue('https://relay.example');
+  await wrapper.get('[data-testid="rpc-start"]').trigger('click'); await flushPromises();
+  expect(wrapper.find('[data-testid="rpc-verification"]').exists()).toBe(true);
+  const signal = fixture.pair.mock.calls[0]![0].signal;
+  expect(signal.aborted).toBe(false); expect(decided).not.toHaveBeenCalled();
+  wrapper.unmount(); await flushPromises();
+  expect(signal.aborted).toBe(true);
+  expect(decided).toHaveBeenCalledExactlyOnceWith(false);
+  expect(fixture.rows).toEqual([]);
+  expect(fixture.remember).not.toHaveBeenCalled(); expect(fixture.updateInboundAllowedMethods).not.toHaveBeenCalled(); expect(fixture.connect).not.toHaveBeenCalled(); expect(fixture.disconnect).not.toHaveBeenCalled();
+});
+
+it('keeps partial method grants when the panel opens and details are collapsed', async () => {
+  const partial = row({ persistence: 'saved' }); partial.access.effective = ['generateChat'];
+  fixture.rows = [partial]; const wrapper = panel(); await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-provide-chat"]').element).toHaveProperty('checked', true);
+  expect(wrapper.find('[data-testid="rpc-partial-chat"]').exists()).toBe(true);
+  expect(wrapper.get('[data-testid="rpc-details-chat"]').element).toHaveProperty('open', false);
+  expect(wrapper.get('[data-testid="rpc-method-listChatModels"]').element).toHaveProperty('checked', false);
+  expect(fixture.updateInboundAllowedMethods).not.toHaveBeenCalled();
+});
+
+it('toggles chat and image capabilities independently with concrete method lists', async () => {
+  fixture.rows = [row({ persistence: 'saved' })]; const wrapper = panel(); await flushPromises();
+  await wrapper.get('[data-testid="rpc-provide-chat"]').setValue(true);
+  expect(wrapper.get('[data-testid="rpc-provide-images"]').element).toHaveProperty('checked', false);
+  expect(fixture.updateInboundAllowedMethods).not.toHaveBeenCalled();
+  await wrapper.get('[data-testid="rpc-apply-methods"]').trigger('click'); await flushPromises();
+  if (__BUILD_MODE_IS_HOSTED__) expect(fixture.updateInboundAllowedMethods).toHaveBeenLastCalledWith({ id, inboundAllowedMethods: ['listChatModels', 'generateChat'] });
+  else expect(fixture.updateInboundAllowedMethods).not.toHaveBeenCalled();
+  await wrapper.get('[data-testid="rpc-provide-chat"]').setValue(false);
+  await wrapper.get('[data-testid="rpc-provide-images"]').setValue(true);
+  await wrapper.get('[data-testid="rpc-apply-methods"]').trigger('click'); await flushPromises();
+  if (__BUILD_MODE_IS_HOSTED__) expect(fixture.updateInboundAllowedMethods).toHaveBeenLastCalledWith({ id, inboundAllowedMethods: ['listImageModels', 'generateImage'] });
+  else expect(fixture.updateInboundAllowedMethods).not.toHaveBeenCalled();
+});
+
+it('respects native provision availability when applying concrete methods', async () => {
+  fixture.rows = [row()]; const wrapper = panel(); await flushPromises();
+  await wrapper.get('[data-testid="rpc-method-listChatModels"]').setValue(true);
+  expect(fixture.updateInboundAllowedMethods).not.toHaveBeenCalled();
+  const apply = wrapper.get('[data-testid="rpc-apply-methods"]');
+  expect(apply.element).toHaveProperty('disabled', !__BUILD_MODE_IS_HOSTED__);
+  await apply.trigger('click'); await flushPromises();
+  if (__BUILD_MODE_IS_HOSTED__) expect(fixture.updateInboundAllowedMethods).toHaveBeenCalledWith({ id, inboundAllowedMethods: ['listChatModels'] });
+  else expect(fixture.updateInboundAllowedMethods).not.toHaveBeenCalled();
+});
+
+it('masks header values and closing Settings does not disconnect an established peer', async () => {
+  fixture.rows = [row({ persistence: 'saved' })]; const wrapper = panel(); await flushPromises();
+  expect(wrapper.text()).not.toContain('private-token'); expect(wrapper.find('input[type="password"]').exists()).toBe(true);
+  wrapper.unmount(); expect(fixture.disconnect).not.toHaveBeenCalled();
+});
+
+it('allows stopping while an explicit connection command is still pending', async () => {
+  fixture.rows = [row({ persistence: 'saved', phase: 'disconnected' })]; const gate = Promise.withResolvers<void>(); fixture.connect.mockImplementation(() => {
+    fixture.rows[0]!.phase = 'connecting'; for (const listener of fixture.listeners) listener(); return gate.promise;
+  });
+  const wrapper = panel(); await flushPromises(); await wrapper.get('[data-testid="rpc-connect"]').trigger('click'); await flushPromises();
+  await wrapper.get('[data-testid="rpc-disconnect"]').trigger('click'); await flushPromises(); expect(fixture.disconnect).toHaveBeenCalledWith({ id }); gate.resolve(); await flushPromises();
+});
+
+it('renames a saved connected peer without editing transport or reconnecting', async () => {
+  fixture.rows = [row({ persistence: 'saved' })];
+  const wrapper = panel(); await flushPromises();
+  await wrapper.get('[data-testid="rpc-name"]').setValue('Desk');
+  await wrapper.get('[data-testid="rpc-save-name"]').trigger('click'); await flushPromises();
+  expect(fixture.rename).toHaveBeenCalledWith({ id, label: 'Desk' });
+  expect(fixture.edit).not.toHaveBeenCalled(); expect(fixture.connect).not.toHaveBeenCalled(); expect(fixture.disconnect).not.toHaveBeenCalled();
+  expect(wrapper.get('[data-testid="rpc-server"]').element).toHaveProperty('disabled', false);
+  expect(wrapper.get('[data-testid="rpc-server"]').element.closest('fieldset')?.disabled).toBe(true);
+});
+
+it('rebinds all editable fields when the selected registration disappears', async () => {
+  const old = row({ persistence: 'saved', phase: 'disconnected' });
+  old.registration.label = 'Removed peer';
+  old.access.effective = ['generateChat'];
+  const replacement = row({ persistence: 'saved', phase: 'disconnected' });
+  replacement.registration = {
+    ...replacement.registration,
+    id: toNaidanRpcRegistrationId({ raw: 'registration-2' }),
+    label: 'Other peer',
+    transport: { ...replacement.registration.transport, serverUrl: 'https://other.example', headers: [] },
+  };
+  fixture.rows = [old, replacement];
+  const wrapper = panel(); await flushPromises();
+  await wrapper.get('[data-testid="rpc-method-generateImage"]').setValue(true);
+  fixture.rows = [replacement];
+  for (const listener of fixture.listeners) listener();
+  await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-name"]').element).toHaveProperty('value', 'Other peer');
+  expect(wrapper.get('[data-testid="rpc-server"]').element).toHaveProperty('value', 'https://other.example');
+  expect(wrapper.find('input[type="password"]').exists()).toBe(false);
+  const apply = wrapper.get('[data-testid="rpc-apply-methods"]');
+  expect(apply.element).toHaveProperty('disabled', !__BUILD_MODE_IS_HOSTED__);
+  await apply.trigger('click'); await flushPromises();
+  if (__BUILD_MODE_IS_HOSTED__) expect(fixture.updateInboundAllowedMethods).toHaveBeenCalledWith({ id: replacement.registration.id, inboundAllowedMethods: [] });
+  else expect(fixture.updateInboundAllowedMethods).not.toHaveBeenCalled();
+});
+
+it('keeps edits for the same registration across unrelated state notifications', async () => {
+  fixture.rows = [row({ persistence: 'saved', phase: 'disconnected' })];
+  const wrapper = panel(); await flushPromises();
+  await wrapper.get('[data-testid="rpc-name"]').setValue('Unsaved name');
+  await wrapper.get('[data-testid="rpc-method-generateImage"]').setValue(true);
+  for (const listener of fixture.listeners) listener();
+  await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-name"]').element).toHaveProperty('value', 'Unsaved name');
+  expect(wrapper.get('[data-testid="rpc-method-generateImage"]').element).toHaveProperty('checked', true);
+});
+
+it('does not replace a new pairing form with a surviving saved registration', async () => {
+  fixture.rows = [row({ persistence: 'saved' })];
+  const wrapper = panel(); await flushPromises();
+  await wrapper.get('[data-testid="rpc-new"]').trigger('click');
+  await wrapper.get('[data-testid="rpc-code"]').setValue('0042');
+  await wrapper.get('[data-testid="rpc-server"]').setValue('https://new.example');
+  fixture.rows = [];
+  for (const listener of fixture.listeners) listener();
+  await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-code"]').element).toHaveProperty('value', '0042');
+  expect(wrapper.get('[data-testid="rpc-server"]').element).toHaveProperty('value', 'https://new.example');
+});
+
+it('captures the session-specific stop command before awaiting confirmation', async () => {
+  fixture.rows = [row({ persistence: 'saved' })];
+  const confirmation = Promise.withResolvers<boolean>();
+  fixture.confirm.mockReturnValue(confirmation.promise);
+  const prepared = vi.fn(async () => {});
+  fixture.prepareDisconnect.mockReturnValue(prepared);
+  const wrapper = panel(); await flushPromises();
+  await wrapper.get('[data-testid="rpc-disconnect"]').trigger('click'); await flushPromises();
+  expect(fixture.prepareDisconnect).toHaveBeenCalledWith({ id });
+  expect(prepared).not.toHaveBeenCalled();
+  confirmation.resolve(true); await flushPromises();
+  expect(prepared).toHaveBeenCalledOnce(); expect(fixture.disconnect).not.toHaveBeenCalled();
+});
+
+it.each(['temporary', 'session'] as const)('keeps automatic registration visible but unavailable for a %s record', async variant => {
+  const view = row({ persistence: variant === 'temporary' ? 'temporary' : 'saved' });
+  if (variant === 'session') view.registryPersistence = 'session';
+  fixture.rows = [view]; const wrapper = panel(); await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-connect-on-startup"]').element).toHaveProperty('disabled', true);
+  expect(fixture.setConnectOnStartup).not.toHaveBeenCalled();
+});
+
+it('shows only committed automatic intent when saving it fails', async () => {
+  fixture.rows = [row({ persistence: 'saved' })]; fixture.setConnectOnStartup.mockRejectedValueOnce(new Error('quota'));
+  const wrapper = panel(); await flushPromises(); await wrapper.get('[data-testid="rpc-connect-on-startup"]').setValue(true); await flushPromises();
+  expect(fixture.setConnectOnStartup).toHaveBeenCalledWith({ id, connectOnStartup: 'enabled' });
+  expect(wrapper.get('[data-testid="rpc-connect-on-startup"]').element).toHaveProperty('checked', false);
+  expect(wrapper.get('[role="alert"]').text()).toBe('naidanRpc__failed');
+});
+
+it('keeps explicit Connect promotion and Disconnect available for queued runtime desire', async () => {
+  fixture.rows = [{ ...row({ phase: 'disconnected', persistence: 'saved' }), desiredConnection: 'connected' }];
+  const wrapper = panel(); await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-connect"]').attributes('disabled')).toBeUndefined();
+  expect(wrapper.find('[data-testid="rpc-disconnect"]').exists()).toBe(true); expect(wrapper.find('[data-testid="rpc-maintaining"]').exists()).toBe(true);
+  await wrapper.get('[data-testid="rpc-connect"]').trigger('click'); await flushPromises(); expect(fixture.connect).toHaveBeenCalledWith({ id });
+  const stopped = vi.fn(async () => {}); fixture.prepareDisconnect.mockReturnValueOnce(stopped);
+  await wrapper.get('[data-testid="rpc-disconnect"]').trigger('click'); await flushPromises(); expect(stopped).toHaveBeenCalledOnce();
+});
+
+it('blocked desired connections keep explicit revalidation and stop actions without claiming an active retry', async () => {
+  fixture.rows = [{ ...row({ phase: 'disconnected', persistence: 'saved' }), desiredConnection: 'connected', recoveryStatus: 'blocked', failure: 'Authority must be checked' }];
+  const wrapper = panel(); await flushPromises();
+  expect(wrapper.find('[data-testid="rpc-connect"]').exists()).toBe(true); expect(wrapper.find('[data-testid="rpc-disconnect"]').exists()).toBe(true);
+  expect(wrapper.find('[data-testid="rpc-maintaining"]').exists()).toBe(false); expect(wrapper.text()).toContain('Authority must be checked');
+});
+
+it('shows the owner-provided response warning and recovers without a UI timer or reconnect', async () => {
+  fixture.rows = [{ ...row({ phase: 'connected', persistence: 'saved' }), health: { state: 'healthy' } }];
+  const wrapper = panel(); await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-connection-state"]').text()).toBe('naidanRpc__connected');
+  fixture.rows = [{ ...fixture.rows[0]!, health: { state: 'checking' } }];
+  for (const listener of fixture.listeners) listener(); await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-connection-state"]').text()).toBe('naidanRpc__checking_response');
+  fixture.rows = [{ ...fixture.rows[0]!, health: { state: 'healthy' } }];
+  for (const listener of fixture.listeners) listener(); await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-connection-state"]').text()).toBe('naidanRpc__connected');
+  expect(fixture.connect).not.toHaveBeenCalled(); expect(fixture.disconnect).not.toHaveBeenCalled();
+});
+
+it('keeps an explicit Connect action available while waiting after a peer close', async () => {
+  fixture.rows = [{ ...row({ phase: 'connecting', persistence: 'saved' }), recoveryStatus: 'waiting-peer' }];
+  const wrapper = panel(); await flushPromises();
+  await wrapper.get('[data-testid="rpc-connect"]').trigger('click'); await flushPromises();
+  expect(fixture.connect).toHaveBeenCalledOnce();
+  expect(wrapper.find('[data-testid="rpc-disconnect"]').exists()).toBe(true);
+});
+
+it('shows connection-capacity waiting and still allows an explicit Disconnect', async () => {
+  fixture.rows = [{ ...row({ phase: 'disconnected', persistence: 'saved' }), desiredConnection: 'connected', recoveryStatus: 'waiting-capacity' }];
+  const wrapper = panel(); await flushPromises();
+  expect(wrapper.get('[data-testid="rpc-capacity-wait"]').text()).toBe('naidanRpc__waiting_for_capacity');
+  expect(wrapper.find('[data-testid="rpc-maintaining"]').exists()).toBe(false);
+  await wrapper.get('[data-testid="rpc-disconnect"]').trigger('click'); await flushPromises();
+  expect(fixture.disconnect).toHaveBeenCalledWith({ id }); expect(fixture.connect).not.toHaveBeenCalled();
+});

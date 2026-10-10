@@ -292,7 +292,6 @@ describe('GlobalSearchModal Component', () => {
     expect(mockCloseSearch).toHaveBeenCalled();
   });
 
-
   it('should preserve the selected item when progressive results are inserted before it', async () => {
     mockQuery.value = 'test';
     mockResults.value = [

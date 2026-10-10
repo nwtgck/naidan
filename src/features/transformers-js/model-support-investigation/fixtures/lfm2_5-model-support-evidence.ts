@@ -13,7 +13,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
   "source": {
     "modelId": "hf.co/LiquidAI/LFM2.5-2.6B-ONNX",
     "runId": "c9d52c8f-a1df-4924-9c72-61867bae543f",
-    "resolvedRevision": "66826372fd4fa166f53be0371c9315745c07cace"
+    "resolvedRevision": "66826372fd4fa166f53be0371c9315745c07cace",
   },
   "repositoryDeclarations": {
     "modelType": "lfm2",
@@ -27,39 +27,39 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
     "classCapabilities": [
       {
         "autoClass": "AutoModel",
-        "supports": true
+        "supports": true,
       },
       {
         "autoClass": "AutoModelForAudioTextToText",
-        "supports": false
+        "supports": false,
       },
       {
         "autoClass": "AutoModelForCausalLM",
-        "supports": true
+        "supports": true,
       },
       {
         "autoClass": "AutoModelForImageTextToText",
-        "supports": false
+        "supports": false,
       },
       {
         "autoClass": "AutoModelForSeq2SeqLM",
-        "supports": false
+        "supports": false,
       },
       {
         "autoClass": "AutoModelForSpeechSeq2Seq",
-        "supports": false
+        "supports": false,
       },
       {
         "autoClass": "AutoModelForVision2Seq",
-        "supports": false
+        "supports": false,
       }
-    ]
+    ],
   },
   "tokenizerConfig": {
     "bosToken": "<|startoftext|>",
     "eosToken": "<|im_end|>",
     "padToken": "<|pad|>",
-    "chatTemplate": "{{- bos_token -}}\n{%- set preserve_thinking = preserve_thinking | default(false) -%}\n\n{%- macro format_arg_value(arg_value) -%}\n    {%- if arg_value is string -%}\n        {{- \"'\" + (arg_value | replace(\"\\\\\", \"\\\\\\\\\") | replace(\"'\", \"\\\\'\") | replace(\"\\n\", \"\\\\n\") | replace(\"\\r\", \"\\\\r\")) + \"'\" -}}\n    {%- elif arg_value is mapping or arg_value is iterable -%}\n        {{- arg_value | tojson -}}\n    {%- else -%}\n        {{- arg_value | string -}}\n    {%- endif -%}\n{%- endmacro -%}\n\n{%- macro parse_content(content) -%}\n    {%- if content is string -%}\n        {{- content -}}\n    {%- elif content is mapping -%}\n        {{- content | tojson -}}\n    {%- elif content is iterable -%}\n        {%- set _ns = namespace(result=\"\") -%}\n        {%- for item in content -%}\n            {%- if item is string -%}\n                {%- set _ns.result = _ns.result + item -%}\n            {%- elif item is mapping and item.get(\"type\") == \"image\" -%}\n                {%- set _ns.result = _ns.result + \"<image>\" -%}\n            {%- elif item is mapping and item.get(\"type\") == \"text\" -%}\n                {%- set _ns.result = _ns.result + ((item.get(\"text\") or \"\") | string) -%}\n            {%- else -%}\n                {%- set _ns.result = _ns.result + (item | tojson) -%}\n            {%- endif -%}\n        {%- endfor -%}\n        {{- _ns.result -}}\n    {%- endif -%}\n{%- endmacro -%}\n\n{%- macro render_tool_calls(tool_calls) -%}\n    {%- set tool_calls_ns = namespace(tool_calls=[]) -%}\n    {%- for tool_call in tool_calls -%}\n        {%- set func = tool_call[\"function\"] if \"function\" in tool_call else tool_call -%}\n        {%- set func_name = func[\"name\"] -%}\n        {%- set func_args = func.get(\"arguments\") -%}\n        {%- set args_ns = namespace(arg_strings=[]) -%}\n        {%- if func_args is mapping -%}\n            {%- for arg_name, arg_value in func_args.items() -%}\n                {%- set args_ns.arg_strings = args_ns.arg_strings + [arg_name + \"=\" + format_arg_value(arg_value)] -%}\n            {%- endfor -%}\n        {%- elif func_args is string and (func_args | trim) not in [\"\", \"{}\", \"null\"] -%}\n            {{- raise_exception(\"Tool call arguments must be a mapping, got a JSON-encoded string: parse arguments with json.loads() before applying the chat template\") -}}\n        {%- endif -%}\n        {%- set tool_calls_ns.tool_calls = tool_calls_ns.tool_calls + [func_name + \"(\" + (args_ns.arg_strings | join(\", \")) + \")\"] -%}\n    {%- endfor -%}\n    {{- \"<|tool_call_start|>[\" + (tool_calls_ns.tool_calls | join(\", \")) + \"]<|tool_call_end|>\" -}}\n{%- endmacro -%}\n\n{%- set ns = namespace(system_prompt=\"\", last_user_index=-1) -%}\n{%- if messages and messages[0][\"role\"] == \"system\" -%}\n    {%- if messages[0].get(\"content\") -%}\n        {%- set ns.system_prompt = parse_content(messages[0][\"content\"]) -%}\n    {%- endif -%}\n    {%- set messages = messages[1:] -%}\n{%- endif -%}\n{%- if tools -%}\n    {%- set ns.system_prompt = ns.system_prompt + (\"\\n\" if ns.system_prompt else \"\") + \"List of tools: [\" -%}\n    {%- for tool in tools -%}\n        {%- if tool is not string -%}\n            {%- set tool = tool | tojson -%}\n        {%- endif -%}\n        {%- set ns.system_prompt = ns.system_prompt + tool -%}\n        {%- if not loop.last -%}\n            {%- set ns.system_prompt = ns.system_prompt + \", \" -%}\n        {%- endif -%}\n    {%- endfor -%}\n    {%- set ns.system_prompt = ns.system_prompt + \"]\" -%}\n{%- endif -%}\n{%- if ns.system_prompt -%}\n    {{- \"<|im_start|>system\\n\" + ns.system_prompt + \"<|im_end|>\\n\" -}}\n{%- endif -%}\n{%- for message in messages -%}\n    {%- if message[\"role\"] == \"user\" -%}\n        {%- set ns.last_user_index = loop.index0 -%}\n    {%- endif -%}\n{%- endfor -%}\n{%- for message in messages -%}\n    {{- \"<|im_start|>\" + message.role + \"\\n\" -}}\n    {%- if message.role == \"assistant\" -%}\n        \n        {%- set keep_thinking = preserve_thinking or loop.index0 > ns.last_user_index -%}\n        {%- set thinking = message.thinking or message.reasoning or message.reasoning_content -%}\n        {%- set thinking = thinking if thinking is string else \"\" -%}\n        {%- if thinking and keep_thinking -%}\n            {{- \"<think>\" + thinking + \"</think>\" -}}\n        {%- endif -%}\n        {%- set _cfm_tag = \"CONTINUE_FINAL_MESSAGE_TAG \" -%}\n        {%- set _has_cfm = false -%}\n        {%- set content = \"\" -%}\n        {%- if message.get(\"content\") -%}\n            {%- set content = parse_content(message.content) -%}\n        {%- endif -%}\n        {%- if not keep_thinking and \"</think>\" in content -%}\n            {%- set content = content.split(\"</think>\")[-1] | trim -%}\n        {%- endif -%}\n        {%- if content.endswith(_cfm_tag) -%}\n            {%- set _has_cfm = true -%}\n            {%- set _trunc_len = (content | length) - (_cfm_tag | length) -%}\n            {%- set content = content[:_trunc_len] -%}\n        {%- endif -%}\n        {{- content -}}\n        {%- if message.tool_calls -%}\n            {{- render_tool_calls(message.tool_calls) -}}\n        {%- endif -%}\n        {%- if _has_cfm -%}\n            {{- _cfm_tag -}}\n        {%- endif -%}\n        {{- \"<|im_end|>\\n\" -}}\n        \n    {%- else %}\n        {%- if message.get(\"content\") -%}\n            {{- parse_content(message[\"content\"]) -}}\n        {%- endif -%}\n        {{- \"<|im_end|>\\n\" -}}\n    {%- endif %}\n{%- endfor -%}\n{%- if add_generation_prompt -%}\n    {{- \"<|im_start|>assistant\\n<think>\" -}}\n{%- endif -%}\n"
+    "chatTemplate": "{{- bos_token -}}\n{%- set preserve_thinking = preserve_thinking | default(false) -%}\n\n{%- macro format_arg_value(arg_value) -%}\n    {%- if arg_value is string -%}\n        {{- \"'\" + (arg_value | replace(\"\\\\\", \"\\\\\\\\\") | replace(\"'\", \"\\\\'\") | replace(\"\\n\", \"\\\\n\") | replace(\"\\r\", \"\\\\r\")) + \"'\" -}}\n    {%- elif arg_value is mapping or arg_value is iterable -%}\n        {{- arg_value | tojson -}}\n    {%- else -%}\n        {{- arg_value | string -}}\n    {%- endif -%}\n{%- endmacro -%}\n\n{%- macro parse_content(content) -%}\n    {%- if content is string -%}\n        {{- content -}}\n    {%- elif content is mapping -%}\n        {{- content | tojson -}}\n    {%- elif content is iterable -%}\n        {%- set _ns = namespace(result=\"\") -%}\n        {%- for item in content -%}\n            {%- if item is string -%}\n                {%- set _ns.result = _ns.result + item -%}\n            {%- elif item is mapping and item.get(\"type\") == \"image\" -%}\n                {%- set _ns.result = _ns.result + \"<image>\" -%}\n            {%- elif item is mapping and item.get(\"type\") == \"text\" -%}\n                {%- set _ns.result = _ns.result + ((item.get(\"text\") or \"\") | string) -%}\n            {%- else -%}\n                {%- set _ns.result = _ns.result + (item | tojson) -%}\n            {%- endif -%}\n        {%- endfor -%}\n        {{- _ns.result -}}\n    {%- endif -%}\n{%- endmacro -%}\n\n{%- macro render_tool_calls(tool_calls) -%}\n    {%- set tool_calls_ns = namespace(tool_calls=[]) -%}\n    {%- for tool_call in tool_calls -%}\n        {%- set func = tool_call[\"function\"] if \"function\" in tool_call else tool_call -%}\n        {%- set func_name = func[\"name\"] -%}\n        {%- set func_args = func.get(\"arguments\") -%}\n        {%- set args_ns = namespace(arg_strings=[]) -%}\n        {%- if func_args is mapping -%}\n            {%- for arg_name, arg_value in func_args.items() -%}\n                {%- set args_ns.arg_strings = args_ns.arg_strings + [arg_name + \"=\" + format_arg_value(arg_value)] -%}\n            {%- endfor -%}\n        {%- elif func_args is string and (func_args | trim) not in [\"\", \"{}\", \"null\"] -%}\n            {{- raise_exception(\"Tool call arguments must be a mapping, got a JSON-encoded string: parse arguments with json.loads() before applying the chat template\") -}}\n        {%- endif -%}\n        {%- set tool_calls_ns.tool_calls = tool_calls_ns.tool_calls + [func_name + \"(\" + (args_ns.arg_strings | join(\", \")) + \")\"] -%}\n    {%- endfor -%}\n    {{- \"<|tool_call_start|>[\" + (tool_calls_ns.tool_calls | join(\", \")) + \"]<|tool_call_end|>\" -}}\n{%- endmacro -%}\n\n{%- set ns = namespace(system_prompt=\"\", last_user_index=-1) -%}\n{%- if messages and messages[0][\"role\"] == \"system\" -%}\n    {%- if messages[0].get(\"content\") -%}\n        {%- set ns.system_prompt = parse_content(messages[0][\"content\"]) -%}\n    {%- endif -%}\n    {%- set messages = messages[1:] -%}\n{%- endif -%}\n{%- if tools -%}\n    {%- set ns.system_prompt = ns.system_prompt + (\"\\n\" if ns.system_prompt else \"\") + \"List of tools: [\" -%}\n    {%- for tool in tools -%}\n        {%- if tool is not string -%}\n            {%- set tool = tool | tojson -%}\n        {%- endif -%}\n        {%- set ns.system_prompt = ns.system_prompt + tool -%}\n        {%- if not loop.last -%}\n            {%- set ns.system_prompt = ns.system_prompt + \", \" -%}\n        {%- endif -%}\n    {%- endfor -%}\n    {%- set ns.system_prompt = ns.system_prompt + \"]\" -%}\n{%- endif -%}\n{%- if ns.system_prompt -%}\n    {{- \"<|im_start|>system\\n\" + ns.system_prompt + \"<|im_end|>\\n\" -}}\n{%- endif -%}\n{%- for message in messages -%}\n    {%- if message[\"role\"] == \"user\" -%}\n        {%- set ns.last_user_index = loop.index0 -%}\n    {%- endif -%}\n{%- endfor -%}\n{%- for message in messages -%}\n    {{- \"<|im_start|>\" + message.role + \"\\n\" -}}\n    {%- if message.role == \"assistant\" -%}\n        \n        {%- set keep_thinking = preserve_thinking or loop.index0 > ns.last_user_index -%}\n        {%- set thinking = message.thinking or message.reasoning or message.reasoning_content -%}\n        {%- set thinking = thinking if thinking is string else \"\" -%}\n        {%- if thinking and keep_thinking -%}\n            {{- \"<think>\" + thinking + \"</think>\" -}}\n        {%- endif -%}\n        {%- set _cfm_tag = \"CONTINUE_FINAL_MESSAGE_TAG \" -%}\n        {%- set _has_cfm = false -%}\n        {%- set content = \"\" -%}\n        {%- if message.get(\"content\") -%}\n            {%- set content = parse_content(message.content) -%}\n        {%- endif -%}\n        {%- if not keep_thinking and \"</think>\" in content -%}\n            {%- set content = content.split(\"</think>\")[-1] | trim -%}\n        {%- endif -%}\n        {%- if content.endswith(_cfm_tag) -%}\n            {%- set _has_cfm = true -%}\n            {%- set _trunc_len = (content | length) - (_cfm_tag | length) -%}\n            {%- set content = content[:_trunc_len] -%}\n        {%- endif -%}\n        {{- content -}}\n        {%- if message.tool_calls -%}\n            {{- render_tool_calls(message.tool_calls) -}}\n        {%- endif -%}\n        {%- if _has_cfm -%}\n            {{- _cfm_tag -}}\n        {%- endif -%}\n        {{- \"<|im_end|>\\n\" -}}\n        \n    {%- else %}\n        {%- if message.get(\"content\") -%}\n            {{- parse_content(message[\"content\"]) -}}\n        {%- endif -%}\n        {{- \"<|im_end|>\\n\" -}}\n    {%- endif %}\n{%- endfor -%}\n{%- if add_generation_prompt -%}\n    {{- \"<|im_start|>assistant\\n<think>\" -}}\n{%- endif -%}\n",
   },
   "templateBehavior": {
     "cases": [
@@ -69,7 +69,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
         "messages": [
           {
             "role": "user",
-            "content": "Template probe user message."
+            "content": "Template probe user message.",
           }
         ],
         "addGenerationPrompt": true,
@@ -91,7 +91,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
           63514,
           207,
           124901
-        ]
+        ],
       },
       {
         "caseId": "system-user-generation",
@@ -99,11 +99,11 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
         "messages": [
           {
             "role": "system",
-            "content": "Template probe system instruction."
+            "content": "Template probe system instruction.",
           },
           {
             "role": "user",
-            "content": "Template probe user message."
+            "content": "Template probe user message.",
           }
         ],
         "addGenerationPrompt": true,
@@ -135,7 +135,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
           63514,
           207,
           124901
-        ]
+        ],
       },
       {
         "caseId": "multi-turn-generation",
@@ -143,15 +143,15 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
         "messages": [
           {
             "role": "user",
-            "content": "Template probe first user message."
+            "content": "Template probe first user message.",
           },
           {
             "role": "assistant",
-            "content": "Template probe assistant response."
+            "content": "Template probe assistant response.",
           },
           {
             "role": "user",
-            "content": "Template probe second user message."
+            "content": "Template probe second user message.",
           }
         ],
         "addGenerationPrompt": true,
@@ -195,7 +195,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
           63514,
           207,
           124901
-        ]
+        ],
       },
       {
         "caseId": "tools-generation",
@@ -203,7 +203,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
         "messages": [
           {
             "role": "user",
-            "content": "Use the weather tool for Tokyo."
+            "content": "Use the weather tool for Tokyo.",
           }
         ],
         "addGenerationPrompt": true,
@@ -218,14 +218,14 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
                 "type": "object",
                 "properties": {
                   "city": {
-                    "type": "string"
-                  }
+                    "type": "string",
+                  },
                 },
                 "required": [
                   "city"
-                ]
-              }
-            }
+                ],
+              },
+            },
           }
         ],
         "renderedText": "<|startoftext|><|im_start|>system\nList of tools: [{\"type\": \"function\", \"function\": {\"name\": \"lookup_weather\", \"description\": \"Return deterministic weather fixture data.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}, \"required\": [\"city\"]}}}]<|im_end|>\n<|im_start|>user\nUse the weather tool for Tokyo.<|im_end|>\n<|im_start|>assistant\n<think>",
@@ -312,7 +312,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
           63514,
           207,
           124901
-        ]
+        ],
       },
       {
         "caseId": "assistant-tool-call-history",
@@ -320,7 +320,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
         "messages": [
           {
             "role": "user",
-            "content": "Use the weather tool for Tokyo."
+            "content": "Use the weather tool for Tokyo.",
           },
           {
             "role": "assistant",
@@ -331,10 +331,10 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
                 "type": "function",
                 "function": {
                   "name": "lookup_weather",
-                  "arguments": "{\"city\":\"Tokyo\"}"
-                }
+                  "arguments": "{\"city\":\"Tokyo\"}",
+                },
               }
-            ]
+            ],
           }
         ],
         "addGenerationPrompt": false,
@@ -349,18 +349,18 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
                 "type": "object",
                 "properties": {
                   "city": {
-                    "type": "string"
-                  }
+                    "type": "string",
+                  },
                 },
                 "required": [
                   "city"
-                ]
-              }
-            }
+                ],
+              },
+            },
           }
         ],
         "failureStage": "render",
-        "errorMessage": "Tool call arguments must be a mapping, got a JSON-encoded string: parse arguments with json.loads() before applying the chat template"
+        "errorMessage": "Tool call arguments must be a mapping, got a JSON-encoded string: parse arguments with json.loads() before applying the chat template",
       },
       {
         "caseId": "tool-result-continuation",
@@ -368,7 +368,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
         "messages": [
           {
             "role": "user",
-            "content": "Use the weather tool for Tokyo."
+            "content": "Use the weather tool for Tokyo.",
           },
           {
             "role": "assistant",
@@ -379,15 +379,15 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
                 "type": "function",
                 "function": {
                   "name": "lookup_weather",
-                  "arguments": "{\"city\":\"Tokyo\"}"
-                }
+                  "arguments": "{\"city\":\"Tokyo\"}",
+                },
               }
-            ]
+            ],
           },
           {
             "role": "tool",
             "tool_call_id": "call_template_probe_1",
-            "content": "{\"temperatureC\":20,\"condition\":\"clear\"}"
+            "content": "{\"temperatureC\":20,\"condition\":\"clear\"}",
           }
         ],
         "addGenerationPrompt": true,
@@ -402,33 +402,33 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
                 "type": "object",
                 "properties": {
                   "city": {
-                    "type": "string"
-                  }
+                    "type": "string",
+                  },
                 },
                 "required": [
                   "city"
-                ]
-              }
-            }
+                ],
+              },
+            },
           }
         ],
         "failureStage": "render",
-        "errorMessage": "Tool call arguments must be a mapping, got a JSON-encoded string: parse arguments with json.loads() before applying the chat template"
+        "errorMessage": "Tool call arguments must be a mapping, got a JSON-encoded string: parse arguments with json.loads() before applying the chat template",
       }
-    ]
+    ],
   },
   "productionLane": {
     "route": {
       "autoClass": "AutoModelForCausalLM",
       "processor": "tokenizer",
       "strategy": "standard",
-      "modelType": "lfm2"
+      "modelType": "lfm2",
     },
     "firstTurn": {
       "messages": [
         {
           "role": "user",
-          "content": "Template probe user message."
+          "content": "Template probe user message.",
         }
       ],
       "inputKeys": [
@@ -443,7 +443,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
             1,
             15
           ],
-          "location": "cpu"
+          "location": "cpu",
         },
         {
           "name": "input_ids",
@@ -452,7 +452,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
             1,
             15
           ],
-          "location": "cpu"
+          "location": "cpu",
         }
       ],
       "inputTokenIds": [
@@ -478,7 +478,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
         "valueType": "null",
         "ownKeyCount": 0,
         "ownKeys": [],
-        "truncated": false
+        "truncated": false,
       },
       "outputPastKeyValuesSummary": {
         "kind": "object",
@@ -519,7 +519,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
           "past_key_values.24.key",
           "past_key_values.24.value"
         ],
-        "truncated": true
+        "truncated": true,
       },
       "generatedSequenceTokenIds": [
         124894,
@@ -594,32 +594,32 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
         "maxNewTokens": 16,
         "temperature": 0,
         "topP": 1,
-        "doSample": false
-      }
+        "doSample": false,
+      },
     },
     "continuity": {
       "status": "passed",
       "assistantMessage": {
         "role": "assistant",
-        "content": "The user wants me to \"Template probe user message.\" This is a bit ambiguous"
+        "content": "The user wants me to \"Template probe user message.\" This is a bit ambiguous",
       },
       "followUpMessage": {
         "role": "user",
-        "content": "Continue with one short sentence."
+        "content": "Continue with one short sentence.",
       },
       "secondTurn": {
         "messages": [
           {
             "role": "user",
-            "content": "Template probe user message."
+            "content": "Template probe user message.",
           },
           {
             "role": "assistant",
-            "content": "The user wants me to \"Template probe user message.\" This is a bit ambiguous"
+            "content": "The user wants me to \"Template probe user message.\" This is a bit ambiguous",
           },
           {
             "role": "user",
-            "content": "Continue with one short sentence."
+            "content": "Continue with one short sentence.",
           }
         ],
         "inputKeys": [
@@ -634,7 +634,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
               1,
               47
             ],
-            "location": "cpu"
+            "location": "cpu",
           },
           {
             "name": "input_ids",
@@ -643,7 +643,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
               1,
               47
             ],
-            "location": "cpu"
+            "location": "cpu",
           }
         ],
         "inputTokenIds": [
@@ -701,7 +701,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
           "valueType": "null",
           "ownKeyCount": 0,
           "ownKeys": [],
-          "truncated": false
+          "truncated": false,
         },
         "outputPastKeyValuesSummary": {
           "kind": "object",
@@ -742,7 +742,7 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
             "past_key_values.24.key",
             "past_key_values.24.value"
           ],
-          "truncated": true
+          "truncated": true,
         },
         "generatedSequenceTokenIds": [
           124894,
@@ -850,8 +850,8 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
           "maxNewTokens": 16,
           "temperature": 0,
           "topP": 1,
-          "doSample": false
-        }
+          "doSample": false,
+        },
       },
       "prefixComparison": {
         "mode": "full-input-prefix",
@@ -938,9 +938,9 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
           124901
         ],
         "exactPrefixMatch": false,
-        "firstMismatchIndex": 14
-      }
-    }
+        "firstMismatchIndex": 14,
+      },
+    },
   },
   "laneComparison": {
     "scenarioCaseId": "user-generation",
@@ -1005,9 +1005,9 @@ const LFM2_5_MODEL_SUPPORT_EVIDENCE = {
       "autoClass": "AutoModelForCausalLM",
       "processor": "tokenizer",
       "strategy": "standard",
-      "modelType": "lfm2"
-    }
-  }
+      "modelType": "lfm2",
+    },
+  },
 } as const;
 
 // Export internal fixture state used only for browser/model-free Evidence replay tests.

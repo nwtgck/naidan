@@ -27,6 +27,7 @@ function checkedSize({ value }: { value: bigint }): number {
   if (value < 0n || value > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Model integer is outside the exact file-offset range');
   return Number(value);
 }
+
 export async function readModelRange({ file, offset, length, signal }: { file: ModelMetadataFile, offset: number, length: number, signal: AbortSignal | undefined }): Promise<Uint8Array<ArrayBuffer>> {
   signal?.throwIfAborted();
   if (!Number.isSafeInteger(file.size) || !Number.isSafeInteger(offset) || !Number.isSafeInteger(length) || offset < 0 || length < 0 || offset > file.size || length > file.size - offset || length > MODEL_HEADER_LIMIT) throw new Error('Invalid bounded model read');
@@ -212,9 +213,11 @@ export async function inspectWeightFile({ file, signal }: { file: ModelMetadataF
     return { status: 'invalid', reason: error instanceof Error ? error.message : String(error) };
   }
 }
+
 export async function readModelJson({ file, signal }: { file: ModelMetadataFile, signal: AbortSignal | undefined }): Promise<unknown> {
   if (file.size > MODEL_HEADER_LIMIT) throw new Error('Model JSON exceeds the inspection budget');
   return parseModelJson({ text: decoder.decode(await readModelRange({ file, offset: 0, length: file.size, signal })) });
 }
+
 export const TEST_ONLY = {
 };

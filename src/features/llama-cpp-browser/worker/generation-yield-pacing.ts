@@ -6,8 +6,14 @@ export function createGenerationYieldPacing({ mode, now }: {
   mode: 'per-token' | 'coalesced',
   now: () => number,
 }) {
-  const counters = { mode, checks: 0, requestedYields: 0, completedYields: 0,
-    coalescedYields: 0, maximumDecodesBetweenYields: 0 };
+  const counters = {
+    mode,
+    checks: 0,
+    requestedYields: 0,
+    completedYields: 0,
+    coalescedYields: 0,
+    maximumDecodesBetweenYields: 0,
+  };
   let decodedSinceYield = 0;
   let firstYieldCompleted = false;
   let waiting = false;

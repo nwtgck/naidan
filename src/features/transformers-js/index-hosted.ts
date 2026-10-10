@@ -585,8 +585,10 @@ export function createTransformersJsService({ createWorkerClient }: {
         break;
       case 'structured':
         await remote.generateMessage({
-          messages: cloneChatMessages({ messages }), params: cloneLmParameters({ params }),
-          tools: cloneWorkerTools({ tools }), continuationOwner,
+          messages: cloneChatMessages({ messages }),
+          params: cloneLmParameters({ params }),
+          tools: cloneWorkerTools({ tools }),
+          continuationOwner,
           onEvent: ({ event }) => {
             // An ordinary stop does not discard already accepted native events.
             // A revoked owner or replaced runtime still cannot mutate this run.
@@ -870,50 +872,56 @@ export function createTransformersJsService({ createWorkerClient }: {
     async importFile({ modelName, fileName, data }: { modelName: string, fileName: string, data: ArrayBuffer | ReadableStream }) {
       ensureOpen();
       const storagePath = `${OPFS_MODELS_DIR}/user/${modelName}/${fileName.split('/').filter(part => part.length > 0).join('/')}`;
-      await withOpfsFileLease({ path: storagePath, mode: 'exclusive', availability: 'wait', signal: undefined, run: async () => {
-        const root = await navigator.storage.getDirectory();
-        const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
-        const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
-        const modelDir = await userDir.getDirectoryHandle(modelName, { create: true });
+      await withOpfsFileLease({
+        path: storagePath,
+        mode: 'exclusive',
+        availability: 'wait',
+        signal: undefined,
+        run: async () => {
+          const root = await navigator.storage.getDirectory();
+          const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+          const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
+          const modelDir = await userDir.getDirectoryHandle(modelName, { create: true });
 
-        const parts = fileName.split('/').filter(p => !!p);
-        let currentDir = modelDir;
-        for (let i = 0; i < parts.length - 1; i++) {
-          currentDir = await currentDir.getDirectoryHandle(parts[i]!, { create: true });
-        }
-
-        const lastPart = parts[parts.length - 1]!;
-        const fileHandle = await currentDir.getFileHandle(lastPart, { create: true });
-
-        if (!('createWritable' in fileHandle)) {
-          throw new Error('FileSystemFileHandle.createWritable is not supported');
-        }
-
-        try {
-          await currentDir.removeEntry(`.${lastPart}.complete`);
-        } catch (error) {
-          if (!(error instanceof Error || error instanceof DOMException) || error.name !== 'NotFoundError') throw error;
-        }
-
-        const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
-
-        try {
-          if (data instanceof ReadableStream) {
-            await data.pipeTo(writable);
-          } else {
-            await writable.write(data);
-            await writable.close();
+          const parts = fileName.split('/').filter(p => !!p);
+          let currentDir = modelDir;
+          for (let i = 0; i < parts.length - 1; i++) {
+            currentDir = await currentDir.getDirectoryHandle(parts[i]!, { create: true });
           }
-        } catch (error) {
-          try {
-            await writable.abort(error);
-          } catch { /* Preserve the import failure. */ }
-          throw error;
-        }
 
-        // Create per-file completion marker
-        await currentDir.getFileHandle(`.${lastPart}.complete`, { create: true });
-      } });
+          const lastPart = parts[parts.length - 1]!;
+          const fileHandle = await currentDir.getFileHandle(lastPart, { create: true });
+
+          if (!('createWritable' in fileHandle)) {
+            throw new Error('FileSystemFileHandle.createWritable is not supported');
+          }
+
+          try {
+            await currentDir.removeEntry(`.${lastPart}.complete`);
+          } catch (error) {
+            if (!(error instanceof Error || error instanceof DOMException) || error.name !== 'NotFoundError') throw error;
+          }
+
+          const writable = await (fileHandle as unknown as FileSystemFileHandleWithWritable).createWritable();
+
+          try {
+            if (data instanceof ReadableStream) {
+              await data.pipeTo(writable);
+            } else {
+              await writable.write(data);
+              await writable.close();
+            }
+          } catch (error) {
+            try {
+              await writable.abort(error);
+            } catch { /* Preserve the import failure. */ }
+            throw error;
+          }
+
+          // Create per-file completion marker
+          await currentDir.getFileHandle(`.${lastPart}.complete`, { create: true });
+        },
+      });
       notifyModelListChange();
     },
 
@@ -921,71 +929,86 @@ export function createTransformersJsService({ createWorkerClient }: {
       ensureOpen();
       if (modelId.startsWith('user/')) {
         const name = modelId.substring(5);
-        const removed = await withOpfsModelDeletion({ modelPath: `${OPFS_MODELS_DIR}/user/${name}`, run: async () => {
-          const root = await navigator.storage.getDirectory();
-          const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
-          try {
-            const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
-            await removeTransformersModelFiles({ parent: userDir, name });
-            return true;
-          } catch {
-            return false;
-          }
-        } });
-        if (!removed) await withOpfsModelDeletion({ modelPath: `${OPFS_MODELS_DIR}/local/${name}`, run: async () => {
-          const root = await navigator.storage.getDirectory();
-          const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
-          try {
-            const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
-            await removeTransformersModelFiles({ parent: localDir, name });
-          } catch { /* Preserve the legacy absent-local fallback. */ }
-        } });
+        const removed = await withOpfsModelDeletion({
+          modelPath: `${OPFS_MODELS_DIR}/user/${name}`,
+          run: async () => {
+            const root = await navigator.storage.getDirectory();
+            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+            try {
+              const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
+              await removeTransformersModelFiles({ parent: userDir, name });
+              return true;
+            } catch {
+              return false;
+            }
+          },
+        });
+        if (!removed) await withOpfsModelDeletion({
+          modelPath: `${OPFS_MODELS_DIR}/local/${name}`,
+          run: async () => {
+            const root = await navigator.storage.getDirectory();
+            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+            try {
+              const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
+              await removeTransformersModelFiles({ parent: localDir, name });
+            } catch { /* Preserve the legacy absent-local fallback. */ }
+          },
+        });
       } else if (modelId.startsWith('hf.co/')) {
         const [org, repo] = modelId.substring(6).split('/');
         if (org && repo) {
-          await withOpfsModelDeletion({ modelPath: `${OPFS_MODELS_DIR}/huggingface.co/${org}/${repo}`, run: async () => {
-            const root = await navigator.storage.getDirectory();
-            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
-            const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
-            const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
-            await removeTransformersModelFiles({ parent: orgDir, name: repo });
-          } });
+          await withOpfsModelDeletion({
+            modelPath: `${OPFS_MODELS_DIR}/huggingface.co/${org}/${repo}`,
+            run: async () => {
+              const root = await navigator.storage.getDirectory();
+              const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+              const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
+              const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
+              await removeTransformersModelFiles({ parent: orgDir, name: repo });
+            },
+          });
           // Release model/root shared ownership before acquiring root exclusive.
           // Re-resolve the directory and recheck emptiness under the parent lease.
-          await withOpfsRootDeletion({ run: async () => {
-            const root = await navigator.storage.getDirectory();
-            try {
-              const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: false });
-              const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: false });
-              const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
-              for await (const _ of orgDir.entries()) return;
-              await hfDir.removeEntry(org);
-            } catch (error) {
-              if (!(error instanceof Error || error instanceof DOMException) || error.name !== 'NotFoundError') throw error;
-            }
-          } });
+          await withOpfsRootDeletion({
+            run: async () => {
+              const root = await navigator.storage.getDirectory();
+              try {
+                const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: false });
+                const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: false });
+                const orgDir = await hfDir.getDirectoryHandle(org, { create: false });
+                for await (const _ of orgDir.entries()) return;
+                await hfDir.removeEntry(org);
+              } catch (error) {
+                if (!(error instanceof Error || error instanceof DOMException) || error.name !== 'NotFoundError') throw error;
+              }
+            },
+          });
         } else if (org) {
-          await withOpfsRootDeletion({ run: async () => {
-            const root = await navigator.storage.getDirectory();
-            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
-            const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
-            await removeTransformersModelFiles({ parent: hfDir, name: org });
-          } });
+          await withOpfsRootDeletion({
+            run: async () => {
+              const root = await navigator.storage.getDirectory();
+              const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+              const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
+              await removeTransformersModelFiles({ parent: hfDir, name: org });
+            },
+          });
         }
       } else {
         // The legacy spelling can identify an organization, so own its parent
         // namespace rather than guessing a single model key.
-        await withOpfsRootDeletion({ run: async () => {
-          const root = await navigator.storage.getDirectory();
-          const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
-          try {
-            const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
-            await removeTransformersModelFiles({ parent: localDir, name: modelId });
-          } catch {
-            const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
-            await removeTransformersModelFiles({ parent: hfDir, name: modelId });
-          }
-        } });
+        await withOpfsRootDeletion({
+          run: async () => {
+            const root = await navigator.storage.getDirectory();
+            const modelsDir = await root.getDirectoryHandle(OPFS_MODELS_DIR, { create: true });
+            try {
+              const localDir = await modelsDir.getDirectoryHandle('local', { create: true });
+              await removeTransformersModelFiles({ parent: localDir, name: modelId });
+            } catch {
+              const hfDir = await modelsDir.getDirectoryHandle('huggingface.co', { create: true });
+              await removeTransformersModelFiles({ parent: hfDir, name: modelId });
+            }
+          },
+        });
       }
       downloadedModelRevisionHints.delete(normalizeTransformersJsProductionModelId({ modelId }));
       notifyModelListChange();
@@ -1178,21 +1201,25 @@ export function createTransformersJsService({ createWorkerClient }: {
       downloadObservationEpoch++;
       const onDownloadProgress: DownloadProgressCallback = ({ event }) => {
         if (!isCurrent() || owner.signal.aborted) return;
-        observeDownloadSafely({ observe: () => {
-          tracker.observe({ event });
-          downloadProgress = tracker.snapshot();
-          loadingProgress = downloadProgress.overallProgress ?? 0;
-          totalLoadedAmount = downloadProgress.receivedBytes;
-          totalSizeAmount = downloadProgress.knownTotalBytes;
-          notify();
-        } });
+        observeDownloadSafely({
+          observe: () => {
+            tracker.observe({ event });
+            downloadProgress = tracker.snapshot();
+            loadingProgress = downloadProgress.overallProgress ?? 0;
+            totalLoadedAmount = downloadProgress.receivedBytes;
+            totalSizeAmount = downloadProgress.knownTotalBytes;
+            notify();
+          },
+        });
       };
       downloadProgress = tracker.snapshot();
       const refreshEstimate = setInterval(() => {
         if (!isCurrent() || owner.signal.aborted) return;
-        observeDownloadSafely({ observe: () => {
-          downloadProgress = tracker.snapshot(); notify();
-        } });
+        observeDownloadSafely({
+          observe: () => {
+            downloadProgress = tracker.snapshot(); notify();
+          },
+        });
       }, 1_000);
       const stopEstimate = () => clearInterval(refreshEstimate);
       owner.signal.addEventListener('abort', stopEstimate, { once: true });
@@ -1222,13 +1249,19 @@ export function createTransformersJsService({ createWorkerClient }: {
         const { resolvedRevision, sizeHints } = await resolvePublicHuggingFaceRevision({ modelId });
         assertCurrent();
         onDownloadProgress({ event: { kind: 'phase', phase: 'checking-cache' } });
-        const cachedReuse = await reuseDownloadedProductionRevision({ modelId, resolvedRevision, onTiming, createAcceptanceClient, onProgress: ({ progress }) => {
+        const cachedReuse = await reuseDownloadedProductionRevision({
+          modelId,
+          resolvedRevision,
+          onTiming,
+          createAcceptanceClient,
+          onProgress: ({ progress }) => {
           // The runtime emits model-session only after admitting a locally
           // complete candidate. Inventory/revision selection alone is not 95%.
-          if (progress.phase === 'runtime' && progress.info?.status === 'cache-acceptance-model-session') {
-            onDownloadProgress({ event: { kind: 'cached-acceptance' } });
-          }
-        } });
+            if (progress.phase === 'runtime' && progress.info?.status === 'cache-acceptance-model-session') {
+              onDownloadProgress({ event: { kind: 'cached-acceptance' } });
+            }
+          },
+        });
         assertCurrent();
         if (cachedReuse.reused) {
           downloadedModelRevisionHints.set(normalizedModelId, cachedReuse.loadRevision);
@@ -1368,7 +1401,12 @@ export function createTransformersJsService({ createWorkerClient }: {
       signal?: AbortSignal,
       continuationOwner?: string,
     }) {
-      return generateForOwner({ messages, params, tools, signal, continuationOwner,
+      return generateForOwner({
+        messages,
+        params,
+        tools,
+        signal,
+        continuationOwner,
         delivery: { type: 'legacy', onChunk, onToolCalls },
       });
     },
@@ -1495,20 +1533,31 @@ export function createTransformersJsService({ createWorkerClient }: {
           onChunk: ({ chunk }: { chunk: string }) => {
             if (open && owner.isActive()) return onChunk({ chunk });
           },
-          onToolCalls: ({ toolCalls }: Parameters<TransformersJsToolCallsCallback>[0]) => {
+          onToolCalls: ({ toolCalls }: { toolCalls: Parameters<TransformersJsToolCallsCallback>[0]['toolCalls'] }) => {
             if (open && owner.isActive()) return onToolCalls({ toolCalls });
           },
         };
         return runChild({ execute: () => rawService.generateText({ ...snapshot, signal: owner.signal }) });
       },
       generateMessage({ messages, onEvent, params, tools, continuationOwner }) {
-        const snapshot = { messages: cloneChatMessages({ messages }), params: cloneLmParameters({ params }),
-          tools: cloneWorkerTools({ tools }), continuationOwner };
-        return runChild({ execute: () => generateForOwner({ ...snapshot, signal: owner.signal,
-          delivery: { type: 'structured', onEvent: ({ event }) => {
-            if (open) return onEvent({ event });
-          } },
-        }) });
+        const snapshot = {
+          messages: cloneChatMessages({ messages }),
+          params: cloneLmParameters({ params }),
+          tools: cloneWorkerTools({ tools }),
+          continuationOwner,
+        };
+        return runChild({
+          execute: () => generateForOwner({
+            ...snapshot,
+            signal: owner.signal,
+            delivery: {
+              type: 'structured',
+              onEvent: ({ event }) => {
+                if (open) return onEvent({ event });
+              },
+            },
+          }),
+        });
       },
     };
     let callbackFailure: { error: unknown } | undefined;
@@ -1538,11 +1587,16 @@ export function createTransformersJsService({ createWorkerClient }: {
   } = rawService;
   unhandledRawService satisfies Record<PropertyKey, never>;
   const service = {
-    subscribe, subscribeModelList, getState, listCachedModels, importFile, deleteModel,
+    subscribe,
+    subscribeModelList,
+    getState,
+    listCachedModels,
+    importFile,
+    deleteModel,
     getDownloadTimingSnapshot() {
       return downloadTiming.snapshot();
     },
-    runInferenceOperation({ signal, operation }: TransformersJsInferenceOperation): Promise<void> {
+    runInferenceOperation({ signal, operation }: { signal: TransformersJsInferenceOperation['signal'], operation: TransformersJsInferenceOperation['operation'] }): Promise<void> {
       return enqueue({ signal, operation: ({ owner }) => runInferenceScope({ owner, operation }) });
     },
     loadDownloadedModel({ modelId }: { modelId: string }): Promise<void> {
@@ -1557,7 +1611,7 @@ export function createTransformersJsService({ createWorkerClient }: {
     resetCache(): Promise<void> {
       return enqueue({ signal: undefined, operation: () => rawService.resetCache() });
     },
-    generateText({ messages, onChunk, onToolCalls, params, tools, signal, continuationOwner }: Parameters<typeof rawService.generateText>[0]): Promise<void> {
+    generateText({ messages, onChunk, onToolCalls, params, tools, signal, continuationOwner }: { messages: Parameters<typeof rawService.generateText>[0]['messages'], onChunk: Parameters<typeof rawService.generateText>[0]['onChunk'], onToolCalls: Parameters<typeof rawService.generateText>[0]['onToolCalls'], params?: Parameters<typeof rawService.generateText>[0]['params'], tools?: Parameters<typeof rawService.generateText>[0]['tools'], signal?: Parameters<typeof rawService.generateText>[0]['signal'], continuationOwner?: Parameters<typeof rawService.generateText>[0]['continuationOwner'] }): Promise<void> {
       try {
         ensureOpen();
         if (explicitRestart !== undefined) throw restartedError;
@@ -1568,17 +1622,22 @@ export function createTransformersJsService({ createWorkerClient }: {
       if (loadingStatus !== 'ready' || activeModelId === undefined) return Promise.reject(new Error('Model not loaded'));
       const requestedModelId = activeModelId;
       const snapshot = {
-        onChunk, onToolCalls, continuationOwner,
+        onChunk,
+        onToolCalls,
+        continuationOwner,
         messages: cloneChatMessages({ messages }),
         params: cloneLmParameters({ params }),
         tools: cloneWorkerTools({ tools }),
       };
-      return enqueue({ signal, operation: ({ owner }) => {
-        if (activeModelId !== requestedModelId || loadingStatus !== 'ready') {
-          throw new Error('The requested Transformers.js model is no longer loaded');
-        }
-        return rawService.generateText({ ...snapshot, signal: owner.signal });
-      } });
+      return enqueue({
+        signal,
+        operation: ({ owner }) => {
+          if (activeModelId !== requestedModelId || loadingStatus !== 'ready') {
+            throw new Error('The requested Transformers.js model is no longer loaded');
+          }
+          return rawService.generateText({ ...snapshot, signal: owner.signal });
+        },
+      });
     },
     async interrupt(): Promise<void> {
       ensureOpen();

@@ -184,5 +184,4 @@ echo $?`,
     expect(ambiguous.stderr.text).toContain("'--version'");
     expect(ambiguous.result.exitCode).toBe(1);
   });
-
 });

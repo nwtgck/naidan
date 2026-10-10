@@ -1,0 +1,1 @@
+export const llamaCppPerformance__results_are_memory_only = (): string => "Results stay in memory until this page reloads. Returning to settings keeps them. The ZIP contains test prompts, generated text, reasoning and timing details.";

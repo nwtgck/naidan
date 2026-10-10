@@ -151,6 +151,7 @@ two
     expect(linked.stderr.text).toBe('');
     expect(linked.result.exitCode).toBe(0);
   });
+
   it('refuses to replace a directory even with force and no-target-directory', async () => {
     const execution = await execute({
       script: `\
@@ -269,7 +270,6 @@ printf 'status=%s second=%s\n' "$?" "$(readlink destination/second)"
     expect(execution.result.exitCode).toBe(0);
   });
 
-
   it('supports verbose symbolic links, backups, and custom backup suffixes', async () => {
     await writeFile({ path: 'target', data: 'new' });
     await writeFile({ path: 'link', data: 'old' });
@@ -372,7 +372,6 @@ printf 'status=%s second=%s\n' "$?" "$(readlink destination/second)"
     expect(await wesh.vfs.readlink({ path: '/force-wins' })).toBe('target');
   });
 
-
   it('rejects empty symbolic-link targets and continues later directory operands', async () => {
     const direct = await execute({ script: "ln -s '' direct-link" });
 
@@ -416,5 +415,4 @@ printf 'status=%s second=%s\n' "$?" "$(readlink destination/second)"
     expect(ambiguous.stderr.text).toContain("'--version'");
     expect(ambiguous.result.exitCode).toBe(1);
   });
-
 });

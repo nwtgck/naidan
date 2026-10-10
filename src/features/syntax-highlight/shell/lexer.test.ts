@@ -51,10 +51,13 @@ EOF
 echo done`;
     const tokens = highlightShell({ code });
     expect(tokens.map(token => token.text).join('')).toBe(code);
-    expect(tokens).toContainEqual({ kind: 'string', text: `\
+    expect(tokens).toContainEqual({
+      kind: 'string',
+      text: `\
 <script>if (danger) alert('$HOME')</script>
 EOF
-` });
+`,
+    });
     expect(tokens).toContainEqual({ kind: 'command', text: 'echo' });
     expect(tokens.filter(token => token.kind === 'variable')).toEqual([]);
   });
@@ -69,12 +72,15 @@ TWO
 printf done`;
     const tokens = highlightShell({ code });
     expect(tokens.map(token => token.text).join('')).toBe(code);
-    expect(tokens).toContainEqual({ kind: 'string', text: `\
+    expect(tokens).toContainEqual({
+      kind: 'string',
+      text: `\
 \tfirst
 \tONE
 <div>$second</div>
 TWO
-` });
+`,
+    });
     expect(tokens).toContainEqual({ kind: 'command', text: 'printf' });
   });
 
@@ -87,10 +93,13 @@ echo done`;
     const tokens = highlightShell({ code });
     expect(tokens.map(token => token.text).join('')).toBe(code);
     expect(tokens).toContainEqual({ kind: 'operator', text: '<<-' });
-    expect(tokens).toContainEqual({ kind: 'string', text: `\
+    expect(tokens).toContainEqual({
+      kind: 'string',
+      text: `\
 \t<script>if $name</script>
 \tEOF
-` });
+`,
+    });
     expect(tokens).toContainEqual({ kind: 'command', text: 'echo' });
     expect(tokens.filter(token => token.kind === 'variable')).toEqual([]);
   });

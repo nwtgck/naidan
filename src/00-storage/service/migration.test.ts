@@ -8,12 +8,15 @@ import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {
   kind = 'file' as const;
+
   constructor(public name: string, private content: string = '') {}
+
   getFile() {
     return Promise.resolve({
       text: () => Promise.resolve(this.content),
     });
   }
+
   createWritable() {
     return Promise.resolve({
       write: (data: string) => {
@@ -135,13 +138,13 @@ const normalizedMockSettings: Settings = {
     ...mockSettings.experimental,
     fakeLm: 'disabled',
     toolConfigPersistence: 'disabled',
+    naidanRpc: 'disabled',
   },
 };
 
 // --- Test Suite ---
 
 describe('Storage Migration (Round-Trip)', () => {
-
   const runRoundTripTest = async (provider: LocalStorageProvider | OPFSStorageProvider) => {
     // 1. Setup Data
     await provider.init();
@@ -150,11 +153,13 @@ describe('Storage Migration (Round-Trip)', () => {
     await provider.saveChatGroup({ chatGroup: mockChatGroup });
     await provider.saveChatContent({ id: mockChat.id, content: mockChat });
     await provider.saveChatMeta({ meta: mockChat });
-    await provider.saveHierarchy({ hierarchy: {
-      items: [
-        { type: 'chat_group', id: idToRaw({ id: mockChatGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] },
-      ],
-    } });
+    await provider.saveHierarchy({
+      hierarchy: {
+        items: [
+          { type: 'chat_group', id: idToRaw({ id: mockChatGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] },
+        ],
+      },
+    });
 
     // 2. Dump
     const snapshot = await provider.dump();
@@ -178,10 +183,12 @@ describe('Storage Migration (Round-Trip)', () => {
     async function* arrayToGenerator(array: MigrationChunkDto[]) {
       for (const item of array) yield item;
     }
-    await provider.restore({ snapshot: {
-      structure: snapshot.structure,
-      contentStream: arrayToGenerator(chunks),
-    } });
+    await provider.restore({
+      snapshot: {
+        structure: snapshot.structure,
+        contentStream: arrayToGenerator(chunks),
+      },
+    });
 
     // 5. Verify Data Integrity
     const loadedSettings = await provider.loadSettings();
@@ -219,5 +226,4 @@ describe('Storage Migration (Round-Trip)', () => {
       await runRoundTripTest(provider);
     });
   });
-
 });

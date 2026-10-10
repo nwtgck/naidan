@@ -10,6 +10,7 @@ let runtime: Runtime;
 const fetch = vi.fn(() => {
   throw new Error('External network forbidden in generation capture tests');
 });
+
 beforeAll(async () => {
   vi.stubGlobal('fetch', fetch);
   const artifact = await getProductionTransformersArtifact();
@@ -27,6 +28,7 @@ beforeAll(async () => {
     Object.defineProperty(globalThis, 'process', descriptor);
   }
 }, 30_000);
+
 afterAll(() => {
   try {
     expect(fetch).not.toHaveBeenCalled();
@@ -39,6 +41,7 @@ const run = { runId: 'synthetic-run', workerEpoch: 1 };
 const limits = { maxCalls: 4, maxInvocationsPerCall: 2, maxEvents: 20, maxTextBytes: 100, maxTensorBytes: 128, maxTotalTensorBytes: 256, maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144 };
 const context = { ...run, requestId: 'synthetic-request', generationCallId: 1 };
 const unobservedLoad = { status: 'not-observed', reason: 'no-completed-load' } as const;
+
 function fixture({ overrides }: { overrides: Partial<typeof limits> }) {
   const capture = createGenerationCapture({ run, limits: { ...limits, ...overrides }, tensorClass: runtime.Tensor });
   const call = capture.beginCall({ context, loadIdentity: unobservedLoad });
@@ -47,19 +50,24 @@ function fixture({ overrides }: { overrides: Partial<typeof limits> }) {
   if (!invocation) throw new Error('Expected a recording invocation');
   return { capture, call, invocation };
 }
+
 function take({ capture }: { capture: ReturnType<typeof createGenerationCapture> }) {
   const result = capture.take({ run });
   expect(result.status).toBe('captured');
   if (result.status !== 'captured') throw new Error('Expected captured result');
   return result.capture;
 }
+
 const setting: GenerationInvocationObservation = Object.freeze({
   requested: Object.freeze({ maxCompletionTokens: Object.freeze({ status: 'value', value: 16 }), temperature: Object.freeze({ status: 'undefined' }), topP: Object.freeze({ status: 'omitted' }) }),
   budget: Object.freeze({ maxNewTokens: 3, source: 'explicit', contextLimit: 5, promptTokenCount: 2, pastTokenCount: 0, usedContextTokenCount: 2 }),
   kwargs: Object.freeze({
     keys: Object.freeze({ status: 'complete', totalCount: 1, values: Object.freeze(['max_new_tokens']), incompleteReasons: Object.freeze([]) }),
-    maxNewTokens: Object.freeze({ status: 'value', value: 3 }), temperature: Object.freeze({ status: 'value', value: 0.6 }),
-    topP: Object.freeze({ status: 'value', value: 0.9 }), doSample: Object.freeze({ status: 'value', value: true }), returnDictInGenerate: Object.freeze({ status: 'value', value: true }),
+    maxNewTokens: Object.freeze({ status: 'value', value: 3 }),
+    temperature: Object.freeze({ status: 'value', value: 0.6 }),
+    topP: Object.freeze({ status: 'value', value: 0.9 }),
+    doSample: Object.freeze({ status: 'value', value: true }),
+    returnDictInGenerate: Object.freeze({ status: 'value', value: true }),
   }),
 });
 
@@ -141,6 +149,7 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     expect(generationCaptureTakeResultSchema.safeParse({ status: 'captured', capture: source }).success).toBe(false);
     expect(getter).not.toHaveBeenCalled();
   });
+
   it('captures ordered image size metadata separately from tensors without retaining mutable input', () => {
     const { capture, call, invocation } = fixture({ overrides: {} });
     const original = [[1, 2], [3, 4]];
@@ -148,17 +157,27 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     original[0]![0] = 999;
     call.finish({ outcome: 'fulfilled' });
     const result = take({ capture });
-    expect(result.events[0]).toMatchObject({ values: [
-      { name: 'original_sizes', snapshot: { status: 'image-sizes', values: [[1, 2], [3, 4]] } },
-      { name: 'reshaped_input_sizes', snapshot: { status: 'image-sizes', values: [[256, 512], [768, 1024]] } },
-    ] });
+    expect(result.events[0]).toMatchObject({
+      values: [
+        { name: 'original_sizes', snapshot: { status: 'image-sizes', values: [[1, 2], [3, 4]] } },
+        { name: 'reshaped_input_sizes', snapshot: { status: 'image-sizes', values: [[256, 512], [768, 1024]] } },
+      ],
+    });
     expect(result.incompleteReasons).toEqual([]);
   });
+
   it('copies a completed Load identity into each call independently of later source mutation', () => {
     const identity = productionLoadIdentitySchema.parse({
-      status: 'ready', workerLoadOrdinal: 1, requestedModelId: 'synthetic/model', requestedRevision: { status: 'omitted' },
-      cleanModelId: 'synthetic/model', autoClass: 'AutoModelForCausalLM', processor: 'tokenizer', selectedCandidate: { device: 'wasm', dtype: 'q4' },
-      resolvedRevision: { status: 'not-observed' }, sessionExecutionProvider: { status: 'not-observed' },
+      status: 'ready',
+      workerLoadOrdinal: 1,
+      requestedModelId: 'synthetic/model',
+      requestedRevision: { status: 'omitted' },
+      cleanModelId: 'synthetic/model',
+      autoClass: 'AutoModelForCausalLM',
+      processor: 'tokenizer',
+      selectedCandidate: { device: 'wasm', dtype: 'q4' },
+      resolvedRevision: { status: 'not-observed' },
+      sessionExecutionProvider: { status: 'not-observed' },
     });
     const expected = structuredClone(identity);
     const capture = createGenerationCapture({ run, limits, tensorClass: runtime.Tensor });
@@ -182,9 +201,16 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     call.finish({ outcome: 'fulfilled' });
     const result = { status: 'captured', capture: take({ capture }) };
     Reflect.set(result.capture.calls[0]!, 'loadIdentity', {
-      status: 'ready', workerLoadOrdinal: 1, requestedModelId: 'synthetic/model', requestedRevision: { status: 'omitted' },
-      cleanModelId: 'other/model', autoClass: 'AutoModelForCausalLM', processor: 'tokenizer', selectedCandidate: { device: 'wasm', dtype: 'q4' },
-      resolvedRevision: { status: 'not-observed' }, sessionExecutionProvider: { status: 'not-observed' },
+      status: 'ready',
+      workerLoadOrdinal: 1,
+      requestedModelId: 'synthetic/model',
+      requestedRevision: { status: 'omitted' },
+      cleanModelId: 'other/model',
+      autoClass: 'AutoModelForCausalLM',
+      processor: 'tokenizer',
+      selectedCandidate: { device: 'wasm', dtype: 'q4' },
+      resolvedRevision: { status: 'not-observed' },
+      sessionExecutionProvider: { status: 'not-observed' },
     });
     expect(generationCaptureTakeResultSchema.safeParse(result).success).toBe(false);
   });
@@ -310,11 +336,14 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
 
   it('enforces per-tensor and retained-run byte limits before copying oversized inputs', () => {
     const { capture, call, invocation } = fixture({ overrides: { maxTensorBytes: 8, maxTotalTensorBytes: 8 } });
-    invocation.recordInputs({ phase: 'native-kwargs', inputs: {
-      input_ids: new runtime.Tensor('int64', BigInt64Array.of(1n, 2n), [1, 2]),
-      pixel_values: new runtime.Tensor('float32', Float32Array.of(1), [1]),
-      attention_mask: new runtime.Tensor('int64', BigInt64Array.of(1n), [1]),
-    } });
+    invocation.recordInputs({
+      phase: 'native-kwargs',
+      inputs: {
+        input_ids: new runtime.Tensor('int64', BigInt64Array.of(1n, 2n), [1, 2]),
+        pixel_values: new runtime.Tensor('float32', Float32Array.of(1), [1]),
+        attention_mask: new runtime.Tensor('int64', BigInt64Array.of(1n), [1]),
+      },
+    });
     call.finish({ outcome: 'fulfilled' });
     const result = take({ capture });
     const event = result.events[0];
@@ -345,9 +374,14 @@ describe('Worker-local capture using actual Production bundle Tensor objects', (
     });
     const inputs = Object.defineProperty({}, 'input_ids', { enumerable: true, get: getter });
     invocation.recordInputs({ phase: 'native-kwargs', inputs });
-    invocation.recordInputs({ phase: 'native-kwargs', inputs: new Proxy({}, { ownKeys() {
-      throw new Error('Synthetic proxy');
-    } }) });
+    invocation.recordInputs({
+      phase: 'native-kwargs',
+      inputs: new Proxy({}, {
+        ownKeys() {
+          throw new Error('Synthetic proxy');
+        },
+      }),
+    });
     invocation.recordSequence({ result: Object.defineProperty({}, 'sequences', { get: getter }) });
     call.finish({ outcome: 'rejected' });
     const result = take({ capture });

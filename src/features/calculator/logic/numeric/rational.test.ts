@@ -19,6 +19,7 @@ import {
 } from './rational';
 
 const consumeOperation = (): void => {};
+
 const rational = (numerator: bigint, denominator = 1n, decimalExponent = 0) => createRational({
   numerator,
   denominator,
@@ -77,7 +78,6 @@ describe('Rational', () => {
       decimal: rationalToDecimal({ rational: rational(2n, 3n), significantDigits: 5 }),
     })).toBe('0.66667');
   });
-
 
   it('preserves decimal powers introduced by rational rounding', () => {
     for (const [value, decimalPlaces, expected] of [

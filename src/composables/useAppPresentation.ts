@@ -1,4 +1,7 @@
 import { useModelLaunchOnboardingBypass } from '@/features/llama-cpp-browser/composables/useModelLaunchOnboardingBypass';
+import { isOnboardingExcludedPath } from '@/logic/onboarding-route-policy';
+import { resolveInitialRoute } from '@/logic/startup/startup-route';
+import { routerKey, START_LOCATION, type Router } from 'vue-router';
 import {
   computed,
   inject,
@@ -48,18 +51,20 @@ function createAppPresentation({
   settingsInitialized,
   isOnboardingDismissed,
   modelLaunchBypass,
+  onboardingRouteExcluded,
 }: {
   startupState: ShallowRef<StartupState>,
   settingsInitialized: Readonly<Ref<boolean>>,
   isOnboardingDismissed: Readonly<Ref<boolean>>,
   modelLaunchBypass: Readonly<Ref<boolean>>,
+  onboardingRouteExcluded: Readonly<Ref<boolean>>,
 }): AppPresentation {
   const onboardingPresentation = computed<OnboardingPresentation>(() => {
     if (!settingsInitialized.value) {
       return 'hidden';
     }
 
-    return isOnboardingDismissed.value || modelLaunchBypass.value
+    return isOnboardingDismissed.value || modelLaunchBypass.value || onboardingRouteExcluded.value
       ? 'hidden'
       : 'visible';
   });
@@ -100,15 +105,29 @@ function createAppPresentation({
   };
 }
 
+function createOnboardingRouteExcluded({ router }: { router: Router | undefined }): ComputedRef<boolean> {
+  return computed(() => {
+    if (router === undefined) return false;
+    // Navigation is gated until the main app renders. START_LOCATION must not
+    // briefly expose onboarding when opening an excluded deep link directly.
+    const route = router.currentRoute.value === START_LOCATION
+      ? resolveInitialRoute({ router })
+      : router.currentRoute.value;
+    return isOnboardingExcludedPath({ path: route.path });
+  });
+}
+
 export function provideAppPresentation({ startupState }: {
   startupState: ShallowRef<StartupState>,
 }): AppPresentation {
   const settingsStore = useSettings();
+  const onboardingRouteExcluded = createOnboardingRouteExcluded({ router: inject(routerKey, undefined) });
   const presentation = createAppPresentation({
     startupState,
     settingsInitialized: settingsStore.initialized,
     isOnboardingDismissed: settingsStore.isOnboardingDismissed,
     modelLaunchBypass: useModelLaunchOnboardingBypass({ initialized: settingsStore.initialized, storageType: computed(() => settingsStore.settings.value.storageType) }),
+    onboardingRouteExcluded,
   });
   provide(appPresentationKey, presentation);
   return presentation;
@@ -124,4 +143,5 @@ export function useAppPresentation(): AppPresentation {
 
 export const TEST_ONLY = {
   createAppPresentation,
+  createOnboardingRouteExcluded,
 };

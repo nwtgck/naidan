@@ -6,13 +6,19 @@ describe("createModelLoadProgressTracker", () => {
     const tracker = createModelLoadProgressTracker({ candidateId: 'webgpu-q4' });
     const at = '2026-09-08T00:00:00.000Z';
     expect(tracker.observe({ info: { status: 'cache-acceptance-model-session' }, at, nowMs: 0 })).toMatchObject({
-      sourceStatus: 'cache-acceptance-model-session', lastForwardProgressAt: at,
-      fileLoaded: undefined, aggregateLoaded: undefined, forwardProgressCount: 1,
+      sourceStatus: 'cache-acceptance-model-session',
+      lastForwardProgressAt: at,
+      fileLoaded: undefined,
+      aggregateLoaded: undefined,
+      forwardProgressCount: 1,
     });
     expect(tracker.observe({ info: { status: 'cache-acceptance-tokenizer-processor' }, at, nowMs: 1 })).toMatchObject({
-      sourceStatus: 'cache-acceptance-tokenizer-processor', forwardProgressCount: 2, publishedSampleCount: 2,
+      sourceStatus: 'cache-acceptance-tokenizer-processor',
+      forwardProgressCount: 2,
+      publishedSampleCount: 2,
     });
   });
+
   it("collapses the Transformers.js progress_total/progress pair into one time-bounded diagnostic sample", () => {
     const tracker = createModelLoadProgressTracker({ candidateId: "webgpu-q4f16" });
 

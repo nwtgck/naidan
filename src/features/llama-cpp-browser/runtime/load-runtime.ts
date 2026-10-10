@@ -50,5 +50,6 @@ export async function loadRuntime({ profile, assetBaseURL }: { profile: LlamaCpp
   logDiagnostic({ diagnostic: { event: 'runtime-ready', profile } });
   return core;
 }
+
 export const TEST_ONLY = {
 };

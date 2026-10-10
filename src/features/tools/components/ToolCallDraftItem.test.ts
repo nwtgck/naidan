@@ -6,6 +6,7 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import ToolCallDraftItem from './ToolCallDraftItem.vue';
 
 enableAutoUnmount(afterEach);
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();

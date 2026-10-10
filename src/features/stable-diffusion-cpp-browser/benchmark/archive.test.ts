@@ -6,17 +6,27 @@ import { createBenchmarkRunner } from './runner';
 import { metricFixture, planFixture } from './test-fixtures';
 import { manifestSchema } from './types';
 import type { BenchmarkSnapshot } from './types';
+
 async function snapshotFixture(): Promise<BenchmarkSnapshot> {
   let calls = 0;
-  const runner = createBenchmarkRunner({ now: () => ++calls, date: () => '2026-09-27T00:00:00.000Z', observeVisibility: () => () => {}, publish() {},
+  const runner = createBenchmarkRunner({
+    now: () => ++calls,
+    date: () => '2026-09-27T00:00:00.000Z',
+    observeVisibility: () => () => {},
+    publish() {},
     createClient: () => {
       let count = 0; return {
         async generate({ request, onDiagnostic }) {
           onDiagnostic?.({ diagnostic: metricFixture({ metric: 'worker-selection', fields: { reusedWorker: count++ > 0, reason: 'fixture' } }) });
           return { png: new Blob(['PNG-test'], { type: 'image/png' }), width: request.parameters.width, height: request.parameters.height, modelVersion: 'fixture', uniformOutput: false };
-        }, async inspectEngine() {
+        },
+        async inspectEngine() {
           return { status: 'unavailable', reason: 'unsupported' };
-        }, dispose() {}, release() {}, cancel() {}, updatePreview() {},
+        },
+        dispose() {},
+        release() {},
+        cancel() {},
+        updatePreview() {},
       };
     },
   });
@@ -27,6 +37,7 @@ async function snapshotFixture(): Promise<BenchmarkSnapshot> {
   plan.models[0]!.request.baseUrl = 'https://host.invalid/?token=do-not-export'; plan.models[0]!.request.models[0]!.sourceId = 'opaque-identity-do-not-export';
   await runner.start({ plan }); return runner.snapshot()!;
 }
+
 it('exports validated immutable settings, per-model directories and real PNG bytes; no filename becomes a ZIP path', async () => {
   const snapshot = await snapshotFixture();
   const blob = await benchmarkArchiveBlob({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T01:00:00.000Z', signal: new AbortController().signal });
@@ -38,36 +49,41 @@ it('exports validated immutable settings, per-model directories and real PNG byt
   expect(manifest.models[0]!.request.artifact.wasmSha256).toHaveLength(64);
   expect(manifest.models.map(model => model.request.parameters.bf16WeightType)).toEqual(['f16', 'f32']);
   expect(manifest.models[0]!.overrideKeys).toContain('bf16WeightType');
-  for (const index of [1,2]) {
+  for (const index of [1, 2]) {
     const root = `models/m00${index}`; expect(zip.file(`${root}/settings.json`)).not.toBeNull();
     expect(JSON.parse(await zip.file(`${root}/settings.json`)!.async('string')).request.parameters.bf16WeightType).toBe(index === 1 ? 'f16' : 'f32');
-    for (const ri of [1,2]) {
+    for (const ri of [1, 2]) {
       expect(await zip.file(`${root}/runs/r00${ri}/result.png`)!.async('string')).toBe('PNG-test');
       expect(await zip.file(`${root}/runs/r00${ri}/diagnostics.jsonl`)!.async('string')).toContain('worker-selection');
     }
   }
   expect(Object.keys(zip.files).some(name => name.includes('..') || name.includes('日本語'))).toBe(false);
 });
+
 it('only includes prompts after explicit opt-in and never looks at the live configuration', async () => {
   const snapshot = await snapshotFixture();
   const data = benchmarkManifest({ snapshot, includePrompts: true, includeInputImages: 'omit', exportedAt: 'now' });
   expect(data.models[0]!.request.prompt).toBe('private prompt'); expect(data.models[0]!.request.negativePrompt).toBe('private negative');
   expect(data.protocol.repeats).toBe(2);
 });
+
 it('keeps legacy diagnostics readable and records requested adapter strengths without copying weights', async () => {
   const snapshot = await snapshotFixture();
   const before = benchmarkManifest({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T00:00:00Z' });
   expect(before.models[0]!.request).not.toHaveProperty('loras');
   expect(manifestSchema.safeParse(before).success).toBe(true);
   const file = new File(['adapter-data'], 'style.safetensors', { lastModified: 42 });
-  Object.defineProperty(file, 'arrayBuffer', { value: () => {
-    throw new Error('Do not read adapter weights for diagnostics');
-  } });
+  Object.defineProperty(file, 'arrayBuffer', {
+    value: () => {
+      throw new Error('Do not read adapter weights for diagnostics');
+    },
+  });
   snapshot.plan.models[0]!.request.loras = [{ file, path: 'styles/style.safetensors', strength: 0.75 }];
   const after = benchmarkManifest({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T00:00:00Z' });
   expect(after.models[0]!.request.loras).toEqual([{ file: { path: 'styles/style.safetensors', bytes: 12, lastModified: 42 }, strength: 0.75 }]);
   expect(after.models[1]!.request).not.toHaveProperty('loras');
 });
+
 it('aggregates warm and cold separately and excludes missing or mismatched reuse evidence', async () => {
   const snapshot = await snapshotFixture(); snapshot.runs[1]!.record.elapsedMs = 20;
   let aggregate = benchmarkAggregate({ snapshot }); expect(aggregate[0]).toMatchObject({ coldSamples: 1, warmSamples: 1, warmMedianMs: 20 });
@@ -76,18 +92,24 @@ it('aggregates warm and cold separately and excludes missing or mismatched reuse
   snapshot.runs[1]!.record.metrics.reuse = { reusedWorker: false, reason: 'unexpected' };
   expect(benchmarkAggregate({ snapshot })[0]!.warmSamples).toBe(0);
 });
+
 it('does not reread or hash any model weights for export', async () => {
   const snapshot = await snapshotFixture();
   for (const model of snapshot.plan.models) for (const member of model.request.models) {
-    Object.defineProperty(member.file, 'arrayBuffer', { value: () => {
-      throw new Error('weight read');
-    } });
-    Object.defineProperty(member.file, 'stream', { value: () => {
-      throw new Error('weight read');
-    } });
+    Object.defineProperty(member.file, 'arrayBuffer', {
+      value: () => {
+        throw new Error('weight read');
+      },
+    });
+    Object.defineProperty(member.file, 'stream', {
+      value: () => {
+        throw new Error('weight read');
+      },
+    });
   }
   await expect(benchmarkArchiveBlob({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T00:00:00Z', signal: new AbortController().signal })).resolves.toBeInstanceOf(Blob);
 });
+
 it('settles producer and consumer cancellation without orphaned ZIP work', async () => {
   const snapshot = await snapshotFixture();
   const archive = createBenchmarkArchive({ snapshot, includePrompts: false, includeInputImages: 'omit', exportedAt: '2026-09-27T00:00:00Z' });

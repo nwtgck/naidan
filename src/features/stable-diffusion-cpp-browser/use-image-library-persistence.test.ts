@@ -16,21 +16,38 @@ const recipe = imageModelRecipes.find(recipe => recipe.id === 'qwen-image-2.1')!
 const files = selectedRecipeFiles({ recipe, selections: {} });
 let root: MemoryDirectory;
 const scopes: ReturnType<typeof effectScope>[] = [];
+
 function library() {
   const scope = effectScope(); scopes.push(scope);
-  return scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection() {}, dependencies: {
-    download: args => downloadImageRecipe({ ...args, fetch: privacyFetchStream }), list: listImageRepositories, scan: scanImageRepositories, import: importImageRepository,
-  } }))!;
+  return scope.run(() => useImageLibrary({
+    downloadsBlocked: () => false,
+    blocked: () => false,
+    onSelection() {},
+    dependencies: {
+      download: args => downloadImageRecipe({ ...args, fetch: privacyFetchStream }),
+      list: listImageRepositories,
+      scan: scanImageRepositories,
+      import: importImageRepository,
+    },
+  }))!;
 }
+
 beforeEach(() => {
   root = new MemoryDirectory('root'); calls.fetch.mockReset();
-  vi.stubGlobal('navigator', { storage: { getDirectory: async () => root }, locks: { request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
-    options.signal?.throwIfAborted(); return run();
-  } } });
+  vi.stubGlobal('navigator', {
+    storage: { getDirectory: async () => root },
+    locks: {
+      request: async (_name: string, options: { signal?: AbortSignal }, run: () => Promise<void>) => {
+        options.signal?.throwIfAborted(); return run();
+      },
+    },
+  });
 });
+
 afterEach(() => {
   scopes.splice(0).forEach(scope => scope.stop()); vi.unstubAllGlobals();
 });
+
 async function serve({ layers, failLast }: { layers: number, failLast: boolean }): Promise<void> {
   const payloads = await Promise.all(files.map(file => qwenRecipeFixtureBytes({ file, layers })));
   calls.fetch.mockImplementation(async ({ request }: { request: { url: string } }): Promise<PrivacyFetchStreamResponse> => {
@@ -39,13 +56,24 @@ async function serve({ layers, failLast }: { layers: number, failLast: boolean }
     const meta = request.url.includes('/api/');
     const status = failLast && !meta && file.role === 'lm' ? 403 : 200;
     const bytes = meta ? new TextEncoder().encode(JSON.stringify([{ type: 'file', path: file.path, size: payload.length, lfs: { size: payload.length, oid: createHash('sha256').update(payload).digest('hex') } }])) : payload;
-    return { url: request.url, status, statusText: '', ok: status === 200, redirected: false, responseType: 'basic', headers: new Headers(), policyName: 'huggingface_models',
-      body: new ReadableStream({ start(controller) {
-        controller.enqueue(bytes); controller.close();
-      } }),
+    return {
+      url: request.url,
+      status,
+      statusText: '',
+      ok: status === 200,
+      redirected: false,
+      responseType: 'basic',
+      headers: new Headers(),
+      policyName: 'huggingface_models',
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(bytes); controller.close();
+        },
+      }),
     };
   });
 }
+
 it('downloads -> verifies -> publishes -> inventories -> selects the actual three pinned Qwen recipe paths, including the 36-layer encoder', async () => {
   await serve({ layers: 36, failLast: false });
   const view = library();
@@ -63,6 +91,7 @@ it('downloads -> verifies -> publishes -> inventories -> selects the actual thre
   expect(reopened.ready.value).toBe(true); expect(calls.fetch).not.toHaveBeenCalled();
   expect(reopened.selectedModels()!.map(model => model.sourceId)).toEqual(identities);
 });
+
 it('does not call a fully downloaded but structurally wrong encoder ready; a filename cannot bypass classification', async () => {
   await serve({ layers: 32, failLast: false });
   const view = library(); await view.downloadRecipe({ recipeId: recipe.id, selections: {} });
@@ -70,6 +99,7 @@ it('does not call a fully downloaded but structurally wrong encoder ready; a fil
   expect(view.components.value.find(component => component.slot === 'lm')?.selected).toBe('');
   expect(view.recipeAvailability({ recipeId: recipe.id, selections: {} }).available).toBe(2);
 });
+
 it('retains earlier complete files when the third download fails and reuses them on retry', async () => {
   await serve({ layers: 36, failLast: true });
   const view = library(); await view.downloadRecipe({ recipeId: recipe.id, selections: {} });

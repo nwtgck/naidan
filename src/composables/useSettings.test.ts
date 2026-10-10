@@ -10,6 +10,7 @@ import {
   type StringBoundaryModule,
 } from '@/strings/runtime';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
+import type { ChangeListener } from '@/00-storage/service/synchronizer';
 
 const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64, mockPreloadFakeLmRuntime, mockScheduledIdleTasks } = vi.hoisted(() => ({
   mockAddErrorEvent: vi.fn(),
@@ -69,13 +70,15 @@ const mocks = vi.hoisted(() => ({
   }),
   switchProvider: vi.fn(),
   getCurrentType: vi.fn().mockReturnValue('local'),
-  subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+  subscribeToChanges: vi.fn<({ listener }: { listener: ChangeListener }) => () => void>(() => () => {}),
   notify: vi.fn(),
 }));
 
 vi.mock('../00-storage/service', () => ({
   storageService: mocks,
 }));
+
+const synchronizeSettings = mocks.subscribeToChanges.mock.calls[0]![0].listener;
 
 vi.mock('../utils/opfs-detection', () => ({
   checkOPFSSupport: vi.fn().mockResolvedValue(true),
@@ -84,6 +87,7 @@ vi.mock('../utils/opfs-detection', () => ({
 vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     constructor() {}
+
     listModels = mockListModels;
   },
 }));
@@ -91,6 +95,7 @@ vi.mock('../features/lm/openai', () => ({
 vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     constructor() {}
+
     listModels = mockListModels;
   },
 }));
@@ -113,6 +118,17 @@ describe('useSettings Initialization and Bootstrap', () => {
     vi.unstubAllGlobals();
   });
 
+  it('republishes the editor storage boundary after migration removes the saved Settings record', async () => {
+    const { init, settings } = useSettings(); await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+    const previous = settings.value;
+    mocks.loadSettings.mockResolvedValue(null);
+    await synchronizeSettings({ event: { type: 'settings', timestamp: 1 } });
+    expect(settings.value).toBe(previous);
+    await synchronizeSettings({ event: { type: 'migration', timestamp: 2 } });
+    expect(settings.value).not.toBe(previous); expect(settings.value).toEqual(previous);
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
   it('uses thinking off only when no settings have been saved, without persisting a migration', async () => {
     mocks.loadSettings.mockResolvedValue(null);
     const { init, settings } = useSettings();
@@ -123,7 +139,9 @@ describe('useSettings Initialization and Bootstrap', () => {
 
   it.each([undefined, 'none', 'low', 'medium', 'high'] as const)('loads saved title reasoning %s verbatim without a migration', async effort => {
     const saved: Settings = {
-      ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' },
+      ...DEFAULT_SETTINGS,
+      storageType: 'local',
+      endpoint: { type: 'openai', url: '' },
       titleGeneration: { endpoint: 'same_scope', model: 'same_scope', lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort } } },
     };
     mocks.loadSettings.mockResolvedValue(saved);
@@ -686,15 +704,18 @@ describe('useSettings Initialization and Bootstrap', () => {
       });
       mockListModels.mockClear();
 
-      await fetchModels({ overrides: {
-        url: 'http://override-url',
-        type: 'ollama',
-        httpHeaders: [['X-Test', 'true']],
-      } });
+      await fetchModels({
+        overrides: {
+          url: 'http://override-url',
+          type: 'ollama',
+          httpHeaders: [['X-Test', 'true']],
+        },
+      });
 
       expect(mockListModels).toHaveBeenCalledWith({});
       expect(mockListModels).toHaveBeenCalledTimes(1);
     });
+
     it('keeps the latest model list when overlapping requests finish out of order', async () => {
       let resolveFirst!: (models: string[]) => void;
       let resolveSecond!: (models: string[]) => void;

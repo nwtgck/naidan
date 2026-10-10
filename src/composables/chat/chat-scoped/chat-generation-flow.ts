@@ -1,4 +1,4 @@
-import { getImageGenerationToolsForChat } from '@/features/stable-diffusion-cpp-browser/session/assistant-registry';
+import { getImageGenerationToolsForChat } from '@/features/image-generation/session/assistant-registry';
 import { assertModelLaunchReady } from '@/features/llama-cpp-browser/model-launch/readiness';
 import { reactive, toRaw } from 'vue';
 import { ensureStrings } from '@/strings';
@@ -95,6 +95,7 @@ function isBrowserProvidedLmEndpoint({ endpoint }: { endpoint: Endpoint }): bool
   switch (endpoint.type) {
   case 'browser_provided_lm':
     return true;
+  case 'naidan_rpc':
   case 'openai':
   case 'ollama':
   case 'llama_cpp_browser':
@@ -123,7 +124,7 @@ function resolveGenerationModel({
   // Local file identities need not be present in the human-readable model list.
   // Missing local files are an error, not permission to use another model.
   switch (endpointType) {
-  case 'llama_cpp_browser': return preferredModel;
+  case 'naidan_rpc': case 'llama_cpp_browser': return preferredModel;
   case 'openai': case 'ollama': case 'transformers_js': case 'browser_provided_lm': case undefined: break;
   default: { const exhaustive: never = endpointType; throw new Error(String(exhaustive)); }
   }
@@ -219,6 +220,8 @@ export async function sendMessageToTargetChat({
           url: endpoint.url,
           type: endpoint.type,
         };
+      case 'naidan_rpc':
+        return { hasReachableEndpoint: endpoint.registrationId !== undefined, url: undefined, type: endpoint.type };
       case 'llama_cpp_browser':
       case 'transformers_js':
       case 'browser_provided_lm':
@@ -329,19 +332,25 @@ export async function sendMessageToTargetChat({
     }
 
     const userMessage: UserMessageNode = {
-      id: generateId<MessageId>(), role: 'user', createdAt: Date.now(),
+      id: generateId<MessageId>(),
+      role: 'user',
+      createdAt: Date.now(),
       parts: [
         { type: 'text', text: finalContent, completeness: 'complete' },
         ...processedAttachments.map(attachment => ({ type: 'attachment' as const, attachment })),
       ],
-      replies: { items: [] }, modelId: undefined,
+      replies: { items: [] },
+      modelId: undefined,
       lmParameters: effectiveLmParameters || EMPTY_LM_PARAMETERS,
     };
 
     const assistantMessage: AssistantMessageNode = {
-      id: generateId<MessageId>(), role: 'assistant', createdAt: Date.now(),
+      id: generateId<MessageId>(),
+      role: 'assistant',
+      createdAt: Date.now(),
       parts: imageModeEnabled ? [{ type: 'text', text: createImageResponseMarker({ count }) + SENTINEL_IMAGE_PENDING, completeness: 'partial' }] : [],
-      modelId: imageModel || resolvedModel, replies: { items: [] },
+      modelId: imageModel || resolvedModel,
+      replies: { items: [] },
       lmParameters: effectiveLmParameters || EMPTY_LM_PARAMETERS,
       interruption: undefined,
     };
@@ -584,7 +593,11 @@ export async function generateResponseForAssistant({
       signalReady();
       const { ensureApproval } = useApproval();
       const result = await generateChatTurn({
-        provider, debug, model: resolvedModel, parameters: finalLmParameters, tools: enabledTools,
+        provider,
+        debug,
+        model: resolvedModel,
+        parameters: finalLmParameters,
+        tools: enabledTools,
         abortController: controller,
         approvalContext: { chatId: mutableChat.id, ensureApproval },
         readBinaryObject: async ({ binaryObjectId, signal }) => {
@@ -602,9 +615,14 @@ export async function generateResponseForAssistant({
             return node;
           }
           const node: AssistantMessageNode = reactive({
-            id: generateId<MessageId>(), role: 'assistant', createdAt: Date.now(),
-            parts: [], modelId: resolvedModel, lmParameters: finalLmParameters,
-            interruption: undefined, replies: { items: [] },
+            id: generateId<MessageId>(),
+            role: 'assistant',
+            createdAt: Date.now(),
+            parts: [],
+            modelId: resolvedModel,
+            lmParameters: finalLmParameters,
+            interruption: undefined,
+            replies: { items: [] },
           });
           ownedLeaf.replies.items.push(node);
           ownedLeaf = node;
@@ -616,8 +634,13 @@ export async function generateResponseForAssistant({
         createToolMessage: ({ assistant }) => {
           if (assistant !== activeAssistant) throw new Error('The active assistant no longer owns this tool execution.');
           const node: ToolMessageNode = reactive({
-            id: generateId<MessageId>(), role: 'tool', createdAt: Date.now(),
-            parts: [], modelId: undefined, lmParameters: undefined, replies: { items: [] },
+            id: generateId<MessageId>(),
+            role: 'tool',
+            createdAt: Date.now(),
+            parts: [],
+            modelId: undefined,
+            lmParameters: undefined,
+            replies: { items: [] },
           });
           assistant.replies.items.push(node);
           ownedTools.push(node);
@@ -637,7 +660,8 @@ export async function generateResponseForAssistant({
         buildMessages: ({ excludedMessageId }) => buildChatGenerationMessages({
           // Branch navigation during generation must not change the run's input path.
           chat: { root: mutableChat.root, currentLeafId: ownedLeaf.id },
-          excludedMessageId, systemPromptMessages: resolved.systemPromptMessages,
+          excludedMessageId,
+          systemPromptMessages: resolved.systemPromptMessages,
         }),
         onChange: reflectChanges,
         onToolCallDraftsChange: ({ messageId, drafts }) => {
@@ -836,9 +860,14 @@ async function regenerateMessageForTarget({
     }
 
     const newAssistantMessage: AssistantMessageNode = {
-      id: generateId<MessageId>(), role: 'assistant', createdAt: Date.now(),
-      parts: [], interruption: undefined, modelId: failedNode.modelId,
-      replies: { items: [] }, lmParameters: failedNode.lmParameters || EMPTY_LM_PARAMETERS,
+      id: generateId<MessageId>(),
+      role: 'assistant',
+      createdAt: Date.now(),
+      parts: [],
+      interruption: undefined,
+      modelId: failedNode.modelId,
+      replies: { items: [] },
+      lmParameters: failedNode.lmParameters || EMPTY_LM_PARAMETERS,
     };
     parent.replies.items.push(newAssistantMessage);
     mutableChat.currentLeafId = newAssistantMessage.id;

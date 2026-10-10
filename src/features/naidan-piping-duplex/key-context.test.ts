@@ -15,20 +15,37 @@ async function rejectedHandshake({ failure }: { failure: 'pin' | 'binding' | 'fi
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity(), other: createNaidanPipingIdentity() });
   const toA = mailbox(), toB = mailbox(), stop = new AbortController();
   let sendsFromInitiator = 0, responderFlights = 0;
-  const left = establishNaidanPipingKeys({ role: 'initiator', identity: identities.a,
+  const left = establishNaidanPipingKeys({
+    responseTimeoutMs: 75_000,
+    role: 'initiator',
+    identity: identities.a,
     expectedPeer: failure === 'pin' ? identities.other.publicKey : identities.b.publicKey,
-    binding: new Uint8Array(32), signal: stop.signal,
-    channel: { receive: toA.receive, send: async ({ bytes }) => {
-      sendsFromInitiator++; await toB.send({ bytes });
-    } } });
-  const right = establishNaidanPipingKeys({ role: 'responder', identity: identities.b, expectedPeer: identities.a.publicKey,
-    binding: new Uint8Array(32).fill(failure === 'binding' ? 1 : 0), signal: stop.signal,
-    channel: { receive: toB.receive, send: async ({ bytes }) => {
-      responderFlights++;
-      const owned = bytes.slice();
-      if (failure === 'final' && responderFlights === 4) owned[owned.length - 1]! ^= 1;
-      await toA.send({ bytes: owned });
-    } } });
+    binding: new Uint8Array(32),
+    signal: stop.signal,
+    channel: {
+      receive: toA.receive,
+      send: async ({ bytes }) => {
+        sendsFromInitiator++; await toB.send({ bytes });
+      },
+    },
+  });
+  const right = establishNaidanPipingKeys({
+    responseTimeoutMs: 75_000,
+    role: 'responder',
+    identity: identities.b,
+    expectedPeer: identities.a.publicKey,
+    binding: new Uint8Array(32).fill(failure === 'binding' ? 1 : 0),
+    signal: stop.signal,
+    channel: {
+      receive: toB.receive,
+      send: async ({ bytes }) => {
+        responderFlights++;
+        const owned = bytes.slice();
+        if (failure === 'final' && responderFlights === 4) owned[owned.length - 1]! ^= 1;
+        await toA.send({ bytes: owned });
+      },
+    },
+  });
   // The failing side wakes the other; no test waits for an unrelated timeout to pass.
   void left.catch(error => stop.abort(error)); void right.catch(error => stop.abort(error));
   const timer = setTimeout(() => stop.abort(new Error('Test key exchange did not terminate')), 5000);
@@ -65,18 +82,39 @@ it('pre-cancelled key establishment sends no handshake message', async () => {
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
   const stop = new AbortController(), reason = new Error('Do not start'); stop.abort(reason);
   const send = vi.fn(), receive = vi.fn();
-  await expect(establishNaidanPipingKeys({ role: 'initiator', identity: identities.a, expectedPeer: identities.b.publicKey,
-    binding: new Uint8Array(32), channel: { send, receive }, signal: stop.signal })).rejects.toBe(reason);
+  await expect(establishNaidanPipingKeys({
+    responseTimeoutMs: 75_000,
+    role: 'initiator',
+    identity: identities.a,
+    expectedPeer: identities.b.publicKey,
+    binding: new Uint8Array(32),
+    channel: { send, receive },
+    signal: stop.signal,
+  })).rejects.toBe(reason);
   expect(send).not.toHaveBeenCalled(); expect(receive).not.toHaveBeenCalled();
 });
 
 it('missing pin or binding lengths fail without network or handshake-channel use', async () => {
   const identity = await createNaidanPipingIdentity(), send = vi.fn(), receive = vi.fn();
   for (const length of [0, 31, 33]) {
-    await expect(establishNaidanPipingKeys({ role: 'initiator', identity, expectedPeer: new Uint8Array(length),
-      binding: new Uint8Array(32), channel: { send, receive }, signal: new AbortController().signal })).rejects.toThrow();
-    await expect(establishNaidanPipingKeys({ role: 'initiator', identity, expectedPeer: identity.publicKey,
-      binding: new Uint8Array(length), channel: { send, receive }, signal: new AbortController().signal })).rejects.toThrow();
+    await expect(establishNaidanPipingKeys({
+      responseTimeoutMs: 75_000,
+      role: 'initiator',
+      identity,
+      expectedPeer: new Uint8Array(length),
+      binding: new Uint8Array(32),
+      channel: { send, receive },
+      signal: new AbortController().signal,
+    })).rejects.toThrow();
+    await expect(establishNaidanPipingKeys({
+      responseTimeoutMs: 75_000,
+      role: 'initiator',
+      identity,
+      expectedPeer: identity.publicKey,
+      binding: new Uint8Array(length),
+      channel: { send, receive },
+      signal: new AbortController().signal,
+    })).rejects.toThrow();
   }
   expect(send).not.toHaveBeenCalled(); expect(receive).not.toHaveBeenCalled();
 });

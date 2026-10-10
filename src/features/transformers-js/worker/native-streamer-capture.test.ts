@@ -8,6 +8,7 @@ let runtime: Runtime;
 const forbiddenFetch = vi.fn(() => {
   throw new Error('External network forbidden');
 });
+
 beforeAll(async () => {
   vi.stubGlobal('fetch', forbiddenFetch);
   const artifact = await getProductionTransformersArtifact();
@@ -22,6 +23,7 @@ beforeAll(async () => {
     Object.defineProperty(globalThis, 'process', descriptor);
   }
 }, 30_000);
+
 afterAll(() => {
   try {
     expect(forbiddenFetch).not.toHaveBeenCalled();
@@ -41,9 +43,11 @@ function syntheticStreamer() {
     put(...args: unknown[]) {
       calls.push({ receiver: this, args }); return returned;
     }
+
     end(...args: unknown[]) {
       calls.push({ receiver: this, args }); return returned;
     }
+
     on_finalized_text(...args: unknown[]) {
       calls.push({ receiver: this, args }); return returned;
     }
@@ -83,7 +87,8 @@ describe('native streamer instance call-through', () => {
       order.push(`${event.operation}:${event.phase}`);
     });
     const streamer = new runtime.TextStreamer({ all_special_ids: [], decode: () => 'tail' } as never, {
-      skip_prompt: true, callback_function: () => {
+      skip_prompt: true,
+      callback_function: () => {
         order.push('callback');
       },
     });
@@ -116,7 +121,11 @@ describe('native streamer instance call-through', () => {
     class ThrowingStreamer {
       put() {
         throw failure;
-      } end() {} on_finalized_text() {}
+      }
+
+      end() {}
+
+      on_finalized_text() {}
     }
     const streamer = new ThrowingStreamer(); const capture = recorder();
     const hook = observeNativeStreamer({ streamer, streamerPrototype: ThrowingStreamer.prototype, capture });
@@ -133,9 +142,12 @@ describe('native streamer instance call-through', () => {
 
   it('rethrows the identical end callback exception and records nested finalized failure', () => {
     const failure = new Error('Synthetic callback failure');
-    const streamer = new runtime.TextStreamer({ all_special_ids: [], decode: () => 'remaining' } as never, { skip_prompt: true, callback_function: () => {
-      throw failure;
-    } });
+    const streamer = new runtime.TextStreamer({ all_special_ids: [], decode: () => 'remaining' } as never, {
+      skip_prompt: true,
+      callback_function: () => {
+        throw failure;
+      },
+    });
     streamer.put([[1n]]);
     streamer.put([[2n]]);
     const capture = recorder();
@@ -159,7 +171,11 @@ describe('native streamer instance call-through', () => {
     class Streamer {
       put() {
         return returned;
-      } end() {} on_finalized_text() {}
+      }
+
+      end() {}
+
+      on_finalized_text() {}
     }
     const streamer = new Streamer(); const capture = recorder();
     const hook = observeNativeStreamer({ streamer, streamerPrototype: Streamer.prototype, capture });
@@ -250,10 +266,12 @@ describe('native streamer instance call-through', () => {
 
   it('rolls back a partial installation without leaving earlier method hooks behind', () => {
     const fixture = syntheticStreamer(); const capture = recorder();
-    const streamer = new Proxy(fixture.streamer, { defineProperty(target, key, descriptor) {
-      if (key === 'on_finalized_text') throw new Error('Synthetic install failure');
-      return Reflect.defineProperty(target, key, descriptor);
-    } });
+    const streamer = new Proxy(fixture.streamer, {
+      defineProperty(target, key, descriptor) {
+        if (key === 'on_finalized_text') throw new Error('Synthetic install failure');
+        return Reflect.defineProperty(target, key, descriptor);
+      },
+    });
     observeNativeStreamer({ streamer, streamerPrototype: fixture.prototype, capture }).restore();
     expect(Object.getOwnPropertyDescriptors(fixture.streamer)).toEqual({});
     expect(capture.setNativeStreamAvailability).toHaveBeenCalledWith({ availability: { status: 'unavailable', reason: 'install-failed' } });
@@ -261,9 +279,11 @@ describe('native streamer instance call-through', () => {
 
   it('contains restoration failure and reports it without throwing over a native result', () => {
     const fixture = syntheticStreamer(); const capture = recorder();
-    const streamer = new Proxy(fixture.streamer, { deleteProperty() {
-      return false;
-    } });
+    const streamer = new Proxy(fixture.streamer, {
+      deleteProperty() {
+        return false;
+      },
+    });
     const hook = observeNativeStreamer({ streamer, streamerPrototype: fixture.prototype, capture });
     expect(streamer.put()).toBe(fixture.returned);
     expect(() => hook.restore()).not.toThrow();

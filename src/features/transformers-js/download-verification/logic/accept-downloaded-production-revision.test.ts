@@ -15,6 +15,7 @@ const REVISION = '0123456789abcdef0123456789abcdef01234567';
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
 afterEach(() => vi.restoreAllMocks());
 
 function client({ verifyDownloadedModelRevision }: {
@@ -34,7 +35,11 @@ describe('acceptDownloadedProductionRevision', () => {
     vi.mocked(worker.dispose).mockRejectedValue(disposalError);
     vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
     const observations: unknown[] = [];
-    await expect(acceptDownloadedProductionRevision({ modelId: 'org/model', repositoryResolvedRevision: REVISION, cacheRevision: REVISION, loadRevision: REVISION,
+    await expect(acceptDownloadedProductionRevision({
+      modelId: 'org/model',
+      repositoryResolvedRevision: REVISION,
+      cacheRevision: REVISION,
+      loadRevision: REVISION,
       onTiming: ({ observation }) => {
         observations.push(observation);
       },
@@ -55,7 +60,11 @@ describe('acceptDownloadedProductionRevision', () => {
       });
     vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
     const observations: unknown[] = [];
-    const result = await acceptDownloadedProductionRevision({ modelId: 'org/model', repositoryResolvedRevision: REVISION, cacheRevision: REVISION, loadRevision: REVISION,
+    const result = await acceptDownloadedProductionRevision({
+      modelId: 'org/model',
+      repositoryResolvedRevision: REVISION,
+      cacheRevision: REVISION,
+      loadRevision: REVISION,
       candidates: [{ device: 'webgpu', dtype: 'q4' }, { device: 'wasm', dtype: 'q4' }],
       onTiming: ({ observation }) => {
         observations.push(observation);
@@ -68,11 +77,15 @@ describe('acceptDownloadedProductionRevision', () => {
   it('records Worker initialization failure without rejecting model compatibility or trying another candidate', async () => {
     const worker = client({ verifyDownloadedModelRevision: vi.fn() });
     vi.mocked(worker.verifyDownloadedModelCandidate).mockRejectedValue(new ProductionWorkerLifecycleError({
-      reason: 'initialization-failed', message: 'Fixture Worker failed before model loading',
+      reason: 'initialization-failed',
+      message: 'Fixture Worker failed before model loading',
     }));
     vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
     const result = await acceptDownloadedProductionRevision({
-      modelId: 'org/model', repositoryResolvedRevision: REVISION, cacheRevision: REVISION, loadRevision: REVISION,
+      modelId: 'org/model',
+      repositoryResolvedRevision: REVISION,
+      cacheRevision: REVISION,
+      loadRevision: REVISION,
       candidates: [{ device: 'webgpu', dtype: 'q4f16' }, { device: 'webgpu', dtype: 'q4' }],
     });
     expect(result).toMatchObject({ status: 'failed', error: { name: 'ProductionWorkerLifecycleError' } });
@@ -165,9 +178,11 @@ describe('acceptDownloadedProductionRevision', () => {
   });
 
   it('classifies a missing required cache artifact as failed, not runtime rejected', async () => {
-    const worker = client({ verifyDownloadedModelRevision: vi.fn(async () => {
-      throw Object.assign(new Error('loadDownloadedModel() MUST NOT fetch model artifacts; missing https://huggingface.co/org/model/resolve/main/onnx/model_q4.onnx?secret=1'), { name: 'MissingDownloadedModelArtifact' });
-    }) });
+    const worker = client({
+      verifyDownloadedModelRevision: vi.fn(async () => {
+        throw Object.assign(new Error('loadDownloadedModel() MUST NOT fetch model artifacts; missing https://huggingface.co/org/model/resolve/main/onnx/model_q4.onnx?secret=1'), { name: 'MissingDownloadedModelArtifact' });
+      }),
+    });
     vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
 
     const result = await acceptDownloadedProductionRevision({
@@ -184,9 +199,11 @@ describe('acceptDownloadedProductionRevision', () => {
   });
 
   it('reports all-candidate runtime rejection separately from cache incompleteness', async () => {
-    const worker = client({ verifyDownloadedModelRevision: vi.fn(async () => {
-      throw new Error('WASM q4 runtime rejected');
-    }) });
+    const worker = client({
+      verifyDownloadedModelRevision: vi.fn(async () => {
+        throw new Error('WASM q4 runtime rejected');
+      }),
+    });
     vi.mocked(createDownloadVerificationCandidateAcceptanceWorkerClient).mockReturnValue(worker);
 
     const result = await acceptDownloadedProductionRevision({

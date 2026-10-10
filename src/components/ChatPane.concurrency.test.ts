@@ -12,7 +12,6 @@ import type { Attachment, LmParameters } from '@/01-models/types';
 
 import { setupScrollToMock } from '@/utils/test-utils';
 
-
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });

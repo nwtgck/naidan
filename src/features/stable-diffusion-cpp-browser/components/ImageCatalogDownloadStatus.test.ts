@@ -5,9 +5,11 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 import { createDisabledImageLibrary } from '@/features/stable-diffusion-cpp-browser/library-standalone';
 import ImageCatalogDownloadStatus from './ImageCatalogDownloadStatus.vue';
 import LlamaCppBrowserDownloadProgress from '@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadProgress.vue';
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'ja' });
 });
+
 it('uses the existing llama progress component with the aggregate recipe total and removes it on completion', async () => {
   const view = createDisabledImageLibrary(); view.downloadState.value = 'downloading';
   view.downloading = computed(() => view.downloadState.value === 'downloading');
@@ -16,6 +18,7 @@ it('uses the existing llama progress component with the aggregate recipe total a
   try {
     expect(wrapper.find('progress').exists()).toBe(false);
     expect(wrapper.getComponent(LlamaCppBrowserDownloadProgress).props('progress')).toMatchObject({ completed: 400, total: 1000, processed: 100 });
+    expect(wrapper.get('[role="progressbar"] > div').classes()).toContain('bg-blue-600');
     view.downloadState.value = 'complete'; await wrapper.vm.$nextTick();
     expect(wrapper.find('[role="progressbar"]').exists()).toBe(false);
     expect(wrapper.text()).toBe('ダウンロード済み');

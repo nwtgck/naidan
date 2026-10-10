@@ -193,21 +193,42 @@ describe('Sidebar Compact View & DND Integrity', () => {
     HTMLElement.prototype.getBoundingClientRect = vi.fn().mockImplementation(function(this: HTMLElement) {
       if (this.dataset.testid === 'sidebar-nav') {
         return {
-          top: 0, bottom: 100, left: 0, right: 100, width: 100, height: 100,
-          x: 0, y: 0, toJSON: () => ({}),
+          top: 0,
+          bottom: 100,
+          left: 0,
+          right: 100,
+          width: 100,
+          height: 100,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
         };
       }
 
       if (this.dataset.sidebarChatId === 'c6') {
         return {
-          top: 180, bottom: 220, left: 0, right: 100, width: 100, height: 40,
-          x: 0, y: 180, toJSON: () => ({}),
+          top: 180,
+          bottom: 220,
+          left: 0,
+          right: 100,
+          width: 100,
+          height: 40,
+          x: 0,
+          y: 180,
+          toJSON: () => ({}),
         };
       }
 
       return {
-        top: 0, bottom: 40, left: 0, right: 100, width: 100, height: 40,
-        x: 0, y: 0, toJSON: () => ({}),
+        top: 0,
+        bottom: 40,
+        left: 0,
+        right: 100,
+        width: 100,
+        height: 40,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
       };
     });
   });

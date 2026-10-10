@@ -118,12 +118,14 @@ describe('model artifact request worker', () => {
     await import('./entry');
     const api = exposedApis.at(-1) as ExposedObserver;
     const observation = api.observeModelArtifactRequests({
-      modelId: 'LiquidAI/LFM2.5-230M-ONNX', revision: 'main',
+      modelId: 'LiquidAI/LFM2.5-230M-ONNX',
+      revision: 'main',
       candidate: { device: 'webgpu', dtype: 'q4f16' },
     });
     await vi.advanceTimersByTimeAsync(10_000);
     await expect(observation).resolves.toMatchObject({
-      status: 'failed', paths: [],
+      status: 'failed',
+      paths: [],
       error: { message: 'Timed out while waiting for Transformers.js model artifact requests' },
     });
     resume.resolve();
@@ -155,7 +157,8 @@ describe('model artifact request worker', () => {
     await import('./entry');
     const api = exposedApis.at(-1) as ExposedObserver;
     const observation = api.observeModelArtifactRequests({
-      modelId: 'LiquidAI/LFM2.5-230M-ONNX', revision: 'main',
+      modelId: 'LiquidAI/LFM2.5-230M-ONNX',
+      revision: 'main',
       candidate: { device: 'webgpu', dtype: 'q4f16' },
     });
     await vi.advanceTimersByTimeAsync(500);
@@ -214,7 +217,8 @@ describe('model artifact request worker', () => {
     await import('./entry');
     const api = exposedApis.at(-1) as ExposedObserver;
     const args = {
-      modelId: 'LiquidAI/LFM2.5-230M-ONNX', revision: 'main',
+      modelId: 'LiquidAI/LFM2.5-230M-ONNX',
+      revision: 'main',
       candidate: { device: 'webgpu', dtype: 'q4f16' },
     } as const;
     const first = api.observeModelArtifactRequests(args);
@@ -222,7 +226,8 @@ describe('model artifact request worker', () => {
     await expect(api.observeModelArtifactRequests(args)).rejects.toThrow('can only be used once');
     await vi.advanceTimersByTimeAsync(500);
     await expect(first).resolves.toMatchObject({
-      status: 'observed', paths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'],
+      status: 'observed',
+      paths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'],
     });
     await expect(api.observeModelArtifactRequests(args)).rejects.toThrow('can only be used once');
     expect(transformerMocks.configFromPretrained).toHaveBeenCalledTimes(1);
@@ -246,7 +251,8 @@ describe('model artifact request worker', () => {
     await import('./entry');
     const api = exposedApis.at(-1) as ExposedObserver;
     const observation = api.observeModelArtifactRequests({
-      modelId: 'LiquidAI/LFM2.5-230M-ONNX', revision: 'main',
+      modelId: 'LiquidAI/LFM2.5-230M-ONNX',
+      revision: 'main',
       candidate: { device: 'webgpu', dtype: 'q4f16' },
     });
     const rejected = expect(observation).rejects.toThrow('Timed out while reading model configuration');
@@ -268,7 +274,8 @@ describe('model artifact request worker', () => {
     await import('./entry');
     const api = exposedApis.at(-1) as ExposedObserver;
     await expect(api.observeModelArtifactRequests({
-      modelId: 'LiquidAI/LFM2.5-230M-ONNX', revision: 'main',
+      modelId: 'LiquidAI/LFM2.5-230M-ONNX',
+      revision: 'main',
       candidate: { device: 'webgpu', dtype: 'q4f16' },
     })).rejects.toBe(error);
     const settled = vi.fn();
@@ -286,7 +293,8 @@ describe('model artifact request worker', () => {
     await import('./entry');
     const api = exposedApis.at(-1) as ExposedObserver;
     await expect(api.observeModelArtifactRequests({
-      modelId: 'LiquidAI/LFM2.5-230M-ONNX', revision: 'main',
+      modelId: 'LiquidAI/LFM2.5-230M-ONNX',
+      revision: 'main',
       candidate: { device: 'webgpu', dtype: 'q4f16' },
     })).resolves.toMatchObject({ status: 'failed', paths: [], error: { name: 'RangeError', message: 'controlled model failure' } });
     const settled = vi.fn();
@@ -303,7 +311,8 @@ describe('model artifact request worker', () => {
     await import('./entry');
     const api = exposedApis.at(-1) as ExposedObserver;
     await expect(api.observeModelArtifactRequests({
-      modelId: 'LiquidAI/LFM2.5-230M-ONNX', revision: 'main',
+      modelId: 'LiquidAI/LFM2.5-230M-ONNX',
+      revision: 'main',
       candidate: { device: 'webgpu', dtype: 'q4f16' },
     })).resolves.toMatchObject({ status: 'failed', paths: [], error: { name: 'UnexpectedModelLoad' } });
     const settled = vi.fn();

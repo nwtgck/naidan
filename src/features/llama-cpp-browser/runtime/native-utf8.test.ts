@@ -11,7 +11,9 @@ function fixture() {
     if (start + size > heap.length) throw new RangeError('fixture bounds');
     return heap.subarray(start, start + size);
   });
-  return { core: { alloc, bytes, free }, pointer,
+  return {
+    core: { alloc, bytes, free },
+    pointer,
     replaceHeap({ next }: { next: Uint8Array }): void {
       heap = next;
     },
@@ -30,11 +32,13 @@ describe('owned encoded native text', () => {
     expect(heap()[Number(pointer) + data.length + 1]).toBe(0xaa);
     expect(data).toEqual(before); expect(core.free).not.toHaveBeenCalled();
   });
+
   it('copies only the requested view, with independent native ownership', () => {
     const { core, heap } = fixture(); const data = new Uint8Array([99, 65, 66, 88]);
     copyNativeUtf8({ core, data: data.subarray(1, 3) }); data.fill(17);
     expect(heap().slice(16, 19)).toEqual(new Uint8Array([65, 66, 0]));
   });
+
   it('reads the destination heap only after allocation has replaced it', () => {
     const { core, pointer, heap, replaceHeap } = fixture(); const previous = heap();
     core.alloc.mockImplementationOnce(() => {
@@ -44,6 +48,7 @@ describe('owned encoded native text', () => {
     expect(heap().slice(16, 20)).toEqual(new Uint8Array([1, 2, 3, 0]));
     expect(previous[16]).toBe(0xaa);
   });
+
   it('releases the native allocation when the destination is invalid', () => {
     const { core, pointer } = fixture(); const error = new RangeError('fixture invalid span');
     core.bytes.mockImplementationOnce(() => {
@@ -52,6 +57,7 @@ describe('owned encoded native text', () => {
     expect(() => copyNativeUtf8({ core, data: new Uint8Array([1]) })).toThrow(error);
     expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer });
   });
+
   it('releases the native allocation when copying fails', () => {
     const { core, pointer } = fixture(); const error = new Error('fixture copy failure');
     const destination = new Uint8Array(2); vi.spyOn(destination, 'set').mockImplementationOnce(() => {
@@ -61,6 +67,7 @@ describe('owned encoded native text', () => {
     expect(() => copyNativeUtf8({ core, data: new Uint8Array([1]) })).toThrow(error);
     expect(core.free).toHaveBeenCalledExactlyOnceWith({ pointer });
   });
+
   it('does not free an allocation which never succeeded', () => {
     const { core } = fixture(); const trap = new WebAssembly.RuntimeError('fixture malloc trap');
     core.alloc.mockImplementationOnce(() => {

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { computed, effectScope } from 'vue';
 import JSZip from 'jszip';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { useImageGeneration } from './use-image-generation-standalone';
+import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view';
 import { useImageBenchmark } from './use-image-benchmark-hosted';
 import { targetFixture } from './benchmark/test-fixtures';
 import { manifestSchema } from './benchmark/types';
@@ -11,18 +11,25 @@ import type { ImageClient } from './worker/types';
 
 const mocks = vi.hoisted(() => ({ create: vi.fn<() => ImageClient>() }));
 vi.mock('./worker/client', () => ({ createImageClient: () => mocks.create() }));
-vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({ default: {
-  kind: 'available', sourceCommit: 'a'.repeat(40), artifacts: [{
-    profile: 'webgpu-wasm32-asyncify',
-    modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`,
-    wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`,
-    helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`,
-    schemaSha256: '1'.repeat(64), wasmBytes: 8, wasmSha256: '0'.repeat(64),
-  }],
-} }));
+vi.mock('virtual:stable-diffusion-cpp-browser/config', () => ({
+  default: {
+    kind: 'available',
+    sourceCommit: 'a'.repeat(40),
+    artifacts: [{
+      profile: 'webgpu-wasm32-asyncify',
+      modulePath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.mjs`,
+      wasmPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/webgpu-wasm32-asyncify/core.wasm.gz`,
+      helpersPath: `stable-diffusion-cpp-runtime/${'a'.repeat(40)}/examples/runtime/index.mjs`,
+      schemaSha256: '1'.repeat(64),
+      wasmBytes: 8,
+      wasmSha256: '0'.repeat(64),
+    }],
+  },
+}));
 
 let scope: ReturnType<typeof effectScope> | undefined;
 let downloads: Blob[];
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
   // The archive uses standard Blob streams, which jsdom does not implement.
@@ -39,14 +46,24 @@ beforeEach(async () => {
   mocks.create.mockReset();
   mocks.create.mockImplementation(() => ({
     async generate({ request }) {
-      return { png: new Blob(['PNG'], { type: 'image/png' }), width: request.parameters.width, height: request.parameters.height,
-        modelVersion: 'synthetic', uniformOutput: false };
+      return {
+        png: new Blob(['PNG'], { type: 'image/png' }),
+        width: request.parameters.width,
+        height: request.parameters.height,
+        modelVersion: 'synthetic',
+        uniformOutput: false,
+      };
     },
     async inspectEngine() {
       return { status: 'unavailable', reason: 'unsupported' };
-    }, dispose() {}, release() {}, cancel() {}, updatePreview() {},
+    },
+    dispose() {},
+    release() {},
+    cancel() {},
+    updatePreview() {},
   }));
 });
+
 afterEach(() => {
   scope?.stop(); scope = undefined;
   vi.restoreAllMocks(); vi.unstubAllGlobals();
@@ -125,7 +142,11 @@ it('reports a new archive failure on retry and preserves failed generation recor
     },
     async inspectEngine() {
       return { status: 'unavailable', reason: 'unsupported' };
-    }, dispose() {}, release() {}, cancel() {}, updatePreview() {},
+    },
+    dispose() {},
+    release() {},
+    cancel() {},
+    updatePreview() {},
   }));
   const { bench, stream } = setup();
   await bench.start();

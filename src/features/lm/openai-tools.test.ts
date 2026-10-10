@@ -54,7 +54,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     const onToolCall = vi.fn();
     const onToolResult = vi.fn();
 
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [{ role: 'user', content: 'Tokyo weather?' }],
       model: 'gpt-4',
       onChunk: ({ chunk: chunk }) => {
@@ -115,7 +116,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
@@ -150,7 +152,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
     let result = '';
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'gpt-4',
       onChunk: ({ chunk: chunk }) => {
@@ -197,7 +200,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
     const onToolCall = vi.fn();
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
@@ -237,7 +241,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
@@ -271,7 +276,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
     const onToolCall = vi.fn();
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
@@ -310,7 +316,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
@@ -337,7 +344,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
     const onToolCall = vi.fn();
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
@@ -382,7 +390,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
     const controller = new AbortController();
 
-    const chatPromise = runProviderConversationForTest({ provider,
+    const chatPromise = runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
@@ -423,7 +432,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
@@ -467,7 +477,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
@@ -498,7 +509,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
@@ -545,7 +557,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
@@ -582,7 +595,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),
@@ -623,7 +637,8 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     const provider = new OpenAIProvider({ endpoint: serverInstance.baseUrl });
-    await runProviderConversationForTest({ provider,
+    await runProviderConversationForTest({
+      provider,
       messages: [],
       model: 'gpt-4',
       onChunk: vi.fn(),

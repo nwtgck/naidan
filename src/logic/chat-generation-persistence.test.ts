@@ -12,9 +12,11 @@ import { buildChatGenerationMessages } from './build-chat-generation-messages';
 function assistant({ id }: { id: string }): AssistantMessageNode {
   return { id: toMessageId({ raw: id }), role: 'assistant', createdAt: 13, modelId: 'fixture', lmParameters: undefined, interruption: undefined, parts: [], replies: { items: [] } };
 }
+
 async function* strings({ values }: { values: string[] }): AsyncGenerator<string, void, void> {
   yield* values;
 }
+
 async function* items({ values }: { values: ChatGenerationItem[] }): AsyncGenerator<ChatGenerationItem, void, void> {
   yield* values;
 }
@@ -27,21 +29,27 @@ describe('generation, execution, and persisted model history', () => {
     const content: ChatContent = { root: { items: [user] }, currentLeafId: first.id };
     const controller = new AbortController();
     const provider: LmProvider = {
-      chat: vi.fn<LmProvider['chat']>().mockImplementationOnce(() => items({ values: [
-        { type: 'reasoning', partId: 'r', index: 0, chunks: strings({ values: ['  Check', '\n'] }), completeness: Promise.resolve('complete') },
-        { type: 'text', partId: 't', index: 1, chunks: strings({ values: ['<think>literal</think>', '  '] }), completeness: Promise.resolve('complete') },
-        { type: 'tool_call', partId: 'c', index: 3, toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'double', arguments: ' { } ' } } },
-        { type: 'result', result: { type: 'finished', next: 'tool_results' } },
-      ] })).mockImplementationOnce(() => items({ values: [
-        { type: 'text', partId: 't', index: 0, chunks: strings({ values: ['8', 'です。'] }), completeness: Promise.resolve('complete') },
-        { type: 'result', result: { type: 'finished', next: 'user' } },
-      ] })),
+      chat: vi.fn<LmProvider['chat']>().mockImplementationOnce(() => items({
+        values: [
+          { type: 'reasoning', partId: 'r', index: 0, chunks: strings({ values: ['  Check', '\n'] }), completeness: Promise.resolve('complete') },
+          { type: 'text', partId: 't', index: 1, chunks: strings({ values: ['<think>literal</think>', '  '] }), completeness: Promise.resolve('complete') },
+          { type: 'tool_call', partId: 'c', index: 3, toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'double', arguments: ' { } ' } } },
+          { type: 'result', result: { type: 'finished', next: 'tool_results' } },
+        ],
+      })).mockImplementationOnce(() => items({
+        values: [
+          { type: 'text', partId: 't', index: 0, chunks: strings({ values: ['8', 'です。'] }), completeness: Promise.resolve('complete') },
+          { type: 'result', result: { type: 'finished', next: 'user' } },
+        ],
+      })),
       listModels: async () => ['fixture'],
     };
     const declarations = [{ name: 'double', description: 'Double', parameters: { type: 'object', properties: { n: { type: 'number' } } } }];
     const generate = ({ node }: { node: AssistantMessageNode }) => consumeChatGeneration({
       onToolCallDraftsChange: undefined,
-      node, abortController: controller, onChange: () => {},
+      node,
+      abortController: controller,
+      onChange: () => {},
       items: provider.chat({ debug: undefined, messages: buildChatGenerationMessages({ chat: content, excludedMessageId: node.id, systemPromptMessages: ['system'] }), model: 'fixture', parameters: undefined, tools: declarations, readBinaryObject: undefined, signal: controller.signal }),
     });
     expect(await generate({ node: first })).toEqual({ type: 'finished', next: 'tool_results' });
@@ -75,10 +83,18 @@ describe('generation, execution, and persisted model history', () => {
     const store = new MemoryStorageProvider(); const chatId = toChatId({ raw: 'chat' });
     const stopped = assistant({ id: 'stopped' }); const other = assistant({ id: 'other' });
     const controller = new AbortController();
-    await consumeChatGeneration({ onToolCallDraftsChange: undefined, node: stopped, abortController: controller, onChange: () => {}, items: items({ values: [
-      { type: 'text', partId: 'p', index: 0, chunks: strings({ values: ['<thi', 'nk>literal</think>', '\ud83d', '\ude42'] }), completeness: Promise.resolve('partial') },
-      { type: 'result', result: { type: 'error', error: new Error('offline') } },
-    ] }) });
+    await consumeChatGeneration({
+      onToolCallDraftsChange: undefined,
+      node: stopped,
+      abortController: controller,
+      onChange: () => {},
+      items: items({
+        values: [
+          { type: 'text', partId: 'p', index: 0, chunks: strings({ values: ['<thi', 'nk>literal</think>', '\ud83d', '\ude42'] }), completeness: Promise.resolve('partial') },
+          { type: 'result', result: { type: 'error', error: new Error('offline') } },
+        ],
+      }),
+    });
     // The caller owns cause attribution and the recorded display language.
     stopped.interruption = { type: 'error', message: '記録済みの説明: offline' };
     const content: ChatContent = { root: { items: [stopped, other] }, currentLeafId: other.id };

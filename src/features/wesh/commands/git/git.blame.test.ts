@@ -148,7 +148,6 @@ git blame --porcelain new`,
     expect(porcelain).toContain('filename old\n');
   });
 
-
   it('widens copy search when -C is repeated', async () => {
     const execute = await createGitTestExecutor();
     const { result, stdout, stderr } = await execute({
@@ -191,8 +190,6 @@ git blame -C -C -C --line-porcelain existing`,
     expect(existingThree).toContain('filename source\n');
   });
 
-
-
   it('reports usage errors for missing paths, invalid ranges, and unknown options', async () => {
     const execute = await createGitTestExecutor();
     const missing = await execute({ script: 'git blame' });
@@ -220,5 +217,4 @@ git blame -C -C -C --line-porcelain existing`,
     expect(stdout.text).toContain('-C');
     expect(stdout.text).toContain('--line-porcelain');
   });
-
 });

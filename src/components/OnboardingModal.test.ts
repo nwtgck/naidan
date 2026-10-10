@@ -65,7 +65,7 @@ describe('OnboardingModal.vue', () => {
   const mockSettings: { value: Pick<Settings, 'endpoint' | 'titleGeneration' | 'defaultModelId'> } = {
     value: {
       endpoint: { type: 'openai' as const, url: '' },
-      titleGeneration: { endpoint: 'same_scope', model: { id: 'existing-title-model' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+      titleGeneration: { endpoint: 'same_scope', model: { id: 'existing-title-model' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       defaultModelId: 'existing-default-model',
     },
   };
@@ -122,6 +122,14 @@ describe('OnboardingModal.vue', () => {
     });
   });
 
+  it('restores the active focus area when a route hides onboarding without dismissing it', () => {
+    const wrapper = mount(OnboardingModal);
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'onboarding' });
+    wrapper.unmount();
+    expect(mockSetActiveFocusArea).toHaveBeenLastCalledWith({ area: 'chat' });
+    expect(mockIsOnboardingDismissed.value).toBe(false);
+  });
+
   it.each([false, true])('starts local browser onboarding only after a stored model is selected with standalone=%s', async standalone => {
     vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', standalone);
     const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([]);
@@ -130,6 +138,7 @@ describe('OnboardingModal.vue', () => {
     await flushPromises();
     expect(wrapper.get('[data-testid="preset-manager"]').text()).toBe('hf.co/owner/repo:Q4_K_M');
     expect(wrapper.get('[data-testid="onboarding-local-start"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="onboarding-local-start"]').classes()).toContain('bg-blue-600');
     expect(wrapper.find('[data-testid="onboarding-connect-button"]').exists()).toBe(false);
     expect(mockSave).not.toHaveBeenCalled(); expect(listModelsMock).not.toHaveBeenCalled();
     list.mockResolvedValue([{ id: 'model', name: 'hf.co/owner/repo:Q4_K_M', size: 128, importedAt: 1 }]);
@@ -145,6 +154,7 @@ describe('OnboardingModal.vue', () => {
     expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: 'hf.co/owner/repo:Q4_K_M' }) }));
     wrapper.unmount(); list.mockRestore(); vi.unstubAllGlobals();
   });
+
   it('enables Start for the freshly prepared model before persisting endpoint settings', async () => {
     const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([]);
     const preset = shallowRef<ModelPreset>({ input: 'hf.co/owner/repo:Q8_0', target: 'onboarding', claim: () => true });
@@ -163,6 +173,7 @@ describe('OnboardingModal.vue', () => {
     expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ endpoint: { type: 'llama_cpp_browser' }, defaultModelId: target }) }));
     wrapper.unmount(); list.mockRestore();
   });
+
   it('renders Step 1 by default and shows correct labels', async () => {
     const wrapper = mount(OnboardingModal);
     await vi.waitFor(() => {
@@ -339,7 +350,7 @@ describe('OnboardingModal.vue', () => {
     // 4. Verify draft has normalized URL and selected model
     expect(mockOnboardingDraft.value).toEqual(expect.objectContaining({
       url: 'http://api.openai.com', // Normalized URL
-      selectedModel: 'model-y',      // Selected model
+      selectedModel: 'model-y', // Selected model
     }));
   });
 
@@ -347,15 +358,20 @@ describe('OnboardingModal.vue', () => {
     mockSettings.value.titleGeneration = DEFAULT_SETTINGS.titleGeneration;
     mockOnboardingDraft.value = { url: 'https://example.test', type, headers: [], models: ['model-1'], selectedModel: 'model-1' };
     vi.stubGlobal('LanguageModel', Object.assign(function LanguageModel() {}, {
-      availability: vi.fn().mockResolvedValue('available'), create: vi.fn(),
+      availability: vi.fn().mockResolvedValue('available'),
+      create: vi.fn(),
     }));
     const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([
       { id: 'model-1', name: 'model-1', size: 128, importedAt: 1 },
     ]);
-    const wrapper = mount(OnboardingModal, { global: { stubs: {
-      LlamaCppBrowserManager: { name: 'PreparedManager', emits: ['runtimeReady'], template: '<div />' },
-      TransformersJsManager: true,
-    } } });
+    const wrapper = mount(OnboardingModal, {
+      global: {
+        stubs: {
+          LlamaCppBrowserManager: { name: 'PreparedManager', emits: ['runtimeReady'], template: '<div />' },
+          TransformersJsManager: true,
+        },
+      },
+    });
     try {
       await flushPromises();
       if (type === 'llama_cpp_browser') {
@@ -411,7 +427,7 @@ describe('OnboardingModal.vue', () => {
       patch: expect.objectContaining({
         endpoint: { type: 'openai', url: 'http://api.openai.com' },
         defaultModelId: 'model-1',
-        titleGeneration: { endpoint: 'same_scope', model: { id: 'model-1' } , lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
+        titleGeneration: { endpoint: 'same_scope', model: { id: 'model-1' }, lmParameters: { temperature: undefined, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } } },
       }),
       modelRefresh: 'await',
     });

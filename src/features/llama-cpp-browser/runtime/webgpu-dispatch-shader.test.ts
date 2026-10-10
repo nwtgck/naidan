@@ -15,6 +15,7 @@ fn main(@builtin(workgroup_id) wid: vec3<u32>,
     workgroupBarrier();
 }
 `;
+
 describe('dispatch builtin adaptation', () => {
   it('leaves the complete numerical body intact and only aliases the logical workgroup id', () => {
     const adapted = adaptDispatchShader({ source: row, entryPoint: 'main' });
@@ -26,6 +27,7 @@ describe('dispatch builtin adaptation', () => {
     expect(adapted!.code).not.toContain('naidan_dispatch_grid_x');
     expect(adapted!.code.match(/@group\(/g)).toHaveLength(1);
   });
+
   it('preserves logical global ids and the original grid, including multi-axis workgroup sizes', () => {
     const source = `\
 enable f16;
@@ -46,6 +48,7 @@ fn compute(@builtin(global_invocation_id) gid: vec3u,
     expect(adapted!.code).toContain('@builtin(subgroup_size) subgroup: u32');
     expect(adapted!.code).toContain('let value = gid.x + grid.y + index + subgroup;');
   });
+
   it('does not manufacture unused offset overrides for a grid-only shader', () => {
     const source = '@compute @workgroup_size(1) fn main(@builtin(num_workgroups) n: vec3u) { let value = n.x; }';
     const shader = adaptDispatchShader({ source, entryPoint: 'main' })!;
@@ -54,10 +57,12 @@ fn compute(@builtin(global_invocation_id) gid: vec3u,
     expect(shader.code).not.toContain('naidan_dispatch_offset_');
     expect(shader.bindingGroups).toEqual([]);
   });
+
   it('records literal resource groups without modifying their declarations', () => {
     const source = row.replace('@group(0)', '@group(2u)');
     expect(adaptDispatchShader({ source, entryPoint: 'main' })!.bindingGroups).toEqual([2]);
   });
+
   it('does not mistake comments for entry points or reserved identifiers', () => {
     const source = `\
 /* @compute /* @builtin(workgroup_id) */ naidan_dispatch_reserved */
@@ -66,6 +71,7 @@ ${row}`;
     expect(adaptDispatchShader({ source, entryPoint: 'main' })).toBeDefined();
     expect(TEST_ONLY.maskComments({ source })!.length).toBe(source.length);
   });
+
   it.each([
     { name: 'unclosed block comment', source: row + '/*', entryPoint: 'main' },
     { name: 'reserved identifier', source: row + 'const naidan_dispatch_grid_x = 2;', entryPoint: 'main' },
@@ -84,6 +90,7 @@ ${row}`;
   ])('rejects $name instead of guessing', ({ source, entryPoint }) => {
     expect(adaptDispatchShader({ source, entryPoint })).toBeUndefined();
   });
+
   it('supports every local and subgroup scalar input used by the native compute shaders', () => {
     const source = `\
 @compute @workgroup_size(128u)

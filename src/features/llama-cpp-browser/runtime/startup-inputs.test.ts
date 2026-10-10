@@ -12,9 +12,11 @@ let core: Core;
 const profile: LlamaCppProfile = 'cpu-wasm32';
 const assetBaseURL = 'https://example.invalid/runtime/';
 const bytes = new Uint8Array([0, 97, 115, 109]);
+
 async function turn(): Promise<void> {
   await new Promise<void>(resolve => setImmediate(resolve));
 }
+
 beforeEach(() => {
   host.binary.mockReset().mockResolvedValue(bytes);
   host.factory.mockReset().mockResolvedValue(undefined);
@@ -24,6 +26,7 @@ beforeEach(() => {
   vi.stubGlobal('WebAssembly', { promising() {}, Suspending() {} });
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
+
 afterEach(() => {
   vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
@@ -135,7 +138,6 @@ describe('selected runtime startup inputs', () => {
   });
 });
 
-
 describe('late startup input completion', () => {
   it.each(['binary', 'factory'] as const)('observes a late %s rejection after the owning error has returned', async late => {
     const binary = Promise.withResolvers<Uint8Array>(); const factory = Promise.withResolvers<void>();
@@ -149,6 +151,7 @@ describe('late startup input completion', () => {
     await turn();
     expect(host.create).not.toHaveBeenCalled();
   });
+
   it('never instantiates a late factory after a failed startup or interferes with a retry', async () => {
     const firstFactory = Promise.withResolvers<void>();
     host.factory.mockReturnValueOnce(firstFactory.promise);

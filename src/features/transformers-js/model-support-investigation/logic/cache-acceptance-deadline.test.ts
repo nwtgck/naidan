@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CacheAcceptanceTimeoutError, withCacheAcceptanceDeadline } from './cache-acceptance-deadline';
 
 afterEach(() => vi.useRealTimers());
+
 describe('cache acceptance deadline', () => {
   it('aborts the Worker owner on expiry and returns even when a remote never settles', async () => {
     vi.useFakeTimers();
@@ -9,7 +10,9 @@ describe('cache acceptance deadline', () => {
     const stopped = vi.fn();
     controller.signal.addEventListener('abort', stopped);
     const result = withCacheAcceptanceDeadline({
-      start: () => new Promise<never>(() => undefined), controller, timeoutMs: 100,
+      start: () => new Promise<never>(() => undefined),
+      controller,
+      timeoutMs: 100,
     }).catch(error => error);
     await vi.advanceTimersByTimeAsync(100);
     expect(await result).toBeInstanceOf(CacheAcceptanceTimeoutError);

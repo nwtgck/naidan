@@ -259,8 +259,6 @@ printf '<%s>\n' "$value"`,
     expect(result.exitCode).toBe(0);
   });
 
-
-
   it('decodes successive UTF-8 records without corrupting multi-byte characters', async () => {
     const { result, stdout, stderr } = await execute({
       script: `IFS= read -r first
@@ -521,7 +519,6 @@ printf '<%s>|<%s>|%s\n' "$first" "$second" "$first_status"`,
     expect(result.exitCode).toBe(0);
   });
 
-
   it('accepts Bash-compatible ASCII whitespace in count and fd operands', async () => {
     const accepted = [
       ...[' ', '\t', '\n', '\v', '\f', '\r'].map((whitespace) => `${whitespace}1`),
@@ -589,5 +586,4 @@ printf '<%s>|%s\n' "$value" "$?"`,
       expect(descriptor.result.exitCode).toBe(1);
     }
   });
-
 });

@@ -28,6 +28,7 @@ import {
 } from '@/00-storage/mapper/mappers';
 import { IStorageProvider } from './interface';
 import { idToRaw, toBinaryObjectId, toChatGroupId } from '@/01-models/ids';
+import { ExperimentalNaidanRpcRegistrySchemaDto, type ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 
 /**
  * Memory Storage Implementation
@@ -44,6 +45,15 @@ export class MemoryStorageProvider extends IStorageProvider {
   private chatContents = new Map<ChatId, ChatContentDto>();
   private binaryObjects = new Map<BinaryObjectId, { blob: Blob, meta: BinaryObject }>();
   private blobCache = new Map<AttachmentId, Blob>();
+  private naidanRpcRegistry: ExperimentalNaidanRpcRegistryDto | undefined;
+
+  async loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined> {
+    return this.naidanRpcRegistry === undefined ? undefined : ExperimentalNaidanRpcRegistrySchemaDto.parse(this.naidanRpcRegistry);
+  }
+
+  async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
+    this.naidanRpcRegistry = registry === undefined ? undefined : ExperimentalNaidanRpcRegistrySchemaDto.parse(registry);
+  }
 
   private restoreBlobs({ nodes }: { nodes: MessageNode[] }): void {
     for (const part of iterateAttachmentParts({ nodes })) {
@@ -108,7 +118,7 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
     const dto = chatMetaToDto({ domain: meta });
-    ChatMetaSchemaDto.parse(dto);
+    JSON.stringify(ChatMetaSchemaDto.parse(dto));
     this.chatMetas.set(meta.id, dto);
   }
 
@@ -189,7 +199,7 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
     const dto = chatGroupToDto({ domain: chatGroup });
-    ChatGroupSchemaDto.parse(dto);
+    JSON.stringify(ChatGroupSchemaDto.parse(dto));
     this.chatGroups.set(chatGroup.id, dto);
   }
 
@@ -218,7 +228,7 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async saveSettings({ settings }: { settings: Settings }): Promise<void> {
     const dto = settingsToDto({ domain: settings });
-    SettingsSchemaDto.parse(dto);
+    JSON.stringify(SettingsSchemaDto.parse(dto));
     this.settings = settings;
   }
 
@@ -326,6 +336,7 @@ export class MemoryStorageProvider extends IStorageProvider {
   }
 
   async clearAll(): Promise<void> {
+    this.naidanRpcRegistry = undefined;
     this.hierarchy = { items: [] };
     this.settings = null;
     this.chatMetas.clear();

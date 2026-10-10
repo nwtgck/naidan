@@ -1,6 +1,7 @@
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 
 type AudioScalarKind = 'pointer' | 'size' | 'i32' | 'i64' | 'bool';
+
 function scalarSize({ core, kind }: { core: Core, kind: AudioScalarKind }): number {
   switch (kind) {
   case 'pointer': case 'size': return core.pointerBytes;
@@ -27,6 +28,7 @@ export function readAudioScalar({ core, pointer, kind }: {
   default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
   }
 }
+
 export function readAudioField({ core, pointer, name, field, kind }: {
   core: Core, pointer: bigint, name: string, field: string, kind: 'pointer' | 'i32',
 }): bigint {
@@ -34,5 +36,6 @@ export function readAudioField({ core, pointer, name, field, kind }: {
   if (layout.size !== scalarSize({ core, kind })) throw new Error('Unexpected audio record field width');
   return readAudioScalar({ core, pointer: pointer + layout.offset, kind });
 }
+
 export const TEST_ONLY = {
 };

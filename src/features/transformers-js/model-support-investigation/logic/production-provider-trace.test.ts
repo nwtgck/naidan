@@ -110,9 +110,11 @@ describe('bounded synchronous Production Provider trace', () => {
     expect(settled.completeness).toBe('incomplete');
     expect(settled.failure).toEqual({ reason: 'event-limit', phase: 'before-settlement', sequence: 1 });
     const before = trace.snapshot();
-    trace.callbacks.onChunk({ get chunk(): string {
-      throw new Error('Must not inspect callbacks after overflow');
-    } });
+    trace.callbacks.onChunk({
+      get chunk(): string {
+        throw new Error('Must not inspect callbacks after overflow');
+      },
+    });
     expect(trace.snapshot()).toEqual(before);
   });
 
@@ -185,9 +187,16 @@ describe('bounded synchronous Production Provider trace', () => {
   it('rejects nested accessor fields without evaluating them', () => {
     const getter = vi.fn(() => 'secret');
     const trace = createProductionProviderTrace({ requestId: 'nested-getter', limits: { maximumEvents: 10, maximumCharacters: 100 } });
-    trace.callbacks.onToolEvent({ id: toolCallId, event: { type: 'output', stream: 'stdout', get text() {
-      return getter();
-    } } });
+    trace.callbacks.onToolEvent({
+      id: toolCallId,
+      event: {
+        type: 'output',
+        stream: 'stdout',
+        get text() {
+          return getter();
+        },
+      },
+    });
     expect(getter).not.toHaveBeenCalled();
     expect(trace.snapshot().failure?.reason).toBe('unreadable-callback');
   });
@@ -196,9 +205,11 @@ describe('bounded synchronous Production Provider trace', () => {
     const original = new Error('Original provider failure');
     const trace = createProductionProviderTrace({ requestId: 'sink-failure', limits: { maximumEvents: 10, maximumCharacters: 100 } });
     const emitCallbacks: CallbackSource = async ({ onChunk }) => {
-      onChunk(new Proxy({ chunk: 'fixture' }, { getOwnPropertyDescriptor() {
-        throw new Error('Observer failure');
-      } }));
+      onChunk(new Proxy({ chunk: 'fixture' }, {
+        getOwnPropertyDescriptor() {
+          throw new Error('Observer failure');
+        },
+      }));
       throw original;
     };
     let caught: unknown;

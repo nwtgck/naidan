@@ -2,14 +2,16 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { computed, ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { useImageGeneration } from '@/features/stable-diffusion-cpp-browser/use-image-generation-standalone';
+import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view';
 import { useImageBenchmark } from '@/features/stable-diffusion-cpp-browser/use-image-benchmark-standalone';
 import ImageBenchmark from './ImageBenchmark.vue';
 
 let wrapper: VueWrapper | undefined;
+
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   wrapper?.unmount(); wrapper = undefined;
 });

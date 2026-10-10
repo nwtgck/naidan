@@ -24,7 +24,6 @@ describe('interactive confirmation', () => {
     await expect(read()).resolves.toBe(false);
   });
 
-
   it('consumes one production text-input line per confirmation', async () => {
     const read = TEST_ONLY.createAffirmativeResponseReader({
       input: inputChunks(['y', 'Y', 'n', '']),
@@ -62,5 +61,4 @@ renamed.txt
     await expect(readLine()).resolves.toBe('renamed.txt');
     await expect(readLine()).resolves.toBeUndefined();
   });
-
 });

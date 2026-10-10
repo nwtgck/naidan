@@ -1,3 +1,4 @@
+import type { CheckpointObserver } from './checkpoint-performance';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 
@@ -24,62 +25,78 @@ export function disposePromptCheckpoint({ core, checkpoint }: { core: Pick<Core,
 
 /** Keep one host-side Wasm allocation, with no duplicate JavaScript state buffer.
  * ON_DEVICE copies outlive host blobs, so this path permits explicit disposal. */
-export async function capturePromptCheckpoint({ core, context, tokens }: {
-  core: CheckpointCore, context: bigint, tokens: number[],
+export async function capturePromptCheckpoint({ core, context, tokens, observer }: {
+  core: CheckpointCore, context: bigint, tokens: number[], observer?: CheckpointObserver,
 }): Promise<PromptCheckpoint | undefined> {
-  const started = performance.now();
-  const api = core.api;
-  const memory = await api.llama_get_memory(context);
-  if (memory === 0n || tokens.length === 0) return undefined;
-  const positionMin = await api.llama_memory_seq_pos_min(memory, 0);
-  const positionMax = await api.llama_memory_seq_pos_max(memory, 0);
-  if (positionMin < 0 || positionMin > positionMax || positionMax !== tokens.length - 1) return undefined;
-  const size = await api.llama_state_seq_get_size_ext(context, 0, partialOnly);
-  const pointerLimit = (1n << BigInt(core.pointerBytes * 8)) - 1n;
-  if (size <= 0n || size > BigInt(Number.MAX_SAFE_INTEGER) || size > pointerLimit) {
-    logDiagnostic({ diagnostic: { event: 'checkpoint-skipped', reason: 'checkpoint-size', tokens: tokens.length } });
-    return undefined;
-  }
-  const bytes = Number(size);
-  const pointer = core.tryAlloc({ bytes });
-  if (pointer === undefined) {
-    logDiagnostic({ diagnostic: { event: 'checkpoint-skipped', reason: 'checkpoint-allocation', bytes, tokens: tokens.length } });
-    return undefined;
-  }
-  let owned = true;
   try {
-    // Check the complete range before the native writer uses this pointer.
-    core.bytes({ pointer, length: bytes });
-    if (await api.llama_state_seq_get_data_ext(context, pointer, size, 0, partialOnly) !== size) {
-      logDiagnostic({ diagnostic: { event: 'checkpoint-skipped', reason: 'checkpoint-invalid', bytes, tokens: tokens.length } });
+    const started = performance.now();
+    const api = core.api;
+    observer?.enter({ phase: 'capture-position' });
+    const memory = await api.llama_get_memory(context);
+    if (memory === 0n || tokens.length === 0) return undefined;
+    const positionMin = await api.llama_memory_seq_pos_min(memory, 0);
+    const positionMax = await api.llama_memory_seq_pos_max(memory, 0);
+    if (positionMin < 0 || positionMin > positionMax || positionMax !== tokens.length - 1) return undefined;
+    observer?.enter({ phase: 'capture-size' });
+    const size = await api.llama_state_seq_get_size_ext(context, 0, partialOnly);
+    const pointerLimit = (1n << BigInt(core.pointerBytes * 8)) - 1n;
+    if (size <= 0n || size > BigInt(Number.MAX_SAFE_INTEGER) || size > pointerLimit) {
+      logDiagnostic({ diagnostic: { event: 'checkpoint-skipped', reason: 'checkpoint-size', tokens: tokens.length } });
       return undefined;
     }
-    const checkpoint = { pointer, bytes, tokens: tokens.slice(), positionMin, positionMax };
-    logDiagnostic({ diagnostic: { event: 'checkpoint-created', bytes, tokens: tokens.length, elapsedMs: performance.now() - started } });
-    owned = false;
-    return checkpoint;
+    observer?.enter({ phase: 'capture-allocation' });
+    const bytes = Number(size);
+    const pointer = core.tryAlloc({ bytes });
+    if (pointer === undefined) {
+      logDiagnostic({ diagnostic: { event: 'checkpoint-skipped', reason: 'checkpoint-allocation', bytes, tokens: tokens.length } });
+      return undefined;
+    }
+    let owned = true;
+    try {
+      // Check the complete range before the native writer uses this pointer.
+      core.bytes({ pointer, length: bytes });
+      observer?.enter({ phase: 'capture-readback' });
+      if (await api.llama_state_seq_get_data_ext(context, pointer, size, 0, partialOnly) !== size) {
+        logDiagnostic({ diagnostic: { event: 'checkpoint-skipped', reason: 'checkpoint-invalid', bytes, tokens: tokens.length } });
+        return undefined;
+      }
+      const checkpoint = { pointer, bytes, tokens: tokens.slice(), positionMin, positionMax };
+      logDiagnostic({ diagnostic: { event: 'checkpoint-created', bytes, tokens: tokens.length, elapsedMs: performance.now() - started } });
+      owned = false;
+      return checkpoint;
+    } finally {
+      if (owned) core.free({ pointer });
+    }
   } finally {
-    if (owned) core.free({ pointer });
+    observer?.end();
   }
 }
 
 /** Partial restore leaves ordinary attention in place; trim its old suffix only
  * after restoring the recurrent/SWA state for the same verified token prefix. */
-export async function restorePromptCheckpoint({ core, context, checkpoint }: {
-  core: CheckpointCore, context: bigint, checkpoint: PromptCheckpoint,
+export async function restorePromptCheckpoint({ core, context, checkpoint, observer }: {
+  core: CheckpointCore, context: bigint, checkpoint: PromptCheckpoint, observer?: CheckpointObserver,
 }): Promise<boolean> {
-  const started = performance.now();
-  const { pointer, bytes, tokens, positionMin, positionMax, ...unhandled } = checkpoint;
-  unhandled satisfies Record<PropertyKey, never>;
-  const api = core.api;
-  const memory = await api.llama_get_memory(context);
-  if (memory === 0n) return false;
-  if (await api.llama_state_seq_set_data_ext(context, pointer, BigInt(bytes), 0, partialOnly) !== BigInt(bytes)
-    || !await api.llama_memory_seq_rm(memory, 0, tokens.length, -1)
-    || await api.llama_memory_seq_pos_min(memory, 0) !== positionMin
-    || await api.llama_memory_seq_pos_max(memory, 0) !== positionMax) return false;
-  logDiagnostic({ diagnostic: { event: 'checkpoint-restored', bytes, tokens: tokens.length, elapsedMs: performance.now() - started } });
-  return true;
+  try {
+    const started = performance.now();
+    const { pointer, bytes, tokens, positionMin, positionMax, ...unhandled } = checkpoint;
+    unhandled satisfies Record<PropertyKey, never>;
+    const api = core.api;
+    observer?.enter({ phase: 'restore-memory' });
+    const memory = await api.llama_get_memory(context);
+    if (memory === 0n) return false;
+    observer?.enter({ phase: 'restore-write' });
+    if (await api.llama_state_seq_set_data_ext(context, pointer, BigInt(bytes), 0, partialOnly) !== BigInt(bytes)) return false;
+    observer?.enter({ phase: 'restore-trim' });
+    if (!await api.llama_memory_seq_rm(memory, 0, tokens.length, -1)) return false;
+    observer?.enter({ phase: 'restore-verify' });
+    if (await api.llama_memory_seq_pos_min(memory, 0) !== positionMin
+      || await api.llama_memory_seq_pos_max(memory, 0) !== positionMax) return false;
+    logDiagnostic({ diagnostic: { event: 'checkpoint-restored', bytes, tokens: tokens.length, elapsedMs: performance.now() - started } });
+    return true;
+  } finally {
+    observer?.end();
+  }
 }
 
 /** Prefer the native generation suffix boundary only when both text and actual

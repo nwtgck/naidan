@@ -7,6 +7,7 @@ import { toMessageId, toToolCallId } from './ids';
 function node(): AssistantMessageNode {
   return { id: toMessageId({ raw: 'new' }), role: 'assistant', createdAt: 17, modelId: undefined, lmParameters: undefined, parts: [], interruption: undefined, replies: { items: [] } };
 }
+
 function call({ id }: { id: string }): ToolCall {
   return { id: toToolCallId({ raw: id }), type: 'function', function: { name: 'calculator', arguments: ' { "expression": "17 * 23" } ' } };
 }
@@ -20,17 +21,24 @@ describe('assistant generation content', () => {
     state.beginPart({ partId: 'r2', index: 1, type: 'reasoning' });
     state.closePart({ partId: 'r2', completeness: 'complete' });
     state.beginPart({ partId: 'text', index: 2, type: 'text' });
-    state.appendText({ partId: 'text', text: `\
+    state.appendText({
+      partId: 'text',
+      text: `\
 <think>literal</think>\\r
-🙂` });
+🙂`,
+    });
     state.closePart({ partId: 'text', completeness: 'complete' });
     state.finish({ result: { type: 'finished', next: 'user' } });
     expect(message.parts).toEqual([
       { type: 'reasoning', text: '  ', completeness: 'complete' },
       { type: 'reasoning', text: '', completeness: 'complete' },
-      { type: 'text', text: `\
+      {
+        type: 'text',
+        text: `\
 <think>literal</think>\\r
-🙂`, completeness: 'complete' },
+🙂`,
+        completeness: 'complete',
+      },
     ]);
     expect(message.createdAt).toBe(17);
     expect(message.interruption).toBeUndefined();

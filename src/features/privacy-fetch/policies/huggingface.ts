@@ -4,7 +4,9 @@ const segmentPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 export function validateHuggingFacePrivacyFetchUrl({ url }: { url: URL }): PrivacyFetchValidationResult {
   const reject = (): PrivacyFetchValidationResult => ({
-    ok: false, code: 'unsupported_policy', message: 'The URL does not match a supported public Hugging Face model request',
+    ok: false,
+    code: 'unsupported_policy',
+    message: 'The URL does not match a supported public Hugging Face model request',
   });
   let parts: string[];
   try {

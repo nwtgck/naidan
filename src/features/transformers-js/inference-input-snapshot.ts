@@ -60,7 +60,8 @@ export function cloneChatMessages({ messages }: { messages: readonly InferenceMe
             const { url, ...unhandledImage } = image_url;
             unhandledImage satisfies Record<PropertyKey, never>;
             return exactObject<Extract<MultimodalContent, { type: 'image_url' }>>()({
-              type, image_url: exactObject<Extract<MultimodalContent, { type: 'image_url' }>['image_url']>()({ url }),
+              type,
+              image_url: exactObject<Extract<MultimodalContent, { type: 'image_url' }>['image_url']>()({ url }),
             });
           }
           default: {
@@ -72,11 +73,13 @@ export function cloneChatMessages({ messages }: { messages: readonly InferenceMe
         : content,
       ...(tool_calls === undefined ? {} : { tool_calls: cloneToolCalls({ toolCalls: tool_calls }) }),
       ...(tool_call_id === undefined ? {} : { tool_call_id }),
-      ...(reasoning === undefined ? {} : { reasoning: (() => {
-        const { text, completeness, ...unhandledReasoning } = reasoning;
+      ...(reasoning === undefined ? {} : {
+        reasoning: (() => {
+          const { text, completeness, ...unhandledReasoning } = reasoning;
         unhandledReasoning satisfies Record<PropertyKey, never>;
         return { text, completeness };
-      })() }),
+        })(),
+      }),
     });
   });
 }

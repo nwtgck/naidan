@@ -20,7 +20,8 @@ export function buildChatGenerationMessages({ chat, excludedMessageId, systemPro
     while (usedIds.has(raw)) raw += '_';
     usedIds.add(raw);
     return {
-      id: toMessageId({ raw }), role: 'system',
+      id: toMessageId({ raw }),
+      role: 'system',
       parts: [{ type: 'text', text, completeness: 'complete' }],
     };
   });

@@ -32,11 +32,15 @@ async function prepare({ input }: { input: EvidenceStreamRequest }): Promise<Pre
     if (nativeEvidence !== undefined && (!Array.isArray(nativeEvidence) || nativeEvidence.length !== items.length)) throw new Error('Native sidecar target count mismatch');
     const timing = ordinaryDownloadTiming === undefined ? undefined : await readOrdinaryDownloadTimingEvidenceFile({ file: ordinaryDownloadTiming });
     if (timing !== undefined && (timing.association.kind !== 'investigation-batch' || timing.association.batchId !== batchId)) throw new Error('Retained Download timing batch association mismatch');
-    return await prepareBatchModelSupportEvidence({ batchId, ordinaryDownloadTiming: timing?.snapshot, items: items.map((item, index) => ({
-      ...item,
-      replayMetadata: replayMetadata?.[index] === undefined ? undefined : replayMetadataSidecarsSchema.parse(replayMetadata[index]),
-      nativeEvidence: nativeEvidence?.[index],
-    })) });
+    return await prepareBatchModelSupportEvidence({
+      batchId,
+      ordinaryDownloadTiming: timing?.snapshot,
+      items: items.map((item, index) => ({
+        ...item,
+        replayMetadata: replayMetadata?.[index] === undefined ? undefined : replayMetadataSidecarsSchema.parse(replayMetadata[index]),
+        nativeEvidence: nativeEvidence?.[index],
+      })),
+    });
 
   }
   case 'download-verification': {

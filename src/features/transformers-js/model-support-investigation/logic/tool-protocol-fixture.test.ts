@@ -12,9 +12,13 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => {
     throw new Error('Synthetic weather Tool must not access the network');
   }));
-  vi.stubGlobal('navigator', { storage: { getDirectory: vi.fn(async () => {
-    throw new Error('Synthetic weather Tool must not access storage');
-  }) } });
+  vi.stubGlobal('navigator', {
+    storage: {
+      getDirectory: vi.fn(async () => {
+        throw new Error('Synthetic weather Tool must not access storage');
+      }),
+    },
+  });
 });
 
 afterEach(() => {
@@ -69,7 +73,8 @@ describe('Fixed investigation weather Tool at the public Provider boundary', () 
     const onEvent = vi.fn();
     const tool = createModelSupportWeatherTool();
     await expect(tool.execute({ args, signal: undefined, onEvent, approvalContext: undefined })).resolves.toEqual({
-      status: 'success', content: '{"temperatureC":20,"condition":"clear"}',
+      status: 'success',
+      content: '{"temperatureC":20,"condition":"clear"}',
     });
     expect(argumentGetter).not.toHaveBeenCalled();
     expect(onEvent).not.toHaveBeenCalled();
@@ -82,21 +87,27 @@ describe('Fixed investigation weather Tool at the public Provider boundary', () 
     first.name = 'mutated-test-tool';
     expect(second.name).toBe('lookup_weather');
     await expect(second.execute({ args: { city: 'synthetic-private-value' }, signal: undefined, onEvent: undefined, approvalContext: undefined })).resolves.toEqual({
-      status: 'success', content: '{"temperatureC":20,"condition":"clear"}',
+      status: 'success',
+      content: '{"temperatureC":20,"condition":"clear"}',
     });
   });
 
   it('lets the real Provider serialize the strict definition and the turn runner feed the exact result into its next request', async () => {
     const call: ToolCall = {
-      id: toToolCallId({ raw: 'call_model_support_weather' }), type: 'function',
+      id: toToolCallId({ raw: 'call_model_support_weather' }),
+      type: 'function',
       function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
     };
     const fixture = providerFixture({ call });
     const tool = createModelSupportWeatherTool();
     const execute = vi.spyOn(tool, 'execute');
-    const input: ChatMessage[] = [{ id: toMessageId({ raw: 'user' }), role: 'user', parts: [
-      { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
-    ] }];
+    const input: ChatMessage[] = [{
+      id: toMessageId({ raw: 'user' }),
+      role: 'user',
+      parts: [
+        { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
+      ],
+    }];
     const original = structuredClone(input);
     const turn = await runProviderReplayTurn({
       provider: fixture.provider,
@@ -107,8 +118,10 @@ describe('Fixed investigation weather Tool at the public Provider boundary', () 
     });
     expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
     expect(fixture.generate.mock.calls.map(([request]) => request.tools)).toEqual([0, 1].map(() => [{
-      type: 'function', function: {
-        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+      type: 'function',
+      function: {
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
         parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
       },
     }]));
@@ -125,22 +138,33 @@ describe('Fixed investigation weather Tool at the public Provider boundary', () 
     expect(execute.mock.calls[0]![0].args).toEqual({ city: 'Tokyo' });
     expect(turn.generated).toMatchObject([
       { role: 'assistant', parts: [{ type: 'tool_call', toolCall: call }] },
-      { role: 'tool', parts: [{ type: 'tool_result', result: {
-        toolCallId: call.id, status: 'success', content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-      } }] },
+      {
+        role: 'tool',
+        parts: [{
+          type: 'tool_result',
+          result: {
+            toolCallId: call.id,
+            status: 'success',
+            content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+          },
+        }],
+      },
       { role: 'assistant', parts: [{ type: 'text', text: 'Synthetic final answer.', completeness: 'complete' }] },
     ]);
     expect(fixture.load).not.toHaveBeenCalled();
     // The independent native template fixture remains open; public validation
     // must not be bypassed to make its schema identical to historical evidence.
     expect(MODEL_SUPPORT_TOOL_DEFINITIONS[0]!.function.parameters).toEqual({
-      type: 'object', properties: { city: { type: 'string' } }, required: ['city'],
+      type: 'object',
+      properties: { city: { type: 'string' } },
+      required: ['city'],
     });
   });
 
   it('leaves invalid arguments to the real turn runner validation and never executes the fixed Tool', async () => {
     const call: ToolCall = {
-      id: toToolCallId({ raw: 'call_model_support_invalid_weather' }), type: 'function',
+      id: toToolCallId({ raw: 'call_model_support_invalid_weather' }),
+      type: 'function',
       function: { name: 'lookup_weather', arguments: '{"city":"Tokyo","extra":"synthetic"}' },
     };
     const fixture = providerFixture({ call });
@@ -150,9 +174,13 @@ describe('Fixed investigation weather Tool at the public Provider boundary', () 
       provider: fixture.provider,
       request: {
         model: 'fixture/weather',
-        messages: [{ id: toMessageId({ raw: 'user' }), role: 'user', parts: [
-          { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
-        ] }],
+        messages: [{
+          id: toMessageId({ raw: 'user' }),
+          role: 'user',
+          parts: [
+            { type: 'text', text: 'Use the weather tool for Tokyo.', completeness: 'complete' },
+          ],
+        }],
         parameters: undefined,
         readBinaryObject: undefined,
         debug: undefined,

@@ -71,6 +71,7 @@ export async function continueMerge({ context }: {
   });
   return { exitCode: 0 };
 }
+
 export async function abortMerge({ context }: {
     context: WeshCommandContext;
 }): Promise<WeshCommandResult> {
@@ -102,6 +103,7 @@ export async function abortMerge({ context }: {
   await clearMergeState({ files: context.files, repository });
   return { exitCode: 0 };
 }
+
 export async function integrateDivergentMerge({ context, repository, graphCache, headObjectId, targetObjectId, targetLabel, commitMessage, reflogMessage }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;

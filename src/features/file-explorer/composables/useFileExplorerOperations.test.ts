@@ -228,7 +228,10 @@ describe('useFileExplorerOperations', () => {
     const entry = makeEntry('file.txt');
     await ops.downloadEntry({ entry });
     expect(downloadStream).toHaveBeenCalledWith({
-      filename: 'file.txt', size: undefined, signal: expect.any(AbortSignal), openStream: expect.any(Function),
+      filename: 'file.txt',
+      size: undefined,
+      signal: expect.any(AbortSignal),
+      openStream: expect.any(Function),
     });
     expect(client.prepareFileDownload).toHaveBeenCalledWith({ path: entry.path });
     expect(client.readFile).not.toHaveBeenCalled();
@@ -237,7 +240,6 @@ describe('useFileExplorerOperations', () => {
     const options = vi.mocked(downloadStream).mock.calls[0]![0];
     await options.openStream();
     expect(client.openFileStream).toHaveBeenCalledWith({ path: entry.path });
-
   });
 
   it('sends a native snapshot to downloadFile instead of a listing-sized stream', async () => {
@@ -273,5 +275,4 @@ describe('useFileExplorerOperations', () => {
     expect(downloadStream).not.toHaveBeenCalled();
     expect(mockAddToast).not.toHaveBeenCalled();
   });
-
 });

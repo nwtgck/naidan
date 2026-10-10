@@ -92,7 +92,9 @@ function expectDeliveredErrorCapture({ capture, message }: {
 // New complete requests retain their own source pins. Historical suffix-only
 // outputs and their rejection tests remain in the original catalog unchanged.
 const ownedToolCatalog = {
-  context: providerReplayCatalog.context, provenance: ownedProvenance, sequence: ownedSequence,
+  context: providerReplayCatalog.context,
+  provenance: ownedProvenance,
+  sequence: ownedSequence,
   cases: { 'natural-tool-minimal': ownedMinimal, 'natural-tool-representative': ownedRepresentative, 'structured-tool-history': independentToolHistory },
 } satisfies ProviderReplayCatalog;
 const ownedToolArtifacts = ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data',
@@ -140,7 +142,9 @@ function createOwnedToolControl({ mutations, boundaries }: {
             vi.mocked(control.pastKeyValues.get_seq_length).mockReturnValue(length);
           }
           const budget = call.invocation.settings.budget;
-          expect(() => replayCapturedFullInvocationWithOwnedCache({ ...call, cacheControl: control,
+          expect(() => replayCapturedFullInvocationWithOwnedCache({
+            ...call,
+            cacheControl: control,
             invocation: { ...call.invocation, settings: { ...call.invocation.settings, budget: { ...budget, usedContextTokenCount: budget.promptTokenCount + length } } },
           })).toThrow('independent budget');
           expect(() => replayCapturedFullInvocation(call)).toThrow('past-token-count');
@@ -168,7 +172,8 @@ function createOwnedToolControl({ mutations, boundaries }: {
 
 const evidence = parseProviderReplayTextEvidence({ value: evidenceJson });
 const inputEvidence = z.object({
-  schemaVersion: z.literal(1), source: z.literal('reference-template-behavior-matrix'),
+  schemaVersion: z.literal(1),
+  source: z.literal('reference-template-behavior-matrix'),
   sourceMemberSha256: z.literal('9f571fe9df62978ab255cb7d50a2ea9ca1a2214058318a92ba1c267b321b95b4'),
   modelId: z.literal('onnx-community/gpt-oss-20b-ONNX'),
   revision: z.literal('6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7'),
@@ -177,38 +182,47 @@ const inputEvidence = z.object({
   cases: z.array(z.object({
     caseId: z.enum(['user-generation', 'system-user-generation', 'multi-turn-generation']),
     messages: z.array(z.object({ role: z.enum(['system', 'user', 'assistant']), content: z.string() }).strict()),
-    addGenerationPrompt: z.literal(true), renderedText: z.string(),
+    addGenerationPrompt: z.literal(true),
+    renderedText: z.string(),
     inputTokenIds: z.array(z.number().int().nonnegative()).min(1),
   }).strict()).length(3),
 }).strict().parse(inputJson);
 
 const toolUserSchema = z.object({ role: z.literal('user'), content: z.string() }).strict();
 const toolAssistantSchema = z.object({
-  role: z.literal('assistant'), content: z.literal(''),
+  role: z.literal('assistant'),
+  content: z.literal(''),
   tool_calls: z.tuple([z.object({
-    id: z.literal('call_template_probe_1'), type: z.literal('function'),
+    id: z.literal('call_template_probe_1'),
+    type: z.literal('function'),
     function: z.object({ name: z.literal('lookup_weather'), arguments: z.literal('{"city":"Tokyo"}') }).strict(),
   }).strict()]),
 }).strict();
 const toolResultSchema = z.object({
-  role: z.literal('tool'), tool_call_id: z.literal('call_template_probe_1'), content: z.string(),
+  role: z.literal('tool'),
+  tool_call_id: z.literal('call_template_probe_1'),
+  content: z.string(),
 }).strict();
 const toolCaseSchema = z.object({
   tools: z.tuple([z.object({
     type: z.literal('function'),
     function: z.object({
-      name: z.literal('lookup_weather'), description: z.literal('Return deterministic weather fixture data.'),
+      name: z.literal('lookup_weather'),
+      description: z.literal('Return deterministic weather fixture data.'),
       parameters: z.object({
-        type: z.literal('object'), properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
+        type: z.literal('object'),
+        properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
         required: z.tuple([z.literal('city')]),
       }).strict(),
     }).strict(),
   }).strict()]),
-  addGenerationPrompt: z.literal(true), renderedText: z.string(),
+  addGenerationPrompt: z.literal(true),
+  renderedText: z.string(),
   inputTokenIds: z.array(z.number().int().nonnegative().safe()).min(1),
 }).strict();
 const toolInputEvidence = z.object({
-  schemaVersion: z.literal(1), source: z.literal('reference-template-behavior-matrix'),
+  schemaVersion: z.literal(1),
+  source: z.literal('reference-template-behavior-matrix'),
   sourceMemberSha256: z.literal('9f571fe9df62978ab255cb7d50a2ea9ca1a2214058318a92ba1c267b321b95b4'),
   modelId: z.literal('onnx-community/gpt-oss-20b-ONNX'),
   revision: z.literal('6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7'),
@@ -227,6 +241,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-09-05T12:00:00Z'));
 });
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -294,7 +309,8 @@ describe('GPT-OSS 20B Provider / basic', () => {
       ].map(path => ({ path, bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path }) })),
       generate: async ({ options, tokenizer, runtime }) => {
         nativeInputs.push({
-          templateSha256: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'), rendered: tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true }),
+          templateSha256: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'),
+          rendered: tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true }),
           input: options.input_ids instanceof runtime.Tensor ? { type: options.input_ids.type, location: options.input_ids.location, dims: [...options.input_ids.dims], data: Array.from(options.input_ids.data, Number) } : undefined,
           mask: options.attention_mask instanceof runtime.Tensor ? { data: structuredClone(options.attention_mask.data) } : undefined,
           past: options.past_key_values,
@@ -349,6 +365,7 @@ describe('GPT-OSS 20B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it("system-user-generation preserves the exact captured native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "system-user-generation");
@@ -374,7 +391,8 @@ describe('GPT-OSS 20B Provider / basic', () => {
       ].map(path => ({ path, bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path }) })),
       generate: async ({ options, tokenizer, runtime }) => {
         nativeInputs.push({
-          templateSha256: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'), rendered: tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true }),
+          templateSha256: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'),
+          rendered: tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true }),
           input: options.input_ids instanceof runtime.Tensor ? { type: options.input_ids.type, location: options.input_ids.location, dims: [...options.input_ids.dims], data: Array.from(options.input_ids.data, Number) } : undefined,
           mask: options.attention_mask instanceof runtime.Tensor ? { data: structuredClone(options.attention_mask.data) } : undefined,
           past: options.past_key_values,
@@ -432,6 +450,7 @@ describe('GPT-OSS 20B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it("multi-turn-generation preserves the exact captured native input through Provider.chat", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = inputEvidence.cases.find((item): boolean => item.caseId === "multi-turn-generation");
@@ -457,7 +476,8 @@ describe('GPT-OSS 20B Provider / basic', () => {
       ].map(path => ({ path, bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path }) })),
       generate: async ({ options, tokenizer, runtime }) => {
         nativeInputs.push({
-          templateSha256: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'), rendered: tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true }),
+          templateSha256: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'),
+          rendered: tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true }),
           input: options.input_ids instanceof runtime.Tensor ? { type: options.input_ids.type, location: options.input_ids.location, dims: [...options.input_ids.dims], data: Array.from(options.input_ids.data, Number) } : undefined,
           mask: options.attention_mask instanceof runtime.Tensor ? { data: structuredClone(options.attention_mask.data) } : undefined,
           past: options.past_key_values,
@@ -516,6 +536,7 @@ describe('GPT-OSS 20B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('refuses the recorded answer when the public caller changes the input', async () => {
     const captures: ProviderChatCapture[] = [];
     const replay = await createGptOssReplay();
@@ -554,6 +575,7 @@ describe('GPT-OSS 20B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
     }
   }, 30_000);
+
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -571,7 +593,7 @@ describe('GPT-OSS 20B Provider / basic', () => {
       catalog: providerReplayCatalog,
       caseIds: ['first-turn'],
       artifactPaths: ownedToolArtifacts,
-      imagePlatform: undefined
+      imagePlatform: undefined,
     });
     let capture: ProviderChatCapture | undefined;
     try {
@@ -614,8 +636,8 @@ describe('GPT-OSS 20B Provider / system', () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["system-user"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
-      imagePlatform: undefined
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -674,7 +696,8 @@ describe('GPT-OSS 20B Provider / history', () => {
     try {
       await replay.harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
       const tokenizer = await replay.harness.runtime.AutoTokenizer.from_pretrained(inputEvidence.modelId, {
-        revision: inputEvidence.revision, local_files_only: true,
+        revision: inputEvidence.revision,
+        local_files_only: true,
       });
       expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'))
         .toBe(inputEvidence.selectedTemplateSha256);
@@ -701,13 +724,14 @@ describe('GPT-OSS 20B Provider / history', () => {
       await replay.harness.close();
     }
   }, 30_000);
+
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["supplied-history"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
-      imagePlatform: undefined
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -793,10 +817,16 @@ describe('GPT-OSS 20B Provider / independent', () => {
         contexts.push(context);
         const { options, tokenizer, runtime } = context;
         nativeInputs.push({
-          templateSha256: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'), rendered: tokenizer.apply_chat_template(nextTemplateMessages, { tokenize: false, add_generation_prompt: true }), expectedIds: tokenizer.encode(nextPrompt, { add_special_tokens: false }),
+          templateSha256: createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'),
+          rendered: tokenizer.apply_chat_template(nextTemplateMessages, { tokenize: false, add_generation_prompt: true }),
+          expectedIds: tokenizer.encode(nextPrompt, { add_special_tokens: false }),
           input: options.input_ids instanceof runtime.Tensor ? { type: options.input_ids.type, location: options.input_ids.location, dims: [...options.input_ids.dims], data: Array.from(options.input_ids.data, Number) } : undefined,
           mask: options.attention_mask instanceof runtime.Tensor ? { type: options.attention_mask.type, location: options.attention_mask.location, dims: [...options.attention_mask.dims], data: Array.from(options.attention_mask.data, BigInt) } : undefined,
-          past: options.past_key_values, maxNewTokens: options.max_new_tokens, temperature: options.temperature, topP: options.top_p, doSample: options.do_sample,
+          past: options.past_key_values,
+          maxNewTokens: options.max_new_tokens,
+          temperature: options.temperature,
+          topP: options.top_p,
+          doSample: options.do_sample,
         });
         // No captured answer belongs to this changed input. A null native cache
         // cannot establish that real GPU KV reuse/invalidation works correctly.
@@ -814,7 +844,8 @@ describe('GPT-OSS 20B Provider / independent', () => {
       metadataCache: "all-fixture",
       imagePlatform: undefined,
       artifacts: ['onnx/model_q4f16.onnx', ...externalPaths.map(path => `onnx/${path}`)].map(path => ({
-        path, bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path }),
+        path,
+        bytes: createSyntheticModelBody({ modelId: inputEvidence.modelId, revision: inputEvidence.revision, path }),
       })),
       generate: async context => {
         const next = invocations.shift();
@@ -912,13 +943,14 @@ describe('GPT-OSS 20B Provider / independent', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
-      caseIds: ["first-turn","independent-next-input"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
-      imagePlatform: undefined
+      caseIds: ["first-turn", "independent-next-input"],
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     let firstResponse = '';
@@ -1076,12 +1108,16 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
         'model_q4f16.onnx_data_3', 'model_q4f16.onnx_data_4', 'model_q4f16.onnx_data_5', 'model_q4f16.onnx_data_6',
       ];
       expect(replay.harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
-        modelId: 'onnx-community/gpt-oss-20b-ONNX', revision: evidence.identity.resolvedRevision,
+        modelId: 'onnx-community/gpt-oss-20b-ONNX',
+        revision: evidence.identity.resolvedRevision,
         repositoryPaths: new Set(['onnx/model_q4f16.onnx', ...expectedExternalPaths.map(path => `onnx/${path}`)]),
-        core, options,
+        core,
+        options,
       }))).toEqual([{
-        modelId: 'onnx-community/gpt-oss-20b-ONNX', revision: evidence.identity.resolvedRevision,
-        corePath: 'onnx/model_q4f16.onnx', executionProviders: ['webgpu'],
+        modelId: 'onnx-community/gpt-oss-20b-ONNX',
+        revision: evidence.identity.resolvedRevision,
+        corePath: 'onnx/model_q4f16.onnx',
+        executionProviders: ['webgpu'],
         externalData: expectedExternalPaths.map(path => ({ path, artifactPath: `onnx/${path}` })),
       }]);
       expect(replay.harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
@@ -1096,13 +1132,14 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded none-effort request and callbacks', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-none"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
-      imagePlatform: undefined
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1143,13 +1180,14 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-low"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
-      imagePlatform: undefined
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1190,13 +1228,14 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-medium"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
-      imagePlatform: undefined
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1237,13 +1276,14 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-high"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
-      imagePlatform: undefined
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1428,6 +1468,7 @@ Let me know if you’d like more details or a forecast!`,
       mutations: 'verify',
     });
   }, 30_000);
+
   it("tools-generation characterizes the current developer-namespace projection without certifying native tool compatibility", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = toolInputEvidence.cases.find((item): boolean => item.caseId === "tools-generation");
@@ -1435,7 +1476,8 @@ Let me know if you’d like more details or a forecast!`,
     const boundary = 'GPT-OSS tool input inspected; no generated output supplied';
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
     const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
-      name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
       parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
     };
     // This is the separately specified current Naidan projection, NOT a browser
@@ -1498,26 +1540,39 @@ type lookup_weather = (_: {
     try {
       await harness.service.loadDownloadedModel({ modelId: toolInputEvidence.modelId });
       const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(toolInputEvidence.modelId, {
-        revision: toolInputEvidence.revision, local_files_only: true,
+        revision: toolInputEvidence.revision,
+        local_files_only: true,
       });
       expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
         .toBe(toolInputEvidence.selectedTemplateSha256);
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toBe(scenario.renderedText);
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true, return_tensor: false, return_dict: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: true,
+        return_tensor: false,
+        return_dict: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toEqual(scenario.inputTokenIds);
       // The template does not render additionalProperties, so this explicit
       // public schema difference is not the source of the namespace difference.
       const strictTools = scenario.tools.map(tool => ({
-        ...tool, function: { ...tool.function, parameters: {
-          ...tool.function.parameters,
-          additionalProperties: false
-        } },
+        ...tool,
+        function: {
+          ...tool.function,
+          parameters: {
+            ...tool.function.parameters,
+            additionalProperties: false,
+          },
+        },
       }));
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: strictTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictTools,
       })).toBe(scenario.renderedText);
       const expectedIds = tokenizer.encode(expectedRenderedText, { add_special_tokens: false });
       const templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
@@ -1552,7 +1607,8 @@ type lookup_weather = (_: {
         const chunks = observed.parts.filter(part => part.type === 'text' || part.type === 'reasoning').flatMap(part => part.chunks);
         const toolCalls = observed.parts.filter(part => part.type === 'tool_call');
         const observedMessageSchema = z.object({
-          role: z.string(), content: z.string(),
+          role: z.string(),
+          content: z.string(),
           tool_calls: toolAssistantSchema.shape.tool_calls.optional(),
           tool_call_id: z.literal('call_template_probe_1').optional(),
         }).strict();
@@ -1573,7 +1629,8 @@ type lookup_weather = (_: {
           [
             { role: 'developer', content: developerNamespace, tool_calls: undefined, tool_call_id: undefined },
             ...scenario.messages.map(message => ({
-              role: message.role, content: message.content,
+              role: message.role,
+              content: message.content,
               tool_calls: 'tool_calls' in message ? message.tool_calls : undefined,
               tool_call_id: 'tool_call_id' in message ? message.tool_call_id : undefined,
             })),
@@ -1600,10 +1657,16 @@ type lookup_weather = (_: {
         expect(harness.observations.forbiddenTransport).toEqual([]);
         expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
         expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
-          modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision,
-          repositoryPaths: new Set(repositoryPaths), core, options,
+          modelId: toolInputEvidence.modelId,
+          revision: toolInputEvidence.revision,
+          repositoryPaths: new Set(repositoryPaths),
+          core,
+          options,
         }))).toEqual([{
-          modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, corePath: repositoryPaths[0], executionProviders: ['webgpu'],
+          modelId: toolInputEvidence.modelId,
+          revision: toolInputEvidence.revision,
+          corePath: repositoryPaths[0],
+          executionProviders: ['webgpu'],
           externalData: repositoryPaths.slice(1).map(artifactPath => ({ path: artifactPath.slice('onnx/'.length), artifactPath })),
         }]);
       } finally {
@@ -1613,6 +1676,7 @@ type lookup_weather = (_: {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it("tool-result-continuation characterizes the current developer-namespace projection without certifying native tool compatibility", async () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = toolInputEvidence.cases.find((item): boolean => item.caseId === "tool-result-continuation");
@@ -1620,18 +1684,27 @@ type lookup_weather = (_: {
     const boundary = 'GPT-OSS tool input inspected; no generated output supplied';
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: '{"temperatureC":20,"condition":"clear"}' }));
     const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
-      name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
       parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
     };
     const messages: ChatMessage[] = [
       textMessage({ id: 'message_0', role: 'user', text: "Use the weather tool for Tokyo." }),
-      { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [
-        { type: 'text', text: '', completeness: 'complete' },
-        { type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_template_probe_1" }), type: 'function', function: { name: 'lookup_weather', arguments: "{\"city\":\"Tokyo\"}" } } },
-      ] },
-      { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [
-        { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } },
-      ] },
+      {
+        id: toMessageId({ raw: 'message_1' }),
+        role: 'assistant',
+        parts: [
+          { type: 'text', text: '', completeness: 'complete' },
+          { type: 'tool_call', toolCall: { id: toToolCallId({ raw: "call_template_probe_1" }), type: 'function', function: { name: 'lookup_weather', arguments: "{\"city\":\"Tokyo\"}" } } },
+        ],
+      },
+      {
+        id: toMessageId({ raw: 'message_2' }),
+        role: 'tool',
+        parts: [
+          { type: 'tool_result', result: { toolCallId: toToolCallId({ raw: "call_template_probe_1" }), status: 'success', content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" } } },
+        ],
+      },
     ];
     // This is the separately specified current Naidan projection, NOT a browser
     // capture or native-default parity claim. GPT-OSS deliberately renders tool
@@ -1693,26 +1766,39 @@ type lookup_weather = (_: {
     try {
       await harness.service.loadDownloadedModel({ modelId: toolInputEvidence.modelId });
       const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(toolInputEvidence.modelId, {
-        revision: toolInputEvidence.revision, local_files_only: true,
+        revision: toolInputEvidence.revision,
+        local_files_only: true,
       });
       expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
         .toBe(toolInputEvidence.selectedTemplateSha256);
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toBe(scenario.renderedText);
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true, return_tensor: false, return_dict: false, add_generation_prompt: true, tools: scenario.tools,
+        tokenize: true,
+        return_tensor: false,
+        return_dict: false,
+        add_generation_prompt: true,
+        tools: scenario.tools,
       })).toEqual(scenario.inputTokenIds);
       // The template does not render additionalProperties, so this explicit
       // public schema difference is not the source of the namespace difference.
       const strictTools = scenario.tools.map(tool => ({
-        ...tool, function: { ...tool.function, parameters: {
-          ...tool.function.parameters,
-          additionalProperties: false
-        } },
+        ...tool,
+        function: {
+          ...tool.function,
+          parameters: {
+            ...tool.function.parameters,
+            additionalProperties: false,
+          },
+        },
       }));
       expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false, add_generation_prompt: true, tools: strictTools,
+        tokenize: false,
+        add_generation_prompt: true,
+        tools: strictTools,
       })).toBe(scenario.renderedText);
       const expectedIds = tokenizer.encode(expectedRenderedText, { add_special_tokens: false });
       const templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
@@ -1747,7 +1833,8 @@ type lookup_weather = (_: {
         const chunks = observed.parts.filter(part => part.type === 'text' || part.type === 'reasoning').flatMap(part => part.chunks);
         const toolCalls = observed.parts.filter(part => part.type === 'tool_call');
         const observedMessageSchema = z.object({
-          role: z.string(), content: z.string(),
+          role: z.string(),
+          content: z.string(),
           tool_calls: toolAssistantSchema.shape.tool_calls.optional(),
           tool_call_id: z.literal('call_template_probe_1').optional(),
         }).strict();
@@ -1768,7 +1855,8 @@ type lookup_weather = (_: {
           [
             { role: 'developer', content: developerNamespace, tool_calls: undefined, tool_call_id: undefined },
             ...scenario.messages.map(message => ({
-              role: message.role, content: message.content,
+              role: message.role,
+              content: message.content,
               tool_calls: 'tool_calls' in message ? message.tool_calls : undefined,
               tool_call_id: 'tool_call_id' in message ? message.tool_call_id : undefined,
             })),
@@ -1795,10 +1883,16 @@ type lookup_weather = (_: {
         expect(harness.observations.forbiddenTransport).toEqual([]);
         expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
         expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
-          modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision,
-          repositoryPaths: new Set(repositoryPaths), core, options,
+          modelId: toolInputEvidence.modelId,
+          revision: toolInputEvidence.revision,
+          repositoryPaths: new Set(repositoryPaths),
+          core,
+          options,
         }))).toEqual([{
-          modelId: toolInputEvidence.modelId, revision: toolInputEvidence.revision, corePath: repositoryPaths[0], executionProviders: ['webgpu'],
+          modelId: toolInputEvidence.modelId,
+          revision: toolInputEvidence.revision,
+          corePath: repositoryPaths[0],
+          executionProviders: ['webgpu'],
           externalData: repositoryPaths.slice(1).map(artifactPath => ({ path: artifactPath.slice('onnx/'.length), artifactPath })),
         }]);
       } finally {
@@ -1816,8 +1910,8 @@ describe('GPT-OSS 20B Provider / images', () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["image"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
-      imagePlatform: undefined
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     try {
@@ -1840,10 +1934,14 @@ describe('GPT-OSS 20B Provider / images', () => {
           provider: replay.provider,
           request: {
             model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
-              { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) },
-            ] }],
+            messages: [{
+              id: toMessageId({ raw: 'message_0' }),
+              role: 'user',
+              parts: [
+                { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+                { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) },
+              ],
+            }],
             parameters,
             tools: [],
             signal,
@@ -1885,61 +1983,145 @@ const gptOssFullStructuredParts = {
     { callOrdinal: 12, terminal: { kind: 'control', tokenId: '200012' } },
   ],
   requests: [
-    { scenario: 'first-turn', settlement: 'fulfilled', events: [{
-      kind: 'assistant',
-      parts: [{ type: 'reasoning', text: 'The user says "Template probe user message." This seems like a', completeness: 'partial' }],
-      terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'continuity', settlement: 'rejected', events: [{
-      kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' },
-    }] },
-    { scenario: 'independent-next-input', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [], terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'system-user', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [], terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'supplied-history', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [], terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'reasoning-none', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [], terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'reasoning-low', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [], terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'reasoning-medium', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [], terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'reasoning-high', settlement: 'fulfilled', events: [{
-      kind: 'assistant', parts: [], terminal: { type: 'interrupted', reason: 'unknown' },
-    }] },
-    { scenario: 'natural-tool-minimal', settlement: 'rejected', events: [
-      { kind: 'assistant', parts: [
-        { type: 'reasoning', text: 'We need to call the function.', completeness: 'complete' },
-        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      ], terminal: { type: 'none' } },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      { kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'unknown' } },
-    ] },
-    { scenario: 'natural-tool-representative', settlement: 'rejected', events: [
-      { kind: 'assistant', parts: [
-        { type: 'reasoning', text: 'We need to call the function lookup_weather with city "Tokyo".', completeness: 'complete' },
-        { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-      ], terminal: { type: 'none' } },
-      { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
-      { kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'unknown' } },
-    ] },
-    { scenario: 'structured-tool-history', settlement: 'rejected', events: [{
-      kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'unknown' },
-    }] },
-    { scenario: 'image', settlement: 'rejected', events: [{
-      kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'Error' },
-    }] },
+    {
+      scenario: 'first-turn',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [{ type: 'reasoning', text: 'The user says "Template probe user message." This seems like a', completeness: 'partial' }],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'continuity',
+      settlement: 'rejected',
+      events: [{
+        kind: 'assistant',
+        parts: [],
+        terminal: { type: 'error', errorName: 'Error' },
+      }],
+    },
+    {
+      scenario: 'independent-next-input',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'system-user',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'supplied-history',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'reasoning-none',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'reasoning-low',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'reasoning-medium',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'reasoning-high',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'natural-tool-minimal',
+      settlement: 'rejected',
+      events: [
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'We need to call the function.', completeness: 'complete' },
+            { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          ],
+          terminal: { type: 'none' },
+        },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        { kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'unknown' } },
+      ],
+    },
+    {
+      scenario: 'natural-tool-representative',
+      settlement: 'rejected',
+      events: [
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'We need to call the function lookup_weather with city "Tokyo".', completeness: 'complete' },
+            { type: 'tool_call', name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          ],
+          terminal: { type: 'none' },
+        },
+        { kind: 'tool-success', call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
+        { kind: 'assistant', parts: [], terminal: { type: 'error', errorName: 'unknown' } },
+      ],
+    },
+    {
+      scenario: 'structured-tool-history',
+      settlement: 'rejected',
+      events: [{
+        kind: 'assistant',
+        parts: [],
+        terminal: { type: 'error', errorName: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'image',
+      settlement: 'rejected',
+      events: [{
+        kind: 'assistant',
+        parts: [],
+        terminal: { type: 'error', errorName: 'Error' },
+      }],
+    },
   ],
-  legacyInputProjections: [{ scenario: 'continuity', assistant: {
-    role: 'assistant', content: '<think>The user says "Template probe user message." This seems like a',
-  } }],
+  legacyInputProjections: [{
+    scenario: 'continuity',
+    assistant: {
+      role: 'assistant',
+      content: '<think>The user says "Template probe user message." This seems like a',
+    },
+  }],
 } satisfies StructuredPartsReplayContract;
 
 describe('GPT-OSS 20B Provider / sequences', () => {
@@ -1996,13 +2178,19 @@ describe('GPT-OSS 20B Provider / sequences', () => {
       replay.endNativeRequest();
       expect(first.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
       expect(first.generated.map(node => node.role)).toEqual(['assistant', 'tool', 'assistant']);
-      expect(first.generated[0]).toMatchObject({ role: 'assistant', parts: [
-        { type: 'reasoning', text: 'We need to call the function lookup_weather with city "Tokyo".', completeness: 'complete' },
-        { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
-      ] });
-      expect(first.generated[2]).toMatchObject({ role: 'assistant', parts: [
-        { type: 'text', text: 'Tokyo is clear with a comfortable temperature of about 20 °C.', completeness: 'complete' },
-      ] });
+      expect(first.generated[0]).toMatchObject({
+        role: 'assistant',
+        parts: [
+          { type: 'reasoning', text: 'We need to call the function lookup_weather with city "Tokyo".', completeness: 'complete' },
+          { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+        ],
+      });
+      expect(first.generated[2]).toMatchObject({
+        role: 'assistant',
+        parts: [
+          { type: 'text', text: 'Tokyo is clear with a comfortable temperature of about 20 °C.', completeness: 'complete' },
+        ],
+      });
       expect(executions).toEqual([{ city: 'Tokyo' }]);
 
       replay.beginNativeRequest({ caseId: 'structured-tool-history', parameters });
@@ -2012,21 +2200,35 @@ describe('GPT-OSS 20B Provider / sequences', () => {
           model: 'onnx-community/gpt-oss-20b-ONNX',
           messages: [
             textMessage({ id: 'history_user', role: 'user', text: 'Use the weather tool for Tokyo.' }),
-            { id: toMessageId({ raw: 'history_assistant' }), role: 'assistant', parts: [
-              { type: 'text', text: '', completeness: 'complete' },
-              { type: 'tool_call', toolCall: {
-                id: toToolCallId({ raw: 'call_model_support_probe_1' }),
-                type: 'function',
-                function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-              } },
-            ] },
-            { id: toMessageId({ raw: 'history_tool' }), role: 'tool', parts: [
-              { type: 'tool_result', result: {
-                toolCallId: toToolCallId({ raw: 'call_model_support_probe_1' }),
-                status: 'success',
-                content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-              } },
-            ] },
+            {
+              id: toMessageId({ raw: 'history_assistant' }),
+              role: 'assistant',
+              parts: [
+                { type: 'text', text: '', completeness: 'complete' },
+                {
+                  type: 'tool_call',
+                  toolCall: {
+                    id: toToolCallId({ raw: 'call_model_support_probe_1' }),
+                    type: 'function',
+                    function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+                  },
+                },
+              ],
+            },
+            {
+              id: toMessageId({ raw: 'history_tool' }),
+              role: 'tool',
+              parts: [
+                {
+                  type: 'tool_result',
+                  result: {
+                    toolCallId: toToolCallId({ raw: 'call_model_support_probe_1' }),
+                    status: 'success',
+                    content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+                  },
+                },
+              ],
+            },
           ],
           parameters,
           readBinaryObject: undefined,
@@ -2075,13 +2277,14 @@ Here’s the current weather in Tokyo:
       'structured-tool-history/1',
     ]);
   }, 30_000);
+
   it('sequences: refuses to turn interrupted reasoning into completed continuation history', async () => {
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["first-turn"],
-      artifactPaths: ["onnx/model_q4f16.onnx","onnx/model_q4f16.onnx_data","onnx/model_q4f16.onnx_data_1","onnx/model_q4f16.onnx_data_2","onnx/model_q4f16.onnx_data_3","onnx/model_q4f16.onnx_data_4","onnx/model_q4f16.onnx_data_5","onnx/model_q4f16.onnx_data_6"],
-      imagePlatform: undefined
+      artifactPaths: ["onnx/model_q4f16.onnx", "onnx/model_q4f16.onnx_data", "onnx/model_q4f16.onnx_data_1", "onnx/model_q4f16.onnx_data_2", "onnx/model_q4f16.onnx_data_3", "onnx/model_q4f16.onnx_data_4", "onnx/model_q4f16.onnx_data_5", "onnx/model_q4f16.onnx_data_6"],
+      imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
     let firstResponse = '';
@@ -2164,6 +2367,7 @@ Here’s the current weather in Tokyo:
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('preserves recorded calls and the independent image request without replaying invalid cached continuations', async () => {
     const fullEvidenceJson = assembleProviderSequenceEvidence({ catalog: providerReplayCatalog });
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
@@ -2172,52 +2376,66 @@ Here’s the current weather in Tokyo:
     expect(recorded.metadataRevision).toBe('6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7');
     expect(recorded.observedCacheRevision).toBe('main');
     const caches = new Map<number, NonNullable<Parameters<ProviderReplayGenerate>[0]['options']['past_key_values']>>();
-    await verifyCapturedFullReplay({ reviewedPublicContract: {
-      correctedEvents: [],
-      correctedFinalizedStreams: undefined,
-      invalidatedOutputs: [],
-      preNativeRejections: [
-        { scenario: 'continuity', reason: 'Partial structured reasoning cannot be closed by the GPT-OSS template.' },
-        { scenario: 'image', reason: 'GPT-OSS is text-only and cannot omit image content.' },
-      ],
-      structuredParts: gptOssFullStructuredParts,
-    }, evidence: recorded, imagePlatform: undefined, expectedLoadReceipt: undefined,
-    artifactPaths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', ...Array.from({ length: 6 }, (_, index) => `onnx/model_q4f16.onnx_data_${index + 1}`)],
-    completeResult: ({ callOrdinal, runtime, result }) => {
-      if (callOrdinal !== 10 && callOrdinal !== 12) return result;
-      // Source-derived control only: native KV bytes were not captured. The
-      // actual cache class supplies identity; only observed length is synthetic.
-      const cache = new runtime.DynamicCache();
-      vi.spyOn(cache, 'get_seq_length').mockReturnValue(result.sequences.dims[1]! - 1);
-      caches.set(callOrdinal, cache);
-      return { ...result, past_key_values: cache };
-    },
-    unavailableOutputs: [11, 13, 14].map(callOrdinal => {
-      const invocation = recorded.invocations[callOrdinal - 1]!;
-      const request = recorded.requests.find(item => item.scenario === invocation.scenario)!;
-      const starts = request.events.flatMap((event, index) => typeof event === 'object' && event !== null && !Array.isArray(event) && event.kind === 'assistant-start' ? [index] : []);
-      // Retain every first-call chunk/thinking/tool callback and the second
-      // assistant start, but never the old invalid second-call output.
-      const expectedEventsBeforeGap = request.events.slice(0, (callOrdinal === 14 ? starts[0]! : starts[1]!) + 1);
-      return { callOrdinal, scenario: invocation.scenario, requestInput: request.input, expectedEventsBeforeGap,
-        verifyInput: ({ options, runtime, tokenizer, model }) => {
-          if (!(options.input_ids instanceof runtime.Tensor) || !(options.attention_mask instanceof runtime.Tensor) || !options.streamer) throw new Error('Missing corrected GPT input');
-          // Old calls 11/13 omitted an unconsumed terminal token; call 14
-          // additionally belonged to another public chat. None is an oracle
-          // for the corrected native input, even though the old run fulfilled.
-          expect(() => replayCapturedFullInvocation({ invocation, options, runtime, modelConfig: model.config, parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 128
-          } })).toThrow();
-          // The real native capture verifies zero stream events. Do not
-          // replace its owned streamer descriptors with test spies here.
-          let expected: bigint[];
-          if (callOrdinal === 14) {
-            expect(options.past_key_values).toBeNull();
-            // Independent source-derived canonical input, not an observed
-            // post-fix output or a call to Naidan's formatter under test.
-            const namespace = `\
+    await verifyCapturedFullReplay({
+      reviewedPublicContract: {
+        correctedEvents: [],
+        correctedFinalizedStreams: undefined,
+        invalidatedOutputs: [],
+        preNativeRejections: [
+          { scenario: 'continuity', reason: 'Partial structured reasoning cannot be closed by the GPT-OSS template.' },
+          { scenario: 'image', reason: 'GPT-OSS is text-only and cannot omit image content.' },
+        ],
+        structuredParts: gptOssFullStructuredParts,
+      },
+      evidence: recorded,
+      imagePlatform: undefined,
+      expectedLoadReceipt: undefined,
+      artifactPaths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', ...Array.from({ length: 6 }, (_, index) => `onnx/model_q4f16.onnx_data_${index + 1}`)],
+      completeResult: ({ callOrdinal, runtime, result }) => {
+        if (callOrdinal !== 10 && callOrdinal !== 12) return result;
+        // Source-derived control only: native KV bytes were not captured. The
+        // actual cache class supplies identity; only observed length is synthetic.
+        const cache = new runtime.DynamicCache();
+        vi.spyOn(cache, 'get_seq_length').mockReturnValue(result.sequences.dims[1]! - 1);
+        caches.set(callOrdinal, cache);
+        return { ...result, past_key_values: cache };
+      },
+      unavailableOutputs: [11, 13, 14].map(callOrdinal => {
+        const invocation = recorded.invocations[callOrdinal - 1]!;
+        const request = recorded.requests.find(item => item.scenario === invocation.scenario)!;
+        const starts = request.events.flatMap((event, index) => typeof event === 'object' && event !== null && !Array.isArray(event) && event.kind === 'assistant-start' ? [index] : []);
+        // Retain every first-call chunk/thinking/tool callback and the second
+        // assistant start, but never the old invalid second-call output.
+        const expectedEventsBeforeGap = request.events.slice(0, (callOrdinal === 14 ? starts[0]! : starts[1]!) + 1);
+        return {
+          callOrdinal,
+          scenario: invocation.scenario,
+          requestInput: request.input,
+          expectedEventsBeforeGap,
+          verifyInput: ({ options, runtime, tokenizer, model }) => {
+            if (!(options.input_ids instanceof runtime.Tensor) || !(options.attention_mask instanceof runtime.Tensor) || !options.streamer) throw new Error('Missing corrected GPT input');
+            // Old calls 11/13 omitted an unconsumed terminal token; call 14
+            // additionally belonged to another public chat. None is an oracle
+            // for the corrected native input, even though the old run fulfilled.
+            expect(() => replayCapturedFullInvocation({
+              invocation,
+              options,
+              runtime,
+              modelConfig: model.config,
+              parameters: {
+                temperature: 0,
+                topP: 1,
+                maxCompletionTokens: 128,
+              },
+            })).toThrow();
+            // The real native capture verifies zero stream events. Do not
+            // replace its owned streamer descriptors with test spies here.
+            let expected: bigint[];
+            if (callOrdinal === 14) {
+              expect(options.past_key_values).toBeNull();
+              // Independent source-derived canonical input, not an observed
+              // post-fix output or a call to Naidan's formatter under test.
+              const namespace = `\
 namespace functions {
 // Return deterministic weather fixture data.
 type lookup_weather = (_: {
@@ -2225,31 +2443,31 @@ type lookup_weather = (_: {
 }) => any;
 
 } // namespace functions`;
-            const canonicalMessages = [
-              { role: 'developer', content: namespace },
-              { role: 'user', content: 'Use the weather tool for Tokyo.' },
-              { role: 'assistant', content: '', tool_calls: [{ id: 'call_model_support_probe_1', type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } }] },
-              { role: 'tool', content: '{"temperatureC":20,"condition":"clear"}', tool_call_id: 'call_model_support_probe_1' },
-            ];
-            const inputs = tokenizer.apply_chat_template(canonicalMessages, { add_generation_prompt: true, return_dict: true });
-            const parsed = z.object({ input_ids: z.instanceof(runtime.Tensor) }).parse(inputs);
-            expected = Array.from(parsed.input_ids.data, BigInt);
-          } else {
-            const previous = recorded.invocations[callOrdinal - 2]!;
-            const suffix = tokenizer.encode('<|start|>lookup_weather to=assistant<|channel|>commentary<|message|>{"temperatureC":20,"condition":"clear"}<|end|>', { add_special_tokens: false });
-            expected = [...previous.sequence.tokens.map(BigInt), ...suffix.map(BigInt)];
-            expect(options.past_key_values).toBe(caches.get(callOrdinal - 1));
-            expect(options.past_key_values?.get_seq_length()).toBe(previous.sequence.tokens.length - 1);
-          }
-          expect(options.input_ids.type).toBe('int64');
-          expect(options.input_ids.dims).toEqual([1, expected.length]);
-          expect(Array.from(options.input_ids.data, BigInt)).toEqual(expected);
-          expect(options.attention_mask.dims).toEqual([1, expected.length]);
-          expect(Array.from(options.attention_mask.data, BigInt)).toEqual(expected.map(() => 1n));
-          expect(options.max_new_tokens).toBe(128);
-        },
-      };
-    }),
+              const canonicalMessages = [
+                { role: 'developer', content: namespace },
+                { role: 'user', content: 'Use the weather tool for Tokyo.' },
+                { role: 'assistant', content: '', tool_calls: [{ id: 'call_model_support_probe_1', type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } }] },
+                { role: 'tool', content: '{"temperatureC":20,"condition":"clear"}', tool_call_id: 'call_model_support_probe_1' },
+              ];
+              const inputs = tokenizer.apply_chat_template(canonicalMessages, { add_generation_prompt: true, return_dict: true });
+              const parsed = z.object({ input_ids: z.instanceof(runtime.Tensor) }).parse(inputs);
+              expected = Array.from(parsed.input_ids.data, BigInt);
+            } else {
+              const previous = recorded.invocations[callOrdinal - 2]!;
+              const suffix = tokenizer.encode('<|start|>lookup_weather to=assistant<|channel|>commentary<|message|>{"temperatureC":20,"condition":"clear"}<|end|>', { add_special_tokens: false });
+              expected = [...previous.sequence.tokens.map(BigInt), ...suffix.map(BigInt)];
+              expect(options.past_key_values).toBe(caches.get(callOrdinal - 1));
+              expect(options.past_key_values?.get_seq_length()).toBe(previous.sequence.tokens.length - 1);
+            }
+            expect(options.input_ids.type).toBe('int64');
+            expect(options.input_ids.dims).toEqual([1, expected.length]);
+            expect(Array.from(options.input_ids.data, BigInt)).toEqual(expected);
+            expect(options.attention_mask.dims).toEqual([1, expected.length]);
+            expect(Array.from(options.attention_mask.data, BigInt)).toEqual(expected.map(() => 1n));
+            expect(options.max_new_tokens).toBe(128);
+          },
+        };
+      }),
     });
     expect([...caches.keys()]).toEqual([10, 12]);
   }, 30_000);

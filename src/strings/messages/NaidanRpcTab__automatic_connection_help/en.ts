@@ -1,0 +1,1 @@
+export const NaidanRpcTab__automatic_connection_help = (): string => "This setting only applies when Naidan starts. It does not change this page's current connection or retries. Use Disconnect to stop connecting on this page.";

@@ -6,12 +6,12 @@ import ImageBenchmarkParameters from './ImageBenchmarkParameters.vue';
 import ImageBenchmarkResult from './ImageBenchmarkResult.vue';
 import ImageModelPicker from './ImageModelPicker.vue';
 import ImageLoraControls from './ImageLoraControls.vue';
-import ImageInputControls from './ImageInputControls.vue';
-import { emptyImageInputs } from '@/features/stable-diffusion-cpp-browser/image-input-form';
+import ImageInputControls from '@/features/image-generation/components/ImageInputControls.vue';
+import { emptyImageInputs } from '@/features/image-generation/image-input-form';
 import { componentLabel } from '@/features/stable-diffusion-cpp-browser/component-label';
 import { profileOptions } from '@/features/stable-diffusion-cpp-browser/form-options';
 import type { ImageBenchmarkView } from '@/features/stable-diffusion-cpp-browser/benchmark-view';
-import type { ImageGenerationView } from '@/features/stable-diffusion-cpp-browser/use-image-generation-types';
+import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
 import type { BenchmarkRunRecord } from '@/features/stable-diffusion-cpp-browser/benchmark/types';
 const props = defineProps<{ bench: ImageBenchmarkView, generation: ImageGenerationView, active: boolean }>();
 // The view owns these refs; controls edit the handed-out form state, not a prop snapshot.
@@ -24,12 +24,15 @@ const weightOptions = computed(() => [
   { value: 'hybrid', label: lazyStrings.stableDiffusionCppBrowser__weight_residency_hybrid() },
   { value: 'disk', label: lazyStrings.stableDiffusionCppBrowser__weight_residency_disk() },
 ]);
+
 function checked({ event }: { event: Event }): boolean {
   return event.target instanceof HTMLInputElement && event.target.checked;
 }
+
 function time({ value }: { value: unknown }): string {
   return typeof value === 'number' && Number.isFinite(value) ? `${(value / 1000).toFixed(2)} s` : '—';
 }
+
 function status({ record }: { record: BenchmarkRunRecord }): string | undefined {
   switch (record.status) {
   case 'queued': return lazyStrings.imageBenchmark__queued();
@@ -41,6 +44,7 @@ function status({ record }: { record: BenchmarkRunRecord }): string | undefined 
   default: { const exhaustive: never = record.status; throw new Error(String(exhaustive)); }
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

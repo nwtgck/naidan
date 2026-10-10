@@ -150,10 +150,14 @@ describe('standalone Worker verification lifecycle', () => {
       },
       runWeshProbe: async ({ session }) => {
         events.push(`wesh:${idOf(session)}`);
-        return { exitCode: 0, stdout: `\
+        return {
+          exitCode: 0,
+          stdout: `\
 bin
 home
-`, stderr: '' };
+`,
+          stderr: '',
+        };
       },
       releaseHighlightSession,
       releaseWeshSession,

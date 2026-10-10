@@ -1,3 +1,5 @@
+import { checkpointPerformanceSchema } from './performance/checkpoint-schema';
+import { backendCensusSchema } from './performance/backend-census-schema';
 import { z } from 'zod';
 import { errorCode, errorCodeSchema, profileSchema } from './types';
 
@@ -8,27 +10,41 @@ const stageSchema = z.enum(['audio-info', 'audio-reference', 'audio-input', 'aud
 export type DiagnosticStage = z.infer<typeof stageSchema>;
 const failureKindSchema = z.enum(['wasm-trap', 'native-exception', 'binding-error', 'type-error', 'range-error',
   'webgpu-dispatch-limit', 'webgpu-validation', 'webgpu-device-error', 'webgpu-device-lost', 'native-graph-error', 'native-output-mismatch', 'validation-error', 'abort-error', 'javascript-error', 'unknown-exception']);
-const nativeMetricSchema = z.enum(['n_ctx', 'n_ctx_seq', 'n_batch', 'n_ubatch', 'n_seq_max', 'graph_nodes', 'graph_splits', 'compute_buffer_mib', 'model_buffer_mib']);
+const nativeMetricSchema = z.enum(['n_ctx', 'n_ctx_seq', 'n_batch', 'n_ubatch', 'n_seq_max', 'graph_nodes', 'graph_splits', 'compute_buffer_mib', 'model_buffer_mib', 'kv_buffer_mib', 'recurrent_buffer_mib']);
 
 const eventSchema = z.enum(['import-start', 'import-complete', 'runtime-ready', 'load-complete',
   'load-start', 'file-read-performance', 'model-reused', 'context-start', 'context-ready', 'context-retry', 'cache-reuse', 'checkpoint-created', 'checkpoint-restored', 'checkpoint-skipped', 'prefill-start', 'prefill-complete', 'generation-start', 'sampler-ready', 'first-token-sampled', 'generation-performance', 'generation-progress', 'generation-complete', 'cancelled', 'released', 'failed', 'operation-start', 'operation-complete', 'operation-waiting', 'native-error', 'native-info', 'native-node-start', 'native-node-complete']);
+const sampleRateSchema = z.object({
+  unit: z.literal('t/s'),
+  sampledTokens: z.number().int().nonnegative(),
+  elapsedMs: z.number().finite().nonnegative(),
+  tokensPerSecond: z.number().finite().nonnegative().optional(),
+}).strict();
+const fileReadSchema = z.object({
+  target: z.enum(['model', 'projector']),
+  mode: z.enum(['read-ahead', 'direct']),
+  requests: z.number().int().nonnegative(),
+  sourceCalls: z.number().int().nonnegative(),
+  sourceBytes: z.number().int().nonnegative(),
+  deliveredBytes: z.number().int().nonnegative(),
+  directReads: z.number().int().nonnegative(),
+  fills: z.number().int().nonnegative(),
+  hits: z.number().int().nonnegative(),
+  hitBytes: z.number().int().nonnegative(),
+  peakBufferBytes: z.number().int().nonnegative().max(65536),
+  allocationFallbacks: z.number().int().nonnegative().max(1),
+  sourceReadMs: z.number().finite().nonnegative().optional(),
+}).strict();
+
 export const diagnosticSchema = z.object({
   event: eventSchema,
-  fileReads: z.object({
-    target: z.enum(['model', 'projector']),
-    mode: z.enum(['read-ahead', 'direct']),
-    requests: z.number().int().nonnegative(),
-    sourceCalls: z.number().int().nonnegative(),
-    sourceBytes: z.number().int().nonnegative(),
-    deliveredBytes: z.number().int().nonnegative(),
-    directReads: z.number().int().nonnegative(),
-    fills: z.number().int().nonnegative(),
-    hits: z.number().int().nonnegative(),
-    hitBytes: z.number().int().nonnegative(),
-    peakBufferBytes: z.number().int().nonnegative().max(65536),
-    allocationFallbacks: z.number().int().nonnegative().max(1),
-    sourceReadMs: z.number().finite().nonnegative().optional(),
+  generationThroughput: z.object({
+    sampledTokens: z.number().int().positive(),
+    firstSampleMs: z.number().finite().nonnegative(),
+    postFirstSample: sampleRateSchema,
+    interval: sampleRateSchema,
   }).strict().optional(),
+  fileReads: fileReadSchema.optional(),
   progressDelivery: z.object({
     received: z.number().int().nonnegative(),
     sent: z.number().int().nonnegative(),
@@ -40,6 +56,21 @@ export const diagnosticSchema = z.object({
     peakPending: z.number().int().nonnegative().max(1),
   }).strict().optional(),
   performance: z.object({
+    // Existing load counters, without enabling per-read clocks in standard measurement.
+    modelReads: fileReadSchema.optional(),
+    backendCensus: backendCensusSchema.optional(),
+    checkpoint: checkpointPerformanceSchema.optional(),
+    memoryObservation: z.object({
+      wasmHeapBeforeBytes: z.number().int().nonnegative(),
+      wasmHeapAfterBytes: z.number().int().nonnegative().optional(),
+      checkpointRetainedBytes: z.number().int().nonnegative().optional(),
+    }).strict().optional(),
+    sampleWindows: z.array(z.object({
+      firstSample: z.number().int().positive(),
+      lastSample: z.number().int().positive(),
+      firstMs: z.number().finite().nonnegative(),
+      lastMs: z.number().finite().nonnegative(),
+    }).strict()).max(256).optional(),
     version: z.literal(1),
     outcome: z.enum(['completed', 'aborted', 'failed']),
     input: z.enum(['text', 'multimodal', 'unknown']),
@@ -57,6 +88,14 @@ export const diagnosticSchema = z.object({
       // The generated seed is recorded, never overridden by measurement.
       seed: z.number().int().min(0).max(4294967295).optional(),
     }).strict().optional(),
+    preparationEvents: z.array(z.object({
+      event: z.enum(['runtime-ready', 'load-start', 'load-complete', 'model-reused', 'context-start', 'context-retry', 'context-ready']),
+      observedMs: z.number().finite().nonnegative(),
+      elapsedMs: z.number().finite().nonnegative().optional(),
+      contextTokens: z.number().int().positive().optional(),
+      batchTokens: z.number().int().positive().optional(),
+      reason: z.string().optional(),
+    }).strict()).max(64).optional(),
     sampledTokens: z.number().int().nonnegative(),
     decodedTokens: z.number().int().nonnegative(),
     prefillDecodedTokens: z.number().int().nonnegative(),
@@ -115,6 +154,16 @@ export const diagnosticSchema = z.object({
       peakEntries: z.number().int().nonnegative().max(1024),
       peakCachedBytes: z.number().int().nonnegative().max(256 * 1024),
     }).strict().optional(),
+    // Worker wall time from the first to the last returned sampler token.
+    // Includes sampled stop/EOG tokens, not text chunks or decoded prompt tokens.
+    // Excludes the first sample from the numerator and final delivery/cleanup.
+    postFirstSample: sampleRateSchema.optional(),
+    // Non-EOG samples, including tokens without a visible text fragment.
+    nonEogTokens: z.number().int().nonnegative().optional(),
+    firstNonEogSampleMs: z.number().finite().nonnegative().optional(),
+    lastNonEogSampleMs: z.number().finite().nonnegative().optional(),
+    prefillBatchTokens: z.number().int().positive().optional(),
+    runtimeAssetBaseURL: z.string().optional(),
     firstSampleMs: z.number().finite().nonnegative().optional(),
     firstDeliveryMs: z.number().finite().nonnegative().optional(),
     // Exclusive Worker wall-clock intervals, not GPU kernel durations. Missing
@@ -286,6 +335,7 @@ const reasonDescriptions = {
 
 export type Diagnostic = z.infer<typeof diagnosticSchema>;
 const listeners = new Set<{ listener: ({ diagnostic }: { diagnostic: Diagnostic }) => void | Promise<void>, debug: 'off' | 'on', pending: Set<Promise<void>> }>();
+
 /** A worker request owns the detail preference, independently of resident runtime callbacks. */
 export function subscribeDiagnostics({ listener, debug }: { listener: ({ diagnostic }: { diagnostic: Diagnostic }) => void | Promise<void>, debug: 'off' | 'on' }): () => void {
   const subscription = { listener, debug, pending: new Set<Promise<void>>() };
@@ -299,6 +349,7 @@ export function subscribeDiagnostics({ listener, debug }: { listener: ({ diagnos
 export function logDiagnostic({ diagnostic }: { diagnostic: Diagnostic }): void {
   publishDiagnostic({ diagnostic, writeToConsole: true });
 }
+
 function publishDiagnostic({ diagnostic, writeToConsole }: { diagnostic: Diagnostic, writeToConsole: boolean }): void {
   const safe = diagnosticSchema.safeParse(diagnostic);
   if (!safe.success) return;
@@ -335,15 +386,18 @@ function publishDiagnostic({ diagnostic, writeToConsole }: { diagnostic: Diagnos
   default: { const exhaustive: never = safe.data.event; throw new Error(`Unknown diagnostic event: ${exhaustive}`); }
   }
 }
+
 /** Synchronous native callbacks cannot await host replies; the owning request drains them. */
 export function logNativeCheckpoint({ diagnostic }: { diagnostic: Diagnostic }): void {
   publishDiagnostic({ diagnostic, writeToConsole: Array.from(listeners.values()).some(({ debug }) => debug === 'on') });
 }
+
 /** Await host acknowledgements before entering a native call that may never return. */
 export async function logOperation({ diagnostic }: { diagnostic: Diagnostic }): Promise<void> {
   logNativeCheckpoint({ diagnostic });
   await Promise.all(Array.from(listeners.values()).flatMap(({ pending }) => Array.from(pending)));
 }
+
 /** Extract numbers only from the fixed WebGPU dispatch-limit diagnostic format. */
 export function dispatchLimitDetails({ message }: { message: unknown }): { dispatchAxis: 'x' | 'y' | 'z', dispatchCount: number, dispatchLimit: number } | undefined {
   if (typeof message !== 'string') return undefined;
@@ -354,6 +408,7 @@ export function dispatchLimitDetails({ message }: { message: unknown }): { dispa
   if (!Number.isSafeInteger(dispatchCount) || !Number.isSafeInteger(dispatchLimit) || dispatchLimit < 1 || dispatchCount <= dispatchLimit) return undefined;
   return { dispatchAxis, dispatchCount, dispatchLimit };
 }
+
 /** Match known technical failures without forwarding the native message itself. */
 export function knownNativeFailure({ message }: { message: unknown }): z.infer<typeof failureKindSchema> | undefined {
   if (typeof message !== 'string') return undefined;
@@ -364,6 +419,7 @@ export function knownNativeFailure({ message }: { message: unknown }): z.infer<t
   if (/\b(?:WebGPU|GPUValidationError)\b.*(?:validation|invalid)|\bvalidation\b.*\b(?:WebGPU|GPUCommandEncoder|GPUComputePassEncoder)\b/i.test(message)) return 'webgpu-validation';
   return undefined;
 }
+
 export function classifyFailure({ error }: { error: unknown }): z.infer<typeof failureKindSchema> {
   const known = knownNativeFailure({ message: error instanceof Error ? error.message : error });
   if (known) return known;
@@ -377,10 +433,12 @@ export function classifyFailure({ error }: { error: unknown }): z.infer<typeof f
   if (error instanceof Error) return 'javascript-error';
   return 'unknown-exception';
 }
+
 /** Classify locally without serializing exception values, messages or stacks. */
 export function logFailure({ stage, error }: { stage: DiagnosticStage, error: unknown }): void {
   logDiagnostic({ diagnostic: { event: 'failed', stage, failureKind: classifyFailure({ error }), code: errorCode({ error }) } });
 }
+
 /** Upstream mtmd-helper emits these exact lines with a fixed image/audio label. */
 function nativeMediaDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
   if (typeof message !== 'string' || message.length > 256) return undefined;
@@ -399,9 +457,16 @@ function nativeMediaDiagnostic({ message }: { message: unknown }): Diagnostic | 
   if (!batch) return undefined;
   const batchIndex = Number(batch[2]); const batchCount = Number(batch[3]); const number = Number(batch[4]);
   if (![batchIndex, batchCount, number].every(Number.isSafeInteger) || batchIndex < 1 || batchCount < batchIndex || batchCount > 2147483647 || (decoding && (number < 1 || number > 2147483647))) return undefined;
-  return { event: decoding ? 'operation-start' : 'operation-complete', stage: 'media-decode', mediaType: z.enum(['image', 'audio']).parse(batch[1]), batchIndex, batchCount,
-    ...(decoding ? { batchTokens: number } : { elapsedMs: number }) };
+  return {
+    event: decoding ? 'operation-start' : 'operation-complete',
+    stage: 'media-decode',
+    mediaType: z.enum(['image', 'audio']).parse(batch[1]),
+    batchIndex,
+    batchCount,
+    ...(decoding ? { batchTokens: number } : { elapsedMs: number }),
+  };
 }
+
 /** Fixed numeric context, graph and buffer formats from upstream llama.cpp. */
 function nativeInfoDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
   if (typeof message !== 'string' || message.length > 256) return undefined;
@@ -426,6 +491,27 @@ function nativeInfoDiagnostic({ message }: { message: unknown }): Diagnostic | u
   if (!Number.isFinite(nativeValue) || nativeValue > Number.MAX_SAFE_INTEGER) return undefined;
   return { event: 'native-info', nativeMetric: buffer[1] ? 'compute_buffer_mib' : 'model_buffer_mib', nativeValue, nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).parse(buffer[1] ?? buffer[2]) };
 }
+
+/** Actual per-backend allocation, rounded by upstream to hundredths of MiB.
+ * Each record belongs to one allocation attempt; retries must not be summed or
+ * interpreted as current residency. Never retain backend/device names from logs.
+ */
+function nativeStateAllocationDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
+  if (typeof message !== 'string' || message.length > 256) return undefined;
+  const line = message.replace(/\r?\n$/, '');
+  if (/[\r\n\u2028\u2029]/.test(line)) return undefined;
+  const buffer = /^(?:llama_kv_cache:[ \t]+(CPU|CPU_Mapped|WebGPU) KV|llama_memory_recurrent:[ \t]+(CPU|CPU_Mapped|WebGPU) RS) buffer size =[ \t]+(\d+\.\d{2}) MiB$/.exec(line);
+  if (!buffer) return undefined;
+  const nativeValue = Number(buffer[3]);
+  if (!Number.isFinite(nativeValue) || nativeValue > Number.MAX_SAFE_INTEGER) return undefined;
+  return {
+    event: 'native-info',
+    nativeMetric: buffer[1] ? 'kv_buffer_mib' : 'recurrent_buffer_mib',
+    nativeValue,
+    nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).parse(buffer[1] ?? buffer[2]),
+  };
+}
+
 /** Image internals expose dimensions and counts, never tensors or input text. */
 function nativeImageDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
   if (typeof message !== 'string' || message.length > 256) return undefined;
@@ -444,6 +530,7 @@ function nativeImageDiagnostic({ message }: { message: unknown }): Diagnostic | 
   if (preproc) return { event: 'native-info', stage: 'image-tokenize', nativeOperation: 'preprocess-image', nativeEntries: Number(preproc[1]), nativeGridX: Number(preproc[2]), nativeGridY: Number(preproc[3]), nativeOverview: preproc[4] === '1' };
   return undefined;
 }
+
 /**
  * Fixed projector diagnostics; accepting arbitrary stderr would leak file or tensor names.
  * lcb_clip records are emitted by lcore's local mtmd overlay, not stock llama.cpp.
@@ -463,8 +550,15 @@ function nativeProjectorDiagnostic({ message }: { message: unknown }): Diagnosti
     const nativeDestinationBytes = Number(conversion[3]);
     if (![nativeEntries, nativeSourceBytes, nativeDestinationBytes].every(Number.isSafeInteger)
         || nativeDestinationBytes !== nativeSourceBytes * 2) return undefined;
-    return { event: 'native-info', stage: 'projector-load', nativeOperation: 'bf16-f32',
-      nativeEntries, nativeSourceBytes, nativeDestinationBytes, nativeBackend: 'WebGPU' };
+    return {
+      event: 'native-info',
+      stage: 'projector-load',
+      nativeOperation: 'bf16-f32',
+      nativeEntries,
+      nativeSourceBytes,
+      nativeDestinationBytes,
+      nativeBackend: 'WebGPU',
+    };
   }
   const placement = /^lcb_clip: matmul placement cpu=(\d+) webgpu=(\d+) other=(\d+) cpu_bf16=(\d+)$/.exec(line);
   if (placement) {
@@ -476,8 +570,15 @@ function nativeProjectorDiagnostic({ message }: { message: unknown }): Diagnosti
     const nativeCpuBf16Nodes = Number(placement[4]);
     if (![nativeCpuNodes, nativeWebGpuNodes, nativeOtherNodes, nativeCpuBf16Nodes].every(Number.isSafeInteger)
         || nativeCpuBf16Nodes > nativeCpuNodes) return undefined;
-    return { event: 'native-info', stage: 'media-encode', nativeOperation: 'matmul-placement',
-      nativeCpuNodes, nativeWebGpuNodes, nativeOtherNodes, nativeCpuBf16Nodes };
+    return {
+      event: 'native-info',
+      stage: 'media-encode',
+      nativeOperation: 'matmul-placement',
+      nativeCpuNodes,
+      nativeWebGpuNodes,
+      nativeOtherNodes,
+      nativeCpuBf16Nodes,
+    };
   }
   if (line === 'warmup: WARNING: the CLIP graph uses unsupported operators by the backend') {
     // Eligibility warning only: it does not identify the selected execution backend.
@@ -496,9 +597,15 @@ function nativeProjectorDiagnostic({ message }: { message: unknown }): Diagnosti
   if (!buffer) return undefined;
   const nativeValue = Number(buffer[2]);
   if (!Number.isFinite(nativeValue) || nativeValue > Number.MAX_SAFE_INTEGER) return undefined;
-  return { event: 'native-info', stage: 'media-encode', nativeMetric: 'compute_buffer_mib', nativeValue,
-    nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).parse(buffer[1]) };
+  return {
+    event: 'native-info',
+    stage: 'media-encode',
+    nativeMetric: 'compute_buffer_mib',
+    nativeValue,
+    nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).parse(buffer[1]),
+  };
 }
+
 /** Keep structured progress/metrics and known failures; never forward raw stderr. */
 export function logNativeDiagnostic({ message }: { message: unknown }): void {
   if (typeof message === 'string' && message.length <= 256) {
@@ -512,6 +619,12 @@ export function logNativeDiagnostic({ message }: { message: unknown }): void {
       logDiagnostic({ diagnostic: { event: 'native-error', stage: 'media-encode', failureKind: 'native-output-mismatch', expectedTokens: Number(output[1]), tokens: Number(output[2]) } }); return;
     }
   }
+  const allocation = nativeStateAllocationDiagnostic({ message });
+  if (allocation) {
+    // Normal prepareModel has no diagnostic subscription. Keep this small,
+    // sanitized allocation record visible even without a debug-enabled request.
+    logDiagnostic({ diagnostic: allocation }); return;
+  }
   const progress = nativeMediaDiagnostic({ message }) ?? nativeInfoDiagnostic({ message }) ?? nativeImageDiagnostic({ message }) ?? nativeProjectorDiagnostic({ message });
   if (progress) {
     logNativeCheckpoint({ diagnostic: progress }); return;
@@ -519,5 +632,6 @@ export function logNativeDiagnostic({ message }: { message: unknown }): void {
   const failureKind = knownNativeFailure({ message });
   if (failureKind) logDiagnostic({ diagnostic: { event: 'native-error', failureKind, ...dispatchLimitDetails({ message }) } });
 }
+
 export const TEST_ONLY = {
 };

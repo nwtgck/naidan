@@ -14,10 +14,13 @@ const { downloading, importing, downloadState, downloadRecipeId, downloadLoraId,
 const id = useId(), open = ref(true);
 const choices = reactive<Record<string, ImageRecipeSelection>>({});
 const detailsOpen = reactive<Record<string, boolean>>({});
+
 function selection({ recipeId }: { recipeId: string }): ImageRecipeSelection {
   return choices[recipeId] ?? {};
 }
+
 const queuedDownloads = computed(() => props.view.downloadQueue.value.filter(job => job.state !== 'downloading'));
+
 function queueStatus({ state }: { state: ImageDownloadQueueEntry['state'] }): string | undefined {
   switch (state) {
   case 'queued': return lazyStrings.ImageModelCatalog__queued();
@@ -28,6 +31,7 @@ function queueStatus({ state }: { state: ImageDownloadQueueEntry['state'] }): st
   default: { const exhaustive: never = state; throw new Error(String(exhaustive)); }
   }
 }
+
 const cards = computed(() => imageModelRecipes.map(recipe => {
   const selections = selection({ recipeId: recipe.id });
   const files = selectedRecipeFiles({ recipe, selections });
@@ -46,6 +50,7 @@ const downloadDestinationUnavailable = computed(() => {
   // An explicit download can request read/write permission for a known handle.
   return !directories.supported.value || !entry || ['missing', 'error', 'unsupported'].includes(entry.access);
 });
+
 function roleLabel({ role }: { role: ImageRecipeFile['role'] }): string | undefined {
   switch (role) {
   case 'model': return lazyStrings.stableDiffusionCppBrowser__model_file();
@@ -55,9 +60,11 @@ function roleLabel({ role }: { role: ImageRecipeFile['role'] }): string | undefi
   default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
   }
 }
+
 function optionLabel({ file }: { file: ImageRecipeFile }): string {
   return /(?:[-_.])(Q\d[A-Z0-9_]*|BF16|FP16|F16)(?=\.|$)/i.exec(file.path)?.[1]?.toUpperCase() ?? 'safetensors';
 }
+
 function change({ recipeId, role, event }: { recipeId: string, role: ImageRecipeFile['role'], event: Event }): void {
   if (props.downloadDisabled || !(event.target instanceof HTMLSelectElement)) return;
   const value = event.target.value;
@@ -67,23 +74,28 @@ function change({ recipeId, role, event }: { recipeId: string, role: ImageRecipe
     choices[recipeId] = { ...previous, [role]: value };
   }
 }
+
 async function download({ recipeId }: { recipeId: string }): Promise<void> {
   if (!props.downloadDisabled && !importing.value && !downloadDestinationUnavailable.value) await props.view.downloadRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
 }
+
 async function downloadLora({ id }: { id: string }): Promise<void> {
   if (!props.downloadDisabled && !importing.value && !downloadDestinationUnavailable.value) await props.view.downloadLora({ id });
 }
+
 function select({ recipeId }: { recipeId: string }): void {
   if (props.disabled || importing.value || scanState.value === 'scanning') return;
   props.view.chooseRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
   if (props.view.ready.value) emit('selected');
 }
+
 function loraHelp({ usage }: { usage: ImageCatalogLora['usage'] }): string | undefined {
   switch (usage) {
   case 'style-reference': return lazyStrings.ImageModelCatalog__reference_style_lora_help();
   default: { const exhaustive: never = usage; throw new Error(String(exhaustive)); }
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {}) });
 </script>
 <template>
@@ -143,7 +155,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
                     </div>
                     <a :href="downloadDisabled ? undefined : 'https://huggingface.co/' + card.files[index]!.repository" :aria-disabled="downloadDisabled ? 'true' : undefined" :tabindex="downloadDisabled ? -1 : undefined" @click="downloadDisabled && $event.preventDefault()" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" tw-class="flex w-fit max-w-full items-start gap-1.5 rounded-sm text-xs text-blue-600 dark:text-blue-400 hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><span tw-class="min-w-0 break-all">Hugging Face · {{ card.files[index]!.repository }}</span><ExternalLinkIcon tw-class="mt-0.5 w-3 h-3 shrink-0" /></a>
                     <div tw-class="flex min-w-0 items-start gap-2 text-[11px] text-gray-500 dark:text-gray-400">
-                      <a :href="downloadDisabled ? undefined : imageRecipeLink({ file: card.files[index]!, action: 'source' })" :aria-disabled="downloadDisabled ? 'true' : undefined" :tabindex="downloadDisabled ? -1 : undefined" @click="downloadDisabled && $event.preventDefault()" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" tw-class="min-w-0 flex-1 break-all font-mono leading-relaxed hover:underline">{{ card.files[index]!.path }}</a>
+                      <a :href="downloadDisabled ? undefined : imageRecipeLink({ file: card.files[index]!, action: 'source' })" :aria-disabled="downloadDisabled ? 'true' : undefined" :tabindex="downloadDisabled ? -1 : undefined" @click="downloadDisabled && $event.preventDefault()" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" data-testid="image-catalog-source" tw-class="min-w-0 flex-1 flex items-start gap-1.5 font-mono leading-relaxed hover:underline"><span tw-class="min-w-0 break-all">{{ card.files[index]!.path }}</span><ExternalLinkIcon aria-hidden="true" tw-class="mt-0.5 w-3 h-3 shrink-0" /></a>
                       <a :href="downloadDisabled ? undefined : imageRecipeLink({ file: card.files[index]!, action: 'download' })" :aria-disabled="downloadDisabled ? 'true' : undefined" :tabindex="downloadDisabled ? -1 : undefined" @click="downloadDisabled && $event.preventDefault()" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" download :aria-label="lazyStrings.llamaCppBrowserDownloads__save_file_to_device()" :title="lazyStrings.llamaCppBrowserDownloads__save_file_to_device()" tw-class="shrink-0 rounded-lg p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><DownloadIcon tw-class="w-3.5 h-3.5" /></a>
                     </div>
                   </div>
@@ -153,7 +165,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {})
             </div>
             <div v-for="lora in card.loras" :key="lora.id" :data-testid="'catalog-lora-' + lora.id" tw-class="mt-3 space-y-2 border-t border-gray-100 dark:border-gray-800 pt-3">
               <h5 tw-class="text-xs font-semibold">{{ lazyStrings.ImageModelCatalog__optional_lora() }}</h5>
-              <a :href="downloadDisabled ? undefined : imageRecipeLink({ file: lora.source, action: 'source' })" :aria-disabled="downloadDisabled ? 'true' : undefined" :tabindex="downloadDisabled ? -1 : undefined" @click="downloadDisabled && $event.preventDefault()" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" tw-class="block break-all text-xs text-blue-600 dark:text-blue-400 hover:underline">{{ lora.title }} · {{ lora.source.repository }}</a>
+              <a :href="downloadDisabled ? undefined : imageRecipeLink({ file: lora.source, action: 'source' })" :aria-disabled="downloadDisabled ? 'true' : undefined" :tabindex="downloadDisabled ? -1 : undefined" @click="downloadDisabled && $event.preventDefault()" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" data-testid="image-catalog-lora-source" tw-class="flex w-fit max-w-full items-start gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline"><span tw-class="min-w-0 break-all">{{ lora.title }} · {{ lora.source.repository }}</span><ExternalLinkIcon aria-hidden="true" tw-class="mt-0.5 w-3 h-3 shrink-0" /></a>
               <p tw-class="text-xs text-gray-500 dark:text-gray-400">{{ loraHelp({ usage: lora.usage }) }}</p>
               <div tw-class="flex flex-wrap items-center gap-2 text-xs">
                 <span>{{ formatDownloadBytes({ bytes: lora.source.size }) }}</span>

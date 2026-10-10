@@ -5,12 +5,18 @@ import { createProductionProviderInvestigationSummaryEvidence, readProductionPro
 
 function summary(): ProductionProviderInvestigationResult['summary'] {
   return {
-    format: 'production-provider-investigation-v1', policy: createProductionProviderCapturePolicy({ plan: 'first-only' }),
-    completion: 'interrupted', stopReason: 'user-requested', providerEvidence: 'available',
+    format: 'production-provider-investigation-v1',
+    policy: createProductionProviderCapturePolicy({ plan: 'first-only' }),
+    completion: 'interrupted',
+    stopReason: 'user-requested',
+    providerEvidence: 'available',
     providerProgress: { runId: 'run-1', modelId: 'org/model', plan: 'first-only', run: { status: 'not-started' }, lifetime: 'closing', activeRequest: undefined, totalRequests: 1, selectedRequests: 1, settledRequests: 0, loadStatus: 'idle' },
     requests: [{ requestId: 'run-1-first-turn', scenario: 'first-turn', status: 'not-started', notStartedReason: 'not-yet-started', outcome: undefined, settledCompleteness: undefined, completeness: 'complete', limits: { maximumEvents: 1024, maximumCharacters: 65536, maximumFieldCharacters: 16384 }, retainedCharacters: 0, eventCount: 0 }],
     cutoff: { format: 'production-provider-native-cutoff-v1', runId: 'run-1', reason: 'user-requested', phaseAtCutoff: 'not-requested', maximumWorkerEpochs: 8, unrecordedWorkerCreations: 0, incompleteReasons: [], epochs: [] },
-    nativeEvidenceStatus: 'available', cleanup: 'completed', sealOwnership: 'settled', progressCallbackFailures: 0,
+    nativeEvidenceStatus: 'available',
+    cleanup: 'completed',
+    sealOwnership: 'settled',
+    progressCallbackFailures: 0,
   };
 }
 
@@ -22,9 +28,11 @@ describe('Provider investigation summary evidence', () => {
     expect(Object.isFrozen(parsed.progress.provider)).toBe(true);
     expect(() => validateProductionProviderInvestigationLiveProgress({ value, runId: 'foreign', modelId: 'org/model' })).toThrow('Invalid Production Provider investigation progress');
     let read = false;
-    Object.defineProperty(value, 'secret', { get() {
-      read = true; throw new Error('Secret');
-    } });
+    Object.defineProperty(value, 'secret', {
+      get() {
+        read = true; throw new Error('Secret');
+      },
+    });
     expect(() => validateProductionProviderInvestigationLiveProgress({ value, runId: 'run-1', modelId: 'org/model' })).toThrow();
     expect(read).toBe(false);
   });
@@ -55,9 +63,11 @@ describe('Provider investigation summary evidence', () => {
   it('rejects unknown secret fields without invoking accessors', () => {
     const original = summary();
     let read = false;
-    Object.defineProperty(original, 'secret', { get() {
-      read = true; throw new Error('Private secret');
-    } });
+    Object.defineProperty(original, 'secret', {
+      get() {
+        read = true; throw new Error('Private secret');
+      },
+    });
     expect(() => createProductionProviderInvestigationSummaryEvidence({ summary: original, runId: 'run-1', modelId: 'org/model' })).toThrow('Invalid Production Provider investigation summary');
     expect(read).toBe(false);
   });
@@ -86,7 +96,8 @@ describe('Provider investigation summary evidence', () => {
   it('rejects an awaiting request without its owned active identity', () => {
     const original = summary();
     const invalid: ProductionProviderInvestigationResult['summary'] = {
-      ...original, providerProgress: { ...original.providerProgress, run: { status: 'running' } },
+      ...original,
+      providerProgress: { ...original.providerProgress, run: { status: 'running' } },
       requests: original.requests.map(request => ({ ...request, status: 'awaiting-settlement', notStartedReason: undefined })),
     };
     expect(() => createProductionProviderInvestigationSummaryEvidence({ summary: invalid, runId: 'run-1', modelId: 'org/model' })).toThrow();

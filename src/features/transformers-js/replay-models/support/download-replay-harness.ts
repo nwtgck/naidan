@@ -101,7 +101,8 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
     const status = body ? 200 : 404;
     requests.push({ phase, path, revision: requestedRevision, bytes: body?.byteLength ?? 0, status });
     return new Response(body ? Uint8Array.from(body) : 'fixture absent', {
-      status, headers: { 'Content-Length': String(body?.byteLength ?? 14), 'Content-Type': path.endsWith('.json') ? 'application/json' : 'application/octet-stream' },
+      status,
+      headers: { 'Content-Length': String(body?.byteLength ?? 14), 'Content-Type': path.endsWith('.json') ? 'application/json' : 'application/octet-stream' },
     });
   });
   const forbiddenTransport: typeof fetch = async input => {
@@ -117,13 +118,16 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
         fs.enter({ nextPhase: kind, mutationPolicy: 'read-only' });
         const identity = { workerLocationUrl: 'http://localhost/assets/worker.js', environment: import.meta.env.DEV ? 'development' as const : 'production' as const, userAgent: 'Vitest', vendor: '' };
         const assets = resolveHostedTransformersRuntimeAssetUrls(identity);
-        const guard = createDownloadedModelWorkerFetch({ ...identity, originalFetch: async (input, init) => {
-          const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-          if (url !== assets.mjsUrl) return forbiddenTransport(input, init);
-          expect(init?.redirect).toBe('error');
-          runtimeAssetFetchCalls.push(url);
-          return new Response(productionRuntimeModuleFixtureBytes({ variant: assets.variant }), { headers: { 'Content-Type': 'text/javascript' } });
-        } });
+        const guard = createDownloadedModelWorkerFetch({
+          ...identity,
+          originalFetch: async (input, init) => {
+            const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+            if (url !== assets.mjsUrl) return forbiddenTransport(input, init);
+            expect(init?.redirect).toBe('error');
+            runtimeAssetFetchCalls.push(url);
+            return new Response(productionRuntimeModuleFixtureBytes({ variant: assets.variant }), { headers: { 'Content-Type': 'text/javascript' } });
+          },
+        });
         const observedGuard: typeof fetch = async (input, init) => {
           const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
           offlineFetchCalls.push(url);
@@ -223,7 +227,7 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
   }));
   vi.doMock('@/features/transformers-js/download-verification/model-artifact-request-worker/client-hosted', () => ({
     createDownloadVerificationModelArtifactRequestWorkerClient: () => ({
-      async observeModelArtifactRequests({ modelId: id, revision: rev, candidate }: Parameters<ObserverApi['observeModelArtifactRequests']>[0]) {
+      async observeModelArtifactRequests({ modelId: id, revision: rev, candidate }: { modelId: Parameters<ObserverApi['observeModelArtifactRequests']>[0]['modelId'], revision: Parameters<ObserverApi['observeModelArtifactRequests']>[0]['revision'], candidate: Parameters<ObserverApi['observeModelArtifactRequests']>[0]['candidate'] }) {
         downloadCapabilityCalls.push('observer');
         const api = await boot({ kind: 'observer' }) as ObserverApi;
         return api.observeModelArtifactRequests({ modelId: id, revision: rev, candidate });
@@ -363,8 +367,25 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
     vi.stubGlobal('navigator', { userAgent: 'Vitest', vendor: '', gpu: {}, hardwareConcurrency: 2, locks: lockPlatform.locks, storage: { getDirectory: async () => fs.root } });
   }
   return {
-    archive, repository, requests, unknown, offlineRequests, offlineFetchCalls, offlineNonRuntimeFetchCalls, runtimeAssetFetchCalls, sessions, sessionErrors, downloadCapabilityCalls, released, fs, runtimeArtifact, network,
-    revisionAcceptanceCalls, serviceApiRequests, serviceLoadCalls, serviceClientEvents,
+    archive,
+    repository,
+    requests,
+    unknown,
+    offlineRequests,
+    offlineFetchCalls,
+    offlineNonRuntimeFetchCalls,
+    runtimeAssetFetchCalls,
+    sessions,
+    sessionErrors,
+    downloadCapabilityCalls,
+    released,
+    fs,
+    runtimeArtifact,
+    network,
+    revisionAcceptanceCalls,
+    serviceApiRequests,
+    serviceLoadCalls,
+    serviceClientEvents,
     async freshMetadata() {
       const api = await boot({ kind: 'fresh-metadata' }) as WorkerServerApi<FreshMetadataWorker>;
       const observations: FreshMetadataSummary[] = [];

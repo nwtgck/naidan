@@ -1,0 +1,1 @@
+export const naidanRpc__code_help = (): string => "Dieser Code dient als Treffpunkt für die Verbindung. Überprüfe die Gegenstelle, indem du den vollständigen Bestätigungstext über einen vertrauenswürdigen Weg, etwa ein Telefonat, vergleichst. Wähle auf den beiden Geräten unterschiedliche Rollen.";

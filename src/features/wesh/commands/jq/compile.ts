@@ -263,6 +263,7 @@ function removeValidationVariable({
   }
   counts.set(name, count - 1);
 }
+
 interface JqCompileTimeConstant {
   readonly value: JsonValue,
 }
@@ -464,9 +465,11 @@ function evaluateJqCompileTimeConstant({
       if (left.value === null) return right;
       if (right.value === null) return left;
       if (typeof left.value === 'number' && typeof right.value === 'number') {
-        return { value: normalizeJqArithmeticResult({
-          value: toJqArithmeticNumber({ value: left.value }) + toJqArithmeticNumber({ value: right.value }),
-        }) };
+        return {
+          value: normalizeJqArithmeticResult({
+            value: toJqArithmeticNumber({ value: left.value }) + toJqArithmeticNumber({ value: right.value }),
+          }),
+        };
       }
       if (typeof left.value === 'string' && typeof right.value === 'string') {
         return { value: `${left.value}${right.value}` };
@@ -480,27 +483,35 @@ function evaluateJqCompileTimeConstant({
       return undefined;
     case 'sub':
       return typeof left.value === 'number' && typeof right.value === 'number'
-        ? { value: normalizeJqArithmeticResult({
-          value: toJqArithmeticNumber({ value: left.value }) - toJqArithmeticNumber({ value: right.value }),
-        }) }
+        ? {
+          value: normalizeJqArithmeticResult({
+            value: toJqArithmeticNumber({ value: left.value }) - toJqArithmeticNumber({ value: right.value }),
+          }),
+        }
         : undefined;
     case 'mul':
       return typeof left.value === 'number' && typeof right.value === 'number'
-        ? { value: normalizeJqArithmeticResult({
-          value: toJqArithmeticNumber({ value: left.value }) * toJqArithmeticNumber({ value: right.value }),
-        }) }
+        ? {
+          value: normalizeJqArithmeticResult({
+            value: toJqArithmeticNumber({ value: left.value }) * toJqArithmeticNumber({ value: right.value }),
+          }),
+        }
         : undefined;
     case 'div':
       return typeof left.value === 'number' && typeof right.value === 'number' && right.value !== 0
-        ? { value: normalizeJqArithmeticResult({
-          value: toJqArithmeticNumber({ value: left.value }) / toJqArithmeticNumber({ value: right.value }),
-        }) }
+        ? {
+          value: normalizeJqArithmeticResult({
+            value: toJqArithmeticNumber({ value: left.value }) / toJqArithmeticNumber({ value: right.value }),
+          }),
+        }
         : undefined;
     case 'mod':
       return typeof left.value === 'number' && typeof right.value === 'number' && right.value !== 0
-        ? { value: normalizeJqArithmeticResult({
-          value: toJqArithmeticNumber({ value: left.value }) % toJqArithmeticNumber({ value: right.value }),
-        }) }
+        ? {
+          value: normalizeJqArithmeticResult({
+            value: toJqArithmeticNumber({ value: left.value }) % toJqArithmeticNumber({ value: right.value }),
+          }),
+        }
         : undefined;
     default: {
       const _ex: never = operator;

@@ -2642,8 +2642,7 @@ function isJqSimpleBoundedCaptureExpression({
   }): boolean => {
     const atomCount = jqSimpleBoundedCaptureAlternativeAtomCount({
       source: source.slice(alternativeStartIndex, endIndex),
-      maximumAtomCount:
-        JQ_MAX_NULLABLE_UNBOUNDED_SIMPLE_CAPTURE_HISTORY_ALTERNATIVE_CODE_POINTS,
+      maximumAtomCount: JQ_MAX_NULLABLE_UNBOUNDED_SIMPLE_CAPTURE_HISTORY_ALTERNATIVE_CODE_POINTS,
     });
     if (atomCount === undefined) return false;
     remainingExpressionTokens -= atomCount + (includesSeparator ? 1 : 0);
@@ -2915,8 +2914,7 @@ function requiredSimpleBackreferenceTargetIndexes({
       && backreferenceQuantifier.minimumRepetitions >= 2
       && !jqMinimumTwoBackreferenceTargetHasStableCaseFold({
         source: targetSource,
-        allowMultipleCaseFoldEquivalenceClasses:
-          backreferenceQuantifier.possessive,
+        allowMultipleCaseFoldEquivalenceClasses: backreferenceQuantifier.possessive,
       })
     ) return undefined;
     // A matching pre-fold group signature already proved the original target
@@ -2958,8 +2956,7 @@ function requiredSimpleBackreferenceTargetIndexes({
         ? true
         : isJqSimpleBoundedCaptureAlternative({
           source: prefixSource,
-          maximumAtomCount:
-            JQ_MAX_NULLABLE_UNBOUNDED_SIMPLE_CAPTURE_HISTORY_PREFIX_CODE_POINTS,
+          maximumAtomCount: JQ_MAX_NULLABLE_UNBOUNDED_SIMPLE_CAPTURE_HISTORY_PREFIX_CODE_POINTS,
         });
       if (!prefixIsSimpleBoundedSequence) return undefined;
       if (groups.some((group) =>
@@ -5673,10 +5670,8 @@ function expandJqSubexpressionCalls({
               && maximumRepetitions !== null
               && minimumRepetitions === maximumRepetitions
                 ? {
-                  minimumCodePointLength:
-                    fixedTargetCodePointLength * minimumRepetitions,
-                  maximumCodePointLength:
-                    fixedTargetCodePointLength * maximumRepetitions,
+                  minimumCodePointLength: fixedTargetCodePointLength * minimumRepetitions,
+                  maximumCodePointLength: fixedTargetCodePointLength * maximumRepetitions,
                 }
                 : undefined;
             const initialCaseFoldedCandidateSource =
@@ -5977,8 +5972,7 @@ function consumeLeadingJqSearchStartAnchorAlternative({
   });
   if (!inner.anchored) return { source, anchored: false };
   return {
-    source:
-      source.slice(0, contentStart) +
+    source: source.slice(0, contentStart) +
       inner.source +
       source.slice(groupEnd),
     anchored: true,
@@ -6233,12 +6227,9 @@ function compileJqRegularExpressionInternal({
     const simpleCaptureHistoryGroupSignatures =
       collectSimpleCaptureHistoryGroupSignatures({
         source,
-        allowPositiveVariableBackreferenceQuantifier:
-          positiveVariableBackreferenceCaptureHistoryReplayCompatible,
-        allowMinimumTwoVariableBackreferenceQuantifier:
-          minimumTwoVariableBackreferenceCaptureHistoryReplayCompatible,
-        allowZeroMinimumBackreferenceQuantifier:
-          zeroMinimumBackreferenceCaptureHistoryReplayCompatible,
+        allowPositiveVariableBackreferenceQuantifier: positiveVariableBackreferenceCaptureHistoryReplayCompatible,
+        allowMinimumTwoVariableBackreferenceQuantifier: minimumTwoVariableBackreferenceCaptureHistoryReplayCompatible,
+        allowZeroMinimumBackreferenceQuantifier: zeroMinimumBackreferenceCaptureHistoryReplayCompatible,
       });
     const singletonRequiredSevenCodePointCaptureHistoryGroupSignatures =
       collectSingletonRequiredSevenCodePointCaptureHistoryGroupSignatures({
@@ -6321,8 +6312,7 @@ function compileJqRegularExpressionInternal({
       plainUnboundedCaptureHistoryMaximum,
       linearRuntimeUnboundedCaptureHistoryMaximum,
       relaxedSimpleCaptureHistoryGroupSignatures,
-      allowWholeMatchGuardedOptionalCaptureHistoryProjectionReplay:
-        wholeMatchGuardedOptionalCaptureHistoryProjectionReplayCompatible,
+      allowWholeMatchGuardedOptionalCaptureHistoryProjectionReplay: wholeMatchGuardedOptionalCaptureHistoryProjectionReplayCompatible,
       maximumEmittedLength: expandedSourceBudget,
     });
     const rewritten = rewriteDuplicateNamedCaptureGroups({
@@ -6485,8 +6475,7 @@ function compileJqRegularExpressionInternal({
         replacements.push({
           sourceStart: assertion.sourceStart,
           sourceEnd: assertion.sourceEnd,
-          value:
-            `(?<=(?<![\\s\\S])[\\s\\S]{${searchStartCodePointIndex}})`,
+          value: `(?<=(?<![\\s\\S])[\\s\\S]{${searchStartCodePointIndex}})`,
         });
       }
     }
@@ -6717,8 +6706,7 @@ function compileJqRegularExpressionInternal({
     ignoreCase,
     uniformSevenCodePointCaptureHistoryReplayCompatible,
     singletonRequiredSevenCodePointCaptureHistoryReplayCompatible,
-    wholeMatchGuardedOptionalCaptureHistoryProjectionReplay:
-      hasWholeMatchGuardedOptionalCaptureHistoryProjectionReplay,
+    wholeMatchGuardedOptionalCaptureHistoryProjectionReplay: hasWholeMatchGuardedOptionalCaptureHistoryProjectionReplay,
     ignoreEmpty: effectiveFlags.has("n"),
     longest: effectiveFlags.has("l"),
     emptyByteContinuation,
@@ -6743,8 +6731,7 @@ function compileJqRegularExpressionInternal({
     })),
     recursiveCaptureLogicalIndexes,
     subexpressionCallExpansionAdditionalAlternationCount,
-    prioritizeEarlyRuntimeAlternativeRejections:
-      nullableUnboundedSimpleCaptureHistoryMaximum !== undefined,
+    prioritizeEarlyRuntimeAlternativeRejections: nullableUnboundedSimpleCaptureHistoryMaximum !== undefined,
     compileBoundedSimpleCaptureHistoryFallback,
     compileBoundedPlainCaptureHistoryFallback,
     compileBoundedLinearRuntimeCaptureHistoryFallback,
@@ -7312,7 +7299,10 @@ function collectJqSpecialRegularExpressionMatches({
       return [{ start: 0, end: 0, text: "", captures: [] }];
     }
     const matches: JqRegularExpressionMatch[] = [{
-      start: 0, end: 0, text: "", captures: [],
+      start: 0,
+      end: 0,
+      text: "",
+      captures: [],
     }];
     for (const range of collectJqGraphemeRanges({ input })) {
       const firstCodePointLength = codePointLengthAt({
@@ -7882,8 +7872,7 @@ function applyRuntimeAlternativeRejection({
     return {
       disabled: state.disabled,
       disabledPhysicalCaptures,
-      caseFoldedBackreferenceLengthConstraints:
-        state.caseFoldedBackreferenceLengthConstraints,
+      caseFoldedBackreferenceLengthConstraints: state.caseFoldedBackreferenceLengthConstraints,
     };
   }
   case "case-fold-length":
@@ -7990,8 +7979,7 @@ function findFirstValidBackreferenceMatch({
       global: true,
       disabledBackreferenceAlternatives: state.disabled,
       disabledPhysicalCaptures: state.disabledPhysicalCaptures,
-      caseFoldedBackreferenceLengthConstraints:
-        state.caseFoldedBackreferenceLengthConstraints,
+      caseFoldedBackreferenceLengthConstraints: state.caseFoldedBackreferenceLengthConstraints,
       searchStartCodePointIndex,
       disableEmptyAlternatives,
     });
@@ -8041,8 +8029,7 @@ function findFirstValidBackreferenceMatch({
           global: false,
           disabledBackreferenceAlternatives: state.disabled,
           disabledPhysicalCaptures: state.disabledPhysicalCaptures,
-          caseFoldedBackreferenceLengthConstraints:
-            state.caseFoldedBackreferenceLengthConstraints,
+          caseFoldedBackreferenceLengthConstraints: state.caseFoldedBackreferenceLengthConstraints,
           searchStartCodePointIndex,
           disableEmptyAlternatives,
         });
@@ -8245,8 +8232,7 @@ function selectLongestBackreferenceMatches({
       global: false,
       disabledBackreferenceAlternatives: state.disabled,
       disabledPhysicalCaptures: state.disabledPhysicalCaptures,
-      caseFoldedBackreferenceLengthConstraints:
-        state.caseFoldedBackreferenceLengthConstraints,
+      caseFoldedBackreferenceLengthConstraints: state.caseFoldedBackreferenceLengthConstraints,
       preferLongestBackreferenceCandidates: true,
       searchStartCodePointIndex: searchStartIndex === undefined
         ? undefined
@@ -8702,17 +8688,14 @@ export function collectJqRegularExpressionMatches({
       ? undefined
       : boundedSimpleCaptureHistoryInputCodePointLength({
         input,
-        allowUniformSevenCodePoints:
-          allowsUniformSevenCodePointCaptureHistoryReplay({
-            compatiblePatternMode:
-              compiled.uniformSevenCodePointCaptureHistoryReplayCompatible,
-            global,
-            ignoreCase: compiled.ignoreCase,
-            longest: compiled.longest,
-            hasCaseFoldedBackreference,
-          }),
-        allowSingletonRequiredSevenCodePoints:
-          compiled.singletonRequiredSevenCodePointCaptureHistoryReplayCompatible
+        allowUniformSevenCodePoints: allowsUniformSevenCodePointCaptureHistoryReplay({
+          compatiblePatternMode: compiled.uniformSevenCodePointCaptureHistoryReplayCompatible,
+          global,
+          ignoreCase: compiled.ignoreCase,
+          longest: compiled.longest,
+          hasCaseFoldedBackreference,
+        }),
+        allowSingletonRequiredSevenCodePoints: compiled.singletonRequiredSevenCodePointCaptureHistoryReplayCompatible
           && !compiled.wholeMatchGuardedOptionalCaptureHistoryProjectionReplay,
       });
   if (

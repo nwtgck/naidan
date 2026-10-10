@@ -15,17 +15,21 @@ const { entries, selected, sources, totalBytes, add, select, deselectAll, remove
 const issues = ref<{ name: string, code: ReferenceAudioErrorCode }[]>([]);
 const preparationFailure = ref<ReferenceAudioErrorCode>();
 const recordingTrimmed = ref(false);
-const recording = useReferenceRecording({ accept: async ({ blob, signal }) => {
-  const { wav, trimmed } = await normalizeReferenceAudio({ source: blob, signal, durationPolicy: 'limit-recording' }); signal.throwIfAborted();
-  add({ file: new File([wav], `recording-${Date.now()}.wav`, { type: 'audio/wav' }) });
-  preparationFailure.value = undefined; recordingTrimmed.value = trimmed; emit('changed');
-} });
+const recording = useReferenceRecording({
+  accept: async ({ blob, signal }) => {
+    const { wav, trimmed } = await normalizeReferenceAudio({ source: blob, signal, durationPolicy: 'limit-recording' }); signal.throwIfAborted();
+    add({ file: new File([wav], `recording-${Date.now()}.wav`, { type: 'audio/wav' }) });
+    preparationFailure.value = undefined; recordingTrimmed.value = trimmed; emit('changed');
+  },
+});
 const { status: recordingStatus, elapsed, supported: recordingSupported, error: recordingError } = recording;
 const locked = computed(() => props.disabled || recordingStatus.value !== 'idle');
 watch(recordingStatus, status => emit('busy', status !== 'idle'), { immediate: true, flush: 'sync' });
+
 function reportChange(): void {
   preparationFailure.value = undefined; emit('changed');
 }
+
 function addFiles({ files }: { files: readonly File[] }): void {
   if (locked.value) return;
   issues.value = [];
@@ -37,26 +41,33 @@ function addFiles({ files }: { files: readonly File[] }): void {
     }
   }
 }
+
 function choose({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLInputElement)) return;
   addFiles({ files: Array.from(event.target.files ?? []) }); event.target.value = '';
 }
+
 function drop({ event }: { event: DragEvent }): void {
   dragDepth.value = 0;
   addFiles({ files: Array.from(event.dataTransfer?.files ?? []) });
 }
+
 function toggle({ id, checked }: { id: number, checked: boolean }): void {
   if (locked.value) return; select({ id, checked }); reportChange();
 }
+
 function deselect(): void {
   if (locked.value) return; deselectAll(); reportChange();
 }
+
 function deleteReference({ id }: { id: number }): void {
   if (locked.value) return; remove({ id }); reportChange();
 }
+
 function deleteAll(): void {
   if (locked.value) return; clear(); reportChange();
 }
+
 async function prepare({ signal }: { signal: AbortSignal }): Promise<Blob | undefined> {
   preparationFailure.value = undefined;
   // Capture selection before awaiting browser decode. Files are immutable and no
@@ -69,6 +80,7 @@ async function prepare({ signal }: { signal: AbortSignal }): Promise<Blob | unde
     throw error;
   }
 }
+
 defineExpose({ prepare, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

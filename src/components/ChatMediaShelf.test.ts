@@ -13,18 +13,32 @@ vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addE
 vi.mock('./ImageDownloadHydrator', () => ({ ImageDownloadHydrator: { detectSupport, download: vi.fn() } }));
 
 function message({ blob }: { blob: Blob | undefined }): UserMessageNode {
-  const common = { id: toAttachmentId({ raw: 'image' }), binaryObjectId: toBinaryObjectId({ raw: 'binary' }),
-    originalName: 'user.png', mimeType: 'image/png', size: 10, uploadedAt: 7 };
-  return { id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 7, modelId: undefined, lmParameters: undefined,
+  const common = {
+    id: toAttachmentId({ raw: 'image' }),
+    binaryObjectId: toBinaryObjectId({ raw: 'binary' }),
+    originalName: 'user.png',
+    mimeType: 'image/png',
+    size: 10,
+    uploadedAt: 7,
+  };
+  return {
+    id: toMessageId({ raw: 'user' }),
+    role: 'user',
+    createdAt: 7,
+    modelId: undefined,
+    lmParameters: undefined,
     parts: [
       { type: 'text', text: '  Uploaded image  ', completeness: 'complete' },
       { type: 'attachment', attachment: blob === undefined ? { ...common, status: 'persisted' } : { ...common, status: 'memory', blob } },
-    ], replies: { items: [] } };
+    ],
+    replies: { items: [] },
+  };
 }
 
 let observed: Element[];
 let intersect: (({ element }: { element: Element }) => void) | undefined;
 const wrappers: ReturnType<typeof mount>[] = [];
+
 async function createShelf({ messages }: { messages: UserMessageNode[] }) {
   const wrapper = mount(ChatMediaShelf, { props: { chatId: toChatId({ raw: 'chat' }), messages }, global: { stubs: { ImageDownloadButton: true } } });
   wrappers.push(wrapper); await flushPromises(); return wrapper;
@@ -41,12 +55,15 @@ beforeEach(async () => {
     constructor(callback: (entries: { isIntersecting: boolean; target: Element }[]) => void) {
       intersect = ({ element }) => callback([{ isIntersecting: true, target: element }]);
     }
+
     observe(element: Element) {
       observed.push(element);
     }
+
     disconnect() {}
   });
 });
+
 afterEach(() => {
   wrappers.splice(0).forEach(wrapper => wrapper.unmount());
   vi.restoreAllMocks(); vi.unstubAllGlobals();

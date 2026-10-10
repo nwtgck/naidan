@@ -5,34 +5,114 @@ import { listStoredModels, removeStoredModel } from './runtime/model-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LlamaCppWorkerClient } from './worker/types';
 import { LlamaCppBrowserError, type GenerationResult } from './types';
-import type { LlamaCppBrowserService } from './service-contract';
-const worker = vi.hoisted(() => ({ prepareModel: vi.fn<LlamaCppWorkerClient['prepareModel']>(), generateAudio: vi.fn<LlamaCppWorkerClient['generateAudio']>(), subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModels: vi.fn<LlamaCppWorkerClient['listModels']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
-const factory = vi.hoisted(() => vi.fn(() => worker));
+import type { LlamaCppPerformanceScope, LlamaCppBrowserService } from './service-contract';
+import type { ProfileCapabilities } from './runtime/profile-capabilities';
+const worker = vi.hoisted(() => ({ releaseRuntime: vi.fn<LlamaCppWorkerClient['releaseRuntime']>(), prepareModel: vi.fn<LlamaCppWorkerClient['prepareModel']>(), generateAudio: vi.fn<LlamaCppWorkerClient['generateAudio']>(), subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModels: vi.fn<LlamaCppWorkerClient['listModels']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
+const factory = vi.hoisted(() => vi.fn(() => ({ ...worker })));
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
 vi.mock('./runtime/model-store', () => ({ listStoredModels: vi.fn(), removeStoredModel: vi.fn(), withModelMutationLock: ({ operation }: { operation: () => Promise<unknown> }) => operation() }));
 let service: LlamaCppBrowserService;
+
 beforeEach(async () => {
   vi.resetModules(); vi.resetAllMocks();
   worker.subscribeDisposed.mockReturnValue(() => {});
-  worker.probeProfiles.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [
-    { profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' },
-  ] });
+  worker.probeProfiles.mockResolvedValue({
+    recommended: 'cpu-wasm32',
+    profiles: [
+      { profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' },
+    ],
+  });
   worker.canReuse.mockReturnValue(true); vi.mocked(listStoredModels).mockResolvedValue([]); vi.mocked(removeStoredModel).mockResolvedValue('deleted');
-  worker.prepareModel.mockResolvedValue(undefined); worker.generateAudio.mockResolvedValue(audioResult()); worker.listModels.mockResolvedValue([]); worker.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+  worker.releaseRuntime.mockResolvedValue(undefined); worker.prepareModel.mockResolvedValue(undefined); worker.generateAudio.mockResolvedValue(audioResult()); worker.listModels.mockResolvedValue([]); worker.generate.mockResolvedValue({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
   service = (await import('./index-hosted')).llamaCppBrowserService;
   vi.spyOn(console, 'log').mockImplementation(() => {});
 });
+
 afterEach(() => {
   service.release(); vi.restoreAllMocks();
 });
+
 function input(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
-  return { model: 'local.gguf', messages: [{ role: 'user', content: 'original' }], temperature: 0, topP: 1,
-    maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
+  return {
+    model: 'local.gguf',
+    messages: [{ role: 'user', content: 'original' }],
+    temperature: 0,
+    topP: 1,
+    maxTokens: 5,
+    presencePenalty: 0,
+    frequencyPenalty: 0,
+    stop: [],
+  };
 }
+
 describe('serialized hosted model service', () => {
   it('defaults to browser feature detection without an explicitly chosen profile', () => {
     expect(service.getOptions()).toEqual({ profile: 'auto' });
   });
+
+  it('publishes validated option snapshots immediately and on changes until unsubscribed', () => {
+    const listener = vi.fn<Parameters<LlamaCppBrowserService['subscribeOptions']>[0]['listener']>();
+    const unsubscribe = service.subscribeOptions({ listener });
+    expect(listener).toHaveBeenLastCalledWith({ options: { profile: 'auto' } });
+    service.setOptions({ options: { profile: 'cpu-wasm32' } });
+    expect(listener).toHaveBeenLastCalledWith({ options: { profile: 'cpu-wasm32' } });
+    expect(listener.mock.calls[0]?.[0].options).toEqual({ profile: 'auto' });
+    unsubscribe(); unsubscribe();
+    service.setOptions({ options: { profile: 'webgpu-wasm32-asyncify' } });
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it('isolates option snapshots from observers and callers', () => {
+    const mutate = service.subscribeOptions({
+      listener: ({ options }) => {
+        options.profile = 'cpu-wasm64';
+      },
+    });
+    const listener = vi.fn<Parameters<LlamaCppBrowserService['subscribeOptions']>[0]['listener']>();
+    const unsubscribe = service.subscribeOptions({ listener });
+    const options = { profile: 'webgpu-wasm32-asyncify' as const };
+    service.setOptions({ options });
+    expect(service.getOptions()).toEqual(options);
+    expect(listener).toHaveBeenLastCalledWith({ options });
+    service.getOptions().profile = 'cpu-wasm32';
+    expect(service.getOptions()).toEqual(options);
+    mutate(); unsubscribe();
+  });
+
+  it('does not publish or change options when validation rejects an update', () => {
+    const listener = vi.fn<Parameters<LlamaCppBrowserService['subscribeOptions']>[0]['listener']>();
+    const unsubscribe = service.subscribeOptions({ listener });
+    const invalid = { profile: 'auto' as const, unknownOption: true };
+    expect(() => service.setOptions({ options: invalid })).toThrow();
+    expect(service.getOptions()).toEqual({ profile: 'auto' });
+    expect(listener).toHaveBeenCalledOnce();
+    unsubscribe();
+  });
+
+  it('does not let a failed option observer interrupt another observer or the update', () => {
+    const failing = vi.fn<Parameters<LlamaCppBrowserService['subscribeOptions']>[0]['listener']>();
+    const stopFailing = service.subscribeOptions({ listener: failing });
+    const listener = vi.fn<Parameters<LlamaCppBrowserService['subscribeOptions']>[0]['listener']>();
+    const unsubscribe = service.subscribeOptions({ listener });
+    failing.mockImplementation(() => {
+      throw new Error('Observer failed');
+    });
+    expect(() => service.setOptions({ options: { profile: 'cpu-wasm32' } })).not.toThrow();
+    expect(listener).toHaveBeenLastCalledWith({ options: { profile: 'cpu-wasm32' } });
+    expect(service.getOptions()).toEqual({ profile: 'cpu-wasm32' });
+    stopFailing(); unsubscribe();
+  });
+
+  it('does not retain an observer that throws while subscribing', () => {
+    const failing = vi.fn(() => {
+      throw new Error('Cannot subscribe');
+    });
+    expect(() => service.subscribeOptions({ listener: failing })).toThrow('Cannot subscribe');
+    service.setOptions({ options: { profile: 'cpu-wasm32' } });
+    expect(failing).toHaveBeenCalledOnce();
+  });
+
   it('resolves auto on the same Worker before passing a concrete generation profile', async () => {
     await service.probeProfiles({ signal: undefined });
     await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
@@ -40,6 +120,7 @@ describe('serialized hosted model service', () => {
     expect(worker.generate.mock.calls[0]?.[0].request.options.profile).toBe('cpu-wasm32');
     expect(factory).toHaveBeenCalledOnce();
   });
+
   it('cancels only a UI observer and preserves the shared Worker and probe result', async () => {
     const gate = Promise.withResolvers<Awaited<ReturnType<LlamaCppWorkerClient['probeProfiles']>>>();
     worker.probeProfiles.mockReturnValueOnce(gate.promise);
@@ -54,6 +135,7 @@ describe('serialized hosted model service', () => {
     await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(worker.probeProfiles).toHaveBeenCalledOnce();
   });
+
   it('invalidates reported capabilities when the Worker is disposed and probes its replacement', async () => {
     await service.probeProfiles({ signal: undefined });
     expect(service.getProfileState().status).toBe('ready');
@@ -62,11 +144,13 @@ describe('serialized hosted model service', () => {
     await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(factory).toHaveBeenCalledTimes(2); expect(worker.probeProfiles).toHaveBeenCalledTimes(2);
   });
+
   it('does not start inference or silently substitute an unavailable explicit profile', async () => {
     service.setOptions({ options: { profile: 'webgpu-wasm32-jspi' } });
     await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow('unavailable');
     expect(worker.generate).not.toHaveBeenCalled();
   });
+
   it('keeps a terminal probe failure visible and retries only when explicitly requested', async () => {
     worker.probeProfiles.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'worker-failed' }));
     await expect(service.probeProfiles({ signal: undefined })).rejects.toThrow('worker-failed');
@@ -77,12 +161,14 @@ describe('serialized hosted model service', () => {
     expect(service.getProfileState().status).toBe('ready');
     expect(factory).toHaveBeenCalledTimes(2);
   });
+
   it('does not clear an unrelated model-operation error when inspecting capabilities', async () => {
     worker.importModel.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'invalid-gguf' }));
     await expect(service.importModel({ file: new File([], 'invalid.gguf'), signal: undefined })).rejects.toThrow('invalid-gguf');
     await service.probeProfiles({ signal: undefined });
     expect(service.getState()).toEqual({ status: 'error', code: 'invalid-gguf' });
   });
+
   it('does not reuse or publish a released probe and retains the newer pending probe', async () => {
     const old = Promise.withResolvers<Awaited<ReturnType<LlamaCppWorkerClient['probeProfiles']>>>();
     const fresh = Promise.withResolvers<Awaited<ReturnType<LlamaCppWorkerClient['probeProfiles']>>>();
@@ -101,6 +187,7 @@ describe('serialized hosted model service', () => {
     expect(worker.probeProfiles).toHaveBeenCalledTimes(2);
     expect(service.getProfileState()).toMatchObject({ status: 'ready', capabilities: { recommended: 'cpu-wasm32' } });
   });
+
   it('returns a cached report while generation owns the Worker lane', async () => {
     const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(gate.promise);
     const generating = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
@@ -109,6 +196,7 @@ describe('serialized hosted model service', () => {
     expect(worker.probeProfiles).toHaveBeenCalledOnce(); expect(service.getState().status).toBe('working');
     gate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await generating;
   });
+
   it('snapshots inputs and options before entering the single Worker lane', async () => {
     let finish: () => void = () => {};
     worker.generate.mockImplementationOnce(() => new Promise<GenerationResult>(resolve => {
@@ -127,6 +215,7 @@ describe('serialized hosted model service', () => {
     expect(worker.generate.mock.calls[1]?.[0].request.options).toEqual({ profile: 'cpu-wasm32' });
     expect(factory).toHaveBeenCalledOnce();
   });
+
   it('does not run a cancelled queued request and continues the lane afterward', async () => {
     let finish: () => void = () => {};
     worker.generate.mockImplementationOnce(() => new Promise<GenerationResult>(resolve => {
@@ -141,6 +230,7 @@ describe('serialized hosted model service', () => {
     expect(worker.generate).toHaveBeenCalledOnce();
     expect(await service.listModels({ signal: undefined })).toEqual([]);
   });
+
   it('terminates failed runtime ownership and exposes only a safe error code', async () => {
     worker.generate.mockRejectedValueOnce(new Error('private prompt, private file and native details'));
     await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow('llama.cpp browser: runtime-error');
@@ -151,6 +241,7 @@ describe('serialized hosted model service', () => {
     expect(factory).toHaveBeenCalledOnce();
     expect(service.getState()).toEqual({ status: 'error', code: 'runtime-error' });
   });
+
   it('lists and deletes storage without waiting for an active inference request', async () => {
     const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockImplementationOnce(() => gate.promise);
     const generating = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
@@ -161,11 +252,14 @@ describe('serialized hosted model service', () => {
     expect(removeStoredModel).toHaveBeenCalledWith({ plan }); expect(worker.removeModel).not.toHaveBeenCalled(); expect(worker.dispose).not.toHaveBeenCalled();
     gate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await generating;
   });
+
   it('does not let a model-list observer turn a completed deletion into a storage failure', async () => {
     worker.removeModel.mockResolvedValue('deleted');
-    const unsubscribe = service.subscribeModelList({ listener: () => {
-      throw new Error('private observer details');
-    } });
+    const unsubscribe = service.subscribeModelList({
+      listener: () => {
+        throw new Error('private observer details');
+      },
+    });
     await expect(service.removeModel({ plan: { id: 'user/local-GGUF', files: [] }, signal: undefined })).resolves.toBe('deleted');
     expect(worker.dispose).not.toHaveBeenCalled();
     expect(service.getState()).toEqual({ status: 'idle' });
@@ -178,14 +272,17 @@ describe('resident Worker reuse at the service boundary', () => {
   it('keeps a cleanly cancelled Worker and does not claim to reload on every request', async () => {
     worker.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'aborted' }));
     const states: string[] = [];
-    const stop = service.subscribe({ listener: ({ state }) => {
-      if (state.status === 'working') states.push(state.progress.phase);
-    } });
+    const stop = service.subscribe({
+      listener: ({ state }) => {
+        if (state.status === 'working') states.push(state.progress.phase);
+      },
+    });
     await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow('aborted');
     expect(worker.dispose).not.toHaveBeenCalled(); expect(service.getState()).toEqual({ status: 'idle' });
     await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(factory).toHaveBeenCalledOnce(); expect(states).toEqual(['prefill', 'prefill']); stop();
   });
+
   it('recreates a physically terminated Worker after cancellation timeout', async () => {
     worker.generate.mockImplementationOnce(async () => {
       worker.canReuse.mockReturnValue(false);
@@ -197,6 +294,7 @@ describe('resident Worker reuse at the service boundary', () => {
     await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(factory).toHaveBeenCalledTimes(2);
   });
+
   it('keeps weights after a prompt exceeds the allocated context', async () => {
     worker.generate.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'context-full' }));
     await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow('context-full');
@@ -222,11 +320,14 @@ describe('tool work holds the generation lane', () => {
       finish = resolve;
     });
     let turns = 0;
-    const first = service.runGenerationOperation({ signal: undefined, operation: async ({ scope }) => {
-      await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
-      turns++; await blocked;
-      await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
-    } });
+    const first = service.runGenerationOperation({
+      signal: undefined,
+      operation: async ({ scope }) => {
+        await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
+        turns++; await blocked;
+        await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
+      },
+    });
     await vi.waitFor(() => expect(turns).toBe(1));
     expect(await service.prepareModel({ model: 'other.gguf', signal: undefined })).toBe('skipped-busy');
     expect(worker.prepareModel).not.toHaveBeenCalled();
@@ -235,17 +336,21 @@ describe('tool work holds the generation lane', () => {
     finish(); await first; await second;
     expect(worker.generate).toHaveBeenCalledTimes(3);
   });
+
   it('service cancellation reaches tool work and waits for it to settle before accepting the next request', async () => {
     let releaseTool: () => void = () => {};
     const blocked = new Promise<void>(resolve => {
       releaseTool = resolve;
     });
     let toolSignal: AbortSignal | undefined;
-    const first = service.runGenerationOperation({ signal: undefined, operation: async ({ scope }) => {
-      await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
-      toolSignal = scope.signal; await blocked;
-      await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
-    } });
+    const first = service.runGenerationOperation({
+      signal: undefined,
+      operation: async ({ scope }) => {
+        await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
+        toolSignal = scope.signal; await blocked;
+        await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
+      },
+    });
     const rejected = expect(first).rejects.toThrow('aborted');
     await vi.waitFor(() => expect(toolSignal).toBeDefined());
     service.cancel(); expect(toolSignal?.aborted).toBe(true);
@@ -259,12 +364,14 @@ describe('tool work holds the generation lane', () => {
 function audioInput(): Parameters<LlamaCppBrowserService['generateAudio']>[0]['input'] {
   return { ...defaultAudioParameters(), model: 'user/voice', text: 'Original audio text', debug: 'off' };
 }
+
 describe('audio sharing the serialized inference lane', () => {
   it('resolves runtime on the same Worker and uses the audio API, not chat generation', async () => {
     expect(await service.generateAudio({ input: audioInput(), cancellationSignal: undefined })).toEqual(audioResult());
     expect(worker.generate).not.toHaveBeenCalled(); expect(worker.generateAudio).toHaveBeenCalledOnce();
     expect(worker.generateAudio.mock.calls[0]?.[0].request.options).toEqual({ profile: 'cpu-wasm32' });
   });
+
   it('snapshots audio settings before queueing behind a chat and never overlaps their model lifetimes', async () => {
     const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(gate.promise);
     const chat = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
@@ -276,6 +383,7 @@ describe('audio sharing the serialized inference lane', () => {
     gate.resolve({ content: 'chat', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await chat; await audio;
     expect(worker.generateAudio.mock.calls[0]?.[0].request).toMatchObject({ text: 'Original audio text', contextTokens: 4096, options: { profile: 'cpu-wasm32' } });
   });
+
   it('cancels queued audio without cancelling the active chat', async () => {
     const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(gate.promise);
     const chat = service.generate({ input: input(), onEvent: () => {}, signal: undefined }); await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
@@ -285,12 +393,12 @@ describe('audio sharing the serialized inference lane', () => {
     gate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await chat; await rejected;
     expect(worker.generateAudio).not.toHaveBeenCalled();
   });
+
   it('fails invalid input before entering the Worker lane', async () => {
     expect(() => service.generateAudio({ input: { ...audioInput(), text: ' ' }, cancellationSignal: undefined })).toThrow();
     expect(factory).not.toHaveBeenCalled();
   });
 });
-
 
 describe('explicit runtime recovery', () => {
   it('retires an idle worker, reprobes and keeps saved models and options unchanged', async () => {
@@ -304,6 +412,7 @@ describe('explicit runtime recovery', () => {
     expect(worker.generate).not.toHaveBeenCalled(); expect(worker.generateAudio).not.toHaveBeenCalled();
     expect(service.getProfileState().status).toBe('ready');
   });
+
   it('recovers after an audio worker failure without another page load', async () => {
     worker.generateAudio.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'worker-failed' }));
     const audioInput = { ...defaultAudioParameters(), model: 'user/voice', text: 'Hello', debug: 'off' as const };
@@ -313,25 +422,29 @@ describe('explicit runtime recovery', () => {
     await expect(service.generateAudio({ input: audioInput, cancellationSignal: undefined })).resolves.toMatchObject({ frames: audioResult().frames });
     expect(worker.generateAudio).toHaveBeenCalledTimes(2); expect(factory).toHaveBeenCalledTimes(2);
   });
+
   it('refuses to restart an owned lane even before it publishes working progress', async () => {
     const gate = Promise.withResolvers<void>(); const entered = Promise.withResolvers<void>();
     let ownerSignal: AbortSignal | undefined;
-    const running = service.runGenerationOperation({ signal: new AbortController().signal, operation: async ({ scope }) => {
-      ownerSignal = scope.signal; entered.resolve(); await gate.promise;
-    } });
+    const running = service.runGenerationOperation({
+      signal: new AbortController().signal,
+      operation: async ({ scope }) => {
+        ownerSignal = scope.signal; entered.resolve(); await gate.promise;
+      },
+    });
     await entered.promise;
     expect(service.getState().status).toBe('idle');
     await expect(service.restartRuntime({ signal: undefined })).rejects.toThrow('busy');
     expect(ownerSignal?.aborted).toBe(false); expect(worker.dispose).not.toHaveBeenCalled();
     gate.resolve(); await running;
   });
+
   it('does not discard a healthy worker for a pre-cancelled recovery', async () => {
     await service.probeProfiles({ signal: undefined }); const controller = new AbortController(); controller.abort();
     await expect(service.restartRuntime({ signal: controller.signal })).rejects.toThrow('aborted');
     expect(worker.dispose).not.toHaveBeenCalled(); expect(service.getProfileState().status).toBe('ready');
   });
 });
-
 
 it('retains a queued audio finish request without cancelling the active chat', async () => {
   const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(gate.promise);
@@ -360,8 +473,113 @@ it('keeps repeated preview intents queued behind a chat without aborting or comp
   expect(worker.dispose).not.toHaveBeenCalled();
 });
 
-
 describe('idle model preparation', () => {
+  it('shares an advisory capability probe without suppressing one-shot model preparation', async () => {
+    const report: ProfileCapabilities = { recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] };
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const probe = service.probeProfiles({ signal: undefined });
+    await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
+    const preparation = service.prepareModel({ model: 'local.gguf', signal: undefined });
+    expect(worker.prepareModel).not.toHaveBeenCalled();
+    gate.resolve(report); await probe;
+    await expect(preparation).resolves.toBe('ready');
+    expect(worker.prepareModel).toHaveBeenCalledOnce();
+    expect(worker.probeProfiles).toHaveBeenCalledOnce(); expect(factory).toHaveBeenCalledOnce();
+  });
+
+  it('does not wait for a probe queued with a foreground generation', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const probe = service.probeProfiles({ signal: undefined });
+    const sending = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    await expect(service.prepareModel({ model: 'other.gguf', signal: undefined })).resolves.toBe('skipped-busy');
+    expect(worker.prepareModel).not.toHaveBeenCalled();
+    gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+    await probe; await sending;
+  });
+
+  it('lets a foreground send win while preparation is observing a capability probe', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const generationGate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(generationGate.promise);
+    const probe = service.probeProfiles({ signal: undefined });
+    const preparation = service.prepareModel({ model: 'other.gguf', signal: undefined });
+    const sending = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+    await probe;
+    await expect(preparation).resolves.toBe('skipped-busy');
+    expect(worker.prepareModel).not.toHaveBeenCalled();
+    generationGate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await sending;
+  });
+
+  it('detaches cancelled preparation without cancelling the shared capability probe', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const probe = service.probeProfiles({ signal: undefined });
+    await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
+    const controller = new AbortController();
+    const preparation = service.prepareModel({ model: 'local.gguf', signal: controller.signal });
+    const rejected = expect(preparation).rejects.toThrow('aborted'); controller.abort(); await rejected;
+    expect(worker.dispose).not.toHaveBeenCalled(); expect(worker.prepareModel).not.toHaveBeenCalled();
+    gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] }); await probe;
+    expect(service.getProfileState().status).toBe('ready');
+  });
+
+  it('does not revive a released engine after the advisory probe fails', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const probe = service.probeProfiles({ signal: undefined });
+    const probeRejected = expect(probe).rejects.toThrow('worker-failed');
+    await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
+    const preparation = service.prepareModel({ model: 'local.gguf', signal: undefined });
+    const preparationRejected = expect(preparation).rejects.toThrow('worker-failed');
+    service.release();
+    gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+    await probeRejected; await preparationRejected;
+    expect(worker.prepareModel).not.toHaveBeenCalled(); expect(factory).toHaveBeenCalledOnce();
+    expect(service.getProfileState().status).toBe('idle');
+  });
+
+  it('does not revive an engine released by a ready-profile observer before the waiter resumes', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const stop = service.subscribeProfiles({
+      listener: ({ state }) => {
+        if (state.status === 'ready') service.release();
+      },
+    });
+    const probe = service.probeProfiles({ signal: undefined });
+    const preparation = service.prepareModel({ model: 'local.gguf', signal: undefined });
+    const rejected = expect(preparation).rejects.toThrow('aborted');
+    gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+    await probe; await rejected; stop();
+    expect(worker.prepareModel).not.toHaveBeenCalled(); expect(factory).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the accepted profile snapshot while sharing a pending probe', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    service.setOptions({ options: { profile: 'cpu-wasm32' } });
+    const probe = service.probeProfiles({ signal: undefined });
+    const preparation = service.prepareModel({ model: 'local.gguf', signal: undefined });
+    service.setOptions({ options: { profile: 'cpu-wasm64' } });
+    gate.resolve({
+      recommended: 'cpu-wasm64',
+      profiles: [
+        { profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' },
+      ],
+    });
+    await probe; await expect(preparation).resolves.toBe('ready');
+    expect(worker.prepareModel.mock.calls[0]?.[0].request.options.profile).toBe('cpu-wasm32');
+  });
+
+  it('lets only one competing preparation acquire the lane after a shared probe', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const loading = Promise.withResolvers<void>(); worker.prepareModel.mockReturnValueOnce(loading.promise);
+    const probe = service.probeProfiles({ signal: undefined });
+    const first = service.prepareModel({ model: 'first.gguf', signal: undefined });
+    const second = service.prepareModel({ model: 'second.gguf', signal: undefined });
+    gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+    await probe; await expect(second).resolves.toBe('skipped-busy');
+    await vi.waitFor(() => expect(worker.prepareModel).toHaveBeenCalledOnce());
+    expect(worker.prepareModel.mock.calls[0]?.[0].request.model).toBe('first.gguf');
+    loading.resolve(); await expect(first).resolves.toBe('ready');
+  });
+
   it('uses real preparation on the same worker without submitting messages or generating', async () => {
     expect(await service.prepareModel({ model: 'local.gguf', signal: undefined })).toBe('ready');
     expect(worker.prepareModel).toHaveBeenCalledOnce();
@@ -372,11 +590,13 @@ describe('idle model preparation', () => {
     await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(factory).toHaveBeenCalledOnce();
   });
+
   it('skips rather than queues when a foreground generation already reserved the lane', async () => {
     const pending = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(await service.prepareModel({ model: 'other.gguf', signal: undefined })).toBe('skipped-busy');
     expect(worker.prepareModel).not.toHaveBeenCalled(); await pending;
   });
+
   it('keeps foreground sends serialized behind preparation which already started', async () => {
     const gate = Promise.withResolvers<void>(); worker.prepareModel.mockReturnValueOnce(gate.promise);
     const loading = service.prepareModel({ model: 'local.gguf', signal: undefined });
@@ -386,11 +606,13 @@ describe('idle model preparation', () => {
     expect(await service.prepareModel({ model: 'other.gguf', signal: undefined })).toBe('skipped-busy');
     gate.resolve(); await loading; await sending; expect(worker.generate).toHaveBeenCalledOnce();
   });
+
   it('leaves normal generation usable after preparation fails', async () => {
     worker.prepareModel.mockRejectedValueOnce(new LlamaCppBrowserError({ code: 'invalid-gguf' }));
     await expect(service.prepareModel({ model: 'local.gguf', signal: undefined })).rejects.toThrow('invalid-gguf');
     await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).resolves.toHaveProperty('finishReason', 'stop');
   });
+
   it('does not allocate a worker for an already aborted preparation', async () => {
     const controller = new AbortController(); controller.abort();
     await expect(service.prepareModel({ model: 'local.gguf', signal: controller.signal })).rejects.toThrow('aborted');
@@ -417,6 +639,7 @@ describe('preparation progress ownership', () => {
     await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(onProgress).toHaveBeenCalledTimes(previousCount);
   });
+
   it('does not report another operation as a deferred preparation', async () => {
     const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(gate.promise);
     const sending = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
@@ -425,6 +648,7 @@ describe('preparation progress ownership', () => {
     expect(onProgress).not.toHaveBeenCalled();
     gate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await sending;
   });
+
   it('ignores native progress after the preparation was cancelled', async () => {
     const gate = Promise.withResolvers<void>(); worker.prepareModel.mockReturnValueOnce(gate.promise);
     const controller = new AbortController(); const onProgress = vi.fn();
@@ -434,5 +658,118 @@ describe('preparation progress ownership', () => {
     controller.abort(); onProgress.mockClear();
     worker.prepareModel.mock.calls[0]![0].onProgress({ progress: { phase: 'loading', completed: 0.8, total: 1 } });
     expect(onProgress).not.toHaveBeenCalled(); gate.reject(new LlamaCppBrowserError({ code: 'aborted' })); await rejection;
+  });
+});
+
+describe('measured generation operation ownership', () => {
+  it('uses one fresh Worker per measured model, preserves within-model continuation, and leaves ordinary options unchanged', async () => {
+    const order: string[] = [];
+    worker.releaseRuntime.mockImplementation(async () => {
+      order.push('release');
+    });
+    worker.generate.mockImplementation(async ({ request, onSummary }) => {
+      order.push(request.measurement?.sequence ?? 'ordinary');
+      expect(onSummary).toBeTypeOf('function');
+      return { content: 'output', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
+    });
+    await service.runPerformanceOperation({
+      options: { profile: 'cpu-wasm32' },
+      signal: undefined,
+      operation: async ({ scope }) => {
+        for (const sequence of ['fresh', 'continue'] as const) {
+          await scope.generate({ input: input(), sequence, onEvent: () => {}, onSummary: () => {}, signal: scope.signal });
+        }
+      },
+    });
+    expect(order).toEqual(['fresh', 'continue', 'release']);
+    expect(worker.dispose).toHaveBeenCalledOnce();
+    expect(service.getOptions()).toEqual({ profile: 'auto' });
+  });
+
+  it('keeps unrelated requests outside the measured interval and rejects an escaped scope', async () => {
+    let escaped: LlamaCppPerformanceScope | undefined;
+    const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
+    const measured = service.runPerformanceOperation({
+      options: { profile: 'cpu-wasm32' },
+      signal: undefined,
+      operation: async ({ scope }) => {
+        escaped = scope; entered.resolve(); await gate.promise;
+        await scope.generate({ input: input(), sequence: 'fresh', onEvent: () => {}, onSummary: () => {}, signal: scope.signal });
+      },
+    });
+    await entered.promise;
+    const ordinary = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    await Promise.resolve(); expect(worker.generate).not.toHaveBeenCalled();
+    gate.resolve(); await measured; await ordinary;
+    expect(worker.generate.mock.calls.map(([call]) => call.request.measurement?.sequence)).toEqual(['fresh', undefined]);
+    expect(() => escaped!.generate({ input: input(), sequence: 'fresh', onEvent: () => {}, onSummary: () => {}, signal: escaped!.signal })).toThrow('closed');
+  });
+
+  it('does not start a measurement behind already reserved work', async () => {
+    const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(gate.promise);
+    const ordinary = service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    await expect(service.runPerformanceOperation({ options: { profile: 'cpu-wasm32' }, signal: undefined, operation: async () => {} })).rejects.toThrow('busy');
+    expect(worker.releaseRuntime).not.toHaveBeenCalled();
+    gate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await ordinary;
+  });
+
+  it('rejects overlapping scoped native calls', async () => {
+    const gate = Promise.withResolvers<GenerationResult>(); worker.generate.mockReturnValueOnce(gate.promise);
+    await service.runPerformanceOperation({
+      options: { profile: 'cpu-wasm32' },
+      signal: undefined,
+      operation: async ({ scope }) => {
+        const args = { input: input(), sequence: 'fresh' as const, onEvent: () => {}, onSummary: () => {}, signal: scope.signal };
+        const first = scope.generate(args);
+        expect(() => scope.generate(args)).toThrow('busy');
+        gate.resolve({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); await first;
+      },
+    });
+  });
+});
+
+describe('investigation and read-only cache ownership', () => {
+  it('does not queue investigation behind a reserved read-only invocation or evict its cache', async () => {
+    const reader = (await import('./index-hosted')).createReadOnlyLlamaCppClient();
+    const operation = vi.fn(async () => {});
+    try {
+      const sending = reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      await expect(service.runPerformanceOperation({ options: { profile: 'cpu-wasm32' }, signal: undefined, operation })).rejects.toThrow('busy');
+      await sending;
+      expect(operation).not.toHaveBeenCalled();
+      expect(worker.releaseRuntime).not.toHaveBeenCalled();
+      expect(worker.dispose).not.toHaveBeenCalled();
+    } finally {
+      await reader.dispose();
+    }
+  });
+
+  it('retiring a former read-only cache owner cannot dispose a newer measured operation', async () => {
+    const reader = (await import('./index-hosted')).createReadOnlyLlamaCppClient();
+    await reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const entered = Promise.withResolvers<void>(), finish = Promise.withResolvers<void>();
+    const measured = service.runPerformanceOperation({
+      options: { profile: 'cpu-wasm32' },
+      signal: undefined,
+      operation: async ({ scope }) => {
+        entered.resolve();
+        await finish.promise;
+        await scope.generate({ input: input(), sequence: 'fresh', onEvent: () => {}, onSummary: () => {}, signal: scope.signal });
+      },
+    });
+    await entered.promise;
+    const retired = reader.dispose();
+    try {
+      await Promise.resolve();
+      expect(worker.dispose).toHaveBeenCalledOnce();
+    } finally {
+      finish.resolve();
+      await measured;
+      await retired;
+    }
+    expect(worker.dispose).toHaveBeenCalledTimes(2);
+    expect(worker.releaseRuntime).toHaveBeenCalledOnce();
+    await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    expect(worker.generate.mock.calls.map(([call]) => call.request.measurement?.sequence)).toEqual([undefined, 'fresh', undefined]);
   });
 });

@@ -6,11 +6,13 @@ export type DownloadWriterClient = {
   remote: WorkerRemote<DownloadWriterApi>,
   dispose: ({ beforeRelease }: { beforeRelease: (() => Promise<unknown>) | undefined }) => Promise<void>,
 };
+
 export async function createDownloadWriterClient({ signal: _signal }: { signal: AbortSignal }): Promise<DownloadWriterClient> {
   const worker = new Worker(new URL('./writer-entry.ts', import.meta.url), { type: 'module', name: 'llama-cpp-browser-download' });
   const remote = wrapWorkerRemote<DownloadWriterApi>({ endpoint: worker });
   return {
-    worker, remote,
+    worker,
+    remote,
     async dispose({ beforeRelease }) {
       try {
         await beforeRelease?.();
@@ -24,5 +26,6 @@ export async function createDownloadWriterClient({ signal: _signal }: { signal: 
     },
   };
 }
+
 export const TEST_ONLY = {
 };

@@ -1,0 +1,1 @@
+export const NaidanRpcTab__automatic_connection_help = (): string => "Esta opción solo se aplica al iniciar Naidan. No cambia la conexión actual ni los reintentos de esta página. Usa «Desconectar» para detener la conexión y los reintentos en esta página.";

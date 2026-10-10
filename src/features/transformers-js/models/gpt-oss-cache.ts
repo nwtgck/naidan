@@ -75,8 +75,16 @@ export function retainGptOssContinuation({ owner, model, config, messages, assis
   if (expectedHistory === undefined || configIdentity === undefined || base === undefined || input === undefined || sequence === undefined
     || sequence.length <= input.length || !input.every((item, index) => sequence[index] === item)
     || typeof pastKeyValues !== 'object' || pastKeyValues === null || length({ value: pastKeyValues }) !== sequence.length - 1) return undefined;
-  const cache = Object.freeze({ owner, model, config: configIdentity, expectedHistory,
-    baseMessages: structuredClone(messages), baseInput: new BigInt64Array(base), sequence: new BigInt64Array(sequence), pastKeyValues });
+  const cache = Object.freeze({
+    owner,
+    model,
+    config: configIdentity,
+    expectedHistory,
+    baseMessages: structuredClone(messages),
+    baseInput: new BigInt64Array(base),
+    sequence: new BigInt64Array(sequence),
+    pastKeyValues,
+  });
   ownedCaches.add(cache);
   return cache;
 }
@@ -105,10 +113,13 @@ export function prepareGptOssContinuation({ cache, owner, model, config, message
   data.set(owned.sequence); data.set(suffix, owned.sequence.length);
   // Full input/mask lets the pinned decoder prepare slice at actual PKV length,
   // preserving the final generated token that the last forward did not consume.
-  return { inputs: {
-    input_ids: new tensorClass('int64', data, [1, data.length]),
-    attention_mask: new tensorClass('int64', new BigInt64Array(data.length).fill(1n), [1, data.length]),
-  }, pastKeyValues: owned.pastKeyValues };
+  return {
+    inputs: {
+      input_ids: new tensorClass('int64', data, [1, data.length]),
+      attention_mask: new tensorClass('int64', new BigInt64Array(data.length).fill(1n), [1, data.length]),
+    },
+    pastKeyValues: owned.pastKeyValues,
+  };
 }
 
 export const TEST_ONLY = {

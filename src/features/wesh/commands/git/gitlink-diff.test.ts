@@ -76,13 +76,15 @@ describe("wesh git gitlink diff", () => {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 cd /repo
 git diff --no-color HEAD~1 HEAD
 printf '%s\n' STAT
 git diff --stat HEAD~1 HEAD
 printf '%s\n' NAME
-git diff --name-status HEAD~1 HEAD` }),
+git diff --name-status HEAD~1 HEAD`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -105,14 +107,17 @@ NAME
 M\tsub
 `);
   });
+
   it("diffs a staged gitlink without requiring the referenced submodule commit object", async () => {
     const wesh = await createFixtureWesh({ stagedSecond: true });
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 cd /repo
-git diff --cached --no-color` }),
+git diff --cached --no-color`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -131,13 +136,13 @@ index 1111111..2222222 160000
 `);
   });
 
-
   it("materializes an uninitialized gitlink directory without requiring the submodule commit object", async () => {
     const wesh = await createFixtureWesh();
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 cd /repo
 git reset --hard HEAD >/dev/null
 test -d sub
@@ -148,7 +153,8 @@ git add .
 git add sub
 git status --short
 git diff --cached --name-status
-printf ok` }),
+printf ok`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -159,16 +165,17 @@ printf ok` }),
     expect(stdout.text).toBe("ok");
   });
 
-
   it("safe-fails status for an initialized gitlink instead of reporting an approximate clean state", async () => {
     const wesh = await createFixtureWesh();
     const setupStdout = createTestWriteCaptureHandle();
     const setupStderr = createTestWriteCaptureHandle();
     const setup = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 cd /repo
 git reset --hard HEAD >/dev/null
-git init -q sub` }),
+git init -q sub`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: setupStdout.handle,
       stderr: setupStderr.handle,
@@ -179,9 +186,11 @@ git init -q sub` }),
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
     const result = await wesh.execute({
-      source: createTextShellSource({ text: `\
+      source: createTextShellSource({
+        text: `\
 cd /repo
-git status --short` }),
+git status --short`,
+      }),
       stdin: createTestReadHandleFromText({ text: "" }),
       stdout: stdout.handle,
       stderr: stderr.handle,
@@ -190,5 +199,4 @@ git status --short` }),
     expect(stdout.text).toBe("");
     expect(stderr.text).toContain("initialized gitlink worktree is not supported yet: sub");
   });
-
 });

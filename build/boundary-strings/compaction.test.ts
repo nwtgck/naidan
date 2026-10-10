@@ -151,7 +151,6 @@ ensureStrings.ChatInput__failed_to_copy({
     expect(result?.code).toBe('_toDisplayString($setup.lazyStrings.b({ a: item.name, b: errorMessage }))');
   });
 
-
   it('does not compact a local binding that shadows an imported accessor', () => {
     const result = compactBoundaryStringsModule({
       allowedBindingNames: ['lazyStrings'],

@@ -50,12 +50,16 @@ it('transfers every successful session without releasing the completed model res
 
 it('requests release of all fulfilled siblings exactly once after construction fails', async () => {
   const completed: string[] = [];
-  const first = { release: vi.fn(async () => {
-    completed.push('first');
-  }) };
-  const second = { release: vi.fn(async () => {
-    completed.push('second');
-  }) };
+  const first = {
+    release: vi.fn(async () => {
+      completed.push('first');
+    }),
+  };
+  const second = {
+    release: vi.fn(async () => {
+      completed.push('second');
+    }),
+  };
   const failure = new Error('Last session creation failed');
   const create = vi.fn<() => Promise<Session>>()
     .mockResolvedValueOnce(first).mockResolvedValueOnce(second).mockRejectedValueOnce(failure);

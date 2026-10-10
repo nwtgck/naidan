@@ -1,4 +1,5 @@
-import type { BrowserImageModelSelection, Endpoint } from './types';
+import type { ImageInferenceLocationPreference, RemoteImageModelEditor } from './image-generation-preferences';
+import type { BrowserImageModelSelection, Endpoint, LmParameters } from './types';
 import { z } from 'zod';
 import type { ImageGenerationRecord } from './image-generation-history';
 import { idToRaw, type ChatId, type ImageGenerationAssetId, type ImageGenerationRunId, type ImageGenerationSessionId, type ImageGenerationStoreId, type ImageGenerationTagId } from './ids';
@@ -21,9 +22,11 @@ export type ImageGenerationTagReference =
 export type ImageGenerationTranslationOverride = {
   endpoint: Endpoint | undefined,
   modelId: string | undefined,
+  lmParameters: LmParameters | undefined,
 };
 
 export type ImageGenerationPreferences = {
+  generationMonitorPresentation: 'visual' | 'compact-progress',
   assistantVisibility: 'open' | 'closed',
   translation: ImageGenerationTranslationOverride | undefined,
   experimentalNoticeDismissedAt: number | undefined,
@@ -39,6 +42,8 @@ export type ImageGenerationCatalog = {
 };
 
 export type ImageGenerationSession = {
+  /** Storage-assigned order, independent of the timestamps displayed to users. */
+  activityOrder: number | undefined,
   translation: ImageGenerationTranslationOverride | undefined,
   assistantChatId: ChatId | undefined,
   id: ImageGenerationSessionId,
@@ -49,15 +54,30 @@ export type ImageGenerationSession = {
   state: 'active' | 'archived' | 'deleting' | 'deleted',
 };
 
+export function compareImageGenerationSessions({ a, b }: { a: ImageGenerationSession, b: ImageGenerationSession }): number {
+  const order = (b.activityOrder ?? 0) - (a.activityOrder ?? 0);
+  if (order) return order;
+  const timestamp = b.updatedAt - a.updatedAt;
+  if (timestamp) return timestamp;
+  const left = idToRaw({ id: a.id }), right = idToRaw({ id: b.id });
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+export type ImageGenerationDraftRequest = Omit<ImageGenerationRecord['request'], 'runtime'> & {
+  runtime: ImageGenerationRecord['request']['runtime'] | undefined,
+};
+
 /** An editable checkpoint, independent of immutable generation requests. */
 export type ImageGenerationSessionDraft = {
   sessionId: ImageGenerationSessionId,
   revision: number,
   updatedAt: number,
-  request: ImageGenerationRecord['request'],
+  request: ImageGenerationDraftRequest,
+  inferenceLocation: ImageInferenceLocationPreference | undefined,
   seedMode: 'random' | 'fixed',
   layout: 'checkpoint' | 'components',
   modelSelection: BrowserImageModelSelection | undefined,
+  remoteModelEditor: RemoteImageModelEditor | undefined,
   loraStates: { enabled: boolean, strength: number }[],
   count: number,
   debug: 'on' | 'off',
@@ -83,6 +103,8 @@ export type ImageGenerationRunExecution =
 
 /** Request and output plan never change after acceptance. Only execution changes. */
 export type ImageGenerationRun = {
+  /** Assigned once when published; absent on legacy or not-yet-published runs. */
+  acceptedOrder: number | undefined,
   id: ImageGenerationRunId,
   sessionId: ImageGenerationSessionId,
   revision: number,
@@ -93,7 +115,8 @@ export type ImageGenerationRun = {
   execution: ImageGenerationRunExecution,
 };
 
-/** Only completed outputs are assets. Pending output slots belong to a run. */
+/** Assets contain complete image bytes. An unconfirmed RPC output is retained
+ * as such and is not evidence of a successfully completed computation. */
 export type ImageGenerationAsset = {
   id: ImageGenerationAssetId,
   sessionId: ImageGenerationSessionId,
@@ -115,6 +138,7 @@ export type ImageGenerationAssetAnnotations = {
 };
 
 export type ImageGenerationAssetSummary = Omit<ImageGenerationAsset, 'result' | 'previews'> & {
+  confirmation?: 'unconfirmed',
   binaryObjectId: ImageGenerationAsset['result']['binaryObjectId'],
   width: number,
   height: number,

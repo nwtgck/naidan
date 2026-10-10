@@ -36,9 +36,12 @@ describe('inference input snapshots', () => {
   });
 
   it('preserves literal think markup, whitespace and Unicode without parsing', () => {
-    const message: InferenceMessage = { role: 'assistant', content: `\
+    const message: InferenceMessage = {
+      role: 'assistant',
+      content: `\
 <think>  原文🙂
-</think>本文  ` };
+</think>本文  `,
+    };
     const [copy] = cloneChatMessages({ messages: [message] });
     expect(copy).toEqual(message);
     expect(Object.hasOwn(copy!, 'reasoning_content')).toBe(false);
@@ -53,9 +56,12 @@ describe('inference input snapshots', () => {
     content[1]!.image_url!.url = 'data:image/png;base64,BBBB';
     content[2]!.text = 'edited';
     messages.push({ role: 'assistant', content: 'later' });
-    expect(copy).toEqual([{ role: 'user', content: [
-      { type: 'text', text: '' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }, { type: 'text', text: '  after\r\n' },
-    ] }]);
+    expect(copy).toEqual([{
+      role: 'user',
+      content: [
+        { type: 'text', text: '' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }, { type: 'text', text: '  after\r\n' },
+      ],
+    }]);
   });
 
   it('keeps native string, empty array and repeated text elements distinct', () => {

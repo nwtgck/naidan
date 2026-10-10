@@ -12,7 +12,7 @@ export const ModelSupportInvestigationSession__feature_check_result = ({ kind, o
     "tool-probe": "강제 도구 형식",
     "tool-parser": "도구 파서",
     "tool-template": "도구 결과 템플릿",
-    "stage": "조사 단계"
+    "stage": "조사 단계",
   };
   const outcomes = {
     "passed": "실행 성공",
@@ -22,7 +22,7 @@ export const ModelSupportInvestigationSession__feature_check_result = ({ kind, o
     "not-run": "미실행",
     "not-selected": "선택 안 함",
     "not-recorded": "기록 없음",
-    "unavailable": "사용 불가"
+    "unavailable": "사용 불가",
   };
   return `${features[kind]} · ${outcomes[outcome]} (${context})`;
 };

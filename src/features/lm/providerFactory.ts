@@ -39,11 +39,20 @@ const promptApiProviderModuleLoader = createModuleLoader({
   },
 });
 
+const naidanRpcProviderModuleLoader = createModuleLoader({
+  importModule: () => import('@/features/naidan-rpc-integration/adapters/lm-provider'),
+  onPrefetchError: () => console.warn('[naidan-rpc] provider-prefetch-failed'),
+});
+
 export async function loadLmProvider({ endpoint, fakeLmDebugModeStatus }: {
   endpoint: Endpoint,
   fakeLmDebugModeStatus: FakeLmDebugModeStatus,
 }): Promise<LmProvider> {
   switch (endpoint.type) {
+  case 'naidan_rpc': {
+    const { NaidanRpcLmProvider } = await naidanRpcProviderModuleLoader.load();
+    return new NaidanRpcLmProvider({ registrationId: endpoint.registrationId });
+  }
   case 'openai': {
     const { OpenAIProvider } = await openAiProviderModuleLoader.load();
     return new OpenAIProvider({
@@ -85,6 +94,9 @@ export async function prefetchLmProvider({ endpointType }: {
   endpointType: EndpointType,
 }): Promise<void> {
   switch (endpointType) {
+  case 'naidan_rpc':
+    await naidanRpcProviderModuleLoader.prefetch();
+    break;
   case 'openai':
     await openAiProviderModuleLoader.prefetch();
     break;

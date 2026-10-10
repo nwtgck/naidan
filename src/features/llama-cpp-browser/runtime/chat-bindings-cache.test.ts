@@ -3,9 +3,13 @@ import { errorCode } from '@/features/llama-cpp-browser/types';
 import { bindNativeChat } from './chat-bindings';
 
 function disposableVector<T>(values: T[]) {
-  return { ...values, [Symbol.iterator]: function* () {
-    yield* values;
-  }, delete: vi.fn() };
+  return {
+    ...values,
+    [Symbol.iterator]: function* () {
+      yield* values;
+    },
+    delete: vi.fn(),
+  };
 }
 
 function fixture() {
@@ -25,24 +29,31 @@ function fixture() {
   }
   class Parser {
     reasoning_format = 0; parse_tool_calls = false; parser: unknown; delete = deleteParser;
+
     constructor(_params: Params) {}
   }
   class Arena {
-    load(_text: string) {} delete() {}
+    load(_text: string) {}
+
+    delete() {}
   }
   const apply = vi.fn((_inputs: Inputs) => new Params());
   class Templates {
     constructor(_model: bigint, _chatTemplate: string, _bos: string, _eos: string) {
       templateConstructed();
     }
+
     delete() {
       deletedTemplates();
     }
+
     apply = apply;
   }
   const fakeNative = {
     string_map: class {
-      set(_key: string, _value: string) {} delete() {}
+      set(_key: string, _value: string) {}
+
+      delete() {}
     },
     common_reasoning_format: { COMMON_REASONING_FORMAT_DEEPSEEK: 1 },
     common_json: { parse: (_text: string) => ({ delete() {} }) },
@@ -84,7 +95,6 @@ describe('native chat template lifetime', () => {
     expect(deletedTemplates).toHaveBeenCalledTimes(2);
   });
 });
-
 
 describe('cached template failure ownership', () => {
   it('preserves a native trap rather than declaring the resident runtime reusable', () => {
@@ -134,7 +144,6 @@ describe('cached template failure ownership', () => {
     f.chat.releaseModel({ assertIdle: f.assertIdle, model: 7n });
   });
 });
-
 
 describe('native thinking preference rejection', () => {
   it('distinguishes rejected off from generic template failure without retiring the template', () => {

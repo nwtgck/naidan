@@ -17,13 +17,24 @@ it('round-trips fresh raw metadata through the real top-level Comlink callback a
   const revision = 'a'.repeat(40);
   const expected: FreshMetadataResult = {
     summary: {
-      schemaVersion: 1, modelId, revision, source: 'fresh-network-memory', status: 'prepared',
-      maximumBytes: 1024, receivedBytes: 2,
+      schemaVersion: 1,
+      modelId,
+      revision,
+      source: 'fresh-network-memory',
+      status: 'prepared',
+      maximumBytes: 1024,
+      receivedBytes: 2,
       requests: [{ consumer: 'runtime-preparation', path: 'config.json', request: 'full', status: 'complete', receivedBytes: 2 }],
       preparation: { processor: 'tokenizer', resourcePlansByCandidate: {} },
     },
     replayMetadata: {
-      schemaVersion: 1, modelId, revision, status: 'complete', budgetBytes: 1024, receivedBytes: 2, retainedBytes: 2,
+      schemaVersion: 1,
+      modelId,
+      revision,
+      status: 'complete',
+      budgetBytes: 1024,
+      receivedBytes: 2,
+      retainedBytes: 2,
       files: [{ path: 'config.json', status: 'collected', source: 'remote-exact', byteLength: 2, sha256: '0'.repeat(64) }],
     },
     files: [{ path: 'config.json', blob: new Blob(['{}']) }],
@@ -31,9 +42,14 @@ it('round-trips fresh raw metadata through the real top-level Comlink callback a
   const api: WorkerServerApi<PlanningApi> = {
     // Actual Comlink method with top-level proxy callbacks.
     async runPartialInvestigation(request, _onEvent, onCheckpoint, collect) {
-      const result = freshMetadataResultSchema.parse(await collect({ request: {
-        modelId: request.modelId, revision, maximumBytes: 1024, repositoryFiles: [{ path: 'config.json', size: 2 }],
-      } }));
+      const result = freshMetadataResultSchema.parse(await collect({
+        request: {
+          modelId: request.modelId,
+          revision,
+          maximumBytes: 1024,
+          repositoryFiles: [{ path: 'config.json', size: 2 }],
+        },
+      }));
       const checkpoint = createInitialInvestigationCheckpoint({ modelId, runId: request.runId, now: () => '2026-09-09T00:00:00.000Z' });
       const run = toPlanningWorkerRun({ run: { ...checkpoint.run, freshMetadata: result.summary, replayMetadata: result.replayMetadata } });
       await onCheckpoint({ run, replayMetadata: result.files });
@@ -49,10 +65,12 @@ it('round-trips fresh raw metadata through the real top-level Comlink callback a
       { runId, modelId, externalNetworkPolicy: 'allow', executionPlan: { repositoryDownload: true, modelLoad: false, generation: false, continuity: false, capabilityProbes: false } },
       workerProxy({ value: () => undefined }),
       workerProxy({ value: ({ run, replayMetadata }) => checkpointReceived.resolve({ run, files: replayMetadata ?? [] }) }),
-      workerProxy({ value: async ({ request }) => {
-        expect(request).toEqual({ modelId, revision, maximumBytes: 1024, repositoryFiles: [{ path: 'config.json', size: 2 }] });
-        return expected;
-      } }),
+      workerProxy({
+        value: async ({ request }) => {
+          expect(request).toEqual({ modelId, revision, maximumBytes: 1024, repositoryFiles: [{ path: 'config.json', size: 2 }] });
+          return expected;
+        },
+      }),
     );
     const received = await checkpointReceived.promise;
     expect(run.runId).toBe(runId);

@@ -1,3 +1,4 @@
+import { isHostDestination, destinationKey, hostModelRoot, modelDestinationSchema, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
 import { shallowReadonly, shallowRef } from 'vue';
 import { downloadRepository } from './download';
 import { installedSelection } from './storage';
@@ -11,11 +12,13 @@ export type DownloadJob = {
   key: string,
   repository: string,
   source: 'suggestion' | 'repository',
+  destination: ModelDestination,
   status: DownloadJobStatus,
   selection: DownloadSelection | undefined,
   progress: DownloadProgress | undefined,
   error: DownloadJobError | undefined,
 };
+
 export function jobIsBusy({ job }: { job: DownloadJob | undefined }): boolean {
   const status = job?.status;
   switch (status) {
@@ -26,7 +29,7 @@ export function jobIsBusy({ job }: { job: DownloadJob | undefined }): boolean {
 }
 
 type PrepareDownload = ({ signal }: { signal: AbortSignal }) => Promise<DownloadSelection>;
-type DownloadTask = { prepare: PrepareDownload, done: Promise<DownloadJob>, finish: ({ job }: { job: DownloadJob }) => void };
+type DownloadTask = { root: Promise<{ handle: FileSystemDirectoryHandle } | { error: unknown }> | undefined, prepare: PrepareDownload, done: Promise<DownloadJob>, finish: ({ job }: { job: DownloadJob }) => void };
 
 /**
  * One payload download per page, including the repository-input UI. The queue
@@ -38,6 +41,7 @@ export function createDownloadQueue({ download }: { download: typeof downloadRep
   const jobs = shallowRef<DownloadJob[]>([]);
   const changed = shallowRef(0);
   const tasks = new Map<number, DownloadTask>();
+  const boundRoots = new Map<number, FileSystemDirectoryHandle>();
   let sequence = 0;
   let running: { id: number, controller: AbortController } | undefined;
   function replace({ id, patch }: { id: number, patch: Partial<Pick<DownloadJob, 'status' | 'selection' | 'progress' | 'error'>> }): DownloadJob {
@@ -56,12 +60,21 @@ export function createDownloadQueue({ download }: { download: typeof downloadRep
     running = { id: queued.id, controller };
     try {
       replace({ id: queued.id, patch: { status: 'resolving' } });
+      const root = await task.root;
+      if (root && 'error' in root) throw root.error;
+      if (root) boundRoots.set(queued.id, root.handle);
+      controller.signal.throwIfAborted();
       const selection = selectionSchema.parse(await task.prepare({ signal: controller.signal }));
       controller.signal.throwIfAborted();
       replace({ id: queued.id, patch: { status: 'downloading', selection } });
-      await download({ selection, signal: controller.signal, onProgress: ({ progress }) => {
-        if (!controller.signal.aborted) replace({ id: queued.id, patch: { progress } });
-      } });
+      await download({
+        selection,
+        ...(isHostDestination(queued.destination) ? { destination: queued.destination, expectedRoot: root?.handle } : {}),
+        signal: controller.signal,
+        onProgress: ({ progress }) => {
+          if (!controller.signal.aborted) replace({ id: queued.id, patch: { progress } });
+        },
+      });
       // A writer may finish concurrently with a pause. A committed success must
       // not become a phantom paused job with no journal to resume.
       replace({ id: queued.id, patch: { status: 'complete' } });
@@ -81,16 +94,28 @@ export function createDownloadQueue({ download }: { download: typeof downloadRep
       void drain();
     }
   }
-  function enqueue({ key, repository, source, prepare }: { key: string, repository: string, source: DownloadJob['source'], prepare: PrepareDownload }): { id: number, done: Promise<DownloadJob> } {
+  function enqueue({ key, repository, source, prepare, destination, expectedRoot }: { key: string, repository: string, source: DownloadJob['source'], prepare: PrepareDownload, destination?: ModelDestination, expectedRoot?: FileSystemDirectoryHandle }): { id: number, done: Promise<DownloadJob> } {
+    const target = modelDestinationSchema.parse(destination ?? { kind: 'opfs' });
+    key = downloadJobKey({ key, destination: target });
     const existing = jobs.value.find(job => job.key === key && jobIsBusy({ job }));
     if (existing) return { id: existing.id, done: tasks.get(existing.id)!.done };
+    const previous = jobs.value.find(job => job.key === key);
+    const boundRoot = (previous && previous.status !== 'complete' ? boundRoots.get(previous.id) : undefined) ?? expectedRoot;
+    if (previous) boundRoots.delete(previous.id);
     const id = ++sequence;
+    if (boundRoot) boundRoots.set(id, boundRoot);
     const deferred = Promise.withResolvers<DownloadJob>();
-    tasks.set(id, { prepare, done: deferred.promise, finish: ({ job }) => deferred.resolve(job) });
+    // Capture physical identity before the queue waits on metadata or another job.
+    const root = isHostDestination(target) ? hostModelRoot({ destination: target, mode: 'readwrite' }).then(async handle => {
+      if (boundRoot && !await handle.isSameEntry(boundRoot)) return { error: new Error('Linked model folder changed during permission authorization') };
+      return { handle: boundRoot ?? handle };
+    }).catch(error => ({ error })) : undefined;
+    tasks.set(id, { root, prepare, done: deferred.promise, finish: ({ job }) => deferred.resolve(job) });
     // Keep only the most recent terminal job for a key; no unbounded retry log.
-    jobs.value = [...jobs.value.filter(job => job.key !== key), { id, key, repository, source, status: 'queued', selection: undefined, progress: undefined, error: undefined }];
+    jobs.value = [...jobs.value.filter(job => job.key !== key), { id, key, repository, source, destination: target, status: 'queued', selection: undefined, progress: undefined, error: undefined }];
     // Queue the entire intent before discovery. Rapid clicks do not fan out
-    // into metadata requests, and cancelled waiting jobs never touch storage.
+    // into metadata requests. Waiting host jobs read only their bound handle;
+    // cancelled waiting work never opens or writes a model file.
     void Promise.resolve().then(drain);
     return { id, done: deferred.promise };
   }
@@ -100,7 +125,7 @@ export function createDownloadQueue({ download }: { download: typeof downloadRep
     switch (job.status) {
     case 'queued': {
       tasks.get(id)?.finish({ job: { ...job, status: 'cancelled' } });
-      tasks.delete(id); jobs.value = jobs.value.filter(entry => entry.id !== id); return;
+      tasks.delete(id); boundRoots.delete(id); jobs.value = jobs.value.filter(entry => entry.id !== id); return;
     }
     case 'resolving': case 'downloading':
       replace({ id, patch: { status: 'pausing' } }); running?.controller.abort(); return;
@@ -115,26 +140,44 @@ export function createDownloadQueue({ download }: { download: typeof downloadRep
   function forget({ id }: { id: number }): void {
     const job = jobs.value.find(entry => entry.id === id);
     if (jobIsBusy({ job })) return;
-    jobs.value = jobs.value.filter(entry => entry.id !== id);
+    boundRoots.delete(id); jobs.value = jobs.value.filter(entry => entry.id !== id);
   }
-  return { jobs: shallowReadonly(jobs), changed: shallowReadonly(changed), enqueue, cancel, position, forget };
+  async function stopDirectory({ directoryId }: { directoryId: string }): Promise<void> {
+    const waiting: Promise<DownloadJob>[] = [];
+    for (const job of jobs.value) {
+      if (job.destination.kind !== 'host' || job.destination.directoryId !== directoryId || !jobIsBusy({ job })) continue;
+      const task = tasks.get(job.id); if (task) waiting.push(task.done); cancel({ id: job.id });
+    }
+    await Promise.all(waiting);
+  }
+  return { jobs: shallowReadonly(jobs), changed: shallowReadonly(changed), enqueue, cancel, position, forget, stopDirectory };
+}
+
+export function downloadJobKey({ key, destination }: { key: string, destination?: ModelDestination }): string {
+  const target = destinationKey({ destination });
+  const suffix = `:destination:${target}`;
+  return target === 'opfs' || key.endsWith(suffix) ? key : `${key}${suffix}`;
 }
 
 let queue: ReturnType<typeof createDownloadQueue> | undefined;
+
 export function getDownloadQueue(): ReturnType<typeof createDownloadQueue> {
-  queue ??= createDownloadQueue({ download: async ({ selection, signal, onProgress }) => {
-    signal.throwIfAborted();
-    // Two explicitly queued entry points may target the same installed file set.
-    // Local availability follows the same validated-file contract as the UI;
-    // it is not a claim about remote revision/content equality.
-    if (await installedSelection({ selection })) {
-      signal.throwIfAborted(); return;
-    }
-    signal.throwIfAborted();
-    await downloadRepository({ selection, signal, onProgress });
-  } });
+  queue ??= createDownloadQueue({
+    download: async ({ selection, signal, onProgress, destination, expectedRoot }) => {
+      signal.throwIfAborted();
+      // Two explicitly queued entry points may target the same installed file set.
+      // Local availability follows the same validated-file contract as the UI;
+      // it is not a claim about remote revision/content equality.
+      if (!isHostDestination(destination) && await installedSelection({ selection })) {
+        signal.throwIfAborted(); return;
+      }
+      signal.throwIfAborted();
+      await downloadRepository({ selection, signal, onProgress, ...(isHostDestination(destination) ? { destination, expectedRoot } : {}) });
+    },
+  });
   return queue;
 }
+
 export const TEST_ONLY = {
   reset: () => {
     queue = undefined;

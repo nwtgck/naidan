@@ -797,5 +797,4 @@ export const value = 2;
 
     await expect(server.transformRequest('/src/main.ts')).resolves.toBeDefined();
   });
-
 });

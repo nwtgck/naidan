@@ -6,9 +6,12 @@ import type { ImageBenchmarkTarget } from '@/features/stable-diffusion-cpp-brows
 export const MAX_BENCHMARK_RUNS = 100;
 export const MAX_BENCHMARK_IMAGE_BYTES = 128 * 1024 ** 2;
 export const protocolSchema = z.object({
-  mode: z.enum(['cold-warm', 'fresh-each']), repeats: z.number().int().min(1).max(10),
-  order: z.enum(['listed', 'reverse']), cooldownSeconds: z.number().int().min(0).max(60),
-  timeoutSeconds: z.number().int().min(0).max(7200), keepImages: z.boolean(),
+  mode: z.enum(['cold-warm', 'fresh-each']),
+  repeats: z.number().int().min(1).max(10),
+  order: z.enum(['listed', 'reverse']),
+  cooldownSeconds: z.number().int().min(0).max(60),
+  timeoutSeconds: z.number().int().min(0).max(7200),
+  keepImages: z.boolean(),
 }).strict();
 export type BenchmarkProtocol = z.infer<typeof protocolSchema>;
 export type ParameterChange = { [K in keyof Parameters]: { key: K, value: Parameters[K] } }[keyof Parameters];
@@ -17,20 +20,33 @@ export type BenchmarkPlan = { id: string, createdAt: string, appVersion: string,
 const nonnegative = z.number().finite().nonnegative();
 const fieldsSchema = z.record(z.string().max(64), z.union([z.number().finite(), z.string().max(512), z.boolean(), z.array(z.number().finite()).max(8)]));
 export const measurementSchema = z.object({
-  diagnosticsReceived: nonnegative, invalidDiagnostics: nonnegative, omittedDiagnostics: nonnegative,
-  runWall: fieldsSchema.optional(), reuse: z.object({ reusedWorker: z.boolean(), reason: z.string() }).optional(),
+  diagnosticsReceived: nonnegative,
+  invalidDiagnostics: nonnegative,
+  omittedDiagnostics: nonnegative,
+  runWall: fieldsSchema.optional(),
+  reuse: z.object({ reusedWorker: z.boolean(), reason: z.string() }).optional(),
   steps: z.array(z.object({ step: nonnegative, milliseconds: nonnegative })).max(100),
   fileRead: z.object({ reads: nonnegative, bytes: nonnegative, blobReads: nonnegative, blobBytes: nonnegative }).optional(),
 }).strict();
 export type BenchmarkMeasurements = z.infer<typeof measurementSchema>;
 export const runRecordSchema = z.object({
-  id: z.string(), modelIndex: nonnegative, runIndex: nonnegative, plannedKind: z.enum(['cold', 'warm']),
+  id: z.string(),
+  modelIndex: nonnegative,
+  runIndex: nonnegative,
+  plannedKind: z.enum(['cold', 'warm']),
   status: z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled', 'skipped']),
-  startedAt: z.string().optional(), endedAt: z.string().optional(), elapsedMs: nonnegative.optional(),
-  metrics: measurementSchema, error: z.string().max(4096).optional(), skipReason: z.string().optional(),
-  modelVersion: z.string().max(256).optional(), uniformOutput: z.boolean().optional(),
+  startedAt: z.string().optional(),
+  endedAt: z.string().optional(),
+  elapsedMs: nonnegative.optional(),
+  metrics: measurementSchema,
+  error: z.string().max(4096).optional(),
+  skipReason: z.string().optional(),
+  modelVersion: z.string().max(256).optional(),
+  uniformOutput: z.boolean().optional(),
   image: z.object({ status: z.enum(['not-requested', 'retained', 'budget-exceeded', 'no-output']), bytes: nonnegative }),
-  previewFrames: nonnegative, hiddenObserved: z.boolean(), visibilityChanges: nonnegative,
+  previewFrames: nonnegative,
+  hiddenObserved: z.boolean(),
+  visibilityChanges: nonnegative,
 }).strict();
 export type BenchmarkRunRecord = z.infer<typeof runRecordSchema>;
 export type BenchmarkRun = { record: BenchmarkRunRecord, diagnostics: string, png: Blob | undefined };
@@ -39,28 +55,61 @@ export type BenchmarkSnapshot = { plan: BenchmarkPlan, runs: BenchmarkRun[], sta
 const fileMetadataSchema = z.object({ path: z.string(), bytes: nonnegative, lastModified: nonnegative }).strict();
 const inputImageMetadataSchema = fileMetadataSchema.extend({ mime: z.string(), archivePath: z.string().optional() });
 export const exportedModelSchema = z.object({
-  index: nonnegative, id: z.string(), label: z.string(), detail: z.string(), family: z.string(), variant: z.string(),
-  evidence: z.array(z.string()), composition: z.enum(['selected', 'automatic']), preset: z.string().optional(), overrideKeys: z.array(z.string()),
-  request: z.object({ artifact: artifactSchema, parameters: parametersSchema.omit({ prompt: true, negativePrompt: true }),
-    prompt: z.string().optional(), negativePrompt: z.string().optional(), promptsIncluded: z.boolean(),
-    preview: previewSettingsSchema, weightResidency: weightResidencySchema, gpuBudgetMiB: requestSchema.shape.gpuBudgetMiB,
-    debug: z.literal('on'), models: z.array(z.object({ slot: modelSlotSchema, localCandidateId: z.string(), files: z.array(fileMetadataSchema) }).strict()),
+  index: nonnegative,
+  id: z.string(),
+  label: z.string(),
+  detail: z.string(),
+  family: z.string(),
+  variant: z.string(),
+  evidence: z.array(z.string()),
+  composition: z.enum(['selected', 'automatic']),
+  preset: z.string().optional(),
+  overrideKeys: z.array(z.string()),
+  request: z.object({
+    artifact: artifactSchema,
+    parameters: parametersSchema.omit({ prompt: true, negativePrompt: true }),
+    prompt: z.string().optional(),
+    negativePrompt: z.string().optional(),
+    promptsIncluded: z.boolean(),
+    preview: previewSettingsSchema,
+    weightResidency: weightResidencySchema,
+    gpuBudgetMiB: requestSchema.shape.gpuBudgetMiB,
+    debug: z.literal('on'),
+    models: z.array(z.object({ slot: modelSlotSchema, localCandidateId: z.string(), files: z.array(fileMetadataSchema) }).strict()),
     // Requested adapters, not evidence that the native runtime applied them.
     loras: z.array(z.object({ file: fileMetadataSchema, strength: z.number().finite() }).strict()).optional(),
-    imageInputs: z.object({ initImage: inputImageMetadataSchema.optional(), strength: z.number().optional(), referenceImages: z.array(inputImageMetadataSchema),
-      preprocessing: z.literal('native-resize-white-alpha'), bytesIncluded: z.boolean(),
+    imageInputs: z.object({
+      initImage: inputImageMetadataSchema.optional(),
+      strength: z.number().optional(),
+      referenceImages: z.array(inputImageMetadataSchema),
+      preprocessing: z.literal('native-resize-white-alpha'),
+      bytesIncluded: z.boolean(),
     }).strict().optional(),
   }).strict(),
 }).strict();
 export const aggregateSchema = z.array(z.object({
-  modelIndex: nonnegative, label: z.string(), warmSamples: nonnegative, coldSamples: nonnegative,
-  warmMedianMs: nonnegative.optional(), coldMedianMs: nonnegative.optional(),
-  succeeded: nonnegative, failed: nonnegative, missingReuseEvidence: nonnegative,
+  modelIndex: nonnegative,
+  label: z.string(),
+  warmSamples: nonnegative,
+  coldSamples: nonnegative,
+  warmMedianMs: nonnegative.optional(),
+  coldMedianMs: nonnegative.optional(),
+  succeeded: nonnegative,
+  failed: nonnegative,
+  missingReuseEvidence: nonnegative,
 }).strict()).max(MAX_BENCHMARK_RUNS);
 export const manifestSchema = z.object({
-  schemaVersion: z.literal(1), kind: z.literal('naidan-image-benchmark'), id: z.string(), appVersion: z.string(), createdAt: z.string(), exportedAt: z.string(),
-  state: z.enum(['running', 'finished', 'cancelled']), notes: z.string().max(2048), protocol: protocolSchema,
-  models: z.array(exportedModelSchema), runs: z.array(runRecordSchema).max(MAX_BENCHMARK_RUNS),
+  schemaVersion: z.literal(1),
+  kind: z.literal('naidan-image-benchmark'),
+  id: z.string(),
+  appVersion: z.string(),
+  createdAt: z.string(),
+  exportedAt: z.string(),
+  state: z.enum(['running', 'finished', 'cancelled']),
+  notes: z.string().max(2048),
+  protocol: protocolSchema,
+  models: z.array(exportedModelSchema),
+  runs: z.array(runRecordSchema).max(MAX_BENCHMARK_RUNS),
   limitations: z.array(z.string()),
   inputImages: z.enum(['omit', 'include']).optional(),
 }).strict();

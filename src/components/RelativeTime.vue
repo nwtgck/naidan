@@ -11,8 +11,10 @@ const now = ref(Date.now());
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 const timeFormatter = computed(() => new Intl.DateTimeFormat(currentLocale.value, {
-  month: 'short', day: 'numeric',
-  hour: '2-digit', minute: '2-digit',
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
 }));
 
 const relativeTime = computed(() => {

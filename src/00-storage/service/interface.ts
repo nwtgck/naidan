@@ -2,6 +2,7 @@ import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, Cha
 import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '@/00-storage/00-dto/dto';
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/01-models/ids';
 import { idToRaw } from '@/01-models/ids';
+import type { ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 
 export type { ChatSummary };
 
@@ -17,6 +18,10 @@ export abstract class IStorageProvider {
    * LocalStorage returns false to indicate potential capacity issues.
    */
   abstract readonly canPersistBinary: boolean;
+
+  // An absent registry is distinct from unreadable or invalid stored data.
+  abstract loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined>;
+  abstract saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void>;
 
   // --- Volume Management ---
 

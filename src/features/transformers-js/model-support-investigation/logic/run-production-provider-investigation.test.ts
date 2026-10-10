@@ -44,17 +44,31 @@ function fixture({ plan }: { plan: Arguments['plan'] }) {
       await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
       await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
     });
-    return { client, takeGenerationCapture: take, getCaptureLifetime: () => ({
-      runId, workerEpoch, session, issuedCalls, loadRequests: [], incompleteReasons: [],
-    }) };
+    return {
+      client,
+      takeGenerationCapture: take,
+      getCaptureLifetime: () => ({
+        runId,
+        workerEpoch,
+        session,
+        issuedCalls,
+        loadRequests: [],
+        incompleteReasons: [],
+      }),
+    };
   });
   const onProgress = vi.fn<Arguments['onProgress']>();
   const createUnrecordedWorkerClient = vi.fn(() => client);
   const investigation = createProductionProviderInvestigation({
-    runId: 'synthetic-run', modelId: 'fixture/model', plan,
-    createCaptureClient, createUnrecordedWorkerClient, maximumWorkerEpochs: 8,
+    runId: 'synthetic-run',
+    modelId: 'fixture/model',
+    plan,
+    createCaptureClient,
+    createUnrecordedWorkerClient,
+    maximumWorkerEpochs: 8,
     maximumNativeBinaryBytes: 1024,
-    deadlines: { runMs: 1000, collectionMs: 1000, sealingMs: 1000, cleanupMs: 100 }, onProgress,
+    deadlines: { runMs: 1000, collectionMs: 1000, sealingMs: 1000, cleanupMs: 100 },
+    onProgress,
   });
   investigations.push(investigation);
   return { investigation, client, createCaptureClient, createUnrecordedWorkerClient, take, entered, taking, onProgress };
@@ -102,6 +116,7 @@ describe('bounded Production Provider investigation', () => {
     expect(result.summary.progressCallbackFailures).toBe(0);
     expect(client.generateMessage).toHaveBeenCalledTimes(12);
   });
+
   it('publishes every immediate phase boundary without waiting for the sampling timer', async () => {
     const { investigation, onProgress } = fixture({ plan: 'first-only' });
     await investigation.run();
@@ -109,6 +124,7 @@ describe('bounded Production Provider investigation', () => {
     expect(onProgress.mock.calls[0]?.[0].progress.provider.settledRequests).toBe(0);
     expect(onProgress.mock.calls.at(-1)?.[0].progress.provider.settledRequests).toBe(1);
   });
+
   it('collects once, starts disposal before sealing and retains only sealed evidence', async () => {
     const { investigation, client, take } = fixture({ plan: 'first-only' });
     const realSeal = nativeEvidence.createProductionProviderNativeEvidence;

@@ -10,8 +10,9 @@ export type AudioPreviewRequests = {
 };
 export type AudioPreviewDelivery = {
   requests: AudioPreviewRequests,
-  onPreview: ({ result, requestVersion }: AudioPreviewEvent) => void | Promise<void>,
+  onPreview: ({ event }: { event: AudioPreviewEvent }) => void | Promise<void>,
 };
+
 export function createAudioPreviewRequests(): { requests: AudioPreviewRequests, request: () => void } {
   let version = 0;
   const listeners = new Set<() => void>();
@@ -26,11 +27,15 @@ export function createAudioPreviewRequests(): { requests: AudioPreviewRequests, 
       };
     },
   };
-  return { requests, request: () => {
-    if (version === Number.MAX_SAFE_INTEGER) throw new Error('Audio preview request limit reached');
-    version++;
-    for (const listener of [...listeners]) listener();
-  } };
+  return {
+    requests,
+    request: () => {
+      if (version === Number.MAX_SAFE_INTEGER) throw new Error('Audio preview request limit reached');
+      version++;
+      for (const listener of [...listeners]) listener();
+    },
+  };
 }
+
 export const TEST_ONLY = {
 };

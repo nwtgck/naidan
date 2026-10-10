@@ -11,6 +11,7 @@ describe('privacy broker runtime dependency headers', () => {
   let vite: ViteDevServer;
   const listener = createHttpServer();
   let base: string;
+
   beforeAll(async () => {
     vite = await createServer({
       configFile: false,
@@ -31,6 +32,7 @@ describe('privacy broker runtime dependency headers', () => {
     if (address === null || typeof address === 'string') throw new Error('Missing test server address');
     base = `http://127.0.0.1:${address.port}`;
   });
+
   afterAll(async () => {
     listener.closeAllConnections();
     if (listener.listening) await new Promise<void>((resolve, reject) => listener.close(error => error ? reject(error) : resolve()));

@@ -46,12 +46,14 @@ import {
 } from '@/00-storage/00-dto/dto';
 import { toBinaryObjectId, toChatGroupId, toChatId } from '@/01-models/ids';
 import { promiseAllKeyed } from '@/utils/promise';
+import { ExperimentalNaidanRpcRegistrySchemaDto, type ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>,
 }
 
 const MIGRATION_V1_UPLOADED_FILES_TO_BINARY_OBJECTS = 'v1_uploaded_files_to_binary_objects';
+const NAIDAN_RPC_REGISTRY_FILE = 'naidan-rpc-connections.json';
 
 type BinaryShardIndex = BinaryShardIndexDto;
 
@@ -59,6 +61,69 @@ export class OPFSStorageProvider extends IStorageProvider {
   private root: FileSystemDirectoryHandle | null = null;
   private readonly STORAGE_DIR = 'naidan-storage';
   readonly canPersistBinary = true;
+
+  async loadNaidanRpcRegistry(): Promise<ExperimentalNaidanRpcRegistryDto | undefined> {
+    const directory = await this.getExperimentalDir({ create: false });
+    if (!directory) return undefined;
+    let handle: FileSystemFileHandle;
+    try {
+      handle = await directory.getFileHandle(NAIDAN_RPC_REGISTRY_FILE);
+    } catch (error) {
+      if ((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') return undefined;
+      throw error;
+    }
+    return ExperimentalNaidanRpcRegistrySchemaDto.parse(JSON.parse(await (await handle.getFile()).text()));
+  }
+
+  async saveNaidanRpcRegistry({ registry }: { registry: ExperimentalNaidanRpcRegistryDto | undefined }): Promise<void> {
+    if (registry === undefined) {
+      const directory = await this.getExperimentalDir({ create: false });
+      if (!directory) return;
+      try {
+        await directory.removeEntry(NAIDAN_RPC_REGISTRY_FILE);
+      } catch (error) {
+        if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) throw error;
+      }
+      return;
+    }
+    const text = JSON.stringify(ExperimentalNaidanRpcRegistrySchemaDto.parse(registry));
+    const directory = await this.getExperimentalDir({ create: true });
+    if (!directory) throw new Error('Experimental storage directory is unavailable.');
+    let handle: FileSystemFileHandle;
+    let created = false;
+    try {
+      handle = await directory.getFileHandle(NAIDAN_RPC_REGISTRY_FILE);
+    } catch (error) {
+      if (!((error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError')) throw error;
+      handle = await directory.getFileHandle(NAIDAN_RPC_REGISTRY_FILE, { create: true }); created = true;
+    }
+    let writable: FileSystemWritableFileStream | undefined;
+    try {
+      writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+    } catch (error) {
+      try {
+        await writable?.abort();
+      } catch { /* Preserve the original save failure. */ }
+      if (created) {
+        try {
+          await directory.removeEntry(NAIDAN_RPC_REGISTRY_FILE);
+        } catch { /* Cleanup failure does not turn a failed save into success. */ }
+      }
+      throw error;
+    }
+  }
+
+  private async getExperimentalDir({ create }: { create: boolean }): Promise<FileSystemDirectoryHandle | undefined> {
+    await this.ensureRoot();
+    try {
+      return await this.root!.getDirectoryHandle('experimental', { create });
+    } catch (error) {
+      if (!create && (error instanceof DOMException || error instanceof Error) && error.name === 'NotFoundError') return undefined;
+      throw error;
+    }
+  }
 
   private async readChatRecord({ directory, id }: {
     directory: 'chat-metas' | 'chat-contents',
@@ -466,11 +531,11 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
     const dto = chatMetaToDto({ domain: meta });
-    ChatMetaSchemaDto.parse(dto);
+    const serialized = JSON.stringify(ChatMetaSchemaDto.parse(dto));
     const dir = await this.getDir({ name: 'chat-metas' });
     const fileHandle = await dir.getFileHandle(`${idToRaw({ id: meta.id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(dto));
+    await writable.write(serialized);
     await writable.close();
   }
 
@@ -544,11 +609,11 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
     const dto = chatGroupToDto({ domain: chatGroup });
-    ChatGroupSchemaDto.parse(dto);
+    const serialized = JSON.stringify(ChatGroupSchemaDto.parse(dto));
     const dir = await this.getDir({ name: 'chat-groups' });
     const fileHandle = await dir.getFileHandle(`${idToRaw({ id: chatGroup.id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(dto));
+    await writable.write(serialized);
     await writable.close();
   }
 
@@ -764,12 +829,12 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async saveSettings({ settings }: { settings: Settings }): Promise<void> {
-    await this.ensureRoot();
     const dto = settingsToDto({ domain: settings });
-    const validated = SettingsSchemaDto.parse(dto);
+    const serialized = JSON.stringify(SettingsSchemaDto.parse(dto));
+    await this.ensureRoot();
     const fileHandle = await this.root!.getFileHandle('settings.json', { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(validated));
+    await writable.write(serialized);
     await writable.close();
   }
 
@@ -779,7 +844,8 @@ export class OPFSStorageProvider extends IStorageProvider {
       const fileHandle = await this.root!.getFileHandle('settings.json');
       const file = await fileHandle.getFile();
       return settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(await file.text())) });
-    } catch {
+    } catch (error) {
+      // Unavailable RPC bytes must not masquerade as absent settings.
       return null;
     }
   }

@@ -14,32 +14,60 @@ function fixture({ provider, tools }: { provider: LmProvider, tools: Tool[] }) {
   const abortController = new AbortController();
   const parameters = { ...EMPTY_LM_PARAMETERS, stop: ['original'] };
   return {
-    history, abortController, parameters,
+    history,
+    abortController,
+    parameters,
     run: () => generateChatTurn({
       onToolCallDraftsChange: undefined,
-      provider, debug: 'on', model: 'fixture', parameters, tools, readBinaryObject: undefined,
-      abortController, approvalContext: undefined,
+      provider,
+      debug: 'on',
+      model: 'fixture',
+      parameters,
+      tools,
+      readBinaryObject: undefined,
+      abortController,
+      approvalContext: undefined,
       createAssistantMessage: () => {
-        const node: AssistantMessageNode = { id: toMessageId({ raw: `a${history.length}` }), role: 'assistant',
-          createdAt: 1, parts: [], interruption: undefined, modelId: undefined, lmParameters: undefined, replies: { items: [] } };
+        const node: AssistantMessageNode = {
+          id: toMessageId({ raw: `a${history.length}` }),
+          role: 'assistant',
+          createdAt: 1,
+          parts: [],
+          interruption: undefined,
+          modelId: undefined,
+          lmParameters: undefined,
+          replies: { items: [] },
+        };
         history.push(node); return node;
       },
       createToolMessage: () => {
-        const node: Extract<MessageNode, { role: 'tool' }> = { id: toMessageId({ raw: `t${history.length}` }), role: 'tool',
-          createdAt: 1, parts: [], modelId: undefined, lmParameters: undefined, replies: { items: [] } };
+        const node: Extract<MessageNode, { role: 'tool' }> = {
+          id: toMessageId({ raw: `t${history.length}` }),
+          role: 'tool',
+          createdAt: 1,
+          parts: [],
+          modelId: undefined,
+          lmParameters: undefined,
+          replies: { items: [] },
+        };
         history.push(node); return node;
       },
       buildMessages: ({ excludedMessageId }) => history.filter(node => node.id !== excludedMessageId).map(node => createChatMessageSnapshot({ node })),
-      onChange: () => {}, onToolEvent: () => {}, persistToolContent: async ({ text }) => ({ type: 'text', text }),
+      onChange: () => {},
+      onToolEvent: () => {},
+      persistToolContent: async ({ text }) => ({ type: 'text', text }),
       describeError: ({ error }) => error.message,
     }),
   };
 }
 
 function response({ signal }: Parameters<LmProvider['chat']>[0]) {
-  return createChatGenerationStream({ signal, run: async ({ writer }) => {
-    await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
-  } });
+  return createChatGenerationStream({
+    signal,
+    run: async ({ writer }) => {
+      await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+    },
+  });
 }
 
 describe('chat runtime operation ownership', () => {
@@ -58,15 +86,18 @@ describe('chat runtime operation ownership', () => {
       expect(open).toBe(true); trace.push('tool'); held.resolve(); await release.promise;
       expect(open).toBe(true); return { status: 'success', content: 'value' };
     });
-    const scoped: LmProvider['chat'] = ({ signal, messages, debug }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-      expect(open).toBe(true); expect(debug).toBe('on'); trace.push(`generate:${messages.length}`);
-      if (calls++ === 0) {
-        await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {} ' } } });
-        return { type: 'finished', next: 'tool_results' };
-      }
-      expect(messages.map(message => message.role)).toEqual(['assistant', 'tool']);
-      await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
-    } });
+    const scoped: LmProvider['chat'] = ({ signal, messages, debug }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        expect(open).toBe(true); expect(debug).toBe('on'); trace.push(`generate:${messages.length}`);
+        if (calls++ === 0) {
+          await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: ' {} ' } } });
+          return { type: 'finished', next: 'tool_results' };
+        }
+        expect(messages.map(message => message.role)).toEqual(['assistant', 'tool']);
+        await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+      },
+    });
     const hook = vi.fn<NonNullable<LmProvider['runChatOperation']>>(async ({ operation, signal }) => {
       open = true; trace.push('open');
       try {
@@ -76,8 +107,10 @@ describe('chat runtime operation ownership', () => {
       }
     });
     const direct = vi.fn<LmProvider['chat']>(response);
-    const f = fixture({ provider: { chat: direct, runChatOperation: hook, listModels: async () => [] },
-      tools: [{ name: 'f', description: 'fixture', parametersSchema: z.object({}), execute }] });
+    const f = fixture({
+      provider: { chat: direct, runChatOperation: hook, listModels: async () => [] },
+      tools: [{ name: 'f', description: 'fixture', parametersSchema: z.object({}), execute }],
+    });
     const pending = f.run();
     try {
       await held.promise; expect(open).toBe(true); expect(trace).toEqual(['open', 'generate:0', 'tool']);
@@ -92,12 +125,19 @@ describe('chat runtime operation ownership', () => {
   it('freezes parameter and tool declaration values before waiting for admission', async () => {
     const entered = Promise.withResolvers<void>(); const release = Promise.withResolvers<void>();
     const received: Parameters<LmProvider['chat']>[0][] = [];
-    const provider: LmProvider = { chat: response, listModels: async () => [], runChatOperation: async ({ operation, signal }) => {
-      entered.resolve(); await release.promise;
-      await operation({ signal: signal ?? new AbortController().signal, chat: args => {
-        received.push(args); return response(args);
-      } });
-    } };
+    const provider: LmProvider = {
+      chat: response,
+      listModels: async () => [],
+      runChatOperation: async ({ operation, signal }) => {
+        entered.resolve(); await release.promise;
+        await operation({
+          signal: signal ?? new AbortController().signal,
+          chat: args => {
+            received.push(args); return response(args);
+          },
+        });
+      },
+    };
     const tool: Tool = { name: 'f', description: 'before', parametersSchema: z.object({}), execute: async () => ({ status: 'success', content: '' }) };
     const f = fixture({ provider, tools: [tool] }); const pending = f.run();
     await entered.promise; f.parameters.stop[0] = 'changed'; tool.description = 'after'; release.resolve(); await pending;
@@ -106,16 +146,31 @@ describe('chat runtime operation ownership', () => {
 
   it('propagates revoked runtime ownership to a waiting tool instead of starting another generation', async () => {
     const owner = new AbortController(); let count = 0;
-    const provider: LmProvider = { chat: response, listModels: async () => [], runChatOperation: async ({ operation }) => {
-      await operation({ signal: owner.signal, chat: ({ signal }) => createChatGenerationStream({ signal, run: async ({ writer }) => {
-        count++; await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
-        return { type: 'finished', next: 'tool_results' };
-      } }) });
-    } };
+    const provider: LmProvider = {
+      chat: response,
+      listModels: async () => [],
+      runChatOperation: async ({ operation }) => {
+        await operation({
+          signal: owner.signal,
+          chat: ({ signal }) => createChatGenerationStream({
+            signal,
+            run: async ({ writer }) => {
+              count++; await writer.call({ key: 0, toolCall: { id: toToolCallId({ raw: 'c' }), type: 'function', function: { name: 'f', arguments: '{}' } } });
+              return { type: 'finished', next: 'tool_results' };
+            },
+          }),
+        });
+      },
+    };
     const failure = new Error('runtime replaced');
-    const tool: Tool = { name: 'f', description: '', parametersSchema: z.object({}), execute: async ({ signal }) => {
-      owner.abort(failure); expect(signal?.aborted).toBe(true); return { status: 'success', content: 'observed' };
-    } };
+    const tool: Tool = {
+      name: 'f',
+      description: '',
+      parametersSchema: z.object({}),
+      execute: async ({ signal }) => {
+        owner.abort(failure); expect(signal?.aborted).toBe(true); return { status: 'success', content: 'observed' };
+      },
+    };
     const f = fixture({ provider, tools: [tool] }); await expect(f.run()).rejects.toBe(failure);
     expect(count).toBe(1); expect(f.abortController.signal.aborted).toBe(false);
     expect(f.history[1]?.parts[0]).toMatchObject({ type: 'tool_result', result: { status: 'success', content: { text: 'observed' } } });
@@ -127,10 +182,17 @@ describe('chat runtime operation ownership', () => {
   });
 
   it('rejects a duplicated operation callback before creating a second assistant', async () => {
-    const f = fixture({ provider: { chat: response, listModels: async () => [], runChatOperation: async ({ operation, signal }) => {
-      const scoped = { chat: response, signal: signal ?? new AbortController().signal };
-      await operation(scoped); await operation(scoped);
-    } }, tools: [] });
+    const f = fixture({
+      provider: {
+        chat: response,
+        listModels: async () => [],
+        runChatOperation: async ({ operation, signal }) => {
+          const scoped = { chat: response, signal: signal ?? new AbortController().signal };
+          await operation(scoped); await operation(scoped);
+        },
+      },
+      tools: [],
+    });
     await expect(f.run()).rejects.toThrow('exactly once'); expect(f.history).toHaveLength(1);
   });
 

@@ -12,7 +12,7 @@ export const suspensionProbe = new Uint8Array([
   10, 6, 1, 4, 0, 16, 0, 11,
 ]);
 type PromiseIntegration = {
-
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors the browser WebAssembly.Suspending constructor.
   Suspending: new (callback: () => Promise<number>) => WebAssembly.ImportValue,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Browser JSPI API signature.
   promising: (callback: WebAssembly.ExportValue) => () => Promise<number>,
@@ -64,19 +64,25 @@ export function supportsMemory64(): boolean {
     return false;
   }
 }
+
 export async function checkJspi(): Promise<void> {
   if (typeof WebAssembly === 'undefined') throw new Error('WebAssembly');
   const wasm: object = WebAssembly;
   if (!('promising' in wasm) || typeof wasm.promising !== 'function'
     || !('Suspending' in wasm) || typeof wasm.Suspending !== 'function') throw new Error('JSPI');
   const integration = wasm as PromiseIntegration;
-  const probe = await WebAssembly.instantiate(suspensionProbe, { e: { f: new integration.Suspending(async () => {
-    await Promise.resolve();
-    return 7;
-  }) } });
+  const probe = await WebAssembly.instantiate(suspensionProbe, {
+    e: {
+      f: new integration.Suspending(async () => {
+        await Promise.resolve();
+        return 7;
+      }),
+    },
+  });
   const run = probe.instance.exports.run;
   if (typeof run !== 'function' || await integration.promising(run)() !== 7) throw new Error('JSPI suspension');
 }
+
 export async function gpuUnavailableReason(): Promise<Extract<ProfileUnavailableReason, 'webgpu' | 'shader-f16'> | undefined> {
   if (typeof navigator === 'undefined' || !navigator.gpu) return 'webgpu';
   try {
@@ -87,5 +93,6 @@ export async function gpuUnavailableReason(): Promise<Extract<ProfileUnavailable
     return 'webgpu';
   }
 }
+
 export const TEST_ONLY = {
 };

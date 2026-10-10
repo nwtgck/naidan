@@ -3,7 +3,7 @@ import type { ApprovalPreview } from '@/features/tools/approval';
 import WikipediaGetPageApprovalPreview from './previews/WikipediaGetPageApprovalPreview.vue';
 import WikipediaSearchApprovalPreview from './previews/WikipediaSearchApprovalPreview.vue';
 
-const ImageGenerationPromptApprovalPreview = defineAsyncComponent(() => import('@/features/stable-diffusion-cpp-browser/components/ImageGenerationPromptApprovalPreview.vue'));
+const ImageGenerationPromptApprovalPreview = defineAsyncComponent(() => import('@/features/image-generation/components/ImageGenerationPromptApprovalPreview.vue'));
 
 export default function ChatApprovalPreviewRenderer({
   preview,

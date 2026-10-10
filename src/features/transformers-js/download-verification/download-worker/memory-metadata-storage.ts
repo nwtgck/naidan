@@ -28,10 +28,15 @@ export function createMemoryMetadataStorage({ maximumByteLength }: { maximumByte
       check();
       const file = files.get(url);
       if (file === undefined) return undefined;
-      return { byteLength: file.size, response: new Response(file.stream(), { headers: {
-        'Content-Length': String(file.size),
-        'Content-Type': url.endsWith('.json') ? 'application/json' : 'text/plain',
-      } }) };
+      return {
+        byteLength: file.size,
+        response: new Response(file.stream(), {
+          headers: {
+            'Content-Length': String(file.size),
+            'Content-Type': url.endsWith('.json') ? 'application/json' : 'text/plain',
+          },
+        }),
+      };
     },
     async write({ url, response }) {
       let reserved = 0;

@@ -36,15 +36,32 @@ async function createFixture() {
   const provider = new OPFSStorageProvider();
   await provider.init();
   const chat: Chat = {
-    id: toChatId({ raw: 'saved-chat' }), title: 'Saved chat', createdAt: 1, updatedAt: 2,
-    debugEnabled: false, endpoint: undefined, modelId: undefined, titleGeneration: 'inherit',
-    groupId: undefined, originChatId: undefined, originMessageId: undefined,
-    systemPrompt: undefined, lmParameters: undefined, mounts: [], currentLeafId: toMessageId({ raw: 'user' }),
-    root: { items: [{
-      id: toMessageId({ raw: 'user' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined,
-      parts: [{ type: 'text', text: 'Original saved message', completeness: 'complete' }],
-      replies: { items: [] },
-    }] },
+    id: toChatId({ raw: 'saved-chat' }),
+    title: 'Saved chat',
+    createdAt: 1,
+    updatedAt: 2,
+    debugEnabled: false,
+    endpoint: undefined,
+    modelId: undefined,
+    titleGeneration: 'inherit',
+    groupId: undefined,
+    originChatId: undefined,
+    originMessageId: undefined,
+    systemPrompt: undefined,
+    lmParameters: undefined,
+    mounts: [],
+    currentLeafId: toMessageId({ raw: 'user' }),
+    root: {
+      items: [{
+        id: toMessageId({ raw: 'user' }),
+        role: 'user',
+        createdAt: 1,
+        modelId: undefined,
+        lmParameters: undefined,
+        parts: [{ type: 'text', text: 'Original saved message', completeness: 'complete' }],
+        replies: { items: [] },
+      }],
+    },
   };
   await provider.saveChatMeta({ meta: chat });
   await provider.saveChatContent({ id: chat.id, content: chat });
@@ -64,6 +81,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -76,14 +94,18 @@ describe('OPFS export index read failures', () => {
     const entered = Promise.withResolvers<void>();
     const cancelled = vi.fn();
     const blob = new Blob(['blocked binary source']);
-    Object.defineProperty(blob, 'stream', { configurable: true, value: () => new ReadableStream<Uint8Array<ArrayBuffer>>({
-      pull() {
-        entered.resolve(); return new Promise<void>(() => undefined);
-      },
-      cancel: cancelled,
-    }, { highWaterMark: 0 }) });
+    Object.defineProperty(blob, 'stream', {
+      configurable: true,
+      value: () => new ReadableStream<Uint8Array<ArrayBuffer>>({
+        pull() {
+          entered.resolve(); return new Promise<void>(() => undefined);
+        },
+        cancel: cancelled,
+      }, { highWaterMark: 0 }),
+    });
     let iteratorClosed = false;
-    vi.spyOn(storageService, 'dumpWithoutLock').mockResolvedValue({ ...snapshot,
+    vi.spyOn(storageService, 'dumpWithoutLock').mockResolvedValue({
+      ...snapshot,
       contentStream: (async function* () {
         try {
           for await (const chunk of snapshot.contentStream) {

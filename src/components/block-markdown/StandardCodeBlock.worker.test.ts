@@ -159,7 +159,6 @@ describe('StandardCodeBlock worker integration', () => {
     expect(consoleError).toHaveBeenCalledWith('Failed to highlight code in worker:', expect.any(Error));
   });
 
-
   it('retries client acquisition after a transient creation failure', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     acquireLeaseMock
@@ -194,7 +193,6 @@ describe('StandardCodeBlock worker integration', () => {
     expect(wrapper.html()).toContain('hljs-keyword');
     consoleError.mockRestore();
   });
-
 
   it('releases a pending lease when the component unmounts before acquisition completes', async () => {
     let resolveLease: ((lease: SharedHighlightWorkerClientLease) => void) | undefined;

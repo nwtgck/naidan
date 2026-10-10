@@ -93,22 +93,30 @@ function recordedTextMessages({ messages }: {
 }
 
 const inputEvidence = z.object({
-  schemaVersion: z.literal(1), source: z.literal('reference-template-behavior-matrix'),
+  schemaVersion: z.literal(1),
+  source: z.literal('reference-template-behavior-matrix'),
   modelId: z.literal('onnx-community/gemma-4-E2B-it-ONNX'),
   revision: z.literal('9f4bef82ea6e296bc69f8a2f5939f73af81b07a6'),
   cases: z.array(z.object({
     caseId: z.enum(['user-generation', 'system-user-generation', 'multi-turn-generation', 'tools-generation']),
     messages: z.array(z.object({ role: z.enum(['system', 'user', 'assistant']), content: z.string() }).strict()),
-    tools: z.array(z.object({ type: z.literal('function'), function: z.object({
-      name: z.string(), description: z.string(), parameters: z.record(z.string(), z.json()),
-    }).strict() }).strict()),
-    addGenerationPrompt: z.literal(true), renderedText: z.string(),
+    tools: z.array(z.object({
+      type: z.literal('function'),
+      function: z.object({
+        name: z.string(),
+        description: z.string(),
+        parameters: z.record(z.string(), z.json()),
+      }).strict(),
+    }).strict()),
+    addGenerationPrompt: z.literal(true),
+    renderedText: z.string(),
     inputTokenIds: z.array(z.number().int().nonnegative()).min(1),
   }).strict()).length(4),
 }).strict().parse(inputJson);
 
 const toolInputEvidence = z.object({
-  schemaVersion: z.literal(1), source: z.literal('reference-template-behavior-matrix'),
+  schemaVersion: z.literal(1),
+  source: z.literal('reference-template-behavior-matrix'),
   sourceMemberSha256: z.literal('8f15582679e84b7492b24a50da14671d171ec463a6f0eb7cf909aced0807e3ab'),
   modelId: z.literal('onnx-community/gemma-4-E2B-it-ONNX'),
   revision: z.literal('9f4bef82ea6e296bc69f8a2f5939f73af81b07a6'),
@@ -117,9 +125,11 @@ const toolInputEvidence = z.object({
   messages: z.tuple([
     z.object({ role: z.literal('user'), content: z.string() }).strict(),
     z.object({
-      role: z.literal('assistant'), content: z.literal(''),
+      role: z.literal('assistant'),
+      content: z.literal(''),
       tool_calls: z.tuple([z.object({
-        id: z.literal('call_template_probe_1'), type: z.literal('function'),
+        id: z.literal('call_template_probe_1'),
+        type: z.literal('function'),
         function: z.object({ name: z.literal('lookup_weather'), arguments: z.literal('{"city":"Tokyo"}') }).strict(),
       }).strict()]),
     }).strict(),
@@ -128,14 +138,17 @@ const toolInputEvidence = z.object({
   tools: z.tuple([z.object({
     type: z.literal('function'),
     function: z.object({
-      name: z.literal('lookup_weather'), description: z.literal('Return deterministic weather fixture data.'),
+      name: z.literal('lookup_weather'),
+      description: z.literal('Return deterministic weather fixture data.'),
       parameters: z.object({
-        type: z.literal('object'), properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
+        type: z.literal('object'),
+        properties: z.object({ city: z.object({ type: z.literal('string') }).strict() }).strict(),
         required: z.tuple([z.literal('city')]),
       }).strict(),
     }).strict(),
   }).strict()]),
-  addGenerationPrompt: z.literal(true), renderedText: z.string(),
+  addGenerationPrompt: z.literal(true),
+  renderedText: z.string(),
   inputTokenIds: z.array(z.number().int().nonnegative().safe()).min(1),
 }).strict().parse(toolInputJson);
 
@@ -143,7 +156,11 @@ const INPUT_BOUNDARY = 'Gemma captured actual native inference input; no generat
 
 function createGemmaSyntheticProtocolRuntime({ generate }: { generate: ProviderReplayGenerate }) {
   return createProviderReplayTestRuntime({
-    imagePlatform: undefined, modelId: inputEvidence.modelId, expectedRevision: inputEvidence.revision, cacheRevision: inputEvidence.revision, metadataCache: "all-fixture",
+    imagePlatform: undefined,
+    modelId: inputEvidence.modelId,
+    expectedRevision: inputEvidence.revision,
+    cacheRevision: inputEvidence.revision,
+    metadataCache: "all-fixture",
     artifacts: [
       'onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data',
       'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
@@ -167,11 +184,13 @@ function emitSyntheticGemmaProtocol({ context, text }: { context: Parameters<Pro
   options.streamer.end();
   return { sequences: new runtime.Tensor('int64', BigInt64Array.from([...input, ...ids.map(BigInt)]), [1, input.length + ids.length]), past_key_values: null };
 }
+
 const generationEvidence = parseProviderReplayTextEvidence({ value: generationJson });
 const continuity = parseProviderReplayTextEvidence({ value: continuityJson });
 const budgetContinuitySource = z.object({
   sourceMemberSha256: z.literal('b286f4c6bd00ef73e47cffe36ab34166053003af45cf3fac9a7d9d5c8c52faa6'),
-  originalStreamChunks: z.array(z.string()), capture: z.unknown(),
+  originalStreamChunks: z.array(z.string()),
+  capture: z.unknown(),
 }).strict().parse(budgetContinuityJson);
 const budgetContinuity = parseProviderReplayTextEvidence({ value: budgetContinuitySource.capture });
 
@@ -182,13 +201,18 @@ function captureGemmaNativeInput({ options, runtime }: Parameters<ProviderReplay
     : { isTensor: false as const };
   return {
     tensors: {
-      input_ids: tensor({ value: options.input_ids }), attention_mask: tensor({ value: options.attention_mask }),
-      pixel_values: tensor({ value: options.pixel_values }), image_position_ids: tensor({ value: options.image_position_ids }),
+      input_ids: tensor({ value: options.input_ids }),
+      attention_mask: tensor({ value: options.attention_mask }),
+      pixel_values: tensor({ value: options.pixel_values }),
+      image_position_ids: tensor({ value: options.image_position_ids }),
     },
-    optionKeys: Object.keys(options), softTokens: structuredClone(options.num_soft_tokens_per_image),
+    optionKeys: Object.keys(options),
+    softTokens: structuredClone(options.num_soft_tokens_per_image),
     settings: { maxNewTokens: options.max_new_tokens, temperature: options.temperature, topP: options.top_p, doSample: options.do_sample },
-    pastIsNull: options.past_key_values === null, returnDict: options.return_dict_in_generate,
-    isTextStreamer: options.streamer instanceof runtime.TextStreamer, stoppingCriteriaType: typeof options.stopping_criteria,
+    pastIsNull: options.past_key_values === null,
+    returnDict: options.return_dict_in_generate,
+    isTextStreamer: options.streamer instanceof runtime.TextStreamer,
+    stoppingCriteriaType: typeof options.stopping_criteria,
   };
 }
 
@@ -197,7 +221,10 @@ async function createGemmaInputReplay() {
   const nativeInputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
   const harness = await createProviderReplayTestRuntime({
     imagePlatform: undefined,
-    modelId: inputEvidence.modelId, expectedRevision: inputEvidence.revision, cacheRevision: inputEvidence.revision, metadataCache: "all-fixture",
+    modelId: inputEvidence.modelId,
+    expectedRevision: inputEvidence.revision,
+    cacheRevision: inputEvidence.revision,
+    metadataCache: "all-fixture",
     // Native sessions use identifiable tiny bodies. The actual AutoModel,
     // AutoProcessor, tokenizer and offline resource path are not replaced.
     artifacts: [
@@ -215,45 +242,61 @@ async function createGemmaInputReplay() {
       throw new Error(INPUT_BOUNDARY);
     },
   });
-  return { harness, inputs, verifyNativeInput() {
-    expect(nativeInputs).toHaveLength(1);
-    expect(harness.observations.inferenceCalls).toHaveLength(1);
-    const native = nativeInputs[0];
-    expect(native?.tensors.input_ids.isTensor).toBe(true);
-    expect(native?.tensors.attention_mask.isTensor).toBe(true);
-    if (!native?.tensors.input_ids.isTensor || !native.tensors.attention_mask.isTensor) throw new Error('Expected actual Gemma input and mask Tensors');
-    const { input_ids: input, attention_mask: mask } = native.tensors;
-    expect(input.type).toBe('int64');
-    expect(input.location).toBe('cpu');
-    expect(input.dims).toEqual([1, input.data.length]);
-    expect(mask.type).toBe('int64');
-    expect(mask.location).toBe('cpu');
-    expect(mask.dims).toEqual(input.dims);
-    expect(Array.from(mask.data, BigInt)).toEqual(Array.from(input.data, () => 1n));
-  } };
+  return {
+    harness,
+    inputs,
+    verifyNativeInput() {
+      expect(nativeInputs).toHaveLength(1);
+      expect(harness.observations.inferenceCalls).toHaveLength(1);
+      const native = nativeInputs[0];
+      expect(native?.tensors.input_ids.isTensor).toBe(true);
+      expect(native?.tensors.attention_mask.isTensor).toBe(true);
+      if (!native?.tensors.input_ids.isTensor || !native.tensors.attention_mask.isTensor) throw new Error('Expected actual Gemma input and mask Tensors');
+      const { input_ids: input, attention_mask: mask } = native.tensors;
+      expect(input.type).toBe('int64');
+      expect(input.location).toBe('cpu');
+      expect(input.dims).toEqual([1, input.data.length]);
+      expect(mask.type).toBe('int64');
+      expect(mask.location).toBe('cpu');
+      expect(mask.dims).toEqual(input.dims);
+      expect(Array.from(mask.data, BigInt)).toEqual(Array.from(input.data, () => 1n));
+    },
+  };
 }
 
 const imageEvidence = z.object({
-  schemaVersion: z.literal(1), source: z.literal('fixed-synthetic-fixture-and-existing-production-strategy'),
+  schemaVersion: z.literal(1),
+  source: z.literal('fixed-synthetic-fixture-and-existing-production-strategy'),
   sourceMemberSha256: z.literal('0e88f07503dd9d86c9f5be3c410ac8c431f9f1f971535857cf037b75ce4da1ff'),
   modelId: z.literal('onnx-community/gemma-4-E2B-it-ONNX'),
   revision: z.literal('9f4bef82ea6e296bc69f8a2f5939f73af81b07a6'),
   image: z.object({
     sha256: z.literal('431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460'),
-    mimeType: z.literal('image/png'), byteLength: z.literal(68), width: z.literal(1), height: z.literal(1),
+    mimeType: z.literal('image/png'),
+    byteLength: z.literal(68),
+    width: z.literal(1),
+    height: z.literal(1),
   }).strict(),
-  messages: z.tuple([z.object({ role: z.literal('user'), content: z.tuple([
-    z.object({ type: z.literal('text'), text: z.literal('Describe the single synthetic image in one short phrase.') }).strict(),
-    z.object({ type: z.literal('image_url'), image_url: z.object({ url: z.string().startsWith('data:image/png;base64,') }).strict() }).strict(),
-  ]) }).strict()]),
+  messages: z.tuple([z.object({
+    role: z.literal('user'),
+    content: z.tuple([
+      z.object({ type: z.literal('text'), text: z.literal('Describe the single synthetic image in one short phrase.') }).strict(),
+      z.object({ type: z.literal('image_url'), image_url: z.object({ url: z.string().startsWith('data:image/png;base64,') }).strict() }).strict(),
+    ]),
+  }).strict()]),
   inputKeys: z.array(z.string()).length(5),
   inputTensors: z.array(z.object({
     name: z.enum(['input_ids', 'attention_mask', 'pixel_values', 'image_position_ids']),
-    dtype: z.enum(['int64', 'float32']), dims: z.array(z.number().int().positive()), location: z.literal('cpu'),
+    dtype: z.enum(['int64', 'float32']),
+    dims: z.array(z.number().int().positive()),
+    location: z.literal('cpu'),
   }).strict()).length(4),
   inputTokenIds: z.array(z.number().int().nonnegative()).length(279),
   generationSettings: z.object({
-    maxNewTokens: z.literal(1), temperature: z.literal(0), topP: z.literal(1), doSample: z.literal(false),
+    maxNewTokens: z.literal(1),
+    temperature: z.literal(0),
+    topP: z.literal(1),
+    doSample: z.literal(false),
   }).strict(),
   unrecorded: z.tuple([
     z.literal('pixel_values-data'), z.literal('image_position_ids-data'),
@@ -282,7 +325,10 @@ async function createGemmaImageInputControl({ imageUrl, expectedRgba, expectedPi
   const platform = createProviderReplayTestImagePlatform();
   const nativeInputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
   const harness = await createProviderReplayTestRuntime({
-    modelId: imageEvidence.modelId, expectedRevision: imageEvidence.revision, cacheRevision: imageEvidence.revision, metadataCache: "all-fixture",
+    modelId: imageEvidence.modelId,
+    expectedRevision: imageEvidence.revision,
+    cacheRevision: imageEvidence.revision,
+    metadataCache: "all-fixture",
     imagePlatform: { platform, allowedDataUrls: [imageUrl] },
     artifacts: [
       'onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data',
@@ -298,53 +344,57 @@ async function createGemmaImageInputControl({ imageUrl, expectedRgba, expectedPi
       throw new Error(IMAGE_INPUT_BOUNDARY);
     },
   });
-  return { harness, verifyNativeInput() {
-    expect(nativeInputs).toHaveLength(1);
-    const native = nativeInputs[0];
-    if (!native) throw new Error('Expected actual Gemma image inference');
-    const { input_ids, attention_mask, pixel_values, image_position_ids } = native.tensors;
-    for (const tensor of Object.values(native.tensors)) expect(tensor.isTensor).toBe(true);
-    if (!input_ids.isTensor || !attention_mask.isTensor || !pixel_values.isTensor || !image_position_ids.isTensor) throw new Error('Expected actual Gemma image Tensors');
-    const tensors = { input_ids, attention_mask, pixel_values, image_position_ids };
-    expect(native.softTokens).toEqual([256]);
-    expect(native.optionKeys.sort()).toEqual([
-      ...imageEvidence.inputKeys, 'do_sample', 'max_new_tokens', 'past_key_values',
-      'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
-    ].sort());
-    for (const fact of imageEvidence.inputTensors) {
-      const tensor = tensors[fact.name];
-      expect({ name: fact.name, dtype: tensor.type, dims: tensor.dims, location: tensor.location }).toEqual(fact);
-    }
-    expect(Array.from(tensors.input_ids.data, Number)).toEqual(imageEvidence.inputTokenIds);
-    expect(tensors.attention_mask.data).toEqual(new BigInt64Array(279).fill(1n));
-    expect(findGemmaPixelMismatch({ actual: tensors.pixel_values.data, expected: expectedPixels })).toBeUndefined();
+  return {
+    harness,
+    verifyNativeInput() {
+      expect(nativeInputs).toHaveLength(1);
+      const native = nativeInputs[0];
+      if (!native) throw new Error('Expected actual Gemma image inference');
+      const { input_ids, attention_mask, pixel_values, image_position_ids } = native.tensors;
+      for (const tensor of Object.values(native.tensors)) expect(tensor.isTensor).toBe(true);
+      if (!input_ids.isTensor || !attention_mask.isTensor || !pixel_values.isTensor || !image_position_ids.isTensor) throw new Error('Expected actual Gemma image Tensors');
+      const tensors = { input_ids, attention_mask, pixel_values, image_position_ids };
+      expect(native.softTokens).toEqual([256]);
+      expect(native.optionKeys.sort()).toEqual([
+        ...imageEvidence.inputKeys, 'do_sample', 'max_new_tokens', 'past_key_values',
+        'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
+      ].sort());
+      for (const fact of imageEvidence.inputTensors) {
+        const tensor = tensors[fact.name];
+        expect({ name: fact.name, dtype: tensor.type, dims: tensor.dims, location: tensor.location }).toEqual(fact);
+      }
+      expect(Array.from(tensors.input_ids.data, Number)).toEqual(imageEvidence.inputTokenIds);
+      expect(tensors.attention_mask.data).toEqual(new BigInt64Array(279).fill(1n));
+      expect(findGemmaPixelMismatch({ actual: tensors.pixel_values.data, expected: expectedPixels })).toBeUndefined();
 
-    // These values are independently derived from the fixed 1x1 geometry:
-    // 768/16 = 48 patches per side, 2304 real patches, 216 padded patches.
-    // The original browser capture recorded shapes, not these tensor values.
-    const expectedPositions = new BigInt64Array(2520 * 2).fill(-1n);
-    for (let patch = 0; patch < 2304; ++patch) {
-      expectedPositions[patch * 2] = BigInt(patch % 48);
-      expectedPositions[patch * 2 + 1] = BigInt(Math.floor(patch / 48));
-    }
-    expect(tensors.image_position_ids.data).toEqual(expectedPositions);
-    expect(native.settings).toEqual(imageEvidence.generationSettings);
-    expect(native.pastIsNull).toBe(true);
-    expect(native.returnDict).toBe(true);
-    expect(harness.observations.processors).toHaveLength(1);
-    expect(harness.observations.inferenceCalls).toHaveLength(1);
-    expect(platform.observations.decodes).toEqual([{
-      bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')), rgba: expectedRgba,
-    }]);
-    expect(platform.observations.draws).toEqual([
-      { sourceWidth: 1, sourceHeight: 1, targetWidth: 1, targetHeight: 1 },
-      { sourceWidth: 1, sourceHeight: 1, targetWidth: 768, targetHeight: 768 },
-    ]);
-    expect(harness.observations.localImageFetchCalls).toEqual([imageUrl]);
-    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-    expect(harness.observations.forbiddenTransport).toEqual([]);
-    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-  } };
+      // These values are independently derived from the fixed 1x1 geometry:
+      // 768/16 = 48 patches per side, 2304 real patches, 216 padded patches.
+      // The original browser capture recorded shapes, not these tensor values.
+      const expectedPositions = new BigInt64Array(2520 * 2).fill(-1n);
+      for (let patch = 0; patch < 2304; ++patch) {
+        expectedPositions[patch * 2] = BigInt(patch % 48);
+        expectedPositions[patch * 2 + 1] = BigInt(Math.floor(patch / 48));
+      }
+      expect(tensors.image_position_ids.data).toEqual(expectedPositions);
+      expect(native.settings).toEqual(imageEvidence.generationSettings);
+      expect(native.pastIsNull).toBe(true);
+      expect(native.returnDict).toBe(true);
+      expect(harness.observations.processors).toHaveLength(1);
+      expect(harness.observations.inferenceCalls).toHaveLength(1);
+      expect(platform.observations.decodes).toEqual([{
+        bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')),
+        rgba: expectedRgba,
+      }]);
+      expect(platform.observations.draws).toEqual([
+        { sourceWidth: 1, sourceHeight: 1, targetWidth: 1, targetHeight: 1 },
+        { sourceWidth: 1, sourceHeight: 1, targetWidth: 768, targetHeight: 768 },
+      ]);
+      expect(harness.observations.localImageFetchCalls).toEqual([imageUrl]);
+      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+      expect(harness.observations.forbiddenTransport).toEqual([]);
+      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    },
+  };
 }
 
 describe('Gemma4 E2B Provider / basic', () => {
@@ -394,6 +444,7 @@ describe('Gemma4 E2B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
     }
   }, 30_000);
+
   it('delivers the recorded first-turn prefix through the actual processor and streamer before Provider settlement', async () => {
     const captures: ProviderChatCapture[] = [];
     let capture: ProviderChatCapture | undefined;
@@ -406,7 +457,10 @@ describe('Gemma4 E2B Provider / basic', () => {
     let releasedTokenCount = 0;
     const harness = await createProviderReplayTestRuntime({
       imagePlatform: undefined,
-      modelId: inputEvidence.modelId, expectedRevision: inputEvidence.revision, cacheRevision: inputEvidence.revision, metadataCache: "all-fixture",
+      modelId: inputEvidence.modelId,
+      expectedRevision: inputEvidence.revision,
+      cacheRevision: inputEvidence.revision,
+      metadataCache: "all-fixture",
       // Metadata and processor are real. Browser transport and native ORT /
       // inference are explicit test boundaries. The old capture's resolved
       // repository revision does not certify its reused model-weight bytes.
@@ -462,11 +516,12 @@ describe('Gemma4 E2B Provider / basic', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["first-turn"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -512,7 +567,7 @@ describe('Gemma4 E2B Provider / system', () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["system-user"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -567,12 +622,18 @@ describe('Gemma4 E2B Provider / history', () => {
       { role: 'user', content: 'Continue with one short sentence.' },
     ]);
     expect(continuity.scenario.boundary).toEqual({
-      kind: 'recorded-ending', lengthRelation: 'below-requested-budget', lastTokenId: 106, stopCause: 'not-recorded',
+      kind: 'recorded-ending',
+      lengthRelation: 'below-requested-budget',
+      lastTokenId: 106,
+      stopCause: 'not-recorded',
     });
     let releasedTokenCount = 0;
     const harness = await createProviderReplayTestRuntime({
       imagePlatform: undefined,
-      modelId: inputEvidence.modelId, expectedRevision: inputEvidence.revision, cacheRevision: inputEvidence.revision, metadataCache: "all-fixture",
+      modelId: inputEvidence.modelId,
+      expectedRevision: inputEvidence.revision,
+      cacheRevision: inputEvidence.revision,
+      metadataCache: "all-fixture",
       artifacts: [
         'onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data',
         'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
@@ -633,13 +694,15 @@ describe('Gemma4 E2B Provider / history', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('preserves the separate 16-token continuation capture without inferring why native generation stopped', async () => {
     const captures: ProviderChatCapture[] = [];
     let capture: ProviderChatCapture | undefined;
     expect(budgetContinuity.identity).toEqual({
       modelId: 'onnx-community/gemma-4-E2B-it-ONNX',
       resolvedRevision: '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6',
-      investigationRunId: 'a57b431d-7629-4177-809c-64ba8662afde', transformersJsVersion: '4.2.0',
+      investigationRunId: 'a57b431d-7629-4177-809c-64ba8662afde',
+      transformersJsVersion: '4.2.0',
     });
     expect(budgetContinuity.scenario.messages).toEqual([
       { role: 'user', content: 'Template probe user message.' },
@@ -647,7 +710,9 @@ describe('Gemma4 E2B Provider / history', () => {
       { role: 'user', content: 'Continue with one short sentence.' },
     ]);
     expect(budgetContinuity.scenario.boundary).toEqual({
-      kind: 'natural-prefix', lengthRelation: 'equals-requested-budget', stopCause: 'not-recorded',
+      kind: 'natural-prefix',
+      lengthRelation: 'equals-requested-budget',
+      stopCause: 'not-recorded',
     });
     expect(budgetContinuity.modelReplay.generatedTokenIds).toEqual([
       1018, 3689, 2712, 529, 7930, 659, 611, 3182, 573, 236881, 1018, 106, 106, 106, 106, 1,
@@ -659,7 +724,11 @@ describe('Gemma4 E2B Provider / history', () => {
     expect(budgetContinuity.modelReplay.generatedTokenIds).not.toEqual(continuity.modelReplay.generatedTokenIds);
     let releasedTokenCount = 0;
     const harness = await createProviderReplayTestRuntime({
-      modelId: inputEvidence.modelId, expectedRevision: inputEvidence.revision, cacheRevision: inputEvidence.revision, metadataCache: "all-fixture", imagePlatform: undefined,
+      modelId: inputEvidence.modelId,
+      expectedRevision: inputEvidence.revision,
+      cacheRevision: inputEvidence.revision,
+      metadataCache: "all-fixture",
+      imagePlatform: undefined,
       artifacts: [
         'onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data',
         'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
@@ -719,11 +788,12 @@ describe('Gemma4 E2B Provider / history', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["supplied-history"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -802,7 +872,11 @@ A separate synthetic Gemma conversation.<turn|>
       },
     ];
     const harness = await createProviderReplayTestRuntime({
-      modelId: inputEvidence.modelId, expectedRevision: inputEvidence.revision, cacheRevision: inputEvidence.revision, metadataCache: "all-fixture", imagePlatform: undefined,
+      modelId: inputEvidence.modelId,
+      expectedRevision: inputEvidence.revision,
+      cacheRevision: inputEvidence.revision,
+      metadataCache: "all-fixture",
+      imagePlatform: undefined,
       artifacts: [
         'onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data',
         'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
@@ -920,11 +994,12 @@ A separate synthetic Gemma conversation.<turn|>
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
-      caseIds: ["first-turn","continuity","independent-next-input"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      caseIds: ["first-turn", "continuity", "independent-next-input"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1030,19 +1105,27 @@ A separate synthetic Gemma conversation.<turn|>
 
 describe('Gemma4 E2B Provider / reasoning', () => {
   it.each([
-    { effort: 'none' as const, enableThinking: false, expectedPrompt: `\
+    {
+      effort: 'none' as const,
+      enableThinking: false,
+      expectedPrompt: `\
 <bos><|turn>user
 Template probe user message.<turn|>
 <|turn>model
-` },
-    { effort: 'high' as const, enableThinking: true, expectedPrompt: `\
+`,
+    },
+    {
+      effort: 'high' as const,
+      enableThinking: true,
+      expectedPrompt: `\
 <bos><|turn>system
 <|think|>
 <turn|>
 <|turn>user
 Template probe user message.<turn|>
 <|turn>model
-` },
+`,
+    },
   ])('passes explicit $effort to the exact native Gemma thinking input without claiming generated reasoning quality', async ({ effort, enableThinking, expectedPrompt }) => {
     const captures: ProviderChatCapture[] = [];
     let capture: ProviderChatCapture | undefined;
@@ -1095,11 +1178,12 @@ Template probe user message.<turn|>
       expect(capture === undefined ? [] : capturedTextChunks({ capture, type: 'text' }), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded none-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-none"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1138,11 +1222,12 @@ Template probe user message.<turn|>
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded low-effort request and its bounded native channel prefix', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-low"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1181,11 +1266,12 @@ Template probe user message.<turn|>
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded medium-effort request and its bounded native channel prefix', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-medium"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1224,11 +1310,12 @@ Template probe user message.<turn|>
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('reasoning: preserves the recorded high-effort request and its bounded native channel prefix', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["reasoning-high"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1272,25 +1359,40 @@ Template probe user message.<turn|>
 describe('Gemma source-derived thinking controls, not recorded inference', () => {
   it('closes the inline display interval before native failure settles without publishing tools', async () => {
     const inputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
-    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => {
-      inputs.push(captureGemmaNativeInput(context));
-      emitSyntheticGemmaProtocol({ context, text: `\
+    const harness = await createGemmaSyntheticProtocolRuntime({
+      generate: async context => {
+        inputs.push(captureGemmaNativeInput(context));
+        emitSyntheticGemmaProtocol({
+          context,
+          text: `\
 <|channel>thought
-Partial` });
-      throw new Error('Synthetic native failure after partial thought');
-    } });
+Partial`,
+        });
+        throw new Error('Synthetic native failure after partial thought');
+      },
+    });
     let capture: ProviderChatCapture | undefined;
     try {
-      capture = captureProviderChat({ provider: harness.provider, request: {
-        model: 'onnx-community/gemma-4-E2B-it-ONNX',
-        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic failed thought control.' })],
-        tools: [],
-        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
-          frequencyPenalty: undefined, stop: undefined, reasoning: { effort: 'high' } },
-        signal: undefined,
-        readBinaryObject: undefined,
-        debug: undefined,
-      } });
+      capture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: 'onnx-community/gemma-4-E2B-it-ONNX',
+          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic failed thought control.' })],
+          tools: [],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: 'high' },
+          },
+          signal: undefined,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
       await capture.completion;
       const observed = capture.snapshot();
       expect(observed.parts).toEqual([expect.objectContaining({ type: 'reasoning', index: 0, completeness: 'partial' })]);
@@ -1310,13 +1412,14 @@ Partial` });
     const expectedNextInputs: number[][] = [];
     const executions: unknown[] = [];
     const captures: ProviderChatCapture[] = [];
-    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => {
-      nativeInputs.push(captureGemmaNativeInput(context));
-      if (nativeInputs.length !== 1) {
-        const declaration = toolMode === 'disabled' ? '' : '<|tool>declaration:probe{description:<|"|>Must not execute.<|"|>,parameters:{type:<|"|>OBJECT<|"|>}}<tool|>';
-        // The original template excludes thinking from this historical turn.
-        // The adapter receives the actually delivered inline public content.
-        expectedNextInputs.push(context.tokenizer.encode(`\
+    const harness = await createGemmaSyntheticProtocolRuntime({
+      generate: async context => {
+        nativeInputs.push(captureGemmaNativeInput(context));
+        if (nativeInputs.length !== 1) {
+          const declaration = toolMode === 'disabled' ? '' : '<|tool>declaration:probe{description:<|"|>Must not execute.<|"|>,parameters:{type:<|"|>OBJECT<|"|>}}<tool|>';
+          // The original template excludes thinking from this historical turn.
+          // The adapter receives the actually delivered inline public content.
+          expectedNextInputs.push(context.tokenizer.encode(`\
 <bos><|turn>system
 <|think|>
 ${declaration}<turn|>
@@ -1328,24 +1431,43 @@ Answer<turn|>
 Continue.<turn|>
 <|turn>model
 `, { add_special_tokens: false }));
-        throw new Error('Synthetic next-input boundary; no continuation output');
-      }
-      return emitSyntheticGemmaProtocol({ context, text: `\
+          throw new Error('Synthetic next-input boundary; no continuation output');
+        }
+        return emitSyntheticGemmaProtocol({
+          context,
+          text: `\
 <|channel>thought
-Reason<channel|>Answer<turn|>` });
-    } });
+Reason<channel|>Answer<turn|>`,
+        });
+      },
+    });
     try {
       const tools: CapturedChatRequest['tools'] = toolMode === 'disabled' ? [] : [{
-        name: 'probe', description: 'Must not execute.', parameters: { type: 'object', properties: {}, additionalProperties: false },
+        name: 'probe',
+        description: 'Must not execute.',
+        parameters: { type: 'object', properties: {}, additionalProperties: false },
       }];
-      const parameters = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
-        frequencyPenalty: undefined, stop: undefined, reasoning: { effort: 'high' as const } };
-      const capture = captureProviderChat({ provider: harness.provider, request: {
-        model: 'onnx-community/gemma-4-E2B-it-ONNX',
-        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' })],
-        tools, parameters,
-        signal: undefined, readBinaryObject: undefined, debug: undefined,
-      } });
+      const parameters = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 128,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: { effort: 'high' as const },
+      };
+      const capture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: 'onnx-community/gemma-4-E2B-it-ONNX',
+          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' })],
+          tools,
+          parameters,
+          signal: undefined,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
       captures.push(capture);
       await capture.completion;
       const observed = capture.snapshot();
@@ -1359,19 +1481,29 @@ Reason<channel|>Answer<turn|>` });
       expect(observed.result).toEqual({ type: 'finished', next: 'user' });
       expect(capturedToolCalls({ capture })).toEqual([]);
       expect(executions).toEqual([]);
-      const nextCapture = captureProviderChat({ provider: harness.provider, request: {
-        model: 'onnx-community/gemma-4-E2B-it-ONNX',
-        messages: [
-          textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' }),
-          { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [
-            { type: 'reasoning', text: 'Reason', completeness: 'complete' },
-            { type: 'text', text: 'Answer', completeness: 'complete' },
-          ] },
-          textMessage({ id: 'message_2', role: 'user', text: 'Continue.' }),
-        ],
-        tools, parameters,
-        signal: undefined, readBinaryObject: undefined, debug: undefined,
-      } });
+      const nextCapture = captureProviderChat({
+        provider: harness.provider,
+        request: {
+          model: 'onnx-community/gemma-4-E2B-it-ONNX',
+          messages: [
+            textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' }),
+            {
+              id: toMessageId({ raw: 'message_1' }),
+              role: 'assistant',
+              parts: [
+                { type: 'reasoning', text: 'Reason', completeness: 'complete' },
+                { type: 'text', text: 'Answer', completeness: 'complete' },
+              ],
+            },
+            textMessage({ id: 'message_2', role: 'user', text: 'Continue.' }),
+          ],
+          tools,
+          parameters,
+          signal: undefined,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
       captures.push(nextCapture);
       await nextCapture.completion;
       expectDeliveredErrorCapture({ capture: nextCapture, message: 'Synthetic next-input boundary; no continuation output' });
@@ -1399,8 +1531,10 @@ describe('Gemma4 E2B Provider / tools', () => {
       throw new Error('Tool execution is outside this input-only test');
     });
     const tool: Tool = {
-      name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-      parametersSchema: z.object({ city: z.string() }), execute,
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute,
     };
     const replay = await createGemmaInputReplay();
     try {
@@ -1442,12 +1576,17 @@ describe('Gemma4 E2B Provider / tools', () => {
       // The old native capture has an open JSON schema. Public Naidan Tools
       // use additionalProperties:false. Verify this exact public shape against
       // the captured rendering rather than assuming the two are equivalent.
-      const publicToolDefinition = [{ type: 'function', function: {
-        name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
-        parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
-      } }];
+      const publicToolDefinition = [{
+        type: 'function',
+        function: {
+          name: 'lookup_weather',
+          description: 'Return deterministic weather fixture data.',
+          parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
+        },
+      }];
       const nativePrompt = z.string().parse(processor.apply_chat_template(scenario.messages, {
-        add_generation_prompt: true, tools: publicToolDefinition,
+        add_generation_prompt: true,
+        tools: publicToolDefinition,
       }));
       expect(nativePrompt).toBe(scenario.renderedText);
       const nativeInputs: unknown = await processor(nativePrompt, null, null, { add_special_tokens: false });
@@ -1465,6 +1604,7 @@ describe('Gemma4 E2B Provider / tools', () => {
       expect(capture === undefined ? [] : capturedTextChunks({ capture, type: 'text' }), 'through awaited Worker disposal').toEqual([]);
     }
   }, 30_000);
+
   it('retains structured tool-call and result association instead of flattening them into ordinary conversation text', async () => {
     const captures: ProviderChatCapture[] = [];
     let capture: ProviderChatCapture | undefined;
@@ -1475,24 +1615,41 @@ describe('Gemma4 E2B Provider / tools', () => {
       throw new Error('This supplied-history matrix did not capture a natural tool loop');
     });
     const publicTool: NonNullable<CapturedChatRequest['tools']>[number] = {
-      name: 'lookup_weather', description: 'Return deterministic weather fixture data.',
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
       parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
     };
     const publicMessages: ChatMessage[] = [
       textMessage({ id: 'message_0', role: 'user', text: scenario.messages[0].content }),
-      { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [
-        { type: 'text', text: '', completeness: 'complete' },
-        { type: 'tool_call', toolCall: {
-          id: toToolCallId({ raw: 'call_template_probe_1' }), type: 'function',
-          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-        } },
-      ] },
-      { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [
-        { type: 'tool_result', result: {
-          toolCallId: toToolCallId({ raw: 'call_template_probe_1' }), status: 'success',
-          content: { type: 'text', text: scenario.messages[2].content },
-        } },
-      ] },
+      {
+        id: toMessageId({ raw: 'message_1' }),
+        role: 'assistant',
+        parts: [
+          { type: 'text', text: '', completeness: 'complete' },
+          {
+            type: 'tool_call',
+            toolCall: {
+              id: toToolCallId({ raw: 'call_template_probe_1' }),
+              type: 'function',
+              function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+            },
+          },
+        ],
+      },
+      {
+        id: toMessageId({ raw: 'message_2' }),
+        role: 'tool',
+        parts: [
+          {
+            type: 'tool_result',
+            result: {
+              toolCallId: toToolCallId({ raw: 'call_template_probe_1' }),
+              status: 'success',
+              content: { type: 'text', text: scenario.messages[2].content },
+            },
+          },
+        ],
+      },
     ];
     const replay = await createGemmaInputReplay();
     try {
@@ -1506,7 +1663,8 @@ describe('Gemma4 E2B Provider / tools', () => {
       expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
         .toBe(scenario.selectedTemplateSha256);
       const strictTools = scenario.tools.map(tool => ({
-        ...tool, function: { ...tool.function, parameters: { ...tool.function.parameters, additionalProperties: false } },
+        ...tool,
+        function: { ...tool.function, parameters: { ...tool.function.parameters, additionalProperties: false } },
       }));
       expect(processor.apply_chat_template(scenario.messages, { add_generation_prompt: true, tools: scenario.tools }))
         .toBe(scenario.renderedText);
@@ -1522,10 +1680,15 @@ describe('Gemma4 E2B Provider / tools', () => {
       // not a claim of captured successful mapped input or natural generation.
       const nativeMappedMessages = [
         scenario.messages[0],
-        { role: 'assistant', content: '', tool_calls: [{
-          id: 'call_template_probe_1', type: 'function',
-          function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
-        }] },
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{
+            id: 'call_template_probe_1',
+            type: 'function',
+            function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
+          }],
+        },
         scenario.messages[2],
       ];
       const originalCallBody = 'call:lookup_weather{{"city":"Tokyo"}}';
@@ -1599,6 +1762,7 @@ describe('Gemma4 E2B Provider / tools', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
     }
   }, 30_000);
+
   it('executes a native-format synthetic tool call once and supplies its structured result to the next real processor input', async () => {
     const executedArgs: unknown[] = [];
     const templateMessages = [{ role: 'user', content: 'Use the synthetic weather tool for Tokyo.' }];
@@ -1612,31 +1776,46 @@ describe('Gemma4 E2B Provider / tools', () => {
       parametersSchema: z.object({ city: z.string() }),
       execute,
     };
-    const definition = { type: 'function', function: { name: tool.name, description: tool.description,
-      parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false } } };
+    const definition = {
+      type: 'function',
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
+      },
+    };
     let turns = 0;
-    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => {
-      const { tokenizer, options, runtime } = context;
-      ++turns;
-      if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual input IDs');
-      const decoded = tokenizer.decode(Array.from(options.input_ids.data, Number), { skip_special_tokens: false });
-      if (turns === 1) {
-        const expected = tokenizer.apply_chat_template(templateMessages, { tokenize: false, add_generation_prompt: true, tools: [definition] });
-        expect(decoded).toBe(expected);
-      } else {
-        expect(turns).toBe(2);
-        expect(execute).toHaveBeenCalledOnce();
-        expect(decoded).toContain('call:lookup_weather{city:<|"|>Tokyo<|"|>}');
-        expect(decoded).toContain('response:lookup_weather{value:<|"|>Synthetic weather result: clear.<|"|>}');
-      }
-      expect(options.past_key_values).toBeNull();
-      return emitSyntheticGemmaProtocol({ context, text: turns === 1
-        ? '<|tool_call>call:lookup_weather{city:<|"|>Tokyo<|"|>}<tool_call|><|tool_response>'
-        : 'Synthetic final answer.<turn|>' });
-    } });
+    const harness = await createGemmaSyntheticProtocolRuntime({
+      generate: async context => {
+        const { tokenizer, options, runtime } = context;
+        ++turns;
+        if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual input IDs');
+        const decoded = tokenizer.decode(Array.from(options.input_ids.data, Number), { skip_special_tokens: false });
+        if (turns === 1) {
+          const expected = tokenizer.apply_chat_template(templateMessages, { tokenize: false, add_generation_prompt: true, tools: [definition] });
+          expect(decoded).toBe(expected);
+        } else {
+          expect(turns).toBe(2);
+          expect(execute).toHaveBeenCalledOnce();
+          expect(decoded).toContain('call:lookup_weather{city:<|"|>Tokyo<|"|>}');
+          expect(decoded).toContain('response:lookup_weather{value:<|"|>Synthetic weather result: clear.<|"|>}');
+        }
+        expect(options.past_key_values).toBeNull();
+        return emitSyntheticGemmaProtocol({
+          context,
+          text: turns === 1
+            ? '<|tool_call>call:lookup_weather{city:<|"|>Tokyo<|"|>}<tool_call|><|tool_response>'
+            : 'Synthetic final answer.<turn|>',
+        });
+      },
+    });
     const parameters: NonNullable<CapturedChatRequest['parameters']> = {
-      temperature: 0, topP: 1, maxCompletionTokens: 128,
-      presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined,
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 128,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
       reasoning: { effort: undefined },
     };
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
@@ -1656,15 +1835,24 @@ describe('Gemma4 E2B Provider / tools', () => {
       });
       expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
       expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
-      expect(turn.generated[0]).toMatchObject({ role: 'assistant', parts: [
-        { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
-      ] });
-      expect(turn.generated[1]).toMatchObject({ role: 'tool', parts: [
-        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic weather result: clear.' } } },
-      ] });
-      expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [
-        { type: 'text', text: 'Synthetic final answer.', completeness: 'complete' },
-      ] });
+      expect(turn.generated[0]).toMatchObject({
+        role: 'assistant',
+        parts: [
+          { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+        ],
+      });
+      expect(turn.generated[1]).toMatchObject({
+        role: 'tool',
+        parts: [
+          { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic weather result: clear.' } } },
+        ],
+      });
+      expect(turn.generated[2]).toMatchObject({
+        role: 'assistant',
+        parts: [
+          { type: 'text', text: 'Synthetic final answer.', completeness: 'complete' },
+        ],
+      });
       expect(turns).toBe(2);
       expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
       expect(harness.observations.workers).toHaveLength(1);
@@ -1676,6 +1864,7 @@ describe('Gemma4 E2B Provider / tools', () => {
       await harness.close();
     }
   }, 30_000);
+
   it('interrupts an unfinished second native tool call without executing the earlier complete call', async () => {
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'Must not execute' }));
     const tool: Tool = {
@@ -1684,10 +1873,12 @@ describe('Gemma4 E2B Provider / tools', () => {
       parametersSchema: z.object({ city: z.string() }),
       execute,
     };
-    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => emitSyntheticGemmaProtocol({
-      context,
-      text: '<|tool_call>call:lookup_weather{city:<|"|>Tokyo<|"|>}<tool_call|><|tool_call>call:lookup_weather{city:',
-    }) });
+    const harness = await createGemmaSyntheticProtocolRuntime({
+      generate: async context => emitSyntheticGemmaProtocol({
+        context,
+        text: '<|tool_call>call:lookup_weather{city:<|"|>Tokyo<|"|>}<tool_call|><|tool_call>call:lookup_weather{city:',
+      }),
+    });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
       turn = await runProviderReplayTurn({
@@ -1695,8 +1886,15 @@ describe('Gemma4 E2B Provider / tools', () => {
         request: {
           model: inputEvidence.modelId,
           messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
-          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
-            frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: undefined },
+          },
           readBinaryObject: undefined,
           debug: undefined,
         },
@@ -1706,9 +1904,13 @@ describe('Gemma4 E2B Provider / tools', () => {
       });
       expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'interrupted', reason: 'unknown' } });
       expect(turn.generated).toHaveLength(1);
-      expect(turn.generated[0]).toMatchObject({ role: 'assistant', interruption: undefined, parts: [
-        { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
-      ] });
+      expect(turn.generated[0]).toMatchObject({
+        role: 'assistant',
+        interruption: undefined,
+        parts: [
+          { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+        ],
+      });
       expect(execute).not.toHaveBeenCalled();
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.forbiddenTransport).toEqual([]);
@@ -1716,6 +1918,7 @@ describe('Gemma4 E2B Provider / tools', () => {
       await harness.close();
     }
   }, 30_000);
+
   it.each([
     { label: 'explicit null accepted by the registered tool schema', payload: 'value:null', settlement: 'rejected' as const },
     { label: 'an unsafe bare argument key accepted by the registered tool schema', payload: 'params:{unsafe:key:1}', settlement: 'rejected' as const },
@@ -1731,10 +1934,12 @@ describe('Gemma4 E2B Provider / tools', () => {
     expect(tool.parametersSchema.strict().safeParse({ value: null }).success).toBe(true);
     expect(tool.parametersSchema.strict().safeParse({ params: { 'unsafe:key': 1 } }).success).toBe(true);
     expect(tool.parametersSchema.strict().safeParse({}).success).toBe(true);
-    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => emitSyntheticGemmaProtocol({
-      context,
-      text: `<|tool_call>call:capture_value{}<tool_call|><|tool_call>call:capture_value{${payload}}<tool_call|>`,
-    }) });
+    const harness = await createGemmaSyntheticProtocolRuntime({
+      generate: async context => emitSyntheticGemmaProtocol({
+        context,
+        text: `<|tool_call>call:capture_value{}<tool_call|><|tool_call>call:capture_value{${payload}}<tool_call|>`,
+      }),
+    });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
       turn = await runProviderReplayTurn({
@@ -1742,8 +1947,15 @@ describe('Gemma4 E2B Provider / tools', () => {
         request: {
           model: inputEvidence.modelId,
           messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
-          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
-            frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: undefined },
+          },
           readBinaryObject: undefined,
           debug: undefined,
         },
@@ -1757,9 +1969,12 @@ describe('Gemma4 E2B Provider / tools', () => {
         expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'interrupted', reason: 'unknown' } });
       }
       expect(turn.generated).toHaveLength(1);
-      expect(turn.generated[0]).toMatchObject({ role: 'assistant', parts: [
-        { type: 'tool_call', toolCall: { function: { name: 'capture_value', arguments: '{}' } } },
-      ] });
+      expect(turn.generated[0]).toMatchObject({
+        role: 'assistant',
+        parts: [
+          { type: 'tool_call', toolCall: { function: { name: 'capture_value', arguments: '{}' } } },
+        ],
+      });
       expect(execute).not.toHaveBeenCalled();
       expect(harness.observations.inferenceCalls).toHaveLength(1);
       expect(harness.observations.forbiddenTransport).toEqual([]);
@@ -1767,6 +1982,7 @@ describe('Gemma4 E2B Provider / tools', () => {
       await harness.close();
     }
   }, 30_000);
+
   it('reports an unknown native tool name without executing a registered tool and continues with the actual error result input', async () => {
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'Must not execute' }));
     const tool: Tool = {
@@ -1776,18 +1992,23 @@ describe('Gemma4 E2B Provider / tools', () => {
       execute,
     };
     let turns = 0;
-    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => {
-      ++turns;
-      if (turns === 2) {
-        const { options, runtime, tokenizer } = context;
-        if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual input IDs');
-        expect(tokenizer.decode(Array.from(options.input_ids.data, Number), { skip_special_tokens: false }))
-          .toContain('Tool "unknown_tool" not found.');
-      }
-      expect(turns).toBeLessThanOrEqual(2);
-      return emitSyntheticGemmaProtocol({ context, text: turns === 1
-        ? '<|tool_call>call:unknown_tool{value:1}<tool_call|><|tool_response>' : 'Synthetic unavailable tool answer.<turn|>' });
-    } });
+    const harness = await createGemmaSyntheticProtocolRuntime({
+      generate: async context => {
+        ++turns;
+        if (turns === 2) {
+          const { options, runtime, tokenizer } = context;
+          if (!(options.input_ids instanceof runtime.Tensor)) throw new Error('Expected actual input IDs');
+          expect(tokenizer.decode(Array.from(options.input_ids.data, Number), { skip_special_tokens: false }))
+            .toContain('Tool "unknown_tool" not found.');
+        }
+        expect(turns).toBeLessThanOrEqual(2);
+        return emitSyntheticGemmaProtocol({
+          context,
+          text: turns === 1
+            ? '<|tool_call>call:unknown_tool{value:1}<tool_call|><|tool_response>' : 'Synthetic unavailable tool answer.<turn|>',
+        });
+      },
+    });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
       turn = await runProviderReplayTurn({
@@ -1795,8 +2016,15 @@ describe('Gemma4 E2B Provider / tools', () => {
         request: {
           model: inputEvidence.modelId,
           messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
-          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
-            frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: undefined },
+          },
           readBinaryObject: undefined,
           debug: undefined,
         },
@@ -1806,15 +2034,24 @@ describe('Gemma4 E2B Provider / tools', () => {
       });
       expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
       expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
-      expect(turn.generated[0]).toMatchObject({ role: 'assistant', parts: [
-        { type: 'tool_call', toolCall: { function: { name: 'unknown_tool', arguments: '{"value":1}' } } },
-      ] });
-      expect(turn.generated[1]).toMatchObject({ role: 'tool', parts: [
-        { type: 'tool_result', result: { status: 'error' } },
-      ] });
-      expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [
-        { type: 'text', text: 'Synthetic unavailable tool answer.', completeness: 'complete' },
-      ] });
+      expect(turn.generated[0]).toMatchObject({
+        role: 'assistant',
+        parts: [
+          { type: 'tool_call', toolCall: { function: { name: 'unknown_tool', arguments: '{"value":1}' } } },
+        ],
+      });
+      expect(turn.generated[1]).toMatchObject({
+        role: 'tool',
+        parts: [
+          { type: 'tool_result', result: { status: 'error' } },
+        ],
+      });
+      expect(turn.generated[2]).toMatchObject({
+        role: 'assistant',
+        parts: [
+          { type: 'text', text: 'Synthetic unavailable tool answer.', completeness: 'complete' },
+        ],
+      });
       expect(execute).not.toHaveBeenCalled();
       expect(harness.observations.inferenceCalls).toHaveLength(2);
       expect(harness.observations.forbiddenTransport).toEqual([]);
@@ -1822,6 +2059,7 @@ describe('Gemma4 E2B Provider / tools', () => {
       await harness.close();
     }
   }, 30_000);
+
   it('rejects a lossy tool result after its one actual execution and before the next native inference', async () => {
     const execute = vi.fn<Tool['execute']>(async () => ({ status: 'success', content: 'Synthetic result<|"|>delimiter' }));
     const tool: Tool = {
@@ -1830,10 +2068,12 @@ describe('Gemma4 E2B Provider / tools', () => {
       parametersSchema: z.object({ value: z.number() }),
       execute,
     };
-    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => emitSyntheticGemmaProtocol({
-      context,
-      text: '<|tool_call>call:capture_value{value:1}<tool_call|><|tool_response>',
-    }) });
+    const harness = await createGemmaSyntheticProtocolRuntime({
+      generate: async context => emitSyntheticGemmaProtocol({
+        context,
+        text: '<|tool_call>call:capture_value{value:1}<tool_call|><|tool_response>',
+      }),
+    });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     try {
       turn = await runProviderReplayTurn({
@@ -1841,8 +2081,15 @@ describe('Gemma4 E2B Provider / tools', () => {
         request: {
           model: inputEvidence.modelId,
           messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
-          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
-            frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: undefined },
+          },
           readBinaryObject: undefined,
           debug: undefined,
         },
@@ -1852,12 +2099,18 @@ describe('Gemma4 E2B Provider / tools', () => {
       });
       expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: expect.stringContaining('quote delimiter') } });
       expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
-      expect(turn.generated[0]).toMatchObject({ role: 'assistant', parts: [
-        { type: 'tool_call', toolCall: { function: { name: 'capture_value', arguments: '{"value":1}' } } },
-      ] });
-      expect(turn.generated[1]).toMatchObject({ role: 'tool', parts: [
-        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result<|"|>delimiter' } } },
-      ] });
+      expect(turn.generated[0]).toMatchObject({
+        role: 'assistant',
+        parts: [
+          { type: 'tool_call', toolCall: { function: { name: 'capture_value', arguments: '{"value":1}' } } },
+        ],
+      });
+      expect(turn.generated[1]).toMatchObject({
+        role: 'tool',
+        parts: [
+          { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result<|"|>delimiter' } } },
+        ],
+      });
       expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [] });
       expect(execute).toHaveBeenCalledOnce();
       expect(harness.observations.inferenceCalls).toHaveLength(1);
@@ -1866,6 +2119,7 @@ describe('Gemma4 E2B Provider / tools', () => {
       await harness.close();
     }
   }, 30_000);
+
   it.each([
     {
       caseId: 'natural-tool-minimal' as const,
@@ -1886,8 +2140,12 @@ describe('Gemma4 E2B Provider / tools', () => {
       imagePlatform: undefined,
     });
     const parameters: NonNullable<CapturedChatRequest['parameters']> = {
-      temperature: 0, topP: 1, maxCompletionTokens: 128,
-      presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined,
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 128,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
       reasoning: { effort: undefined },
     };
     const executedSignals: Array<AbortSignal | undefined> = [];
@@ -1925,21 +2183,27 @@ describe('Gemma4 E2B Provider / tools', () => {
       const [callAssistant, toolResult, finalAssistant] = turn.generated;
       expect(callAssistant).toMatchObject({
         role: 'assistant',
-        parts: [{ type: 'tool_call', toolCall: {
-          type: 'function',
-          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-        } }],
+        parts: [{
+          type: 'tool_call',
+          toolCall: {
+            type: 'function',
+            function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          },
+        }],
       });
       if (callAssistant?.role !== 'assistant') throw new Error('Expected the tool-calling assistant');
       const callPart = callAssistant.parts.find(part => part.type === 'tool_call');
       if (callPart?.type !== 'tool_call') throw new Error('Expected the recorded structured tool call');
       expect(toolResult).toMatchObject({
         role: 'tool',
-        parts: [{ type: 'tool_result', result: {
-          toolCallId: callPart.toolCall.id,
-          status: 'success',
-          content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-        } }],
+        parts: [{
+          type: 'tool_result',
+          result: {
+            toolCallId: callPart.toolCall.id,
+            status: 'success',
+            content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+          },
+        }],
       });
       expect(finalAssistant).toMatchObject({
         role: 'assistant',
@@ -1956,11 +2220,12 @@ describe('Gemma4 E2B Provider / tools', () => {
       await replay.close();
     }
   }, 30_000);
+
   it('tools: preserves structured caller history and the recorded response', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["structured-tool-history"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -1984,8 +2249,11 @@ describe('Gemma4 E2B Provider / tools', () => {
         executedSignals.push(signal);
         return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
       });
-      const tools: NonNullable<CapturedChatRequest['tools']> = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.",
-        parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false } }];
+      const tools: NonNullable<CapturedChatRequest['tools']> = [{
+        name: "lookup_weather",
+        description: "Return deterministic weather fixture data.",
+        parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
+      }];
       replay.beginNativeRequest({ caseId: "structured-tool-history", parameters: parameters });
       const capture = captureProviderChat({
         provider: replay.provider,
@@ -1993,19 +2261,35 @@ describe('Gemma4 E2B Provider / tools', () => {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
           messages: [
             textMessage({ id: 'message_0', role: 'user', text: "Use the weather tool for Tokyo." }),
-            { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [
-              { type: 'text', text: '', completeness: 'complete' },
-              { type: 'tool_call', toolCall: {
-                id: toToolCallId({ raw: "call_model_support_probe_1" }), type: 'function',
-                function: { name: 'lookup_weather', arguments: "{\"city\":\"Tokyo\"}" },
-              } },
-            ] },
-            { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [
-              { type: 'tool_result', result: {
-                toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }), status: 'success',
-                content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" },
-              } },
-            ] },
+            {
+              id: toMessageId({ raw: 'message_1' }),
+              role: 'assistant',
+              parts: [
+                { type: 'text', text: '', completeness: 'complete' },
+                {
+                  type: 'tool_call',
+                  toolCall: {
+                    id: toToolCallId({ raw: "call_model_support_probe_1" }),
+                    type: 'function',
+                    function: { name: 'lookup_weather', arguments: "{\"city\":\"Tokyo\"}" },
+                  },
+                },
+              ],
+            },
+            {
+              id: toMessageId({ raw: 'message_2' }),
+              role: 'tool',
+              parts: [
+                {
+                  type: 'tool_result',
+                  result: {
+                    toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }),
+                    status: 'success',
+                    content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" },
+                  },
+                },
+              ],
+            },
           ],
           tools: tools,
           parameters: parameters,
@@ -2036,10 +2320,11 @@ describe('Gemma source-derived tool/history controls, not recorded inference', (
     const inputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
     const expectedInputs: number[][] = [];
     const executions: unknown[] = [];
-    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => {
-      inputs.push(captureGemmaNativeInput(context));
-      if (inputs.length !== 1) {
-        expectedInputs.push(context.tokenizer.encode(`\
+    const harness = await createGemmaSyntheticProtocolRuntime({
+      generate: async context => {
+        inputs.push(captureGemmaNativeInput(context));
+        if (inputs.length !== 1) {
+          expectedInputs.push(context.tokenizer.encode(`\
 <bos><|turn>system
 <|tool>declaration:probe{description:<|"|>Synthetic tool thought control.<|"|>,parameters:{properties:{value:{type:<|"|>STRING<|"|>}},required:[<|"|>value<|"|>],type:<|"|>OBJECT<|"|>}}<tool|><turn|>
 <|turn>user
@@ -2048,13 +2333,17 @@ Use the synthetic tool.<turn|>
 <|channel>thought
  Reason${' '}
 <channel|><|tool_call>call:probe{value:<|"|>Tokyo<|"|>}<tool_call|><|tool_response>response:probe{value:<|"|>Synthetic result.<|"|>}<tool_response|>`, { add_special_tokens: false }));
-        throw new Error('Canonical tool-thought input observed; no continuation output');
-      }
-      return emitSyntheticGemmaProtocol({ context, text: `\
+          throw new Error('Canonical tool-thought input observed; no continuation output');
+        }
+        return emitSyntheticGemmaProtocol({
+          context,
+          text: `\
 <|channel>thought
  Reason${' '}
-<channel|><|tool_call>call:probe{value:<|"|>Tokyo<|"|>}<tool_call|><|tool_response>` });
-    } });
+<channel|><|tool_call>call:probe{value:<|"|>Tokyo<|"|>}<tool_call|><|tool_response>`,
+        });
+      },
+    });
     const tool: Tool = {
       name: 'probe',
       description: 'Synthetic tool thought control.',
@@ -2071,8 +2360,15 @@ Use the synthetic tool.<turn|>
         request: {
           model: 'onnx-community/gemma-4-E2B-it-ONNX',
           messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
-          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
-            frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: undefined },
+          },
           readBinaryObject: undefined,
           debug: undefined,
         },
@@ -2082,13 +2378,19 @@ Use the synthetic tool.<turn|>
       });
       expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: 'Canonical tool-thought input observed; no continuation output' } });
       expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
-      expect(turn.generated[0]).toMatchObject({ role: 'assistant', parts: [
-        { type: 'reasoning', text: ` Reason${' '}`, completeness: 'complete' },
-        { type: 'tool_call', toolCall: { function: { name: 'probe', arguments: '{"value":"Tokyo"}' } } },
-      ] });
-      expect(turn.generated[1]).toMatchObject({ role: 'tool', parts: [
-        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result.' } } },
-      ] });
+      expect(turn.generated[0]).toMatchObject({
+        role: 'assistant',
+        parts: [
+          { type: 'reasoning', text: ` Reason${' '}`, completeness: 'complete' },
+          { type: 'tool_call', toolCall: { function: { name: 'probe', arguments: '{"value":"Tokyo"}' } } },
+        ],
+      });
+      expect(turn.generated[1]).toMatchObject({
+        role: 'tool',
+        parts: [
+          { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result.' } } },
+        ],
+      });
       expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [] });
       expect(executions).toEqual([{ value: 'Tokyo' }]);
       expect(inputs).toHaveLength(2);
@@ -2107,18 +2409,23 @@ Use the synthetic tool.<turn|>
     const executions: unknown[] = [];
     const nativeInputs: ReturnType<typeof captureGemmaNativeInput>[] = [];
     let nativeCalls = 0;
-    const harness = await createGemmaSyntheticProtocolRuntime({ generate: async context => {
-      nativeCalls++;
-      nativeInputs.push(captureGemmaNativeInput(context));
-      if (nativeCalls === 3) throw new Error('Rebuilt tool-history input observed; no synthetic continuation output');
-      if (nativeCalls > 3) throw new Error('Unexpected synthetic generation');
-      return emitSyntheticGemmaProtocol({ context, text: nativeCalls === 1
-        ? `\
+    const harness = await createGemmaSyntheticProtocolRuntime({
+      generate: async context => {
+        nativeCalls++;
+        nativeInputs.push(captureGemmaNativeInput(context));
+        if (nativeCalls === 3) throw new Error('Rebuilt tool-history input observed; no synthetic continuation output');
+        if (nativeCalls > 3) throw new Error('Unexpected synthetic generation');
+        return emitSyntheticGemmaProtocol({
+          context,
+          text: nativeCalls === 1
+            ? `\
 <|channel>thought
 Use the quoted value.
 <channel|><|tool_call>call:probe{value:<|"|><bos><pad><|"|>}<tool_call|><|tool_response>`
-        : 'Synthetic completion.<turn|>' });
-    } });
+            : 'Synthetic completion.<turn|>',
+        });
+      },
+    });
     const tools: Tool[] = [{
       name: 'probe',
       description: 'Preserve native quoted strings.',
@@ -2137,8 +2444,15 @@ Use the quoted value.
         request: {
           model: 'onnx-community/gemma-4-E2B-it-ONNX',
           messages: [user],
-          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
-            frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: undefined },
+          },
           readBinaryObject: undefined,
           debug: undefined,
         },
@@ -2148,16 +2462,25 @@ Use the quoted value.
       });
       expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
       expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
-      expect(turn.generated[0]).toMatchObject({ role: 'assistant', parts: [
-        { type: 'reasoning', text: 'Use the quoted value.', completeness: 'complete' },
-        { type: 'tool_call', toolCall: { function: { name: 'probe', arguments: '{"value":"<bos><pad>"}' } } },
-      ] });
-      expect(turn.generated[1]).toMatchObject({ role: 'tool', parts: [
-        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result.' } } },
-      ] });
-      expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [
-        { type: 'text', text: 'Synthetic completion.', completeness: 'complete' },
-      ] });
+      expect(turn.generated[0]).toMatchObject({
+        role: 'assistant',
+        parts: [
+          { type: 'reasoning', text: 'Use the quoted value.', completeness: 'complete' },
+          { type: 'tool_call', toolCall: { function: { name: 'probe', arguments: '{"value":"<bos><pad>"}' } } },
+        ],
+      });
+      expect(turn.generated[1]).toMatchObject({
+        role: 'tool',
+        parts: [
+          { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result.' } } },
+        ],
+      });
+      expect(turn.generated[2]).toMatchObject({
+        role: 'assistant',
+        parts: [
+          { type: 'text', text: 'Synthetic completion.', completeness: 'complete' },
+        ],
+      });
       expect(executions).toEqual([{ value: '<bos><pad>' }]);
       const history = [
         user,
@@ -2175,8 +2498,15 @@ Use the quoted value.
           model: 'onnx-community/gemma-4-E2B-it-ONNX',
           messages: history,
           tools: publicTools,
-          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined,
-            frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 128,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: undefined },
+          },
           signal: undefined,
           readBinaryObject: undefined,
           debug: undefined,
@@ -2195,6 +2525,7 @@ Use the quoted value.
       await closeProviderReplayCaptures({ captures: [rebuiltCapture], close: () => harness.close() });
     }
   }, 30_000);
+
   it.each([
     { name: 'first real pixel', index: 0 },
     { name: 'last real pixel', index: 2304 * 768 - 1 },
@@ -2207,7 +2538,10 @@ Use the quoted value.
     const actual = expected.slice();
     actual[index] = 2;
     expect(findGemmaPixelMismatch({ actual, expected })).toEqual({
-      kind: 'value', index, actual: 2, expected: expected[index],
+      kind: 'value',
+      index,
+      actual: 2,
+      expected: expected[index],
     });
   });
 
@@ -2236,17 +2570,23 @@ describe('Gemma4 E2B Provider / images', () => {
     // The legacy fixture name said "transparent", but its actual pixel is opaque black.
     {
       const control = await createGemmaImageInputControl({
-        imageUrl, expectedRgba: Uint8ClampedArray.of(0, 0, 0, 255), expectedPixels: new Float32Array(2520 * 768),
+        imageUrl,
+        expectedRgba: Uint8ClampedArray.of(0, 0, 0, 255),
+        expectedPixels: new Float32Array(2520 * 768),
       });
       try {
         capture = captureProviderChat({
           provider: control.harness.provider,
           request: {
             model: "onnx-community/gemma-4-E2B-it-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
-              { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
-            ] }],
+            messages: [{
+              id: toMessageId({ raw: 'message_0' }),
+              role: 'user',
+              parts: [
+                { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+                { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+              ],
+            }],
             tools: [],
             parameters: {
               temperature: 0,
@@ -2259,7 +2599,9 @@ describe('Gemma4 E2B Provider / images', () => {
                 effort: undefined,
               },
             },
-            signal: undefined, readBinaryObject: undefined, debug: undefined,
+            signal: undefined,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -2276,6 +2618,7 @@ describe('Gemma4 E2B Provider / images', () => {
       }
     }
   }, 30_000);
+
   it('changes every real pixel for a synthetic white image while retaining zero padding and the same geometry', async () => {
     const captures: ProviderChatCapture[] = [];
     let capture: ProviderChatCapture | undefined;
@@ -2286,19 +2629,27 @@ describe('Gemma4 E2B Provider / images', () => {
     {
       const control = await createGemmaImageInputControl({
         imageUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
-        expectedRgba: Uint8ClampedArray.of(255, 255, 255, 255), expectedPixels,
+        expectedRgba: Uint8ClampedArray.of(255, 255, 255, 255),
+        expectedPixels,
       });
       try {
         capture = captureProviderChat({
           provider: control.harness.provider,
           request: {
             model: "onnx-community/gemma-4-E2B-it-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
-              { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-              { type: 'attachment', attachment: createReplayImageAttachment({
-                dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
-              }) },
-            ] }],
+            messages: [{
+              id: toMessageId({ raw: 'message_0' }),
+              role: 'user',
+              parts: [
+                { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+                {
+                  type: 'attachment',
+                  attachment: createReplayImageAttachment({
+                    dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
+                  }),
+                },
+              ],
+            }],
             tools: [],
             parameters: {
               temperature: 0,
@@ -2311,7 +2662,9 @@ describe('Gemma4 E2B Provider / images', () => {
                 effort: undefined,
               },
             },
-            signal: undefined, readBinaryObject: undefined, debug: undefined,
+            signal: undefined,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(capture);
@@ -2328,12 +2681,13 @@ describe('Gemma4 E2B Provider / images', () => {
       }
     }
   }, 30_000);
+
   it('images: preserves recorded pixels and processor tensors before delivering recorded callbacks', async () => {
     const platform = createProviderReplayTestImagePlatform();
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
       caseIds: ["image"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: {
         platform,
         allowedDataUrls: ['data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='],
@@ -2358,12 +2712,19 @@ describe('Gemma4 E2B Provider / images', () => {
         provider: replay.provider,
         request: {
           model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [
-            { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-            { type: 'attachment', attachment: createReplayImageAttachment({
-              dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-            }) },
-          ] }],
+          messages: [{
+            id: toMessageId({ raw: 'message_0' }),
+            role: 'user',
+            parts: [
+              { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+              {
+                type: 'attachment',
+                attachment: createReplayImageAttachment({
+                  dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+                }),
+              },
+            ],
+          }],
           tools: [],
           parameters: parameters,
           signal: signal,
@@ -2395,37 +2756,83 @@ const gemma4FullStructuredParts = {
     { callOrdinal: 15, terminal: { kind: 'stream-end' } },
   ],
   requests: [
-    { scenario: 'first-turn', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: 'Please provide the **context** or **purpose** of the "template probe user', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
-    { scenario: 'continuity', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: 'Please provide the **previous part of the conversation** or the **topic** you', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    {
+      scenario: 'first-turn',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'Please provide the **context** or **purpose** of the "template probe user', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
+    {
+      scenario: 'continuity',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'Please provide the **previous part of the conversation** or the **topic** you', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
     ...(['independent-next-input', 'system-user', 'supplied-history', 'reasoning-none'] as const).map(scenario => ({
-      scenario, settlement: 'fulfilled' as const, events: [{ kind: 'assistant' as const, parts: [
-        { type: 'text' as const, text: 'Please', completeness: 'partial' as const },
-      ], terminal: { type: 'interrupted' as const, reason: 'unknown' as const } }],
+      scenario,
+      settlement: 'fulfilled' as const,
+      events: [{
+        kind: 'assistant' as const,
+        parts: [
+          { type: 'text' as const, text: 'Please', completeness: 'partial' as const },
+        ],
+        terminal: { type: 'interrupted' as const, reason: 'unknown' as const },
+      }],
     })),
     ...(['reasoning-low', 'reasoning-medium', 'reasoning-high'] as const).map(scenario => ({
-      scenario, settlement: 'fulfilled' as const, events: [{ kind: 'assistant' as const, parts: [], terminal: { type: 'interrupted' as const, reason: 'unknown' as const } }],
+      scenario,
+      settlement: 'fulfilled' as const,
+      events: [{ kind: 'assistant' as const, parts: [], terminal: { type: 'interrupted' as const, reason: 'unknown' as const } }],
     })),
     ...(['natural-tool-minimal', 'natural-tool-representative'] as const).map(scenario => ({
-      scenario, settlement: 'fulfilled' as const, events: [
+      scenario,
+      settlement: 'fulfilled' as const,
+      events: [
         { kind: 'assistant' as const, parts: [{ type: 'tool_call' as const, name: 'lookup_weather', arguments: '{"city":"Tokyo"}' }], terminal: { type: 'none' as const } },
         { kind: 'tool-success' as const, call: 1, content: '{"temperatureC":20,"condition":"clear"}' },
         { kind: 'assistant' as const, parts: [{ type: 'text' as const, text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' as const }], terminal: { type: 'finished' as const, next: 'user' as const } },
       ],
     })),
-    { scenario: 'structured-tool-history', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' },
-    ], terminal: { type: 'finished', next: 'user' } }] },
-    { scenario: 'image', settlement: 'fulfilled', events: [{ kind: 'assistant', parts: [
-      { type: 'text', text: 'The', completeness: 'partial' },
-    ], terminal: { type: 'interrupted', reason: 'unknown' } }] },
+    {
+      scenario: 'structured-tool-history',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' },
+        ],
+        terminal: { type: 'finished', next: 'user' },
+      }],
+    },
+    {
+      scenario: 'image',
+      settlement: 'fulfilled',
+      events: [{
+        kind: 'assistant',
+        parts: [
+          { type: 'text', text: 'The', completeness: 'partial' },
+        ],
+        terminal: { type: 'interrupted', reason: 'unknown' },
+      }],
+    },
   ],
-  legacyInputProjections: [{ scenario: 'continuity', assistant: {
-    role: 'assistant', content: 'Please provide the **context** or **purpose** of the "template probe user',
-  } }],
+  legacyInputProjections: [{
+    scenario: 'continuity',
+    assistant: {
+      role: 'assistant',
+      content: 'Please provide the **context** or **purpose** of the "template probe user',
+    },
+  }],
 } satisfies StructuredPartsReplayContract;
 
 describe('Gemma4 E2B Provider / sequences', () => {
@@ -2437,7 +2844,10 @@ describe('Gemma4 E2B Provider / sequences', () => {
     expect(continuity.identity.investigationRunId).toBe('e5891b08-6053-4092-87e5-47038836e431');
     expect(continuity.identity).not.toEqual(budgetContinuity.identity);
     expect(continuity.scenario.boundary).toEqual({
-      kind: 'recorded-ending', lengthRelation: 'below-requested-budget', lastTokenId: 106, stopCause: 'not-recorded',
+      kind: 'recorded-ending',
+      lengthRelation: 'below-requested-budget',
+      lastTokenId: 106,
+      stopCause: 'not-recorded',
     });
     expect(continuity.modelReplay.generatedTokenIds).toHaveLength(12);
     expect(continuity.scenario.messages).toEqual([
@@ -2471,7 +2881,11 @@ describe('Gemma4 E2B Provider / sequences', () => {
       },
     ];
     const harness = await createProviderReplayTestRuntime({
-      modelId: 'onnx-community/gemma-4-E2B-it-ONNX', expectedRevision: generationEvidence.identity.resolvedRevision, cacheRevision: generationEvidence.identity.resolvedRevision, metadataCache: "all-fixture", imagePlatform: undefined,
+      modelId: 'onnx-community/gemma-4-E2B-it-ONNX',
+      expectedRevision: generationEvidence.identity.resolvedRevision,
+      cacheRevision: generationEvidence.identity.resolvedRevision,
+      metadataCache: "all-fixture",
+      imagePlatform: undefined,
       artifacts: [
         'onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data',
         'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
@@ -2500,7 +2914,9 @@ describe('Gemma4 E2B Provider / sequences', () => {
               effort: undefined,
             },
           },
-          signal: undefined, readBinaryObject: undefined, debug: undefined,
+          signal: undefined,
+          readBinaryObject: undefined,
+          debug: undefined,
         },
       });
       captures.push(firstCapture);
@@ -2534,7 +2950,9 @@ describe('Gemma4 E2B Provider / sequences', () => {
                 effort: undefined,
               },
             },
-            signal: undefined, readBinaryObject: undefined, debug: undefined,
+            signal: undefined,
+            readBinaryObject: undefined,
+            debug: undefined,
           },
         });
         captures.push(secondCapture);
@@ -2578,11 +2996,12 @@ describe('Gemma4 E2B Provider / sequences', () => {
       await closeProviderReplayCaptures({ captures, close: () => harness.close() });
     }
   }, 30_000);
+
   it('sequences: builds continuation from actually delivered first-request settlement', async () => {
     const replay = await createProviderRequestReplay({
       catalog: providerReplayCatalog,
-      caseIds: ["first-turn","continuity"],
-      artifactPaths: ["onnx/audio_encoder_q4f16.onnx","onnx/audio_encoder_q4f16.onnx_data","onnx/decoder_model_merged_q4f16.onnx","onnx/decoder_model_merged_q4f16.onnx_data","onnx/embed_tokens_q4f16.onnx","onnx/embed_tokens_q4f16.onnx_data","onnx/vision_encoder_q4f16.onnx","onnx/vision_encoder_q4f16.onnx_data"],
+      caseIds: ["first-turn", "continuity"],
+      artifactPaths: ["onnx/audio_encoder_q4f16.onnx", "onnx/audio_encoder_q4f16.onnx_data", "onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"],
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
@@ -2655,22 +3074,29 @@ describe('Gemma4 E2B Provider / sequences', () => {
       await closeProviderReplayCaptures({ captures, close: () => replay.close() });
     }
   }, 30_000);
+
   it('preserves thirteen requests including natural tools and actual image processor tensors in one Load', async () => {
     const fullEvidenceJson = assembleProviderSequenceEvidence({ catalog: providerReplayCatalog });
     expect(fullEvidenceJson.modelId).toBe('onnx-community/gemma-4-E2B-it-ONNX');
     expect(fullEvidenceJson.metadataRevision).toBe('9f4bef82ea6e296bc69f8a2f5939f73af81b07a6');
     expect(fullEvidenceJson.observedCacheRevision).toBe('9f4bef82ea6e296bc69f8a2f5939f73af81b07a6');
     const platform = createProviderReplayTestImagePlatform();
-    await verifyCapturedFullReplay({ unavailableOutputs: [], completeResult: undefined,
+    await verifyCapturedFullReplay({
+      unavailableOutputs: [],
+      completeResult: undefined,
       // Current local planning now requires the processor's actual configuration.
       // Keep the historical receipt and all its other fields unchanged.
-      expectedLoadReceipt: { ...fullEvidenceJson.loadReceipt, plannedRequiredPaths: [
-        'config.json', 'onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data',
-        'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
-        'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
-        'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data',
-        'preprocessor_config.json', 'processor_config.json', 'tokenizer.json', 'tokenizer_config.json',
-      ] }, evidence: fullEvidenceJson,
+      expectedLoadReceipt: {
+        ...fullEvidenceJson.loadReceipt,
+        plannedRequiredPaths: [
+          'config.json', 'onnx/audio_encoder_q4f16.onnx', 'onnx/audio_encoder_q4f16.onnx_data',
+          'onnx/decoder_model_merged_q4f16.onnx', 'onnx/decoder_model_merged_q4f16.onnx_data',
+          'onnx/embed_tokens_q4f16.onnx', 'onnx/embed_tokens_q4f16.onnx_data',
+          'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data',
+          'preprocessor_config.json', 'processor_config.json', 'tokenizer.json', 'tokenizer_config.json',
+        ],
+      },
+      evidence: fullEvidenceJson,
       reviewedPublicContract: {
         correctedFinalizedStreams: undefined,
         correctedEvents: [],

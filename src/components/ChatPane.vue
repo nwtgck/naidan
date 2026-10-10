@@ -49,6 +49,8 @@ import LlamaCppBrowserModelLaunchCard from '@/features/llama-cpp-browser/compone
 import { useModelLaunchChat } from '@/features/llama-cpp-browser/composables/useModelLaunchChat';
 import { useMissingLlamaCppBrowserModel } from '@/features/llama-cpp-browser/composables/useMissingLlamaCppBrowserModel';
 import LlamaCppBrowserModelRecovery from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelRecovery.vue';
+import LlamaCppBrowserFirefoxWebGpuWarning from '@/features/llama-cpp-browser/components/LlamaCppBrowserFirefoxWebGpuWarning.vue';
+import { useFirefoxWebGpuWarning } from '@/features/llama-cpp-browser/composables/useFirefoxWebGpuWarning';
 import ChatInput from './ChatInput.vue';
 import ChatApprovalPanel from '@/features/tools/components/chat-approval/ChatApprovalPanel.vue';
 import ChatChoicesPanel from '@/features/tools/components/chat-choices/ChatChoicesPanel.vue';
@@ -95,6 +97,7 @@ import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
 import { hasChatOverrides } from '@/logic/chat-settings-resolver';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/logic/settings-labels';
+import { resolveChatTextSubmissionAction, type ChatTextSubmissionAction } from '@/logic/chat-text-submission';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import { tw } from 'virtual:naidan-tailwind';
 import { useToast } from '@/composables/useToast';
@@ -158,8 +161,13 @@ const allMessages = chatPaneState.allMessages;
 const resolvedSettings = chatPaneState.resolvedSettings;
 const modelLaunch = useModelLaunchChat({ chat, resolved: computed(() => resolvedSettings.value ?? undefined) });
 const modelRecovery = useMissingLlamaCppBrowserModel({
-  chat, resolved: computed(() => resolvedSettings.value ?? undefined),
+  chat,
+  resolved: computed(() => resolvedSettings.value ?? undefined),
   enabled: computed(() => !modelLaunch.visible.value || (chat.value?.root.items.length ?? 0) > 0),
+});
+const firefoxWebGpuWarning = useFirefoxWebGpuWarning({
+  enabled: computed(() => chat.value !== null && activeMessages.value.length === 0
+    && resolvedSettings.value?.endpoint.type === 'llama_cpp_browser'),
 });
 const inheritedSettings = chatPaneState.inheritedSettings;
 const availableChatGroups = chatPaneState.chatGroups;
@@ -277,6 +285,7 @@ const container = ref<HTMLElement | null>(null);
 const {
   settings,
   save: saveSettings,
+  setIsOnboardingDismissed,
   setFakeLmDebugModeStatus,
 } = useSettings();
 const router = useRouter();
@@ -427,143 +436,148 @@ async function exportChat() {
   const resultLabel = await ensureStrings.ChatPane__result();
   const processSequenceLabel = await ensureStrings.ChatPane__process_sequence();
   try {
-    await downloadStream({ filename: `${snapshot.title || 'new_chat'}.txt`, size: undefined, signal: undefined,
-      openStream: async () => createTextExportStream({ produce: async ({ write }) => {
-        await write({ text: `# ${snapshot.title || newChatTitle}\n\n` });
+    await downloadStream({
+      filename: `${snapshot.title || 'new_chat'}.txt`,
+      size: undefined,
+      signal: undefined,
+      openStream: async () => createTextExportStream({
+        produce: async ({ write }) => {
+          await write({ text: `# ${snapshot.title || newChatTitle}\n\n` });
 
-        const processFlowItems = async ({ items }: { items: ChatFlowItem[] }) => {
-          for (const item of items) {
-            const itemType = item.type;
-            switch (itemType) {
-            case 'message': {
+          const processFlowItems = async ({ items }: { items: ChatFlowItem[] }) => {
+            for (const item of items) {
+              const itemType = item.type;
+              switch (itemType) {
+              case 'message': {
               // Generating tool arguments are presentation-only and must not enter exports.
-              if (item.toolCallDrafts?.length) continue;
-              const msg = item.node;
-              const role = (() => {
-                const r = msg.role;
-                switch (r) {
-                case 'user': return userLabel;
-                case 'assistant': return aiLabel;
-                case 'system': return systemLabel;
-                case 'tool': return toolLabel;
-                default: {
-                  const _ex: never = r;
-                  return (_ex as string);
-                }
-                }
-              })();
-              const prefix = (() => {
-                const mode = item.mode;
-                switch (mode) {
-                case 'thinking': return `[${thoughtLabel}]: `;
-                case 'content':
-                case 'tool_calls':
-                case 'waiting':
-                  return '';
-                default: {
-                  const _ex: never = mode;
-                  return _ex;
-                }
-                }
-              })();
-              await write({ text: `## ${role}:\n${prefix}` });
-              await write({ text: item.partContent ?? getDisplayedMessageText({ message: msg }) });
-              await write({ text: '\n\n' });
-              break;
-            }
-            case 'tool_group': {
-              await write({ text: `## ${toolExecutionsLabel}:\n` });
-              for (const tc of item.toolCalls) {
-                let resultStr: string | Blob = '';
-                let errorPrefix = '';
-                const status = tc.result.status;
-                switch (status) {
-                case 'success': {
-                  const contentType = tc.result.content.type;
-                  switch (contentType) {
-                  case 'text':
-                    resultStr = tc.result.content.text;
-                    break;
-                  case 'binary_object': {
-                    const blob = await storageService.getFile({ binaryObjectId: tc.result.content.id });
-                    resultStr = blob ?? binaryObjectMissing;
-                    break;
-                  }
+                if (item.toolCallDrafts?.length) continue;
+                const msg = item.node;
+                const role = (() => {
+                  const r = msg.role;
+                  switch (r) {
+                  case 'user': return userLabel;
+                  case 'assistant': return aiLabel;
+                  case 'system': return systemLabel;
+                  case 'tool': return toolLabel;
                   default: {
-                    const _ex: never = contentType;
-                    resultStr = `[Unknown content type: ${_ex}]`;
+                    const _ex: never = r;
+                    return (_ex as string);
                   }
                   }
-                  break;
-                }
-                case 'error': {
-                  const messageType = tc.result.error.message.type;
-                  switch (messageType) {
-                  case 'text':
-                    resultStr = tc.result.error.message.text;
-                    break;
-                  case 'binary_object': {
-                    const blob = await storageService.getFile({ binaryObjectId: tc.result.error.message.id });
-                    resultStr = blob ?? binaryErrorDetailMissing;
-                    errorPrefix = `Error [${tc.result.error.code}]: `;
-                    break;
-                  }
+                })();
+                const prefix = (() => {
+                  const mode = item.mode;
+                  switch (mode) {
+                  case 'thinking': return `[${thoughtLabel}]: `;
+                  case 'content':
+                  case 'tool_calls':
+                  case 'waiting':
+                    return '';
                   default: {
-                    const _ex: never = messageType;
-                    resultStr = `[Unknown error message type: ${_ex}]`;
+                    const _ex: never = mode;
+                    return _ex;
                   }
                   }
-                  break;
-                }
-                case 'executing':
-                  resultStr = toolStillExecuting;
-                  break;
-                default: {
-                  const _ex: never = status;
-                  resultStr = `[Unknown status: ${_ex}]`;
-                }
-                }
-                await write({ text: `### ${tc.call.function.name}\n${argumentsLabel}: ` });
-                await write({ text: tc.call.function.arguments });
-                await write({ text: `\n${resultLabel}: ${errorPrefix}` });
-                await write({ text: resultStr });
+                })();
+                await write({ text: `## ${role}:\n${prefix}` });
+                await write({ text: item.partContent ?? getDisplayedMessageText({ message: msg }) });
                 await write({ text: '\n\n' });
+                break;
               }
-              break;
-            }
-            case 'process_sequence': {
-              const summaryParts: string[] = [];
-              if (item.stats.thinkingSteps > 0) {
-                summaryParts.push(await ensureStrings.AssistantProcessSequence__thinking_steps({ count: item.stats.thinkingSteps }));
-              }
-              if (item.stats.toolCallCount > 0) {
-                summaryParts.push(await ensureStrings.AssistantProcessSequence__tool_executions({ count: item.stats.toolCallCount }));
-              }
-              if (item.stats.toolNames.length > 0) {
-                const displayedToolNames = item.stats.toolNames.slice(0, 2);
-                let toolSummary = await ensureStrings.AssistantProcessSequence__used_tools({ toolNames: displayedToolNames.join(', ') });
-                if (item.stats.toolNames.length > displayedToolNames.length) {
-                  toolSummary += ` ${await ensureStrings.AssistantProcessSequence__and_more({ count: item.stats.toolNames.length - displayedToolNames.length })}`;
+              case 'tool_group': {
+                await write({ text: `## ${toolExecutionsLabel}:\n` });
+                for (const tc of item.toolCalls) {
+                  let resultStr: string | Blob = '';
+                  let errorPrefix = '';
+                  const status = tc.result.status;
+                  switch (status) {
+                  case 'success': {
+                    const contentType = tc.result.content.type;
+                    switch (contentType) {
+                    case 'text':
+                      resultStr = tc.result.content.text;
+                      break;
+                    case 'binary_object': {
+                      const blob = await storageService.getFile({ binaryObjectId: tc.result.content.id });
+                      resultStr = blob ?? binaryObjectMissing;
+                      break;
+                    }
+                    default: {
+                      const _ex: never = contentType;
+                      resultStr = `[Unknown content type: ${_ex}]`;
+                    }
+                    }
+                    break;
+                  }
+                  case 'error': {
+                    const messageType = tc.result.error.message.type;
+                    switch (messageType) {
+                    case 'text':
+                      resultStr = tc.result.error.message.text;
+                      break;
+                    case 'binary_object': {
+                      const blob = await storageService.getFile({ binaryObjectId: tc.result.error.message.id });
+                      resultStr = blob ?? binaryErrorDetailMissing;
+                      errorPrefix = `Error [${tc.result.error.code}]: `;
+                      break;
+                    }
+                    default: {
+                      const _ex: never = messageType;
+                      resultStr = `[Unknown error message type: ${_ex}]`;
+                    }
+                    }
+                    break;
+                  }
+                  case 'executing':
+                    resultStr = toolStillExecuting;
+                    break;
+                  default: {
+                    const _ex: never = status;
+                    resultStr = `[Unknown status: ${_ex}]`;
+                  }
+                  }
+                  await write({ text: `### ${tc.call.function.name}\n${argumentsLabel}: ` });
+                  await write({ text: tc.call.function.arguments });
+                  await write({ text: `\n${resultLabel}: ${errorPrefix}` });
+                  await write({ text: resultStr });
+                  await write({ text: '\n\n' });
                 }
-                summaryParts.push(toolSummary);
+                break;
               }
-              const summary = summaryParts.length > 0
-                ? summaryParts.join(' • ')
-                : await ensureStrings.AssistantProcessSequence__process_details();
-              await write({ text: `## ${processSequenceLabel}: ${summary}\n` });
-              await processFlowItems({ items: item.items });
-              break;
+              case 'process_sequence': {
+                const summaryParts: string[] = [];
+                if (item.stats.thinkingSteps > 0) {
+                  summaryParts.push(await ensureStrings.AssistantProcessSequence__thinking_steps({ count: item.stats.thinkingSteps }));
+                }
+                if (item.stats.toolCallCount > 0) {
+                  summaryParts.push(await ensureStrings.AssistantProcessSequence__tool_executions({ count: item.stats.toolCallCount }));
+                }
+                if (item.stats.toolNames.length > 0) {
+                  const displayedToolNames = item.stats.toolNames.slice(0, 2);
+                  let toolSummary = await ensureStrings.AssistantProcessSequence__used_tools({ toolNames: displayedToolNames.join(', ') });
+                  if (item.stats.toolNames.length > displayedToolNames.length) {
+                    toolSummary += ` ${await ensureStrings.AssistantProcessSequence__and_more({ count: item.stats.toolNames.length - displayedToolNames.length })}`;
+                  }
+                  summaryParts.push(toolSummary);
+                }
+                const summary = summaryParts.length > 0
+                  ? summaryParts.join(' • ')
+                  : await ensureStrings.AssistantProcessSequence__process_details();
+                await write({ text: `## ${processSequenceLabel}: ${summary}\n` });
+                await processFlowItems({ items: item.items });
+                break;
+              }
+              default: {
+                const _ex: never = itemType;
+                console.warn(`Unhandled ChatFlowItem type: ${_ex}`);
+              }
+              }
             }
-            default: {
-              const _ex: never = itemType;
-              console.warn(`Unhandled ChatFlowItem type: ${_ex}`);
-            }
-            }
-          }
-        };
+          };
 
-        await processFlowItems({ items: flow });
-      } }),
+          await processFlowItems({ items: flow });
+        },
+      }),
     });
   } catch (error) {
     addToast({ message: error instanceof Error ? error.message : String(error), duration: 5000 });
@@ -601,13 +615,15 @@ async function openChatFileExplorer() {
     naidanSysfsAccessScope: chatAreaNaidanSysfsAccessScope.value,
   });
 
-  openFileExplorer({ options: {
-    kind: 'wesh-mounts',
-    title: await ensureStrings.fileExplorer__files(),
-    rootName: await ensureStrings.fileExplorer__files(),
-    mounts,
-    initialPath: undefined,
-  } });
+  openFileExplorer({
+    options: {
+      kind: 'wesh-mounts',
+      title: await ensureStrings.fileExplorer__files(),
+      rootName: await ensureStrings.fileExplorer__files(),
+      mounts,
+      initialPath: undefined,
+    },
+  });
 }
 
 async function handlePrint(): Promise<void> {
@@ -755,7 +771,9 @@ watch(
 );
 
 // Expose for testing and current chat pane forwarding.
-defineExpose({ scrollToBottom, container,
+defineExpose({
+  scrollToBottom,
+  container,
   ...((__BUILD_MODE_IS_TEST__ && {
     TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
@@ -772,6 +790,7 @@ const canGenerateImage = computed(() => {
     switch (type) {
     case 'ollama':
       return true;
+    case 'naidan_rpc':
     case 'openai':
     case 'transformers_js':
     case 'llama_cpp_browser':
@@ -816,6 +835,7 @@ const isChatSubmissionEnabled = computed(() => {
   }
 
   switch (type) {
+  case 'naidan_rpc':
   case 'openai':
   case 'ollama':
   case 'transformers_js':
@@ -829,6 +849,43 @@ const isChatSubmissionEnabled = computed(() => {
   }
   }
 });
+
+const chatTextSubmissionAction = computed<ChatTextSubmissionAction>(() => {
+  const resolved = resolvedSettings.value;
+  const type = resolvedEndpointType.value;
+  if (resolved === null || type === undefined || !modelLaunch.maySend.value || !modelRecovery.maySend.value) {
+    return 'blocked';
+  }
+  const buildAvailability = getEndpointBuildAvailability({ type });
+  switch (buildAvailability) {
+  case 'unavailable-in-standalone':
+    return 'blocked';
+  case 'available':
+    break;
+  default: {
+    const _ex: never = buildAvailability;
+    throw new Error(`Unhandled endpoint build availability: ${_ex}`);
+  }
+  }
+  if (type === 'browser_provided_lm' && promptApiRuntimeState.value.status !== 'ready') return 'blocked';
+
+  const globalSetupIncomplete = !isConfiguredEndpoint({ endpoint: settings.value.endpoint })
+    || !settings.value.defaultModelId;
+  return resolveChatTextSubmissionAction({
+    endpoint: resolved.endpoint,
+    modelId: resolved.modelId,
+    endpointSource: resolved.sources.endpoint,
+    modelSource: resolved.sources.modelId,
+    globalSetupIncomplete,
+    canSubmit: isChatSubmissionEnabled.value,
+  });
+});
+
+function requestOnboarding(): void {
+  // A dismissed but unfinished global setup can be reopened without consuming
+  // or scheduling the user's chat draft for automatic submission.
+  setIsOnboardingDismissed({ dismissed: false });
+}
 
 const enabledToolNames = computed(() => {
   const chatValue = chat.value;
@@ -1680,8 +1737,9 @@ watch(
             <template v-if="modelLaunch.visible.value" #primary>
               <LlamaCppBrowserModelLaunchCard :state="modelLaunch" />
             </template>
-            <template v-if="modelRecovery.visible.value" #notice>
-              <LlamaCppBrowserModelRecovery :state="modelRecovery" />
+            <template v-if="firefoxWebGpuWarning.visible.value || modelRecovery.visible.value" #notice>
+              <LlamaCppBrowserFirefoxWebGpuWarning v-if="firefoxWebGpuWarning.visible.value" />
+              <LlamaCppBrowserModelRecovery v-if="modelRecovery.visible.value" :state="modelRecovery" />
             </template>
           </WelcomeScreen>
         </template>
@@ -1740,6 +1798,8 @@ watch(
       :above-input-visibility="activeApprovalRequest !== undefined || activeChoiceRequest !== undefined ? 'visible' : 'hidden'"
       :is-streaming="isChatStreaming"
       :is-submission-enabled="isChatSubmissionEnabled"
+      :text-submission-action="chatTextSubmissionAction"
+      @request-onboarding="requestOnboarding"
       :can-generate-image="canGenerateImage"
       :has-image-model="hasImageModel"
       :available-image-models="availableImageModels"

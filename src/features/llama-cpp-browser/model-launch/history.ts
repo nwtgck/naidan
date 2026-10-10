@@ -19,7 +19,8 @@ export function reserveModelLaunchHistory({ history, location, fallback }: { fal
   const state = history.state;
   const previous = reservationSchema.safeParse(state[modelLaunchHistoryKey]);
   if (previous.success && previous.data.location === location) return {
-    chatId: toChatId({ raw: previous.data.chatId }), newChatGroupId: toChatGroupId({ raw: previous.data.chatGroupId }),
+    chatId: toChatId({ raw: previous.data.chatId }),
+    newChatGroupId: toChatGroupId({ raw: previous.data.chatGroupId }),
   };
   const chatId = fallback?.chatId ?? generateId<ChatId>();
   const newChatGroupId = fallback?.newChatGroupId ?? generateId<ChatGroupId>();
@@ -27,6 +28,7 @@ export function reserveModelLaunchHistory({ history, location, fallback }: { fal
   history.replace(history.location, { ...state, [modelLaunchHistoryKey]: reservation });
   return { chatId, newChatGroupId };
 }
+
 const viewSchema = z.object({
   version: z.literal(1),
   chatId: z.string().regex(/^[A-Za-z0-9_-]+$/),
@@ -41,6 +43,7 @@ export type ModelLaunchView = z.infer<typeof viewSchema>;
 export function modelLaunchViewState({ chatId, input, modelId, revision }: { chatId: ChatId, input: string, modelId: string, revision: string }): ModelLaunchView {
   return viewSchema.parse({ version: 1, chatId: idToRaw({ id: chatId }), input, modelId, revision });
 }
+
 export function readModelLaunchView({ state, chatId, modelId }: { state: unknown, chatId: ChatId, modelId: string | undefined }): ModelLaunchView | undefined {
   const parsed = viewSchema.safeParse(state);
   if (!parsed.success || parsed.data.chatId !== idToRaw({ id: chatId }) || parsed.data.modelId !== modelId) return undefined;
@@ -54,5 +57,6 @@ export function readModelLaunchView({ state, chatId, modelId }: { state: unknown
     return undefined;
   }
 }
+
 export const TEST_ONLY = {
 };

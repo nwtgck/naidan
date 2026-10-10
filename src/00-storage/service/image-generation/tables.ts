@@ -1,7 +1,7 @@
 import { exactObject } from '@/utils/exact-object';
 import {
   ExperimentalImageGenerationSessionSchemaDto, ExperimentalImageGenerationSessionIndexSchemaDto,
-  ExperimentalImageGenerationRunSchemaDto, ExperimentalImageGenerationRunIndexSchemaDto,
+  ExperimentalImageGenerationRunSchemaDto, ExperimentalImageGenerationRunIndexSchemaDto, unavailableRunRpcRecord,
   ExperimentalImageGenerationAssetSchemaDto, ExperimentalImageGenerationAssetIndexSchemaDto,
   ExperimentalImageGenerationAssetAnnotationsSchemaDto, ExperimentalImageGenerationAnnotationsIndexSchemaDto,
   type ExperimentalImageGenerationRunDto, type ExperimentalImageGenerationRunSummaryDto,
@@ -14,26 +14,60 @@ function assertSessionIdentity({ actual, expected }: { actual: string, expected:
 }
 
 function summarizeRun({ record }: { record: ExperimentalImageGenerationRunDto }): ExperimentalImageGenerationRunSummaryDto {
-  const { id, sessionId, revision, createdAt, execution, request, seeds, sources: _sources, ...unhandled } = record;
+  const { id, sessionId, revision, createdAt, execution, request, seeds, sources: _sources, acceptedOrder: _acceptedOrder, ...unhandled } = record;
   unhandled satisfies Record<PropertyKey, never>;
-  return exactObject<ExperimentalImageGenerationRunSummaryDto>()({ id, sessionId, revision, createdAt, execution,
+  return exactObject<ExperimentalImageGenerationRunSummaryDto>()({
+    id,
+    sessionId,
+    revision,
+    createdAt,
+    execution,
     prompt: request.parameters.prompt,
-    modelName: request.models.find(model => model.slot === 'model' || model.slot === 'diffusion')?.file.name ?? '',
+    modelName: (() => {
+      const runtime = request.runtime;
+      switch (runtime.profile) {
+      case 'naidan-rpc': return runtime.modelSelection?.primary.file.location.path ?? runtime.label;
+      case 'webgpu-wasm32-asyncify': case 'webgpu-wasm32-jspi': case 'webgpu-wasm64-jspi': return request.models.find(model => model.slot === 'model' || model.slot === 'diffusion')?.file.name ?? '';
+      default: { const exhaustive: never = runtime; throw new Error(String(exhaustive)); }
+      }
+    })(),
     requestedCount: seeds.length,
   });
 }
+
 function summarizeAsset({ record }: { record: ExperimentalImageGenerationAssetDto }): ExperimentalImageGenerationAssetSummaryDto {
   const { result, previews, ...metadata } = record;
-  const { binaryObjectId, width, height, modelVersion: _modelVersion, uniformOutput: _uniformOutput, elapsedMs: _elapsedMs, ...unhandled } = result;
+  const { binaryObjectId, width, height, confirmation, modelVersion: _modelVersion, uniformOutput: _uniformOutput, elapsedMs: _elapsedMs, ...unhandled } = result;
   unhandled satisfies Record<PropertyKey, never>;
-  return exactObject<ExperimentalImageGenerationAssetSummaryDto>()({ ...metadata, binaryObjectId, width, height, previewCount: previews.length });
+  return exactObject<ExperimentalImageGenerationAssetSummaryDto>()({
+    ...metadata,
+    ...(() => {
+      switch (confirmation) {
+      case 'unconfirmed': return { confirmation };
+      case 'confirmed': case undefined: return {};
+      default: { const exhaustive: never = confirmation; throw new Error(String(exhaustive)); }
+      }
+    })(),
+    binaryObjectId,
+    width,
+    height,
+    previewCount: previews.length,
+  });
 }
 
 export async function imageGenerationSessionTable({ directory, create }: { directory: FileSystemDirectoryHandle, create: boolean }) {
   const sessions = await imageGenerationDirectory({ parent: directory, name: 'sessions', create });
-  return createImageGenerationTable({ directory: sessions, layout: 'session-directories', recordSchema: ExperimentalImageGenerationSessionSchemaDto, indexSchema: ExperimentalImageGenerationSessionIndexSchemaDto,
-    recordId: ({ record }) => record.id, summaryId: ({ summary }) => summary.id, summarize: ({ record }) => ({ ...record }),
-    validateRecord() {}, validateSummary() {},
+  return createImageGenerationTable({
+    directory: sessions,
+    layout: 'session-directories',
+    recordSchema: ExperimentalImageGenerationSessionSchemaDto,
+    indexSchema: ExperimentalImageGenerationSessionIndexSchemaDto,
+    recordId: ({ record }) => record.id,
+    summaryId: ({ summary }) => summary.id,
+    summarize: ({ record }) => ({ ...record }),
+    validateRecord() {},
+    validateSummary() {},
+    unavailableRecord: undefined,
   });
 }
 
@@ -52,24 +86,51 @@ export async function imageGenerationSessionDirectory({ directory, sessionId }: 
 
 export async function imageGenerationRunTable({ directory, sessionId, create }: { directory: FileSystemDirectoryHandle, sessionId: string, create: boolean }) {
   const records = await imageGenerationDirectory({ parent: directory, name: 'runs', create });
-  return createImageGenerationTable({ directory: records, layout: 'files', recordSchema: ExperimentalImageGenerationRunSchemaDto, indexSchema: ExperimentalImageGenerationRunIndexSchemaDto,
-    recordId: ({ record }) => record.id, summaryId: ({ summary }) => summary.id, summarize: summarizeRun,
+  return createImageGenerationTable({
+    directory: records,
+    layout: 'files',
+    recordSchema: ExperimentalImageGenerationRunSchemaDto,
+    indexSchema: ExperimentalImageGenerationRunIndexSchemaDto,
+    recordId: ({ record }) => record.id,
+    summaryId: ({ summary }) => summary.id,
+    summarize: summarizeRun,
+    unavailableRecord({ raw }) {
+      const value = unavailableRunRpcRecord({ raw });
+      if (value !== undefined) assertSessionIdentity({ actual: value.sessionId, expected: sessionId });
+      return value;
+    },
     validateRecord: ({ record }) => assertSessionIdentity({ actual: record.sessionId, expected: sessionId }),
     validateSummary: ({ summary }) => assertSessionIdentity({ actual: summary.sessionId, expected: sessionId }),
   });
 }
+
 export async function imageGenerationAssetTable({ directory, sessionId, create }: { directory: FileSystemDirectoryHandle, sessionId: string, create: boolean }) {
   const records = await imageGenerationDirectory({ parent: directory, name: 'assets', create });
-  return createImageGenerationTable({ directory: records, layout: 'files', recordSchema: ExperimentalImageGenerationAssetSchemaDto, indexSchema: ExperimentalImageGenerationAssetIndexSchemaDto,
-    recordId: ({ record }) => record.id, summaryId: ({ summary }) => summary.id, summarize: summarizeAsset,
+  return createImageGenerationTable({
+    directory: records,
+    layout: 'files',
+    recordSchema: ExperimentalImageGenerationAssetSchemaDto,
+    indexSchema: ExperimentalImageGenerationAssetIndexSchemaDto,
+    recordId: ({ record }) => record.id,
+    summaryId: ({ summary }) => summary.id,
+    summarize: summarizeAsset,
+    unavailableRecord: undefined,
     validateRecord: ({ record }) => assertSessionIdentity({ actual: record.sessionId, expected: sessionId }),
     validateSummary: ({ summary }) => assertSessionIdentity({ actual: summary.sessionId, expected: sessionId }),
   });
 }
+
 export async function imageGenerationAnnotationsTable({ directory, sessionId, create }: { directory: FileSystemDirectoryHandle, sessionId: string, create: boolean }) {
   const records = await imageGenerationDirectory({ parent: directory, name: 'annotations', create });
-  return createImageGenerationTable({ directory: records, layout: 'files', recordSchema: ExperimentalImageGenerationAssetAnnotationsSchemaDto, indexSchema: ExperimentalImageGenerationAnnotationsIndexSchemaDto,
-    recordId: ({ record }) => record.assetId, summaryId: ({ summary }) => summary.assetId, summarize: ({ record }) => ({ ...record }),
+  return createImageGenerationTable({
+    directory: records,
+    layout: 'files',
+    recordSchema: ExperimentalImageGenerationAssetAnnotationsSchemaDto,
+    indexSchema: ExperimentalImageGenerationAnnotationsIndexSchemaDto,
+    recordId: ({ record }) => record.assetId,
+    summaryId: ({ summary }) => summary.assetId,
+    summarize: ({ record }) => ({ ...record }),
+    unavailableRecord: undefined,
     validateRecord: ({ record }) => assertSessionIdentity({ actual: record.sessionId, expected: sessionId }),
     validateSummary: ({ summary }) => assertSessionIdentity({ actual: summary.sessionId, expected: sessionId }),
   });

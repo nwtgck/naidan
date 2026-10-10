@@ -39,19 +39,27 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
       worker.terminate(); throw error;
     }
     const target: WorkerState = { worker, remote, key, id: String(++nextWorker), closed: false, unsubscribe: [] };
-    target.unsubscribe.push(subscribeWorkerNotifications({ endpoint: worker, schema: imageDiagnosticEnvelopeSchema, listener({ value }) {
-      if (target.closed) return;
-      if (active?.state === target) {
-        const id = value.diagnostic.fields.runId;
-        if (id === undefined || id === active.runId) active.diagnostic({ diagnostic: value.diagnostic });
-      } else if (value.diagnostic.event === 'failed' || (value.diagnostic.event === 'gpu' && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(value.diagnostic.message ?? ''))) retire({ target });
-    } }));
-    target.unsubscribe.push(subscribeWorkerNotifications({ endpoint: worker, schema: previewFrameSchema, listener({ value }) {
-      if (target.closed || active?.state !== target || value.runId !== active.runId || value.revision !== active.revision || active.cancelRequested || !active.enabled || value.mode !== active.mode) return;
-      try {
-        active.preview({ frame: value });
-      } catch { /* UI is observational */ }
-    } }));
+    target.unsubscribe.push(subscribeWorkerNotifications({
+      endpoint: worker,
+      schema: imageDiagnosticEnvelopeSchema,
+      listener({ value }) {
+        if (target.closed) return;
+        if (active?.state === target) {
+          const id = value.diagnostic.fields.runId;
+          if (id === undefined || id === active.runId) active.diagnostic({ diagnostic: value.diagnostic });
+        } else if (value.diagnostic.event === 'failed' || (value.diagnostic.event === 'gpu' && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(value.diagnostic.message ?? ''))) retire({ target });
+      },
+    }));
+    target.unsubscribe.push(subscribeWorkerNotifications({
+      endpoint: worker,
+      schema: previewFrameSchema,
+      listener({ value }) {
+        if (target.closed || active?.state !== target || value.runId !== active.runId || value.revision !== active.revision || active.cancelRequested || !active.enabled || value.mode !== active.mode) return;
+        try {
+          active.preview({ frame: value });
+        } catch { /* UI is observational */ }
+      },
+    }));
     const crash: EventListener = event => {
       if (active?.state === target) active.crash(event);
       else retire({ target });
@@ -115,7 +123,14 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
       }
       const stopped = Promise.withResolvers<never>();
       const gpuFailure = Symbol('image GPU failure');
-      const operation: Active = { state: target, runId: request.runId, revision: 0, cancelRequested: false, mode: request.preview.mode, enabled: request.preview.enabled, reject: ({ error }) => stopped.reject(error),
+      const operation: Active = {
+        state: target,
+        runId: request.runId,
+        revision: 0,
+        cancelRequested: false,
+        mode: request.preview.mode,
+        enabled: request.preview.enabled,
+        reject: ({ error }) => stopped.reject(error),
         diagnostic({ diagnostic }) {
           if (closed) return;
           lastMessage = performance.now();
@@ -166,18 +181,26 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
       const heartbeat = setInterval(() => publish({ diagnostic: { event: 'waiting', stage: lastStage, elapsedMs: performance.now() - began, fields: { workerSilentMs: performance.now() - lastMessage } } }), 5000);
       try {
         if (signal.aborted) abort();
-        const generated = target.remote.generate(request, workerProxy({ value: ({ event }) => {
-          const parsed = progressSchema.safeParse(event);
-          if (parsed.success && !closed && active === operation && !signal.aborted && !disposed) try {
-            onProgress({ event: parsed.data });
-          } catch { /* observational */ }
-        } }));
+        const generated = target.remote.generate(request, workerProxy({
+          value: ({ event }) => {
+            const parsed = progressSchema.safeParse(event);
+            if (parsed.success && !closed && active === operation && !signal.aborted && !disposed) try {
+              onProgress({ event: parsed.data });
+            } catch { /* observational */ }
+          },
+        }));
         // Queue the generate command before callbacks may request a live update.
         // Worker endpoint ordering then preserves even an immediate ON/OFF.
         publish({ diagnostic: { event: 'start', stage: 'worker', elapsedMs: 0, fields: { profile: request.artifact.profile } } });
         switch (request.debug) {
-        case 'on': publish({ diagnostic: { event: 'native', stage: 'worker', elapsedMs: Math.max(0, performance.now() - began),
-          fields: { metric: 'worker-selection', perfVersion: 1, runId: request.runId, reusedWorker: reused, reason: workerReason } } }); break;
+        case 'on': publish({
+          diagnostic: {
+            event: 'native',
+            stage: 'worker',
+            elapsedMs: Math.max(0, performance.now() - began),
+            fields: { metric: 'worker-selection', perfVersion: 1, runId: request.runId, reusedWorker: reused, reason: workerReason },
+          },
+        }); break;
         case 'off': case undefined: break;
         default: { const exhaustive: never = request.debug; throw new Error(String(exhaustive)); }
         }
@@ -195,8 +218,15 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
         retire({ target });
         const cancelled = signal.aborted || disposed || error instanceof DOMException && error.name === 'AbortError';
         try {
-          onDiagnostic?.({ diagnostic: { event: cancelled ? 'cancelled' : 'failed', stage: firstFailureStage ?? lastStage, elapsedMs: performance.now() - began,
-            message: cancelled ? undefined : sanitizeImageLog({ message: error instanceof Error ? error.message : String(error), secrets }), fields: {} } });
+          onDiagnostic?.({
+            diagnostic: {
+              event: cancelled ? 'cancelled' : 'failed',
+              stage: firstFailureStage ?? lastStage,
+              elapsedMs: performance.now() - began,
+              message: cancelled ? undefined : sanitizeImageLog({ message: error instanceof Error ? error.message : String(error), secrets }),
+              fields: {},
+            },
+          });
         } catch { /* observational */ }
         throw error;
       } finally {
@@ -208,8 +238,11 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
       if (!active || disposed || active.state.closed || active.cancelRequested) return;
       active.cancelRequested = true;
       try {
-        postWorkerNotification({ endpoint: active.state.worker, schema: cancelControlSchema,
-          value: { type: 'naidan-image-cancel-v1', runId: active.runId } });
+        postWorkerNotification({
+          endpoint: active.state.worker,
+          schema: cancelControlSchema,
+          value: { type: 'naidan-image-cancel-v1', runId: active.runId },
+        });
       } catch (error) {
         active.reject({ error }); retire({ target: active.state });
       }
@@ -227,5 +260,6 @@ export function createImageClient({ onReleased }: { onReleased?: () => void } = 
     },
   };
 }
+
 export const TEST_ONLY = {
 };

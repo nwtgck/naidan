@@ -101,11 +101,12 @@ const interceptedFetch: typeof self.fetch = async (input, init) => {
   lastMetadataFetchUrl = url;
   return runtimeFetch(input, init);
 };
+
 self.fetch = interceptedFetch;
 env.fetch = interceptedFetch;
 
 const scannerWorker: WorkerServerApi<ITransformersJsScannerWorker> = {
-  async scanModel({ tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }> {
+  async scanModel({ tasks }: { tasks: ScanOptions['tasks'] }): Promise<{ files: ScannedModelFile[] }> {
     const scanStartedAt = performance.now();
     console.log(`[scanner-worker] Starting scan with ${tasks.length} tasks.`);
     capturedUrls.clear();

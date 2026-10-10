@@ -238,7 +238,6 @@ dir/deep/b
 `);
   });
 
-
   it('C-quotes non-ASCII paths unless -z or core.quotePath disables it', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -325,5 +324,4 @@ git ls-files --full-name --stage -z`,
     expect(text.result.exitCode).not.toBe(0);
     expect(text.stderr.text).toBe('fatal: non-UTF-8 index pathname is not supported yet\n');
   });
-
 });

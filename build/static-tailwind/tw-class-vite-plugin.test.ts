@@ -457,9 +457,11 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
         async reloadModule(module: unknown) {
           reloads.push(module);
         },
-        hot: { send(message: unknown) {
-          customMessages.push(message);
-        } },
+        hot: {
+          send(message: unknown) {
+            customMessages.push(message);
+          },
+        },
       },
     };
     const hotUpdate = getHookHandler<[unknown], unknown | Promise<unknown>>({
@@ -533,9 +535,11 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
           },
         },
         async reloadModule() {},
-        hot: { send(message: unknown) {
-          customMessages.push(message);
-        } },
+        hot: {
+          send(message: unknown) {
+            customMessages.push(message);
+          },
+        },
       },
     };
     const hotUpdate = getHookHandler<[unknown], unknown | Promise<unknown>>({
@@ -619,9 +623,11 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
           },
         },
         async reloadModule() {},
-        hot: { send(message: { data?: { moduleIds?: string[] } }) {
-          customMessages.push(message);
-        } },
+        hot: {
+          send(message: { data?: { moduleIds?: string[] } }) {
+            customMessages.push(message);
+          },
+        },
       },
     };
 
@@ -698,7 +704,6 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
     expect(plugin.api.getPlan()?.candidates).not.toContain('p-2');
     expect(plugin.api.getPlan()?.candidates).not.toContain('text-blue-500');
   });
-
 
   it('serializes overlapping HMR replans so an older slow plan cannot overwrite the newest state', async () => {
     const root = createFixture();
@@ -812,6 +817,7 @@ describe('static Tailwind Vite plugin HMR ownership', () => {
     expect(plugin.api.getPlan()?.candidates).toContain('m-4');
     expect(plugin.api.getPlan()?.candidates).not.toContain('p-4');
   });
+
   it('skips the sequential SSR environment invocation after the client refresh', async () => {
     const root = createFixture();
     const { hotUpdate, plugin, sourceRoot } = await createServeHarness({ root });
@@ -1394,7 +1400,6 @@ describe('static Tailwind production bundle integrity', () => {
       ]),
     })).not.toThrow();
   });
-
 
   it('accepts registration modules promoted into the initial graph', () => {
     expect(() => assertCssRegistrationBundleIntegrity({

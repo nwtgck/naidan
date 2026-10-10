@@ -45,7 +45,6 @@ describe('data-deletion logic', () => {
     ]);
   });
 
-
   it('marks unsupported storage APIs as unavailable without removing the checkbox model', () => {
     const opfsOption = DATA_DELETION_OPTIONS.find(option => option.id === 'opfs-naidan-storage');
     expect(opfsOption).toBeDefined();

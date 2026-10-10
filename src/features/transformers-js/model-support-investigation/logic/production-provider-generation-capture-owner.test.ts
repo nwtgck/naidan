@@ -45,8 +45,12 @@ function captureFixture({ runId, workerEpoch, getActiveRequest }: Parameters<Own
     client,
     takeGenerationCapture: vi.fn<() => Promise<GenerationCaptureReadResult>>().mockResolvedValue({ status: 'not-started' }),
     getCaptureLifetime: vi.fn(() => ({
-      runId, workerEpoch, session,
-      issuedCalls: issuedCalls.map(context => ({ ...context })), loadRequests: [], incompleteReasons: [],
+      runId,
+      workerEpoch,
+      session,
+      issuedCalls: issuedCalls.map(context => ({ ...context })),
+      loadRequests: [],
+      incompleteReasons: [],
     })),
   };
 }
@@ -61,9 +65,13 @@ function createOwner({ maximumWorkerEpochs, plan }: { maximumWorkerEpochs: numbe
   const unrecorded = captureFixture({ runId: 'unrecorded', workerEpoch: 1, getActiveRequest: () => undefined }).client;
   const createUnrecordedWorkerClient = vi.fn(() => unrecorded);
   const owner = createProductionProviderGenerationCaptureOwner({
-    runId: 'synthetic-run', modelId: 'fixture/model', plan,
-    traceLimits: { maximumEvents: 100, maximumCharacters: 4096 }, maximumWorkerEpochs,
-    createCaptureClient, createUnrecordedWorkerClient,
+    runId: 'synthetic-run',
+    modelId: 'fixture/model',
+    plan,
+    traceLimits: { maximumEvents: 100, maximumCharacters: 4096 },
+    maximumWorkerEpochs,
+    createCaptureClient,
+    createUnrecordedWorkerClient,
   });
   owners.push(owner);
   return { owner, captures, createCaptureClient, createUnrecordedWorkerClient, unrecorded };
@@ -79,15 +87,23 @@ function retainedNative({ owner }: { owner: ReturnType<typeof createProductionPr
 function nativeResult({ workerEpoch }: { workerEpoch: number }): GenerationCaptureReadResult {
   const context = { runId: 'synthetic-run', workerEpoch, requestId: 'synthetic-run-first-turn', generationCallId: 1 };
   const identity = { ...context, nativeInvocationOrdinal: 1 };
-  return { status: 'captured', capture: {
-    schemaVersion: 1, runId: context.runId, workerEpoch, byteOrder: 'little-endian',
-    limits: { maxCalls: 32, maxInvocationsPerCall: 8, maxEvents: 4096, maxTextBytes: 262144, maxTensorBytes: 16777216, maxTotalTensorBytes: 67108864, maxTokensPerStreamEvent: 65536, maxTotalStreamTokens: 262144, maxTotalStreamTokenBytes: 8388608 },
-    calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
-    events: [
-      { kind: 'inputs', identity, phase: 'native-kwargs', values: [{ name: 'input_ids', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes: Uint8Array.of(5, 6) } }] },
-      { kind: 'chunk', identity, phase: 'strategy-raw', text: 'Synthetic raw capture content.' },
-    ], incompleteReasons: [], unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
-  } };
+  return {
+    status: 'captured',
+    capture: {
+      schemaVersion: 1,
+      runId: context.runId,
+      workerEpoch,
+      byteOrder: 'little-endian',
+      limits: { maxCalls: 32, maxInvocationsPerCall: 8, maxEvents: 4096, maxTextBytes: 262144, maxTensorBytes: 16777216, maxTotalTensorBytes: 67108864, maxTokensPerStreamEvent: 65536, maxTotalStreamTokens: 262144, maxTotalStreamTokenBytes: 8388608 },
+      calls: [{ context, loadIdentity: { status: 'not-observed', reason: 'no-completed-load' }, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'not-attempted' } }] }],
+      events: [
+        { kind: 'inputs', identity, phase: 'native-kwargs', values: [{ name: 'input_ids', snapshot: { status: 'captured', dtype: 'uint8', dims: [2], byteLength: 2, bytes: Uint8Array.of(5, 6) } }] },
+        { kind: 'chunk', identity, phase: 'strategy-raw', text: 'Synthetic raw capture content.' },
+      ],
+      incompleteReasons: [],
+      unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
+    },
+  };
 }
 
 beforeEach(() => {
@@ -266,8 +282,13 @@ describe('Provider native generation collection ownership', () => {
     if (detached.status !== 'detached') throw new Error('Expected native ownership transfer');
     expect(detached.capture.epochs[0]?.collection).toEqual({ status: 'returned', result: raw });
     expect(detached.cutoff).toEqual({
-      format: 'production-provider-native-cutoff-v1', runId: 'synthetic-run', reason: 'normal-completion', phaseAtCutoff: 'finished',
-      maximumWorkerEpochs: 8, unrecordedWorkerCreations: 0, incompleteReasons: [],
+      format: 'production-provider-native-cutoff-v1',
+      runId: 'synthetic-run',
+      reason: 'normal-completion',
+      phaseAtCutoff: 'finished',
+      maximumWorkerEpochs: 8,
+      unrecordedWorkerCreations: 0,
+      incompleteReasons: [],
       epochs: [{ workerEpoch: 1, lifetime: { status: 'observed', session: 'active', issuedCallCount: 1, loadRequestCount: 0 }, collectionStatus: 'returned' }],
     });
     expect(Object.isFrozen(detached.cutoff)).toBe(true);
@@ -393,8 +414,13 @@ describe('Provider native generation collection ownership', () => {
     await expect(owner.collectNative()).rejects.toThrow('requires the Provider script to have stopped');
     expect(createCaptureClient).not.toHaveBeenCalled();
     expect(retainedNative({ owner })).toEqual({
-      format: 'production-provider-native-collection-v1', runId: 'synthetic-run', maximumWorkerEpochs: 8,
-      phase: 'not-requested', unrecordedWorkerCreations: 0, incompleteReasons: [], epochs: [],
+      format: 'production-provider-native-collection-v1',
+      runId: 'synthetic-run',
+      maximumWorkerEpochs: 8,
+      phase: 'not-requested',
+      unrecordedWorkerCreations: 0,
+      incompleteReasons: [],
+      epochs: [],
     });
   });
 
@@ -535,7 +561,9 @@ describe('Provider native generation collection ownership', () => {
     });
     await owner.collectNative();
     expect(retainedNative({ owner }).epochs[0]).toEqual({
-      workerEpoch: 1, lifetime: { status: 'unavailable' }, collection: { status: 'unavailable', reason: 'host-state-unavailable' },
+      workerEpoch: 1,
+      lifetime: { status: 'unavailable' },
+      collection: { status: 'unavailable', reason: 'host-state-unavailable' },
     });
     expect(captures[0]!.takeGenerationCapture).not.toHaveBeenCalled();
   });

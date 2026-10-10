@@ -9,11 +9,13 @@ async function candidate({ tensors, architecture }: { tensors: TensorInfo[], arc
   const inventory = await scanImageRepositories({ signal: undefined, repositories: [{ id: 'user/renamed', name: 'renamed', files: [{ path: file.name, file }] }] });
   expect(inventory.issues).toEqual([]); return inventory.candidates[0]!;
 }
+
 it.each(['txtfusion', 'text_fusion'])('recognizes Krea2 %s with matching image dimensions, never from the marker alone', async name => {
   const tensors = krea2Tensors.map(tensor => ({ ...tensor, name: tensor.name.replace('txtfusion', name) }));
   expect(await candidate({ tensors, architecture: undefined })).toMatchObject({ family: 'krea2', roles: ['diffusion'], variant: 'unknown' });
   expect((await candidate({ tensors: tensors.slice(0, 1), architecture: undefined })).family).toBe('unknown');
 });
+
 it('recognizes the flattened Krea2 GGUF projector only with architecture and image dimensions', async () => {
   expect(await candidate({ tensors: krea2GgufTensors, architecture: 'krea2' })).toMatchObject({ family: 'krea2', roles: ['diffusion'] });
   for (const architecture of [undefined, 'flux']) {
@@ -27,11 +29,13 @@ it('recognizes the flattened Krea2 GGUF projector only with architecture and ima
     expect((await candidate({ tensors, architecture: 'krea2' })).family).toBe('unknown');
   }
 });
+
 it('recognizes ERNIE by its image, text and normalization structures together', async () => {
   expect(await candidate({ tensors: ernieImageTensors, architecture: undefined })).toMatchObject({ family: 'ernie-image', roles: ['diffusion'], variant: 'unknown' });
   const wrong = ernieImageTensors.map(tensor => tensor.name === 'text_proj.weight' ? { ...tensor, shape: [4096, 4096] } : tensor);
   expect((await candidate({ tensors: wrong, architecture: undefined })).family).toBe('unknown');
 });
+
 it('distinguishes Qwen3-VL 4B from same-width Qwen3 and from Qwen3-VL 8B', async () => {
   const requirement = componentRequirements({ family: 'krea2' }).find(item => item.slot === 'lm')!;
   const tensors = qwenTextTensors({ width: 2560, layers: 36 });
@@ -39,6 +43,7 @@ it('distinguishes Qwen3-VL 4B from same-width Qwen3 and from Qwen3-VL 8B', async
   expect(componentMatch({ candidate: await candidate({ tensors, architecture: 'qwen3' }), requirement })).toBe('incompatible');
   expect(componentMatch({ candidate: await candidate({ tensors: qwenTextTensors({ width: 4096, layers: 36 }), architecture: 'qwen3vl' }), requirement })).toBe('incompatible');
 });
+
 it('requires Ministral architecture and size evidence and leaves a stripped unknown encoder unverified', async () => {
   const requirement = componentRequirements({ family: 'ernie-image' }).find(item => item.slot === 'lm')!;
   expect(componentMatch({ candidate: await candidate({ tensors: ministralTextTensors, architecture: 'mistral3' }), requirement })).toBe('matching');

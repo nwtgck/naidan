@@ -4,27 +4,109 @@ import { diagnosticSchema, logDiagnostic, logFailure, logNativeDiagnostic, logOp
 import { errorCode, LlamaCppBrowserError } from './types';
 
 afterEach(() => vi.restoreAllMocks());
+
 describe('private browser diagnostics', () => {
   it('reports a handled dispatch split as information, not a device failure', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const diagnostic = { event: 'native-info', nativeOperation: 'dispatch-split', nativeBackend: 'WebGPU',
-      dispatchAxis: 'x', dispatchCount: 116100, dispatchLimit: 65535, chunkCount: 2 } as const;
+    const diagnostic = {
+      event: 'native-info',
+      nativeOperation: 'dispatch-split',
+      nativeBackend: 'WebGPU',
+      dispatchAxis: 'x',
+      dispatchCount: 116100,
+      dispatchLimit: 65535,
+      chunkCount: 2,
+    } as const;
     logDiagnostic({ diagnostic });
     expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([diagnostic]);
   });
+
+  it.each([
+    { backend: 'WebGPU', value: 4096.5, ending: '' },
+    { backend: 'CPU', value: 0, ending: '\n' },
+    { backend: 'CPU_Mapped', value: 12.25, ending: '\r\n' },
+  ])('logs actual $backend KV allocation without a debug subscription', ({ backend, value, ending }) => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    logNativeDiagnostic({ message: `llama_kv_cache: ${backend.padStart(10)} KV buffer size = ${value.toFixed(2).padStart(8)} MiB${ending}` });
+    expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([
+      { event: 'native-info', nativeMetric: 'kv_buffer_mib', nativeBackend: backend, nativeValue: value },
+    ]);
+  });
+
+  it.each(['off', 'on'] as const)('keeps individual KV allocation attempts visible with debug %s, without duplicating or aggregating retries', debugMode => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const listener = vi.fn();
+    const unsubscribe = subscribeDiagnostics({ debug: debugMode, listener });
+    try {
+      for (const value of [128, 64, 64]) {
+        logNativeDiagnostic({ message: `llama_kv_cache:     WebGPU KV buffer size = ${value.toFixed(2)} MiB` });
+      }
+      const expected = [128, 64, 64].map(nativeValue => ({ event: 'native-info', nativeMetric: 'kv_buffer_mib', nativeBackend: 'WebGPU', nativeValue }));
+      expect(readDiagnostics({ calls: debug.mock.calls })).toEqual(expected);
+      expect(listener.mock.calls).toEqual(expected.map(diagnostic => [{ diagnostic }]));
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it.each([
+    undefined, 128, {},
+    'llama_kv_cache: private device KV buffer size = 128.00 MiB',
+    'llama_kv_cache: /private/model.gguf KV buffer size = 128.00 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = -1.00 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = NaN MiB',
+    'llama_kv_cache: WebGPU KV buffer size = Infinity MiB',
+    'llama_kv_cache: WebGPU KV buffer size = 1e3 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = 128 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = 128.0 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = 128.000 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = 9007199254740992.00 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = 128.00 MB',
+    'llama_kv_cache: WebGPU KV buffer size = 128.00 MiB private prompt',
+    'private llama_kv_cache: WebGPU KV buffer size = 128.00 MiB',
+    'llama_kv_cache: WebGPU KV buffer size = 128.00 MiB' + '\n\n',
+    'llama_kv_cache: WebGPU KV buffer size = 128.00 MiB' + '\nprivate',
+    'llama_kv_cache: WebGPU KV buffer size = 128.00 MiB' + '\r',
+    'llama_kv_cache: WebGPU KV buffer size = 128.00 MiB' + '\u2028',
+    'llama_kv_cache: WebGPU KV buffer size = 128.00 MiB' + '\u2029',
+    'llama_kv_cache:' + ' '.repeat(256) + 'WebGPU KV buffer size = 128.00 MiB',
+    'llama_kv_cache: size = 128.00 MiB (1024 cells, 32 layers, 1/1 seqs), K (f16): 64.00 MiB, V (f16): 64.00 MiB',
+  ])('drops unknown or malformed KV allocation lines: %s', message => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const listener = vi.fn();
+    const unsubscribe = subscribeDiagnostics({ debug: 'off', listener });
+    try {
+      logNativeDiagnostic({ message });
+      expect(debug).not.toHaveBeenCalled();
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it('logs safe technical fields with the common prefix', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logDiagnostic({ diagnostic: { event: 'load-complete', elapsedMs: 42, profile: 'cpu-wasm64' } });
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual({ event: 'load-complete', elapsedMs: 42, profile: 'cpu-wasm64' });
   });
+
   it('forwards cache counts and native state without exposing either token sequence', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const listener = vi.fn();
     const unsubscribe = subscribeDiagnostics({ debug: 'off', listener });
     const diagnostic = {
-      event: 'cache-reuse', reason: 'prefix-mismatch', reusedTokens: 0, evaluatedTokens: 48,
-      tokens: 48, cachedTokens: 357, commonPrefixTokens: 17, cacheComparison: 'token-mismatch',
-      nativeMemoryKind: 'hybrid', nativePositionMin: 0, nativePositionMax: 356, nativeRollbackTokens: 0,
+      event: 'cache-reuse',
+      reason: 'prefix-mismatch',
+      reusedTokens: 0,
+      evaluatedTokens: 48,
+      tokens: 48,
+      cachedTokens: 357,
+      commonPrefixTokens: 17,
+      cacheComparison: 'token-mismatch',
+      nativeMemoryKind: 'hybrid',
+      nativePositionMin: 0,
+      nativePositionMax: 356,
+      nativeRollbackTokens: 0,
     } as const;
     try {
       logDiagnostic({ diagnostic });
@@ -34,6 +116,7 @@ describe('private browser diagnostics', () => {
       unsubscribe();
     }
   });
+
   it('rejects private cache fields and invalid native cache metadata', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const extra = { event: 'cache-reuse' as const, cachedTokens: 2, cachedTokenIds: [65, 66], prompt: 'private prompt' };
@@ -46,6 +129,7 @@ describe('private browser diagnostics', () => {
     logDiagnostic({ diagnostic: { event: 'cache-reuse', cacheComparison: 'private prompt' } });
     expect(debug).not.toHaveBeenCalled();
   });
+
   it('forwards checkpoint cost and effective window without forwarding stored state', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const listener = vi.fn();
@@ -64,12 +148,14 @@ describe('private browser diagnostics', () => {
       unsubscribe();
     }
   });
+
   it('rejects arbitrary diagnostic keys rather than leaking personal data', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const extra = { event: 'failed' as const, prompt: 'private prompt', fileName: 'private.gguf', tokenIds: [1, 2], grammarText: 'private grammar', schema: { description: 'private schema' }, logits: [123] };
     logDiagnostic({ diagnostic: extra });
     expect(debug).not.toHaveBeenCalled();
   });
+
   it.each([
     { error: new TypeError('private prompt'), kind: 'type-error' },
     { error: new WebAssembly.RuntimeError('private native path'), kind: 'wasm-trap' },
@@ -82,11 +168,14 @@ describe('private browser diagnostics', () => {
     const output = JSON.stringify(debug.mock.calls);
     expect(output).not.toContain('private'); expect(output).not.toContain('123456');
   });
+
   it('explains stream failures using fixed text instead of caller messages', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logDiagnostic({ diagnostic: { event: 'failed', stage: 'stream-emit', reason: 'non-monotonic-content' } });
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual({
-      event: 'failed', stage: 'stream-emit', reason: 'non-monotonic-content',
+      event: 'failed',
+      stage: 'stream-emit',
+      reason: 'non-monotonic-content',
       message: 'Failed while delivering parsed output to the response stream. The parser revised content that had already been streamed.',
     });
     debug.mockClear();
@@ -94,12 +183,14 @@ describe('private browser diagnostics', () => {
     logDiagnostic({ diagnostic: untrusted });
     expect(debug).not.toHaveBeenCalled();
   });
+
   it('rejects grammar text passed in place of a diagnostic boolean', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     // @ts-expect-error Exercise the runtime boundary for an invalid known field.
     logDiagnostic({ diagnostic: { event: 'failed', grammar: 'private grammar' } });
     expect(debug).not.toHaveBeenCalled();
   });
+
   it('rejects unknown stage and reason strings', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     // Exercise the runtime boundary even if a caller bypasses its TypeScript type.
@@ -108,6 +199,7 @@ describe('private browser diagnostics', () => {
     logDiagnostic({ diagnostic: extra });
     expect(debug).not.toHaveBeenCalled();
   });
+
   it('does not forward original exception text or stack into errors', () => {
     expect(errorCode({ error: new Error('private-file.gguf: private prompt') })).toBe('runtime-error');
     expect(errorCode({ error: new LlamaCppBrowserError({ code: 'context-full' }) })).toBe('context-full');
@@ -138,6 +230,7 @@ describe('native operation diagnostics', () => {
       acknowledge(); unsubscribeCurrent(); await operation;
     }
   });
+
   it.each([
     { message: 'lcb_clip: bf16-f32 tensors=81 source_bytes=3000000 destination_bytes=6000000', expected: { event: 'native-info', stage: 'projector-load', nativeOperation: 'bf16-f32', nativeEntries: 81, nativeSourceBytes: 3000000, nativeDestinationBytes: 6000000, nativeBackend: 'WebGPU' } },
     { message: 'lcb_clip: bf16-f32 tensors=0 source_bytes=0 destination_bytes=0', expected: { event: 'native-info', stage: 'projector-load', nativeOperation: 'bf16-f32', nativeEntries: 0, nativeSourceBytes: 0, nativeDestinationBytes: 0, nativeBackend: 'WebGPU' } },
@@ -172,6 +265,7 @@ describe('native operation diagnostics', () => {
     }
     expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([expected]);
   });
+
   it.each([
     'private encoding image slice...', 'encoding image slice... private', 'encoding private slice...',
     `\
@@ -195,6 +289,7 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
       unsubscribe();
     }
   });
+
   it('suppresses native technical information outside debug mode', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const unsubscribe = subscribeDiagnostics({ debug: 'off', listener: () => {} });
@@ -206,6 +301,7 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
       unsubscribe();
     }
   });
+
   it('awaits the host checkpoint before entering a potentially non-returning operation', async () => {
     let acknowledge: () => void = () => {}; const delivered = new Promise<void>(resolve => {
       acknowledge = resolve;
@@ -222,16 +318,21 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
       unsubscribe();
     }
   });
+
   it('does not let a failed diagnostic acknowledgement abort inference', async () => {
-    const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: async () => {
-      throw new Error('private transport error');
-    } });
+    const unsubscribe = subscribeDiagnostics({
+      debug: 'on',
+      listener: async () => {
+        throw new Error('private transport error');
+      },
+    });
     try {
       await expect(logOperation({ diagnostic: { event: 'operation-start', stage: 'image-tokenize' } })).resolves.toBeUndefined();
     } finally {
       unsubscribe();
     }
   });
+
   it('keeps only known native failure categories and discards all stderr text', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     logNativeDiagnostic({ message: 'private prompt, model.gguf, image bytes' });
@@ -247,7 +348,6 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
     expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
   });
 });
-
 
 describe('projector diagnostic boundaries', () => {
   it.each([
@@ -281,8 +381,16 @@ describe('projector diagnostic boundaries', () => {
 
 describe('bounded progress delivery diagnostics', () => {
   it('allows only bounded aggregate counts, never progress histories or user data', () => {
-    const delivery = { received: 10000, sent: 2, settled: 2, coalesced: 9998,
-      discarded: 0, callbackFailures: 0, peakInFlight: 1, peakPending: 1 };
+    const delivery = {
+      received: 10000,
+      sent: 2,
+      settled: 2,
+      coalesced: 9998,
+      discarded: 0,
+      callbackFailures: 0,
+      peakInFlight: 1,
+      peakPending: 1,
+    };
     const report = { event: 'generation-progress' as const, progressDelivery: delivery };
     expect(diagnosticSchema.safeParse(report).success).toBe(true);
     for (const extra of [{ text: 'private' }, { tokens: [1] }, { history: [1, 2] },
@@ -292,16 +400,29 @@ describe('bounded progress delivery diagnostics', () => {
   });
 });
 
-
 describe('bounded model read diagnostics', () => {
-  const fileReads = { target: 'model' as const, mode: 'read-ahead' as const, requests: 1024, sourceCalls: 17,
-    sourceBytes: 1048576, deliveredBytes: 1048576, directReads: 1, fills: 16, hits: 1007, hitBytes: 1031168,
-    peakBufferBytes: 65536, allocationFallbacks: 0, sourceReadMs: 12 };
+  const fileReads = {
+    target: 'model' as const,
+    mode: 'read-ahead' as const,
+    requests: 1024,
+    sourceCalls: 17,
+    sourceBytes: 1048576,
+    deliveredBytes: 1048576,
+    directReads: 1,
+    fills: 16,
+    hits: 1007,
+    hitBytes: 1031168,
+    peakBufferBytes: 65536,
+    allocationFallbacks: 0,
+    sourceReadMs: 12,
+  };
+
   it('publishes count-only snapshots for model and projector loads', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     for (const target of ['model', 'projector'] as const) logDiagnostic({ diagnostic: { event: 'file-read-performance', fileReads: { ...fileReads, target } } });
     expect(readDiagnostics({ calls: debug.mock.calls })).toEqual(['model', 'projector'].map(target => ({ event: 'file-read-performance', fileReads: { ...fileReads, target } })));
   });
+
   it.each([
     { peakBufferBytes: 65537 }, { sourceReadMs: NaN }, { sourceReadMs: -1 }, { hits: -1 },
     { allocationFallbacks: 2 }, { fileName: 'private model.gguf' }, { bytes: [1, 2, 3] }, { source: { path: 'private' } },
@@ -310,4 +431,16 @@ describe('bounded model read diagnostics', () => {
     logDiagnostic({ diagnostic: { event: 'file-read-performance', fileReads: { ...fileReads, ...extra } } });
     expect(debug).not.toHaveBeenCalled();
   });
+});
+
+it.each([{ backend: 'CPU', nativeValue: 0 }, { backend: 'WebGPU', nativeValue: 62.81 }])('preserves rounded recurrent-state allocation $nativeValue MiB separately from KV and rejects unknown or suffixed RS lines', ({ backend, nativeValue }) => {
+  const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+  try {
+    logNativeDiagnostic({ message: `llama_memory_recurrent: ${backend.padStart(10)} RS buffer size = ${nativeValue.toFixed(2).padStart(8)} MiB\n` });
+    logNativeDiagnostic({ message: 'llama_memory_recurrent: private-device RS buffer size = 62.81 MiB' });
+    logNativeDiagnostic({ message: 'llama_memory_recurrent: CPU RS buffer size = 62.81 MiB private' });
+    expect(readDiagnostics({ calls: log.mock.calls })).toEqual([{ event: 'native-info', nativeMetric: 'recurrent_buffer_mib', nativeBackend: backend, nativeValue }]);
+  } finally {
+    log.mockRestore();
+  }
 });

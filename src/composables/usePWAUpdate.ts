@@ -1,9 +1,7 @@
 import { computed, shallowRef } from 'vue';
 
-export type PWAUpdateState =
-  | { kind: 'idle' }
-  | { kind: 'preparing'; handler?: () => Promise<void> }
-  | { kind: 'ready'; handler: () => Promise<void> };
+import type { PWAUpdateState } from '@/logic/pwa/update-state';
+export type { PWAUpdateState } from '@/logic/pwa/update-state';
 
 // Availability and the in-flight click are independent. Lifecycle events may
 // replace the action while it runs, without allowing a second concurrent click.
@@ -29,7 +27,11 @@ export function usePWAUpdate() {
       applying.value = false;
     }
   }
-  return { status, canUpdate, update, setUpdateState,
+  return {
+    status,
+    canUpdate,
+    update,
+    setUpdateState,
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
   };
 }

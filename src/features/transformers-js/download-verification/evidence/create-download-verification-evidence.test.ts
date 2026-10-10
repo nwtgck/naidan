@@ -8,11 +8,17 @@ import { productionLoadReceiptSchema } from '@/features/transformers-js/runtime/
 function acceptedReceipt({ revision }: { revision: string | undefined }) {
   const paths = ['config.json', 'onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'];
   return productionLoadReceiptSchema.parse({
-    format: 'production-offline-load-receipt-v1', modelId: 'LiquidAI/LFM2.5-230M-ONNX',
+    format: 'production-offline-load-receipt-v1',
+    modelId: 'LiquidAI/LFM2.5-230M-ONNX',
     loaderRevisionOption: revision === undefined ? { status: 'omitted' } : { status: 'provided', value: revision },
-    autoClass: 'AutoModelForCausalLM', processor: 'tokenizer', candidate: { device: 'webgpu', dtype: 'q4' },
-    plannedRequiredPaths: paths, cacheLookup: { source: 'read-only-opfs-scoped-match', revision: revision ?? 'main', hitPaths: paths },
-    completion: 'model-session-and-tokenizer-processor-ready', resourceHealth: 'healthy-after-close', accessBoundary: 'production-offline-read-only',
+    autoClass: 'AutoModelForCausalLM',
+    processor: 'tokenizer',
+    candidate: { device: 'webgpu', dtype: 'q4' },
+    plannedRequiredPaths: paths,
+    cacheLookup: { source: 'read-only-opfs-scoped-match', revision: revision ?? 'main', hitPaths: paths },
+    completion: 'model-session-and-tokenizer-processor-ready',
+    resourceHealth: 'healthy-after-close',
+    accessBoundary: 'production-offline-read-only',
     limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
   });
 }
@@ -168,7 +174,6 @@ describe('createDownloadVerificationEvidence', () => {
     });
   });
 
-
   it('records observed and failed artifact-request candidates separately in events', async () => {
     const evidence = sampleEvidence();
     const failed = evidence.modelArtifactObservations[2];
@@ -213,16 +218,37 @@ describe('createDownloadVerificationEvidence runtime-complete mode', () => {
     const evidence = sampleEvidence();
     evidence.mode = 'runtime-complete';
     evidence.runtimeCompletion = {
-      schemaVersion: 1, status: 'failed', source: 'cache-reuse-failed',
-      repositoryResolvedRevision: evidence.run.resolvedRevision, cacheRevision: null, loaderRevisionOption: null,
-      selectedCandidate: undefined, cacheReuse: undefined, preparation: undefined, cacheAfter: undefined,
-      cacheInspectionError: undefined, error: { name: 'SyntheticFailure', message: 'No successful Load' },
+      schemaVersion: 1,
+      status: 'failed',
+      source: 'cache-reuse-failed',
+      repositoryResolvedRevision: evidence.run.resolvedRevision,
+      cacheRevision: null,
+      loaderRevisionOption: null,
+      selectedCandidate: undefined,
+      cacheReuse: undefined,
+      preparation: undefined,
+      cacheAfter: undefined,
+      cacheInspectionError: undefined,
+      error: { name: 'SyntheticFailure', message: 'No successful Load' },
       runtimeTiming: {
-        format: 'msi-cache-acceptance-timing-v1', source: 'current-msi-cache-acceptance',
-        runId: evidence.runId, modelId: evidence.run.normalizedModelId, droppedObservations: 0,
-        observations: [{ kind: 'acceptance', version: 1, route: 'revision', revision: evidence.run.resolvedRevision,
-          clockId: '33333333-3333-4333-8333-333333333333', timingStatus: 'measured', hostDurationMs: 23000,
-          loadOutcome: 'failed', cleanupOutcome: 'completed', hostSettlement: 'fulfilled', attemptCount: 'unknown' }],
+        format: 'msi-cache-acceptance-timing-v1',
+        source: 'current-msi-cache-acceptance',
+        runId: evidence.runId,
+        modelId: evidence.run.normalizedModelId,
+        droppedObservations: 0,
+        observations: [{
+          kind: 'acceptance',
+          version: 1,
+          route: 'revision',
+          revision: evidence.run.resolvedRevision,
+          clockId: '33333333-3333-4333-8333-333333333333',
+          timingStatus: 'measured',
+          hostDurationMs: 23000,
+          loadOutcome: 'failed',
+          cleanupOutcome: 'completed',
+          hostSettlement: 'fulfilled',
+          attemptCount: 'unknown',
+        }],
       },
     };
     const { blob } = await createDownloadVerificationEvidence({ evidence });
@@ -233,6 +259,7 @@ describe('createDownloadVerificationEvidence runtime-complete mode', () => {
     evidence.runtimeCompletion.source = 'production-download-preparation';
     await expect(createDownloadVerificationEvidence({ evidence })).rejects.toThrow('timing does not match its investigation owner');
   });
+
   it('exports accepted cache revision, selected candidate, preparation, and post-run cache without model bodies', async () => {
     const evidence = sampleEvidence();
     evidence.mode = 'runtime-complete';

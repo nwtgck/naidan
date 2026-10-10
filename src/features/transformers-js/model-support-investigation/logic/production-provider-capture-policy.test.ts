@@ -38,10 +38,17 @@ function captureFixture({ fill }: { fill: ({ trace }: { trace: Trace }) => void 
     return { runId, requestId, scenario, status: 'settled' as const, notStartedReason: undefined, input, trace: trace.snapshot() };
   });
   return {
-    format: 'production-provider-capture-v2', runId, modelId, plan: policy.plan,
-    run: { status: 'completed' }, lifetime: 'open', abortReason: undefined,
-    disposal: 'not-requested', observation: 'open',
-    events: [{ sequence: 0, kind: 'run-started', activeRequestId: undefined }], requests,
+    format: 'production-provider-capture-v2',
+    runId,
+    modelId,
+    plan: policy.plan,
+    run: { status: 'completed' },
+    lifetime: 'open',
+    abortReason: undefined,
+    disposal: 'not-requested',
+    observation: 'open',
+    events: [{ sequence: 0, kind: 'run-started', activeRequestId: undefined }],
+    requests,
     capabilities: { providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'fixed-public-weather-tool', images: 'fixed-public-image' },
   };
 }
@@ -65,8 +72,10 @@ describe('fixed Provider capture policy', () => {
   it('reserves the full script without changing global ceilings or generation token budgets', () => {
     const policy = createProductionProviderCapturePolicy({ plan: 'full-v2' });
     expect(policy).toEqual({
-      format: 'production-provider-capture-policy-v1', plan: 'full-v2',
-      traceLimits: { maximumEvents: 1024, maximumCharacters: 65536 }, maximumFieldCharacters: 16384,
+      format: 'production-provider-capture-policy-v1',
+      plan: 'full-v2',
+      traceLimits: { maximumEvents: 1024, maximumCharacters: 65536 },
+      maximumFieldCharacters: 16384,
       reservation: { unit: 'json-characters', scenarioCount: 13, maximumCharacters: 33554432, upperBoundCharacters: 24838144 },
     });
     expect(PRODUCTION_PROVIDER_TRACE_LIMITS).toEqual({ maximumEvents: 4096, maximumCharacters: 262144, maximumFieldCharacters: 16384 });
@@ -81,10 +90,16 @@ describe('fixed Provider capture policy', () => {
 
   it('accounts for all encoded v2 rows even when scope leaves some requests unstarted', () => {
     expect(createProductionProviderCapturePolicy({ plan: 'generation-v2' }).reservation).toEqual({
-      unit: 'json-characters', scenarioCount: 13, maximumCharacters: 33554432, upperBoundCharacters: 24838144,
+      unit: 'json-characters',
+      scenarioCount: 13,
+      maximumCharacters: 33554432,
+      upperBoundCharacters: 24838144,
     });
     expect(createProductionProviderCapturePolicy({ plan: 'first-only' }).reservation).toEqual({
-      unit: 'json-characters', scenarioCount: 1, maximumCharacters: 33554432, upperBoundCharacters: 1900544,
+      unit: 'json-characters',
+      scenarioCount: 1,
+      maximumCharacters: 33554432,
+      upperBoundCharacters: 1900544,
     });
   });
 
@@ -99,7 +114,8 @@ describe('fixed Provider capture policy', () => {
 
   it('rejects script growth beyond the fixed scaffold contract', () => {
     expect(() => TEST_ONLY.preflightReservation({
-      scenarios: [...captureScenarios({ plan: 'full-v2' }), 'image'], traceLimits: { maximumEvents: 1024, maximumCharacters: 65536 },
+      scenarios: [...captureScenarios({ plan: 'full-v2' }), 'image'],
+      traceLimits: { maximumEvents: 1024, maximumCharacters: 65536 },
     })).toThrow(/^Provider capture policy exceeds the fixed script contract$/u);
   });
 
@@ -122,12 +138,14 @@ describe('fixed Provider capture policy', () => {
 
   it('fits escaped payloads, duplicated settled events and real continuity input inside the reservation', () => {
     const policy = createProductionProviderCapturePolicy({ plan: 'full-v2' });
-    const capture = captureFixture({ fill: ({ trace }) => {
-      for (let index = 0; index < 4; ++index) trace.callbacks.onChunk({ chunk: '\u0000'.repeat(16384) });
-      for (let index = 4; index < policy.traceLimits.maximumEvents; ++index) {
-        trace.callbacks.onToolResult({ id: toolCallId, result: { status: 'error', code: 'invalid_arguments', message: 'Not retained' } });
-      }
-    } });
+    const capture = captureFixture({
+      fill: ({ trace }) => {
+        for (let index = 0; index < 4; ++index) trace.callbacks.onChunk({ chunk: '\u0000'.repeat(16384) });
+        for (let index = 4; index < policy.traceLimits.maximumEvents; ++index) {
+          trace.callbacks.onToolResult({ id: toolCallId, result: { status: 'error', code: 'invalid_arguments', message: 'Not retained' } });
+        }
+      },
+    });
     const json = encode({ capture });
     expect(json.length).toBe(18007892);
     expect(json.length).toBeLessThanOrEqual(policy.reservation.upperBoundCharacters);

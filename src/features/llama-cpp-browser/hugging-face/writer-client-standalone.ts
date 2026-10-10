@@ -20,7 +20,9 @@ export async function createDownloadWriterClient({ signal }: { signal: AbortSign
     return {
       ...session,
       dispose: ({ beforeRelease }) => disposeStandaloneWorkerSession({
-        session, beforeRelease, cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
+        session,
+        beforeRelease,
+        cleanupTimeoutMs: STANDALONE_WORKER_CLEANUP_TIMEOUT_MS,
       }),
     };
   };
@@ -48,5 +50,6 @@ export async function createDownloadWriterClient({ signal }: { signal: AbortSign
     }
   }
 }
+
 export const TEST_ONLY = {
 };

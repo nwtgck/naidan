@@ -51,8 +51,10 @@ function rememberInvestigationSession({ snapshot }: {
       limits: investigationProviderRetentionLimits,
       retained: measureInvestigationProviderRetention({ runs: new Map(snapshot.runs), nativeEvidence: new Map(snapshot.nativeEvidence) }),
     });
-    createInvestigationProviderRetentionBudget({ limits: investigationProviderRetentionLimits,
-      retained: snapshot.reservedProviderRetention });
+    createInvestigationProviderRetentionBudget({
+      limits: investigationProviderRetentionLimits,
+      retained: snapshot.reservedProviderRetention,
+    });
     break;
   }
   default: { const exhaustive: never = snapshot; throw new Error('Unhandled retained view: ' + exhaustive); }

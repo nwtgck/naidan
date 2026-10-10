@@ -6,7 +6,7 @@ export const historicalRepositoryPaths: Record<string, string> = {
   "lfm2-5-230m": "src/features/transformers-js/replay-models/liquidai--lfm2.5-230m-onnx/download-repository.evidence.json",
   "qwen3-5-2b": "src/features/transformers-js/replay-models/onnx-community--qwen3.5-2b-onnx/download-repository.evidence.json",
   "qwen3-5-4b": "src/features/transformers-js/replay-models/onnx-community--qwen3.5-4b-onnx/download-repository.evidence.json",
-  "smollm2-135m-instruct": "src/features/transformers-js/replay-models/huggingfacetb--smollm2-135m-instruct/download-repository.evidence.json"
+  "smollm2-135m-instruct": "src/features/transformers-js/replay-models/huggingfacetb--smollm2-135m-instruct/download-repository.evidence.json",
 };
 
 export const historicalObservationPaths: Record<string, string> = {
@@ -14,7 +14,7 @@ export const historicalObservationPaths: Record<string, string> = {
   "gpt-oss-20b": "src/features/transformers-js/replay-models/onnx-community--gpt-oss-20b-onnx/model-historical-load.evidence.json",
   "lfm2-5-2-6b": "src/features/transformers-js/replay-models/liquidai--lfm2.5-2.6b-onnx/model-historical-load.evidence.json",
   "qwen3-5-2b": "src/features/transformers-js/replay-models/onnx-community--qwen3.5-2b-onnx/model-historical-load.evidence.json",
-  "smollm2-135m-instruct": "src/features/transformers-js/replay-models/huggingfacetb--smollm2-135m-instruct/model-historical-load.evidence.json"
+  "smollm2-135m-instruct": "src/features/transformers-js/replay-models/huggingfacetb--smollm2-135m-instruct/model-historical-load.evidence.json",
 };
 
 export function historicalRepositoryPath({ name }: { name: string }): string {

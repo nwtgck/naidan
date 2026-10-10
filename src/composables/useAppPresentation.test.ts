@@ -1,4 +1,5 @@
 import { defineComponent, ref, shallowRef } from 'vue';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { StartupState } from '@/logic/startup/types';
 import { TEST_ONLY } from './useAppPresentation';
@@ -28,6 +29,7 @@ describe('app presentation', () => {
       settingsInitialized,
       isOnboardingDismissed,
       modelLaunchBypass: ref(false),
+      onboardingRouteExcluded: ref(false),
     });
   }
 
@@ -86,13 +88,12 @@ describe('app presentation', () => {
   });
 });
 
-
 describe('model launch presentation without onboarding dismissal', () => {
   it('never overlays onboarding on the embedded launcher and still respects startup blocking', () => {
     const bypass = ref(true);
     const startupState = shallowRef<StartupState>({ kind: 'initializing-foundation' });
     const dismissed = ref(false);
-    const presentation = TEST_ONLY.createAppPresentation({ startupState, settingsInitialized: ref(true), isOnboardingDismissed: dismissed, modelLaunchBypass: bypass });
+    const presentation = TEST_ONLY.createAppPresentation({ startupState, settingsInitialized: ref(true), isOnboardingDismissed: dismissed, modelLaunchBypass: bypass, onboardingRouteExcluded: ref(false) });
     expect(presentation.onboardingPresentation.value).toBe('hidden');
     expect(presentation.appInteraction.value).toBe('blocked-by-startup');
     startupState.value = { kind: 'ready', mainApp: MainApp };
@@ -102,5 +103,48 @@ describe('model launch presentation without onboarding dismissal', () => {
     bypass.value = false;
     expect(presentation.onboardingPresentation.value).toBe('visible');
     expect(presentation.appInteraction.value).toBe('blocked-by-onboarding');
+  });
+});
+
+describe('onboarding route exclusion', () => {
+  it('keeps an excluded route unblocked without dismissing onboarding, and reopens it after navigation', () => {
+    const excluded = ref(true);
+    const dismissed = ref(false);
+    const state = shallowRef<StartupState>({ kind: 'ready', mainApp: MainApp });
+    const presentation = TEST_ONLY.createAppPresentation({
+      startupState: state,
+      settingsInitialized: ref(true),
+      isOnboardingDismissed: dismissed,
+      modelLaunchBypass: ref(false),
+      onboardingRouteExcluded: excluded,
+    });
+
+    expect(presentation.onboardingPresentation.value).toBe('hidden');
+    expect(presentation.appInteraction.value).toBe('enabled');
+    expect(dismissed.value).toBe(false);
+
+    excluded.value = false;
+    expect(presentation.onboardingPresentation.value).toBe('visible');
+    expect(presentation.appInteraction.value).toBe('blocked-by-onboarding');
+    expect(dismissed.value).toBe(false);
+  });
+
+  it.each(['/image-generation', '/audio-generation/voices'])('uses the deep link before initial navigation resolves: %s', async path => {
+    const history = createMemoryHistory();
+    history.replace(path);
+    const router = createRouter({
+      history,
+      routes: [
+        { path: '/', component: MainApp },
+        { path: '/image-generation', component: MainApp },
+        { path: '/audio-generation/voices', component: MainApp },
+      ],
+    });
+    const excluded = TEST_ONLY.createOnboardingRouteExcluded({ router });
+    expect(excluded.value).toBe(true);
+    await router.push('/');
+    expect(excluded.value).toBe(false);
+    await router.push(path);
+    expect(excluded.value).toBe(true);
   });
 });

@@ -10,9 +10,11 @@ const props = defineProps<{ scope: 'import' | 'inference', waiting?: boolean, is
 const state = shallowRef<EngineState>(llamaCppBrowserService.getState());
 let unsubscribe: (() => void) | undefined;
 onMounted(() => {
-  unsubscribe = llamaCppBrowserService.subscribe({ listener: ({ state: next }) => {
-    state.value = next;
-  } });
+  unsubscribe = llamaCppBrowserService.subscribe({
+    listener: ({ state: next }) => {
+      state.value = next;
+    },
+  });
 });
 onUnmounted(() => unsubscribe?.());
 const importScope = computed(() => {
@@ -71,7 +73,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       :aria-valuemax="100"
       tw-class="h-1 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-800"
     >
-      <div tw-class="h-full rounded-full bg-purple-500/80 dark:bg-purple-400/80 transition-[width] duration-300 ease-out motion-reduce:transition-none" :style="{ width: `${percentage}%` }"></div>
+      <div tw-class="h-full rounded-full bg-blue-500/80 dark:bg-blue-400/80 transition-[width] duration-300 ease-out motion-reduce:transition-none" :style="{ width: `${percentage}%` }"></div>
     </div>
   </div>
   <!-- Input processing and token waits are not model loading. The same existing

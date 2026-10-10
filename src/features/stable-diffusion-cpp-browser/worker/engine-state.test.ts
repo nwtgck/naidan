@@ -12,11 +12,15 @@ function harness() {
     ['sd_ctx_params_t:n_threads', -1], ['sd_ctx_params_t:backend', 999n], ['sd_ctx_params_t:webgpu_bf16_type', 0],
   ]);
   const core: Parameters<typeof inspectImageEngine>[0]['core'] = {
-    busy: false, module: { HEAPU8: new Uint8Array(65536) },
+    busy: false,
+    module: { HEAPU8: new Uint8Array(65536) },
     api: { sd_ctx_get_runtime_info: vi.fn(async () => 1), sd_ctx_get_memory_info: vi.fn(async () => 1), sd_ctx_get_params: vi.fn(async () => 1) },
-    allocRecord: vi.fn(() => ++next), recordSize: vi.fn(() => 128), free: vi.fn(),
+    allocRecord: vi.fn(() => ++next),
+    recordSize: vi.fn(() => 128),
+    free: vi.fn(),
     getField: vi.fn((record, _pointer, field) => fields.get(record + ':' + field) ?? 0),
-    constant: vi.fn(name => name === 'SD_TYPE_F32' ? 0 : 1), readUtf8: vi.fn(() => 'WebGPU'),
+    constant: vi.fn(name => name === 'SD_TYPE_F32' ? 0 : 1),
+    readUtf8: vi.fn(() => 'WebGPU'),
   };
   const inspect = () => inspectImageEngine({ core, context: 1n, profile: 'webgpu-wasm64-jspi', source: 'a'.repeat(40), modelVersion: 'Loaded model', fileReadCacheBytes: 32 });
   return { core, fields, inspect };
@@ -36,6 +40,7 @@ it('reads idle ABI records, preserves uint64 precision and copies borrowed strin
   expect(h.core.api.sd_ctx_get_memory_info).toHaveBeenCalledWith(1n, 102n, 128n);
   expect(imageEngineInspectionSchema.safeParse(result).success).toBe(true);
 });
+
 it('does no allocation or native call while busy or without the optional getters', async () => {
   const h = harness(); Object.defineProperty(h.core, 'busy', { value: true, configurable: true });
   expect(await h.inspect()).toEqual({ status: 'unavailable', reason: 'busy' });
@@ -43,23 +48,27 @@ it('does no allocation or native call while busy or without the optional getters
   expect(await h.inspect()).toEqual({ status: 'unavailable', reason: 'unsupported' });
   expect(h.core.allocRecord).not.toHaveBeenCalled(); expect(h.core.api.sd_ctx_get_runtime_info).not.toHaveBeenCalled();
 });
+
 it('does not publish uninitialized/refused records and allows a subsequent successful observation', async () => {
   const h = harness(); vi.mocked(h.core.api.sd_ctx_get_runtime_info!).mockResolvedValueOnce(0);
   expect(await h.inspect()).toMatchObject({ status: 'failed', disposition: 'retryable' });
   expect(h.core.getField).not.toHaveBeenCalled(); expect(h.core.api.sd_ctx_get_memory_info).not.toHaveBeenCalled();
   expect(await h.inspect()).toMatchObject({ status: 'ready' });
 });
+
 it('rejects unexpected layouts and inexact numbers without invalidating the native context', async () => {
   const h = harness(); h.fields.set('sd_memory_info_t:version', 2);
   expect(await h.inspect()).toMatchObject({ status: 'failed', disposition: 'retryable' });
   h.fields.set('sd_memory_info_t:version', 1); h.fields.set('sd_memory_info_t:registered_tensor_bytes', Number.MAX_SAFE_INTEGER + 1);
   expect(await h.inspect()).toMatchObject({ status: 'failed', disposition: 'retryable', message: 'Inexact image engine memory value' });
 });
+
 it('does not reenter native free or remaining getters after a trap', async () => {
   const h = harness(); vi.mocked(h.core.api.sd_ctx_get_memory_info!).mockRejectedValue(new WebAssembly.RuntimeError('memory access out of bounds'));
   expect(await h.inspect()).toMatchObject({ status: 'failed', disposition: 'retire-worker' });
   expect(h.core.api.sd_ctx_get_params).not.toHaveBeenCalled(); expect(h.core.free).not.toHaveBeenCalled();
 });
+
 it.each(['bad', '-1', '18446744073709551616', '1'.repeat(500)])('rejects malformed uint64 wire values without throwing from safeParse: %s', value => {
   const snapshot = engineSnapshotFixture(); snapshot.memory.registeredTensorBytes = value;
   expect(imageEngineSnapshotSchema.safeParse(snapshot).success).toBe(false);

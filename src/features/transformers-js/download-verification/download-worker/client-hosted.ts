@@ -61,18 +61,22 @@ export function createTransformersJsDownloadWorkerClient(): TransformersJsDownlo
         }
       }
       try {
-        const rawResult = await session.run({ operation: ({ remote }) => remote.prefetchUrls(
-          urls,
-          // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
-          workerProxy({ value: (info: ProgressInfo) => {
-            if (!accepting || !session.isActive()) return;
-            const parsed = downloadTransferProgressSchema.safeParse(info);
-            if (!parsed.success || !paths.has(parsed.data.file)) return;
-            // A verified file can finish long before a later shard. Reflect its
-            // terminal now; only an identical result notification is redundant.
-            return publishProgress({ info: parsed.data });
-          } }),
-        ) });
+        const rawResult = await session.run({
+          operation: ({ remote }) => remote.prefetchUrls(
+            urls,
+            workerProxy({
+              // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink callback is a positional remote boundary.
+              value: (info: ProgressInfo) => {
+                if (!accepting || !session.isActive()) return;
+                const parsed = downloadTransferProgressSchema.safeParse(info);
+                if (!parsed.success || !paths.has(parsed.data.file)) return;
+                // A verified file can finish long before a later shard. Reflect its
+                // terminal now; only an identical result notification is redundant.
+                return publishProgress({ info: parsed.data });
+              },
+            }),
+          ),
+        });
         const result = parsePrefetchResult({ value: rawResult });
         accepting = false;
         // RPC completion is authoritative; callback ports can still have queued

@@ -23,18 +23,22 @@ const communityProjector = 'mmproj-community-gemma-4-E2B-it-F16.gguf';
 const revision = 'a'.repeat(40);
 const otherRevision = 'b'.repeat(40);
 const officialCatalog: RepositoryCatalog = {
-  repository: official.repository, revision,
+  repository: official.repository,
+  revision,
   ...groupModelFiles({ files: [{ path: qatPath, size: 128 }, { path: qatProjector, size: 96 }] }),
 };
 const communityCatalog: RepositoryCatalog = {
-  repository: community.repository, revision: otherRevision,
-  ...groupModelFiles({ files: [
-    { path: 'gemma-4-E2B-it-Q4_K_M.gguf', size: 144 },
-    { path: 'gemma-4-E2B-it-Q6_K.gguf', size: 160 },
-    { path: 'gemma-4-E2B-it-Q8_0.gguf', size: 192 },
-    { path: 'dflash-gemma-4-E2B-it-Q8_0.gguf', size: 64 },
-    { path: communityProjector, size: 112 },
-  ] }),
+  repository: community.repository,
+  revision: otherRevision,
+  ...groupModelFiles({
+    files: [
+      { path: 'gemma-4-E2B-it-Q4_K_M.gguf', size: 144 },
+      { path: 'gemma-4-E2B-it-Q6_K.gguf', size: 160 },
+      { path: 'gemma-4-E2B-it-Q8_0.gguf', size: 192 },
+      { path: 'dflash-gemma-4-E2B-it-Q8_0.gguf', size: 64 },
+      { path: communityProjector, size: 112 },
+    ],
+  }),
 };
 const localQat: LocalModel = { id: `hf.co/${official.repository}:${encodeURIComponent(qatPath)}`, name: `hf.co/${official.repository}:${qatPath}`, size: 128, importedAt: 1 };
 const localCommunity: LocalModel = { id: `hf.co/${community.repository}:gemma-4-E2B-it-Q4_K_M.gguf`, name: `hf.co/${community.repository}:Q4_K_M`, size: 144, importedAt: 1 };
@@ -44,12 +48,15 @@ function render({ suggestion, models }: { suggestion: ModelSuggestion, models: L
   const wrapper = mount(LlamaCppBrowserModelSuggestion, { props: { suggestion, models, disabled: false, defaultModel: { endpoint: { type: 'llama_cpp_browser' }, modelId: undefined }, defaultActionDisabled: false } });
   wrappers.push(wrapper); return wrapper;
 }
+
 function unrender({ wrapper }: { wrapper: VueWrapper }): void {
   wrapper.unmount(); wrappers.splice(wrappers.indexOf(wrapper), 1);
 }
+
 function selected({ wrapper }: { wrapper: VueWrapper }): string {
   return wrapper.get<HTMLSelectElement>('[data-testid="llama-suggestion-quantization"]').element.value;
 }
+
 async function forceSelectionChange({ wrapper, value }: { wrapper: VueWrapper, value: string }): Promise<void> {
   // Test Utils suppresses trigger() on disabled elements; dispatch directly to
   // exercise the handler's guard against synthetic changes to a frozen intent.
@@ -57,12 +64,14 @@ async function forceSelectionChange({ wrapper, value }: { wrapper: VueWrapper, v
   select.value = value; select.dispatchEvent(new Event('change', { bubbles: true }));
   await flushPromises();
 }
+
 function holdDownloadUntilPaused(): void {
   vi.mocked(downloadRepository).mockImplementationOnce(({ signal }) => new Promise<void>((_resolve, reject) => {
     signal.throwIfAborted();
     signal.addEventListener('abort', () => reject(new DOMException('Paused', 'AbortError')), { once: true });
   }));
 }
+
 beforeEach(async () => {
   vi.resetAllMocks(); queueTest.reset(); metadataTest.reset();
   vi.mocked(installedSelection).mockResolvedValue(undefined);
@@ -74,6 +83,7 @@ beforeEach(async () => {
   });
   await ensureAllStringsForTest({ locale: 'en' });
 });
+
 afterEach(async () => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
   for (const job of getDownloadQueue().jobs.value) getDownloadQueue().cancel({ id: job.id });
@@ -222,6 +232,19 @@ describe('catalog quantization selection', () => {
     expect(wrapper.find('[data-testid="llama-download-job"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="llama-suggestion-download"]').exists()).toBe(true);
     expect(discoverRepository).toHaveBeenCalledOnce();
+  });
+
+  it('uses the public inventory name when a repository lookup returns the canonical Host ID', async () => {
+    const canonical = { ...localQat, id: `host/root/${official.repository}:${qatPath}`, name: `host/root/${official.repository}:${qatPath}` };
+    const available = { ...canonical, name: `host/Models/${official.repository}:${qatPath}` };
+    vi.mocked(installedSelection).mockResolvedValue(canonical);
+    const wrapper = render({ suggestion: gemma, models: [available] });
+    await wrapper.setProps({ destination: { kind: 'host', directoryId: 'root' } });
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-suggestion-details-toggle"]').trigger('click');
+    await wrapper.get('[data-testid="llama-suggestion-check"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="llama-default-model-action"]').trigger('click');
+    expect(wrapper.emitted('selectDefault')).toEqual([[available]]);
   });
 
   it('shows and emits only the exact installed source/quantization, without changing defaults on selection', async () => {

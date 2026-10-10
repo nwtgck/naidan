@@ -120,18 +120,27 @@ describe('wesh cmp', () => {
   });
 
   it('returns 0 for equal files and reports the first differing byte and line', async () => {
-    await writeFile({ name: 'left.txt', data: `\
+    await writeFile({
+      name: 'left.txt',
+      data: `\
 a
 b
-` });
-    await writeFile({ name: 'equal.txt', data: `\
+`,
+    });
+    await writeFile({
+      name: 'equal.txt',
+      data: `\
 a
 b
-` });
-    await writeFile({ name: 'right.txt', data: `\
+`,
+    });
+    await writeFile({
+      name: 'right.txt',
+      data: `\
 a
 c
-` });
+`,
+    });
 
     const equal = await execute({ script: 'cmp left.txt equal.txt' });
     const different = await execute({ script: 'cmp left.txt right.txt' });
@@ -146,14 +155,20 @@ c
   });
 
   it('prints differing byte values with -b', async () => {
-    await writeFile({ name: 'left.txt', data: `\
+    await writeFile({
+      name: 'left.txt',
+      data: `\
 a
 b
-` });
-    await writeFile({ name: 'right.txt', data: `\
+`,
+    });
+    await writeFile({
+      name: 'right.txt',
+      data: `\
 a
 c
-` });
+`,
+    });
 
     const { result, stdout, stderr } = await execute({
       script: 'cmp -b left.txt right.txt',
@@ -491,7 +506,6 @@ c
     expect(result.exitCode).toBe(1);
   });
 
-
   it('stops after at most one prefetched chunk in normal mode', async () => {
     const input = new Uint8Array(128 * 1024).fill(0x00);
     const comparison = new Uint8Array(128 * 1024).fill(0x01);
@@ -606,6 +620,7 @@ c
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
+
   it('pads verbose byte positions from the known comparison span', async () => {
     const left = new Uint8Array(200);
     const right = new Uint8Array(200).fill(1);
@@ -656,6 +671,4 @@ cmp: EOF on short.txt after byte 2, line 1
 `);
     expect(result.exitCode).toBe(1);
   });
-
-
 });

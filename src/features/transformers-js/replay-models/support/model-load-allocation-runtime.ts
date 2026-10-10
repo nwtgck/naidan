@@ -7,16 +7,29 @@ import { createLoadDiagnosticLedger, createLoadDiagnosticOperation } from '@/fea
 
 const count = z.number().int().nonnegative().safe();
 export const modelLoadAllocationEvidenceSchema = z.object({
-  format: z.literal('model-load-allocation-observation-v1'), modelId: z.string(), metadataRevision: z.string(),
+  format: z.literal('model-load-allocation-observation-v1'),
+  modelId: z.string(),
+  metadataRevision: z.string(),
   source: z.literal('selected-browser-load-diagnostics-and-cache-observations'),
   success: z.object({
-    nativeCaptureSha256: z.string().regex(/^[a-f0-9]{64}$/u), cacheRevision: z.string(), wholeFileIdentity: z.literal('not-verified'),
+    nativeCaptureSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    cacheRevision: z.string(),
+    wholeFileIdentity: z.literal('not-verified'),
     candidate: z.object({ device: z.literal('webgpu'), dtype: z.literal('q4f16') }).strict(),
     resources: z.array(z.object({ path: z.string().regex(/^onnx\/[^/]+$/u), bytes: count.positive(), successfulAllocations: z.literal(1) }).strict()).min(1),
-    successfulAllocationBytes: count, returnedReadBufferBytes: count, ortEntry: z.literal('after-all-required-reads'), load: z.literal('fulfilled'), nativeCalls: count,
+    successfulAllocationBytes: count,
+    returnedReadBufferBytes: count,
+    ortEntry: z.literal('after-all-required-reads'),
+    load: z.literal('fulfilled'),
+    nativeCalls: count,
   }).strict(),
-  missingCache: z.object({ nativeCaptureSha256: z.string().regex(/^[a-f0-9]{64}$/u), fileCount: z.literal(0), load: z.literal('rejected-before-candidate'),
-    weightReads: z.literal(0), ortEntries: z.literal(0), modelDownloads: z.literal(0),
+  missingCache: z.object({
+    nativeCaptureSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    fileCount: z.literal(0),
+    load: z.literal('rejected-before-candidate'),
+    weightReads: z.literal(0),
+    ortEntries: z.literal(0),
+    modelDownloads: z.literal(0),
   }).strict(),
   limits: z.string(),
 }).strict();
@@ -31,7 +44,10 @@ export async function createModelLoadAllocationRuntime({ modelId, paths, respons
   const original = raw.runtime.env.customCache;
   const scope = createDownloadedModelCacheScope({ modelId, revision: archive.summary.revision });
   const owned = createRequiredDownloadedResourceOperation({
-    modelId, revision: archive.summary.revision, requiredPaths: paths, workerLocationUrl: 'http://localhost/assets/worker.js',
+    modelId,
+    revision: archive.summary.revision,
+    requiredPaths: paths,
+    workerLocationUrl: 'http://localhost/assets/worker.js',
     modelCache: {
       ...original,
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Third-party customCache callback boundary.
@@ -52,7 +68,8 @@ export async function createModelLoadAllocationRuntime({ modelId, paths, respons
         await matched?.body?.cancel();
         return response({ path });
       },
-    }, cacheOnlyFetch: raw.guardedFetch,
+    },
+    cacheOnlyFetch: raw.guardedFetch,
   });
   raw.runtime.env.customCache = owned.cache;
   raw.runtime.env.fetch = owned.fetch;
@@ -63,7 +80,10 @@ export async function createModelLoadAllocationRuntime({ modelId, paths, respons
   raw.gate.resolve();
   const options: ReplayOptions = { revision: archive.summary.revision, local_files_only: true, progress_callback: () => undefined, device: 'webgpu', dtype: 'q4f16' };
   return {
-    raw, owned, archive, options,
+    raw,
+    owned,
+    archive,
+    options,
     registry: () => raw.runtime.ModelRegistry.get_model_files(modelId, { ...options, config: JSON.parse(new TextDecoder().decode(archive.files.get('config.json'))) }),
     load: () => raw.runtime.AutoModelForCausalLM.from_pretrained(modelId, options),
     diagnostics: () => ledger.snapshot({ expectedLoadCount: 0 }),
@@ -110,9 +130,12 @@ export function trapLargeModelAllocation({ failure }: { failure: RangeError }) {
       return Reflect.construct(target, args, newTarget);
     },
   });
-  return { requests, restore() {
-    globalThis.Uint8Array = original; globalThis.ArrayBuffer = originalBuffer; WebAssembly.Memory = originalMemory;
-  } };
+  return {
+    requests,
+    restore() {
+      globalThis.Uint8Array = original; globalThis.ArrayBuffer = originalBuffer; WebAssembly.Memory = originalMemory;
+    },
+  };
 }
 
 export const TEST_ONLY = {

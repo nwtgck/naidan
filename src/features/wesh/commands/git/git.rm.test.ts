@@ -171,6 +171,7 @@ git rm file.txt`,
     const preserved = await execute({ script: `cat file.txt` });
     expect(preserved.stdout.text).toBe('changed\n');
   });
+
   it('removes wildcard matches without treating the wildcard as a directory operand', async () => {
     const { result: setupResult } = await execute({
       script: `\
@@ -262,5 +263,4 @@ git commit -m initial >/dev/null`,
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe("fatal: not removing '.' recursively without -r\n");
   });
-
 });

@@ -30,26 +30,32 @@ const floatingStyle = computed((): CSSProperties => {
 
   const rect = triggerBounding;
   const margin = 4;
-  const menuWidth = props.width || 192;
+  const menuWidth = Math.max(0, Math.min(props.width || 192, windowWidth.value - 16));
 
   // Horizontal alignment: Align with the right edge, but adjust if it goes off-screen
   let left = rect.right.value - menuWidth;
   if (left < 8) left = 8;
   if (left + menuWidth > windowWidth.value - 8) {
-    left = windowWidth.value - menuWidth - 8;
+    left = Math.max(0, windowWidth.value - menuWidth - 8);
   }
 
   // Vertical alignment: Open upwards if there's enough space, otherwise open downwards
   const openUp = isOpeningUp.value;
+  // Resizing or scrolling can move the trigger outside the viewport while the
+  // menu remains open. Clamp the anchor as well as the available menu height.
+  const lastAnchor = Math.max(8, windowHeight.value - 8);
+  const top = Math.min(lastAnchor, Math.max(8, rect.bottom.value + margin));
+  const bottom = Math.min(lastAnchor, Math.max(8, windowHeight.value - rect.top.value + margin));
 
   return {
     position: 'fixed',
     left: `${left}px`,
     width: `${menuWidth}px`,
+    maxHeight: `${Math.max(0, windowHeight.value - (openUp ? bottom : top) - 8)}px`,
     zIndex: 9999,
     ...(openUp
-      ? { bottom: `${windowHeight.value - rect.top.value + margin}px` }
-      : { top: `${rect.bottom.value + margin}px` }
+      ? { bottom: `${bottom}px` }
+      : { top: `${top}px` }
     ),
   };
 });
@@ -75,7 +81,7 @@ defineExpose({
       <div
         v-if="isOpen"
         ref="dropdownRef"
-        :tw-class="['bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl py-1 overflow-hidden', isOpeningUp ? 'origin-bottom-right' : 'origin-top-right']"
+        :tw-class="['bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl py-1 overflow-x-hidden overflow-y-auto overscroll-contain', isOpeningUp ? 'origin-bottom-right' : 'origin-top-right']"
         :style="floatingStyle"
       >
         <slot></slot>

@@ -15,12 +15,14 @@ class LifecycleWorker extends EventTarget {
   terminate = vi.fn();
   readonly startup = createProductionRuntimeStartupFixture({ emitFromWorker: ({ message }) => this.dispatchEvent(new MessageEvent('message', { data: message })) });
   postMessage = vi.fn((message: unknown) => this.startup.acceptHostMessage({ message }));
+
   async publishReady() {
     this.startup.start(); await this.startup.ready;
   }
 }
 
 const sessions: ReturnType<typeof createProductionWorkerSession>[] = [];
+
 function fixture() {
   const worker = new LifecycleWorker();
   const session = createProductionWorkerSession({ worker: worker as unknown as Worker, startupTimeoutMs: 100 });
@@ -29,6 +31,7 @@ function fixture() {
 }
 
 let platform: ReturnType<typeof installProductionRuntimeStartupPlatform>;
+
 beforeEach(() => {
   platform = installProductionRuntimeStartupPlatform({ origin: 'http://localhost' });
 });
@@ -47,8 +50,12 @@ describe('Production Worker startup ownership', () => {
     const session = createProductionWorkerSession({ worker: worker as unknown as Worker, startupTimeoutMs: 100, observeLoadDiagnostic });
     sessions.push(session);
     const messages: LoadDiagnosticMessage[] = [];
-    const operation = createLoadDiagnosticOperation({ owner: { runId: 'diagnostic-session', workerEpoch: 1 }, loadOrdinal: 1,
-      resourceNames: 'public-repository', sink: ({ packet }) => messages.push({ channel: LOAD_DIAGNOSTIC_CHANNEL, packet }) });
+    const operation = createLoadDiagnosticOperation({
+      owner: { runId: 'diagnostic-session', workerEpoch: 1 },
+      loadOrdinal: 1,
+      resourceNames: 'public-repository',
+      sink: ({ packet }) => messages.push({ channel: LOAD_DIAGNOSTIC_CHANNEL, packet }),
+    });
     operation.emit({ kind: 'load-start', details: {} });
     worker.dispatchEvent(new MessageEvent('message', { data: messages[0] }));
     expect(observeLoadDiagnostic).toHaveBeenCalledTimes(1);
@@ -60,7 +67,9 @@ describe('Production Worker startup ownership', () => {
 
   it.each(['throw', 'reject'] as const)('keeps model RPC settlement unchanged when the host observer %s fails', async mode => {
     const worker = new LifecycleWorker();
-    const session = createProductionWorkerSession({ worker: worker as unknown as Worker, startupTimeoutMs: 100,
+    const session = createProductionWorkerSession({
+      worker: worker as unknown as Worker,
+      startupTimeoutMs: 100,
       observeLoadDiagnostic: () => {
         if (mode === 'throw') throw new Error('Diagnostic failure');
         return Promise.reject(new Error('Diagnostic failure'));
@@ -69,8 +78,12 @@ describe('Production Worker startup ownership', () => {
     sessions.push(session);
     mocks.wrap.mockReturnValue({});
     await worker.publishReady();
-    const operation = createLoadDiagnosticOperation({ owner: { runId: 'diagnostic-session', workerEpoch: 1 }, loadOrdinal: 1,
-      resourceNames: 'public-repository', sink: ({ packet }) => worker.dispatchEvent(new MessageEvent('message', { data: { channel: LOAD_DIAGNOSTIC_CHANNEL, packet } })) });
+    const operation = createLoadDiagnosticOperation({
+      owner: { runId: 'diagnostic-session', workerEpoch: 1 },
+      loadOrdinal: 1,
+      resourceNames: 'public-repository',
+      sink: ({ packet }) => worker.dispatchEvent(new MessageEvent('message', { data: { channel: LOAD_DIAGNOSTIC_CHANNEL, packet } })),
+    });
     operation.emit({ kind: 'load-start', details: {} });
     await expect(session.run({ operation: async () => 'unchanged' })).resolves.toBe('unchanged');
     expect(session.isActive()).toBe(true);
@@ -273,9 +286,11 @@ describe('Production Worker startup ownership', () => {
     mocks.wrap.mockReturnValue({});
     await worker.publishReady();
     const incompatibility = new Error('unsupported graph');
-    await expect(session.run({ operation: async () => {
-      throw incompatibility;
-    } })).rejects.toBe(incompatibility);
+    await expect(session.run({
+      operation: async () => {
+        throw incompatibility;
+      },
+    })).rejects.toBe(incompatibility);
     await expect(session.run({ operation: async () => 'next candidate' })).resolves.toBe('next candidate');
     expect(session.isActive()).toBe(true);
     expect(worker.terminate).not.toHaveBeenCalled();
@@ -316,9 +331,11 @@ describe('Production Worker startup ownership', () => {
     await worker.publishReady();
     const transported = new Error('Fixture synchronous cleanup failure');
     transported.name = 'RequiredDownloadedResourceCleanupError';
-    await expect(session.run({ operation: () => {
-      throw transported;
-    } })).rejects.toMatchObject({ name: 'ProductionWorkerLifecycleError', reason: 'resource-cleanup-failed' });
+    await expect(session.run({
+      operation: () => {
+        throw transported;
+      },
+    })).rejects.toMatchObject({ name: 'ProductionWorkerLifecycleError', reason: 'resource-cleanup-failed' });
     expect(session.isActive()).toBe(false);
     expect(worker.terminate).toHaveBeenCalledOnce();
     expect(mocks.release).not.toHaveBeenCalled();
@@ -329,9 +346,11 @@ describe('Production Worker startup ownership', () => {
     mocks.wrap.mockReturnValue({});
     await worker.publishReady();
     const ordinary = new Error('RequiredDownloadedResourceCleanupError: fixture model rejection');
-    await expect(session.run({ operation: async () => {
-      throw ordinary;
-    } })).rejects.toBe(ordinary);
+    await expect(session.run({
+      operation: async () => {
+        throw ordinary;
+      },
+    })).rejects.toBe(ordinary);
     expect(session.isActive()).toBe(true);
     await expect(session.run({ operation: async () => 'next RPC' })).resolves.toBe('next RPC');
     expect(worker.terminate).not.toHaveBeenCalled();
