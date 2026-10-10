@@ -25,6 +25,14 @@ export class RpcTransportInterruptedError extends Error {
     super('RPC transport interrupted', { cause }); this.name = 'RpcTransportInterruptedError';
   }
 }
+/** A cancelled caller still owns failed cleanup. Only successful retirement
+ * permits cancellation or a transport error to determine the retry policy. */
+function connectionAttemptFailure({ error, signal }: { error: unknown; signal: AbortSignal }): unknown {
+  if (error instanceof PipingRetirementError) return error;
+  if (signal.aborted) return signal.reason;
+  if (terminalRelayFailure({ error })) return error;
+  return new RpcTransportInterruptedError({ cause: error });
+}
 const authenticatedProtocolFailures = new WeakSet<NaidanRpcProtocolError>();
 /** Only errors produced at this adapter's authenticated boundary get this label. */
 export function describePipingRpcProtocolFailure({ error }: { error: unknown }): string | undefined {
@@ -156,7 +164,14 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
               finish: async () => {
                 claim();
                 try {
-                  const next = await candidate.finish();
+                  let next: NaidanPipingDuplexSession;
+                  try {
+                    next = await candidate.finish();
+                  } catch (error) {
+                    // READY and the remaining key exchange are establishment,
+                    // just like initial connect, not authenticated RPC errors.
+                    throw connectionAttemptFailure({ error, signal: ownerSignal });
+                  }
                   const verified = await acceptRpcConnection({ connection: next, signal: nextPhysical.signal });
                   return wrap({ accepted: verified, detach: detachNext });
                 } catch (error) {
@@ -203,9 +218,7 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
         connection = await NaidanPipingDuplexSession.pair({ piping, code: rendezvousCode, identity, verifyPeer: verifyPeer!, signal: physical.signal, publicHandshakeData: createRpcProtocolAdvertisement() });
       }
     } catch (error) {
-      if (signal.aborted) throw signal.reason;
-      if (error instanceof PipingRetirementError || terminalRelayFailure({ error })) throw error;
-      throw new RpcTransportInterruptedError({ cause: error });
+      throw connectionAttemptFailure({ error, signal });
     }
     const accepted = await acceptRpcConnection({ connection, signal });
     return wrap({ accepted, detach });

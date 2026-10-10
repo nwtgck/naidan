@@ -279,12 +279,13 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     // remain owned until settled, including when either native operation fails.
     const mutual = async <Sent>({ sending, receiving }: { sending: Promise<Sent>; receiving: Promise<Uint8Array<ArrayBuffer>> }) => {
       void sending.catch(error => responses.fail({ error })); void receiving.catch(error => responses.fail({ error }));
-      try {
-        const { sent, received } = await promiseAllKeyed({ sent: sending, received: receiving });
-        signal.throwIfAborted(); return { sent, received };
-      } finally {
-        await Promise.allSettled([sending, receiving]);
+      const settled = await Promise.allSettled([sending, receiving]);
+      // The first failed exchange cancels its sibling. A later cancellation
+      // failure still owns resources and must not become a retryable error.
+      for (const outcome of settled) {
+        if (outcome.status === 'rejected' && outcome.reason instanceof PipingRetirementError) throw outcome.reason;
       }
+      signal.throwIfAborted(); return promiseAllKeyed({ sent: sending, received: receiving });
     };
     if (contact) {
       const localStatus = contactStatus({ binding: sessionBinding, heldContext, publicData });
@@ -383,8 +384,8 @@ export async function establishVerifiedNaidanPipingKeys({ role, identity, expect
     signal.throwIfAborted();
     result = new NaidanPipingKeyContext({ role, root, id: contextId, peer: established.peerIdentity, proof: authenticated });
   } catch (error) {
-    // Preserve the first cancellation/timeout across an already-running native job.
-    failure = { error: signal.aborted ? signal.reason : error };
+    // Keep the first logical cancellation, unless an owned operation failed to retire.
+    failure = { error: error instanceof PipingRetirementError ? error : signal.aborted ? signal.reason : error };
     responses.fail({ error: failure.error });
   } finally {
     responses.dispose();

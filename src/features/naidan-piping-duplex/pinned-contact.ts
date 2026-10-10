@@ -35,7 +35,19 @@ export async function preparePinnedKeys({ endpoint, identity, expectedPeer, purp
   const abortGate = () => gate.reject(signal.reason);
   signal.addEventListener('abort', abortGate, { once: true }); if (signal.aborted) abortGate();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let expires: { monotonic: number; wall: number } | undefined;
+  const assertLive = () => {
+    signal.throwIfAborted();
+    if (expires) {
+      const monotonic = performance.now(), wall = Date.now();
+      if (!Number.isFinite(monotonic) || !Number.isFinite(wall) || monotonic >= expires.monotonic || wall >= expires.wall)
+        stop.abort(new HandshakeResponseUnconfirmedError({ stage: 'status' }));
+    }
+    signal.throwIfAborted();
+  };
   const deadline = ({ milliseconds = Math.min(15000, responseTimeoutMs * 3) }: { milliseconds?: number } = {}) => {
+    assertLive();
+    expires = { monotonic: performance.now() + milliseconds, wall: Date.now() + milliseconds };
     if (timer !== undefined) clearTimeout(timer);
     timer = setTimeout(() => stop.abort(new HandshakeResponseUnconfirmedError({ stage: 'status' })), milliseconds);
   };
@@ -100,17 +112,30 @@ export async function preparePinnedKeys({ endpoint, identity, expectedPeer, purp
           offered.resolve({
             kind: 'candidate',
             assertAvailable: () => {
-              requireValue({ condition: state === 'prepared', message: 'Prepared contact already consumed' }); signal.throwIfAborted();
+              requireValue({ condition: state === 'prepared', message: 'Prepared contact already consumed' }); assertLive();
             },
             get peerPublicHandshakeData() {
               return advertised.slice();
             },
             finish: async () => {
               requireValue({ condition: state === 'prepared', message: 'Prepared contact already consumed' });
-              state = 'finishing'; signal.throwIfAborted(); gate.resolve();
-              const result = await task;
-              const peerPublicHandshakeData = advertised.slice(); advertised.fill(0);
-              return { ...result, peerPublicHandshakeData };
+              state = 'finishing';
+              let result: HandshakeResult | undefined;
+              try {
+                try {
+                  assertLive(); gate.resolve();
+                } catch (error) {
+                  stop.abort(error);
+                }
+                // Even an already-cancelled candidate must join the handshake;
+                // its cleanup failure takes precedence over logical expiry.
+                result = await task; assertLive();
+                return { ...result, peerPublicHandshakeData: advertised.slice() };
+              } catch (error) {
+                result?.keys.dispose(); result?.peerPublicHandshakeData.fill(0); result?.peerHandshakeData.fill(0); throw error;
+              } finally {
+                advertised.fill(0);
+              }
             },
             dispose: async () => {
               requireValue({ condition: state === 'prepared', message: 'Prepared contact already consumed' });
@@ -119,8 +144,9 @@ export async function preparePinnedKeys({ endpoint, identity, expectedPeer, purp
                 await task;
               } catch (error) {
                 if (error instanceof PipingRetirementError) throw error;
+              } finally {
+                advertised.fill(0);
               }
-              advertised.fill(0);
             },
           });
           await gate.promise; authenticatedSignal.throwIfAborted();

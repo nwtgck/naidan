@@ -412,6 +412,21 @@ export class NaidanPeerManager {
     };
     void task.then(settled, settled); return task;
   }
+  /** Validation belongs to the manager, not to the contact. A cancelled
+   * candidate must dispose its cipher even while the shared storage read stalls.
+   * The validation remains observed and fences its own eventual publication. */
+  private async revalidateCandidate({ signal }: { signal: AbortSignal }): Promise<void> {
+    signal.throwIfAborted();
+    const validation = this.revalidate(), cancelled = Promise.withResolvers<never>();
+    const abort = () => cancelled.reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    try {
+      if (signal.aborted) abort();
+      await Promise.race([validation, cancelled.promise]);
+    } finally {
+      signal.removeEventListener('abort', abort);
+    }
+  }
   private trackRegistryMutation({ task }: { task: Promise<void> }): Promise<void> {
     this.registryEpoch++;
     this.registryMutations.add(task);
@@ -632,7 +647,7 @@ export class NaidanPeerManager {
               throw new Error('Obsolete connection candidate');
           };
           try {
-            current(); await this.revalidate(); current(); candidate.assertAvailable();
+            current(); await this.revalidateCandidate({ signal }); current(); candidate.assertAvailable();
           } catch (error) {
             await candidate.dispose(); throw error;
           }

@@ -1400,3 +1400,44 @@ it('reconnects the network while old native work keeps shared ownership until fi
     finished.resolve(); await manager.setEnabled({ enabled: false }); other.dispose(); await other.retire();
   }
 });
+
+it('Disconnect retires an authenticated candidate without waiting for a shared storage revalidation', async () => {
+  const state = fixture(), pending = Promise.withResolvers<import('./manager').RpcPreparedLink>();
+  const reading = Promise.withResolvers<void>(), listed = Promise.withResolvers<NaidanRpcRegistrySnapshot>();
+  const original = vi.mocked(state.dependencies.open).getMockImplementation()!;
+  vi.mocked(state.dependencies.open).mockImplementation(async input => {
+    const link = await original(input);
+    return {
+      ...link,
+      session: {
+        adopt() {},
+        close: async () => {
+          link.abort({ reason: 'Closed' }); await link.closed;
+        },
+        health: { state: 'healthy' as const },
+        subscribeHealth: () => () => {},
+        prepareReplacement: () => pending.promise,
+      },
+    };
+  });
+  const dispose = vi.fn(async () => {}), finish = vi.fn<import('./manager').RpcPreparedLink['finish']>();
+  await state.manager.setEnabled({ enabled: true }); await state.manager.reload(); await state.manager.connect({ id: record.id });
+  vi.mocked(state.storage.list).mockImplementationOnce(() => {
+    reading.resolve(); return listed.promise;
+  });
+  pending.resolve({ assertAvailable() {}, dispose, finish }); await reading.promise;
+  let stopped = false;
+  const closing = state.manager.disconnect({ id: record.id }).then(() => {
+    stopped = true;
+  });
+  try {
+    await vi.waitFor(() => expect(dispose).toHaveBeenCalledOnce(), { timeout: 150, interval: 5 });
+    await vi.waitFor(() => expect(stopped).toBe(true), { timeout: 150, interval: 5 });
+    expect(finish).not.toHaveBeenCalled();
+    expect(state.manager.list()[0]?.desiredConnection).toBe('disconnected');
+  } finally {
+    listed.resolve(snapshot({ registrations: [record] })); await closing;
+  }
+  await state.manager.revalidate();
+  expect(state.dependencies.open).toHaveBeenCalledOnce();
+});

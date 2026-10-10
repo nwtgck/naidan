@@ -4,7 +4,7 @@ import { PipingStatusError } from '@/features/naidan-piping-duplex/finite-transf
 import type { FiniteTransfer } from '@/features/naidan-piping-duplex/finite-transfer';
 import { establishVerifiedNaidanPipingKeys } from '@/features/naidan-piping-duplex/key-context';
 import type { NaidanPipingHandshakeChannel, NaidanPipingKeyContext, NaidanPipingPeerVerifier, PinnedContactStatus } from '@/features/naidan-piping-duplex/key-context';
-import { HandshakeResponseUnconfirmedError } from '@/features/naidan-piping-duplex/lifetime';
+import { HandshakeResponseUnconfirmedError, PipingRetirementError } from '@/features/naidan-piping-duplex/lifetime';
 import { normalizeRendezvousCode } from '@/features/naidan-piping-duplex/rendezvous';
 import { encodeProtocolHeader, inspectProtocolHeader } from '@/features/naidan-piping-duplex/protocol-header';
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
@@ -136,6 +136,7 @@ export async function pairKeys({ endpoint, identity, code, role, verifyPeer, sig
           owner,
         });
       } catch (error) {
+        if (error instanceof PipingRetirementError) throw error;
         signal.throwIfAborted();
         if (compared) throw error;
         if (role === undefined && error instanceof PipingStatusError && error.status === 400) selectedRole = isInitiator({ role: selectedRole }) ? 'responder' : 'initiator';

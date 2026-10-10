@@ -216,3 +216,36 @@ it.each(['first', 'second', 'third'] as const)('a replayed %s Noise flight canno
   f.stop.abort(); await Promise.allSettled(jobs);
   expect(f.relay.posts.some(post => post.bytes[13] === 0x20)).toBe(false);
 });
+
+it.each(['monotonic', 'wall'] as const)('checks a prepared contact deadline against the %s clock even before its timer callback runs', async clock => {
+  const f = await fixture(); f.piping.handshakeResponseTimeoutMs = 200;
+  const [a, b] = await Promise.all([f.prepare({ index: 0, heldContext: undefined }), f.prepare({ index: 1, heldContext: undefined })]);
+  if (a!.kind !== 'candidate' || b!.kind !== 'candidate') throw new Error('Expected candidates');
+  const target = clock === 'wall' ? Date : performance;
+  const now = target.now(); const shifted = vi.spyOn(target, 'now').mockReturnValue(now + 1000);
+  try {
+    expect(() => a!.assertAvailable()).toThrow();
+    expect(f.relay.posts.some(post => post.bytes[13] === 0x20)).toBe(false);
+  } finally {
+    shifted.mockRestore();
+  }
+});
+
+it.each(['monotonic', 'wall'] as const)('finishing directly cannot bypass a delayed %s deadline callback', async clock => {
+  const f = await fixture(); f.piping.handshakeResponseTimeoutMs = 200;
+  const prepared = await Promise.all([f.prepare({ index: 0, heldContext: undefined }), f.prepare({ index: 1, heldContext: undefined })]);
+  const first = prepared[0]!;
+  if (first.kind !== 'candidate') throw new Error('Expected a candidate');
+  const sampled = clock === 'monotonic' ? performance.now() : Date.now();
+  const spy = clock === 'monotonic' ? vi.spyOn(performance, 'now').mockReturnValue(sampled + 1000) : vi.spyOn(Date, 'now').mockReturnValue(sampled + 1000);
+  const postsBefore = f.relay.posts.length;
+  try {
+    await expect(f.finish({ candidate: first })).rejects.toBeDefined();
+    expect(f.relay.posts).toHaveLength(postsBefore);
+    expect(f.relay.posts.some(post => post.bytes[13] === 0x20)).toBe(false);
+    expect(f.relay.occupied).toBe(0);
+    await expect(first.finish()).rejects.toThrow('already consumed');
+  } finally {
+    spy.mockRestore();
+  }
+});

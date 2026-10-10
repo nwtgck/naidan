@@ -5,6 +5,7 @@ import { pairKeys } from '@/features/naidan-piping-duplex/finite-handshake';
 import { connectPinnedKeys } from '@/features/naidan-piping-duplex/pinned-contact';
 import { FiniteTransferEndpoint } from '@/features/naidan-piping-duplex/finite-transfer';
 import { FiniteMemoryRelay } from '@/features/naidan-piping-duplex/finite-memory-relay.test-support';
+import { PipingRetirementError } from '@/features/naidan-piping-duplex/lifetime';
 import { useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
 
 useOfflineScope();
@@ -120,4 +121,27 @@ it('initial pairing never sends advertisements before both human approvals', asy
   approval.resolve(true); const [a, b] = await Promise.all(jobs);
   expect(a!.peerPublicHandshakeData).toEqual(publicHandshakeData); expect(b!.peerHandshakeData).toEqual(handshakeData);
   expect(f.relay.posts.some(post => post.bytes.length > 1024)).toBe(true);
+});
+
+it('keeps a failed response cancellation visible when initial pairing is cancelled', async () => {
+  const f = await fixture(), cancelling = Promise.withResolvers<void>(), cancelled = Promise.withResolvers<void>();
+  const cause = new Error('The relay response did not retire'), verifyPeer = vi.fn(async () => true);
+  vi.mocked(fetch).mockImplementation(async () => new Response(new ReadableStream<Uint8Array>({
+    cancel() {
+      cancelling.resolve(); return cancelled.promise;
+    },
+  })));
+  const pairing = pairKeys({ ...f.options, endpoint: f.endpoint(), identity: f.identities[0]!, code: '1234-5678', role: 'initiator', verifyPeer });
+  f.jobs.push(pairing);
+  const observed = pairing.catch(error => error); let ended = false;
+  void observed.then(() => {
+    ended = true;
+  });
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+  f.controller.abort(new Error('Pairing cancelled')); await cancelling.promise;
+  expect(ended).toBe(false);
+  cancelled.reject(cause);
+  const error: unknown = await observed;
+  expect(error).toBeInstanceOf(PipingRetirementError); expect(error).toMatchObject({ cause });
+  expect(verifyPeer).not.toHaveBeenCalled(); expect(fetch).toHaveBeenCalledOnce();
 });

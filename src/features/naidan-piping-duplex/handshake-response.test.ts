@@ -21,17 +21,19 @@ afterEach(async () => {
   vi.useRealTimers(); vi.restoreAllMocks();
 });
 
-async function start({ dropFrom, dropAt, known, verifyA, verifyB, onFailure }: {
+async function start({ dropFrom, dropAt, known, verifyA, verifyB, onFailure, onSend }: {
   dropFrom: 'a' | 'b' | undefined; dropAt: number; known: boolean;
   verifyA: NaidanPipingPeerVerifier | undefined; verifyB: NaidanPipingPeerVerifier | undefined;
   onFailure: (({ error }: { error: unknown }) => void) | undefined;
+  onSend?({ side, count, bytes, signal }: { side: 'a' | 'b'; count: number; bytes: Uint8Array; signal: AbortSignal | undefined }): Promise<void>;
 }) {
   const identities = await promiseAllKeyed({ a: createNaidanPipingIdentity(), b: createNaidanPipingIdentity() });
   const ab: Uint8Array[] = [], ba: Uint8Array[] = [], pulse = new Pulse();
   const sends = { a: 0, b: 0 }, reads = { a: 0, b: 0 };
   const waiting = new Map<string, ReturnType<typeof Promise.withResolvers<void>>>();
-  const send = ({ side, queue }: { side: 'a' | 'b'; queue: Uint8Array[] }) => async ({ bytes }: { bytes: Uint8Array }) => {
+  const send = ({ side, queue }: { side: 'a' | 'b'; queue: Uint8Array[] }) => async ({ bytes, signal }: { bytes: Uint8Array; signal?: AbortSignal }) => {
     sends[side]++; waiting.get(`send/${side}/${sends[side]}`)?.resolve();
+    await onSend?.({ side, count: sends[side], bytes, signal });
     if (!(side === dropFrom && sends[side] === dropAt)) queue.push(bytes.slice());
     pulse.fire();
   };
@@ -274,4 +276,54 @@ it('local ephemeral-key preparation has no response deadline before prepared reg
   await entered.promise; expect(vi.getTimerCount()).toBe(0); await vi.advanceTimersByTimeAsync(100_000);
   release.resolve(); await sent.promise; await vi.advanceTimersByTimeAsync(1000);
   await expect(job).rejects.toMatchObject({ stage: 'noise-2' });
+});
+
+it('preserves a sequential flight retirement failure after its owner has cancelled', async () => {
+  const identity = await createNaidanPipingIdentity(), stop = new AbortController(), entered = Promise.withResolvers<void>();
+  stops.push(stop);
+  const cleanup = new PipingRetirementError({ cause: new Error('Cannot retire POST body'), logicalError: new Error('Cancelled') });
+  const job = establishVerifiedNaidanPipingKeys({
+    role: 'initiator',
+    identity,
+    expectedPeer: new Uint8Array(32),
+    verifyPeer: undefined,
+    binding: new Uint8Array(32),
+    signal: stop.signal,
+    responseTimeoutMs: 1000,
+    onResponseFailure: undefined,
+    channel: {
+      send: ({ signal }) => new Promise((_resolve, reject) => {
+        signal!.addEventListener('abort', () => reject(cleanup), { once: true }); entered.resolve();
+      }),
+      receive: async () => {
+        throw new Error('Must not receive after failed POST');
+      },
+    },
+  });
+  jobs.push(job); void job.catch(() => {});
+  await entered.promise; stop.abort(new Error('Caller cancelled'));
+  await expect(job).rejects.toBe(cleanup);
+});
+
+it('joins both mutual flights and preserves a later cleanup failure over the first authentication failure', async () => {
+  const entered = Promise.withResolvers<void>();
+  const cleanup = new PipingRetirementError({ cause: new Error('Late status POST cancellation failed'), logicalError: new Error('Bad peer status') });
+  const pair = await start({
+    known: true,
+    dropFrom: undefined,
+    dropAt: 0,
+    verifyA: undefined,
+    verifyB: undefined,
+    onFailure: undefined,
+    onSend: async ({ side, count, bytes, signal }) => {
+      if (side === 'a' && count === 3) {
+        entered.resolve();
+        await new Promise<void>((_resolve, reject) => signal!.addEventListener('abort', () => reject(cleanup), { once: true }));
+      }
+      if (side === 'b' && count === 2) {
+        await entered.promise; bytes[bytes.length - 1]! ^= 1;
+      }
+    },
+  });
+  await expect(pair.a).rejects.toBe(cleanup);
 });
