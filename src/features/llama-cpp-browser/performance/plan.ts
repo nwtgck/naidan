@@ -6,10 +6,10 @@ const shortPrompt = 'Explain in English how a language model can generate text l
 const longPrompt = `The following records describe a fictional public library. Summarize the changes in usage and propose practical improvements in English, using only the information provided. Do not invent additional facts.\n\n${Array.from({ length: 12 }, (_, index) => `Week ${index + 1}: Reading seats were busy on weekday afternoons, while many seats remained empty in the mornings. More families visited during the weekend. Returned books were mainly sorted before closing time, and a dedicated shelf was introduced for reserved books. After the quiet reading room was separated from the collaborative workspace, visitors asked for clearer signs explaining where conversation was allowed. Consultations about electronic resources required an appointment. Staff summarized the topics of these consultations without recording information that could identify individual visitors.`).join('\n')}`;
 const followUp = 'Choose the most important limitation from your previous explanation and describe a concrete way to reduce its impact. Answer in English.';
 
-export function createPerformancePlan({ id, createdAt, models, settings, options, notes }: Omit<PerformancePlan, 'version' | 'protocol' | 'steps'>): PerformancePlan {
+export function createPerformancePlan({ id, createdAt, models, settings, options, notes }: { id: PerformancePlan['id'], createdAt: PerformancePlan['createdAt'], models: PerformancePlan['models'], settings: PerformancePlan['settings'], options: PerformancePlan['options'], notes: PerformancePlan['notes'] }): PerformancePlan {
   const steps: PerformanceStep[] = [];
   for (const [modelIndex] of models.entries()) {
-    const add = ({ scenario, position, repetition, dependsOn, prompt, maxTokens }: Pick<PerformanceStep, 'scenario' | 'position' | 'repetition' | 'dependsOn' | 'prompt' | 'maxTokens'>): string => {
+    const add = ({ scenario, position, repetition, dependsOn, prompt, maxTokens }: { scenario: PerformanceStep['scenario'], position: PerformanceStep['position'], repetition: PerformanceStep['repetition'], dependsOn?: PerformanceStep['dependsOn'], prompt: PerformanceStep['prompt'], maxTokens: PerformanceStep['maxTokens'] }): string => {
       const id = `m${modelIndex}-${steps.length}`;
       steps.push({
         id,

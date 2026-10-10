@@ -1533,7 +1533,7 @@ export function createTransformersJsService({ createWorkerClient }: {
           onChunk: ({ chunk }: { chunk: string }) => {
             if (open && owner.isActive()) return onChunk({ chunk });
           },
-          onToolCalls: ({ toolCalls }: Parameters<TransformersJsToolCallsCallback>[0]) => {
+          onToolCalls: ({ toolCalls }: { toolCalls: Parameters<TransformersJsToolCallsCallback>[0]['toolCalls'] }) => {
             if (open && owner.isActive()) return onToolCalls({ toolCalls });
           },
         };
@@ -1596,7 +1596,7 @@ export function createTransformersJsService({ createWorkerClient }: {
     getDownloadTimingSnapshot() {
       return downloadTiming.snapshot();
     },
-    runInferenceOperation({ signal, operation }: TransformersJsInferenceOperation): Promise<void> {
+    runInferenceOperation({ signal, operation }: { signal: TransformersJsInferenceOperation['signal'], operation: TransformersJsInferenceOperation['operation'] }): Promise<void> {
       return enqueue({ signal, operation: ({ owner }) => runInferenceScope({ owner, operation }) });
     },
     loadDownloadedModel({ modelId }: { modelId: string }): Promise<void> {
@@ -1611,7 +1611,7 @@ export function createTransformersJsService({ createWorkerClient }: {
     resetCache(): Promise<void> {
       return enqueue({ signal: undefined, operation: () => rawService.resetCache() });
     },
-    generateText({ messages, onChunk, onToolCalls, params, tools, signal, continuationOwner }: Parameters<typeof rawService.generateText>[0]): Promise<void> {
+    generateText({ messages, onChunk, onToolCalls, params, tools, signal, continuationOwner }: { messages: Parameters<typeof rawService.generateText>[0]['messages'], onChunk: Parameters<typeof rawService.generateText>[0]['onChunk'], onToolCalls: Parameters<typeof rawService.generateText>[0]['onToolCalls'], params?: Parameters<typeof rawService.generateText>[0]['params'], tools?: Parameters<typeof rawService.generateText>[0]['tools'], signal?: Parameters<typeof rawService.generateText>[0]['signal'], continuationOwner?: Parameters<typeof rawService.generateText>[0]['continuationOwner'] }): Promise<void> {
       try {
         ensureOpen();
         if (explicitRestart !== undefined) throw restartedError;

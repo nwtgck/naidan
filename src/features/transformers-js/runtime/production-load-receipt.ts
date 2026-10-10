@@ -111,7 +111,7 @@ export function createProductionLoadReceiptRecorder({ modelId, revision }: { mod
         refused = true;
       }
     },
-    finish({ autoClass, processor, candidate, plannedRequiredPaths }: Pick<ProductionLoadReceipt, 'autoClass' | 'processor' | 'candidate' | 'plannedRequiredPaths'>): ProductionLoadReceipt | undefined {
+    finish({ autoClass, processor, candidate, plannedRequiredPaths }: { autoClass: ProductionLoadReceipt['autoClass'], processor: ProductionLoadReceipt['processor'], candidate: ProductionLoadReceipt['candidate'], plannedRequiredPaths: ProductionLoadReceipt['plannedRequiredPaths'] }): ProductionLoadReceipt | undefined {
       if (refused || observedRevision === undefined) return undefined;
       const parsed = productionLoadReceiptSchema.safeParse({
         format: 'production-offline-load-receipt-v1',

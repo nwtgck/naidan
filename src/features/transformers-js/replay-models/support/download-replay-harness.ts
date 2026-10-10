@@ -227,7 +227,7 @@ export async function connectRawDownload({ modelId, revision, remoteRefs }: {
   }));
   vi.doMock('@/features/transformers-js/download-verification/model-artifact-request-worker/client-hosted', () => ({
     createDownloadVerificationModelArtifactRequestWorkerClient: () => ({
-      async observeModelArtifactRequests({ modelId: id, revision: rev, candidate }: Parameters<ObserverApi['observeModelArtifactRequests']>[0]) {
+      async observeModelArtifactRequests({ modelId: id, revision: rev, candidate }: { modelId: Parameters<ObserverApi['observeModelArtifactRequests']>[0]['modelId'], revision: Parameters<ObserverApi['observeModelArtifactRequests']>[0]['revision'], candidate: Parameters<ObserverApi['observeModelArtifactRequests']>[0]['candidate'] }) {
         downloadCapabilityCalls.push('observer');
         const api = await boot({ kind: 'observer' }) as ObserverApi;
         return api.observeModelArtifactRequests({ modelId: id, revision: rev, candidate });

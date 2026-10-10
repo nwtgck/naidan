@@ -111,8 +111,10 @@ describe('generateGptOss input observation', () => {
     expect(callable).not.toHaveBeenCalled();
     expect(applyChatTemplate).toHaveBeenCalledOnce();
     expect(onInputPrepared).toHaveBeenCalledWith({
-      fullConversationInputs: { input_ids: { data: BigInt64Array.from([10n, 11n, 12n]) } },
-      cacheDecision: { status: 'not-reused', reason: 'gpt-oss-owned-continuation-unavailable' },
+      observation: {
+        fullConversationInputs: { input_ids: { data: BigInt64Array.from([10n, 11n, 12n]) } },
+        cacheDecision: { status: 'not-reused', reason: 'gpt-oss-owned-continuation-unavailable' },
+      },
     });
     expect(generateWithModel).toHaveBeenCalledWith(expect.objectContaining({
       inputs: { input_ids: { data: BigInt64Array.from([10n, 11n, 12n]) } },
@@ -142,9 +144,11 @@ describe('generateGptOss input observation', () => {
 
     expect(callable).not.toHaveBeenCalled();
     expect(applyChatTemplate).toHaveBeenCalledOnce();
-    expect(onInputPrepared).toHaveBeenCalledWith(expect.objectContaining({
-      cacheDecision: { status: 'not-reused', reason: 'gpt-oss-owned-continuation-unavailable' },
-    }));
+    expect(onInputPrepared).toHaveBeenCalledWith({
+      observation: expect.objectContaining({
+        cacheDecision: { status: 'not-reused', reason: 'gpt-oss-owned-continuation-unavailable' },
+      }),
+    });
     expect(generateWithModel).toHaveBeenCalledWith(expect.objectContaining({ pastKeyValues: null }));
   });
 

@@ -7,7 +7,7 @@ function createUnsupportedError(): Error {
 
 export function createTransformersJsScannerWorkerClient(): TransformersJsScannerWorkerClient {
   return {
-    async scanModel({ tasks: _tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }> {
+    async scanModel({ tasks: _tasks }: { tasks: ScanOptions['tasks'] }): Promise<{ files: ScannedModelFile[] }> {
       throw createUnsupportedError();
     },
     async dispose(): Promise<void> {

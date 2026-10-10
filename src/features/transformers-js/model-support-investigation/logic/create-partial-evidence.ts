@@ -816,7 +816,7 @@ export async function preparePartialModelSupportEvidence({ run, recovery, replay
   return { files, fileName };
 }
 
-export async function createPartialModelSupportEvidence({ ...args }: Parameters<typeof preparePartialModelSupportEvidence>[0]): Promise<{ blob: Blob, fileName: string }> {
+export async function createPartialModelSupportEvidence({ ...args }: { run: Parameters<typeof preparePartialModelSupportEvidence>[0]['run'], recovery: Parameters<typeof preparePartialModelSupportEvidence>[0]['recovery'], replayMetadata?: Parameters<typeof preparePartialModelSupportEvidence>[0]['replayMetadata'], nativeEvidence?: Parameters<typeof preparePartialModelSupportEvidence>[0]['nativeEvidence'], ordinaryDownloadTiming?: Parameters<typeof preparePartialModelSupportEvidence>[0]['ordinaryDownloadTiming'] }): Promise<{ blob: Blob, fileName: string }> {
   const { files, fileName } = await preparePartialModelSupportEvidence(args);
   const blob = await createEvidenceArchive({ files });
   await verifyGeneratedEvidenceArchive({ blob });
@@ -1056,7 +1056,7 @@ async function verifyBatchEvidenceContents({ archive, batchId, items }: {
 
 }
 
-export async function createBatchModelSupportEvidence({ ...args }: Parameters<typeof prepareBatchModelSupportEvidence>[0]): Promise<{ blob: Blob, fileName: string }> {
+export async function createBatchModelSupportEvidence({ ...args }: { batchId: Parameters<typeof prepareBatchModelSupportEvidence>[0]['batchId'], items: Parameters<typeof prepareBatchModelSupportEvidence>[0]['items'], ordinaryDownloadTiming?: Parameters<typeof prepareBatchModelSupportEvidence>[0]['ordinaryDownloadTiming'] }): Promise<{ blob: Blob, fileName: string }> {
   const { files, fileName } = await prepareBatchModelSupportEvidence(args);
   const blob = await createEvidenceArchive({ files });
   const verification = await openEvidenceArchive({ blob });

@@ -31,7 +31,7 @@ function buildCdCandidates({
 }): readonly CdCandidate[] {
   const candidates: CdCandidate[] = [];
   const seenPaths = new Set<string>();
-  const appendCandidate = ({ path, printResolvedPath }: CdCandidate): void => {
+  const appendCandidate = ({ path, printResolvedPath }: { readonly path: CdCandidate['path'], readonly printResolvedPath: CdCandidate['printResolvedPath'] }): void => {
     if (seenPaths.has(path)) {
       return;
     }

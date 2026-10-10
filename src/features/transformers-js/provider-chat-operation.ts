@@ -8,7 +8,7 @@ import { createInferenceGeneration } from './create-inference-generation';
 import type { InferenceGenerationCallback } from './generation-events';
 import type { TransformersJsInferenceScope } from './inference-operation';
 
-export function snapshotChatRequest({ messages, model, parameters, tools, readBinaryObject, debug, signal }: Parameters<LmProvider['chat']>[0]): Parameters<LmProvider['chat']>[0] {
+export function snapshotChatRequest({ messages, model, parameters, tools, readBinaryObject, debug, signal }: { messages: Parameters<LmProvider['chat']>[0]['messages'], model: Parameters<LmProvider['chat']>[0]['model'], parameters: Parameters<LmProvider['chat']>[0]['parameters'], tools: Parameters<LmProvider['chat']>[0]['tools'], readBinaryObject: Parameters<LmProvider['chat']>[0]['readBinaryObject'], debug: Parameters<LmProvider['chat']>[0]['debug'], signal: Parameters<LmProvider['chat']>[0]['signal'] }): Parameters<LmProvider['chat']>[0] {
   return exactObject<Parameters<LmProvider['chat']>[0]>()({
     messages: messages.map(message => copyChatMessage({ message })),
     model,

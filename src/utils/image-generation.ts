@@ -55,7 +55,7 @@ export function getImageGenerationModels({ models }: { models: string[] }): stri
 /**
  * Creates a sentinel marker for an image generation request.
  */
-export function createImageRequestMarker({ width, height, model, count, persistAs, steps, seed }: ImageRequestParams): string {
+export function createImageRequestMarker({ width, height, model, count, persistAs, steps, seed }: { width?: ImageRequestParams['width'], height?: ImageRequestParams['height'], model?: ImageRequestParams['model'], count?: ImageRequestParams['count'], persistAs: ImageRequestParams['persistAs'], steps?: ImageRequestParams['steps'], seed?: ImageRequestParams['seed'] }): string {
   const params = JSON.stringify({ width, height, model, count, persistAs, steps, seed });
   return `${SENTINEL_IMAGE_REQUEST_PREFIX} ${params} -->`;
 }
@@ -63,7 +63,7 @@ export function createImageRequestMarker({ width, height, model, count, persistA
 /**
  * Creates a sentinel marker for an image generation response.
  */
-export function createImageResponseMarker({ count }: ImageResponseParams): string {
+export function createImageResponseMarker({ count }: { count?: ImageResponseParams['count'] }): string {
   const params = JSON.stringify({ count });
   return `${SENTINEL_IMAGE_RESPONSE_PREFIX} ${params} -->`;
 }

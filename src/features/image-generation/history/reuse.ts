@@ -24,17 +24,17 @@ const draftParametersSchema = parametersSchema.extend({
   conditioningCacheSize: z.number().finite(),
 });
 
-export function prepareImageHistoryReuse({ record, findFile, getImage }: ReuseOptions) {
+export function prepareImageHistoryReuse({ record, findFile, getImage }: { record: ReuseOptions['record'], findFile: ReuseOptions['findFile'], getImage: ReuseOptions['getImage'] }) {
   return prepareImageRequestReuse({ record, findFile, getImage, purpose: { type: 'history' } });
 }
 
-export function prepareImageDraftReuse({ loraStates, ...options }: ReuseOptions & { loraStates: { enabled: boolean, strength: number }[] }) {
+export function prepareImageDraftReuse({ loraStates, ...options }: { loraStates: { enabled: boolean, strength: number }[], record: ReuseOptions['record'], findFile: ReuseOptions['findFile'], getImage: ReuseOptions['getImage'] }) {
   return prepareImageRequestReuse({ ...options, purpose: { type: 'draft', loraStates } });
 }
 
 /** Resolve an entire edit before applying it; no network access or form mutation.
  * A draft need not yet be a valid generation request (e.g. an empty prompt). */
-async function prepareImageRequestReuse({ record, findFile, getImage, purpose }: ReuseOptions & { purpose: ReusePurpose }) {
+async function prepareImageRequestReuse({ record, findFile, getImage, purpose }: { record: ReuseOptions['record'], findFile: ReuseOptions['findFile'], getImage: ReuseOptions['getImage'], purpose: ReusePurpose }) {
   const options = (() => {
     switch (purpose.type) {
     case 'draft': return { schema: draftParametersSchema, states: purpose.loraStates, draft: true };

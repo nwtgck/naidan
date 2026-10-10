@@ -358,7 +358,7 @@ interface ExportExclusionFlags {
   binaryObject: boolean,
 }
 
-function parseExportExclusions({ exclude }: Pick<ExportOptions, 'exclude'>): ExportExclusionFlags {
+function parseExportExclusions({ exclude }: { exclude?: ExportOptions['exclude'] }): ExportExclusionFlags {
   const flags: ExportExclusionFlags = {
     chat: false,
     chatHistory: false,
@@ -418,7 +418,7 @@ export class ImportExportService {
   /**
    * Export data as a ZIP stream.
    */
-  async exportData({ exclude, fileNameSegment }: ExportOptions): Promise<{ stream: ReadableStream<Uint8Array>, filename: string }> {
+  async exportData({ exclude, fileNameSegment }: { exclude?: ExportOptions['exclude'], fileNameSegment?: ExportOptions['fileNameSegment'] }): Promise<{ stream: ReadableStream<Uint8Array>, filename: string }> {
     // Validate caller-controlled options before creating a producer task. Errors
     // here remain direct exportData() rejections instead of surfacing later as
     // asynchronous stream failures after a successful return.

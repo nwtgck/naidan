@@ -11,7 +11,7 @@ export interface Toast {
 
 const toasts = ref<Toast[]>([]);
 
-const addToast = ({ ...toast }: Omit<Toast, 'id'>) => {
+const addToast = ({ ...toast }: { message: Toast['message'], actionLabel?: Toast['actionLabel'], onAction?: Toast['onAction'], onClose?: Toast['onClose'], duration?: Toast['duration'] }) => {
   const id = Math.random().toString(36).substring(2, 9);
   const newToast = { ...toast, id };
 

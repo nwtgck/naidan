@@ -6,13 +6,14 @@ type SaveEvent = { type: 'changed' } | { type: 'saved' | 'discarded', id: ImageG
 type Publication = { record: ImageGenerationRecord, files: HistoryBinaryFile[] };
 type Entry = {
   publication: Publication,
-  save({ record, files }: Publication): Promise<void>,
+  save({ publication }: { publication: Publication }): Promise<void>,
   phase: 'pending' | 'saving' | 'failed',
   failure: string,
   task: Promise<void> | undefined,
 };
 
-function copyPublication({ record, files }: Publication): Publication {
+function copyPublication({ publication }: { publication: Publication }): Publication {
+  const { record, files, ...unhandledPublication } = publication; unhandledPublication satisfies Record<PropertyKey, never>;
   const { id, createdAt, request, result, previews, ...rest } = record;
   rest satisfies Record<PropertyKey, never>;
   const snapshot = copyImageGenerationSnapshot({ snapshot: { id, createdAt, request, inputFiles: files } });
@@ -38,14 +39,14 @@ export function createPendingImageHistory({ maxEntries, byteLimit }: { maxEntrie
       const blobs = new Set([...entries.values()].flatMap(entry => entry.publication.files.map(file => file.blob)));
       if (entries.size >= maxEntries || [...blobs].reduce((total, blob) => total + blob.size, 0) >= byteLimit) throw new Error('Save or discard pending image history before generating again.');
     },
-    retain({ record, files, save }: Publication & { save({ record, files }: Publication): Promise<void> }): ImageGenerationId {
+    retain({ record, files, save }: { record: Publication['record'], files: Publication['files'], save: Entry['save'] }): ImageGenerationId {
       if (entries.has(record.id)) throw new Error('This image history publication is already retained.');
-      entries.set(record.id, { publication: copyPublication({ record, files }), save, phase: 'pending', failure: '', task: undefined });
+      entries.set(record.id, { publication: copyPublication({ publication: { record, files } }), save, phase: 'pending', failure: '', task: undefined });
       changed({ event: { type: 'changed' } });
       return record.id;
     },
     list() {
-      return [...entries.values()].map(entry => ({ ...copyPublication(entry.publication), phase: entry.phase, failure: entry.failure }));
+      return [...entries.values()].map(entry => ({ ...copyPublication({ publication: entry.publication }), phase: entry.phase, failure: entry.failure }));
     },
     subscribe({ listener }: { listener({ event }: { event: SaveEvent }): void }) {
       listeners.add(listener);
@@ -61,7 +62,7 @@ export function createPendingImageHistory({ maxEntries, byteLimit }: { maxEntrie
       // Defer the writer until task is installed; reentrant view notifications
       // cannot start a second publication. Reuse the same immutable IDs and bytes.
       let completed = false;
-      const task = Promise.resolve().then(() => entry.save(entry.publication)).then(() => {
+      const task = Promise.resolve().then(() => entry.save({ publication: entry.publication })).then(() => {
         entries.delete(id); completed = true;
       }, (cause: unknown) => {
         entry.phase = 'failed'; entry.failure = cause instanceof Error ? cause.message : String(cause); throw cause;

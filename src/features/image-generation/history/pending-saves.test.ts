@@ -25,8 +25,8 @@ it('keeps cloned metadata and the original immutable bytes after a view detaches
   expect(store.list()[0]?.record.request.parameters.prompt).toBe('a small tree');
   await store.retry({ id });
   expect(save).toHaveBeenCalledTimes(2);
-  expect(save.mock.calls[0]![0]).toBe(save.mock.calls[1]![0]);
-  expect(save.mock.calls[1]![0].files[0].blob).toBe(blob);
+  expect(save.mock.calls[0]![0].publication).toBe(save.mock.calls[1]![0].publication);
+  expect(save.mock.calls[1]![0].publication.files[0].blob).toBe(blob);
   expect(store.list()).toEqual([]);
 });
 

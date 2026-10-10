@@ -10,7 +10,7 @@ import { exactObject } from '@/utils/exact-object';
 type BinaryReader = Parameters<LmProvider['chat']>[0]['readBinaryObject'];
 
 /** Snapshot plain model options without carrying reactive references into deferred work. */
-export function snapshotChatRequest({ messages, parameters, tools }: Pick<Parameters<LmProvider['chat']>[0], 'messages' | 'parameters' | 'tools'>) {
+export function snapshotChatRequest({ messages, parameters, tools }: { messages: Parameters<LmProvider['chat']>[0]['messages'], parameters: Parameters<LmProvider['chat']>[0]['parameters'], tools: Parameters<LmProvider['chat']>[0]['tools'] }) {
   const copy = messages.map(message => copyChatMessage({ message }));
   let settings: LmParameters | undefined;
   if (parameters !== undefined) {

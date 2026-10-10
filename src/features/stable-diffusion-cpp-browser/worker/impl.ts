@@ -26,7 +26,7 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
   let observed: ReturnType<typeof observeImageGpu> | undefined, boundary: ReturnType<typeof installImageWebGpu> | undefined;
   let current: { request: Request, trace: ReturnType<typeof createImageTrace>, phase: Progress['phase'], latest: PreviewControl, cancelRequested: boolean,
     measured: boolean, log: ({ message, level }: { message: string, level?: number }) => void } | undefined;
-  const emitCurrent = ({ ...entry }: ImageDiagnosticInput) => {
+  const emitCurrent = ({ ...entry }: { message?: ImageDiagnosticInput['message'], event: ImageDiagnosticInput['event'], stage: ImageDiagnosticInput['stage'], fields: ImageDiagnosticInput['fields'] }) => {
     if (entry.event === 'gpu' && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(entry.message ?? '')) failed = true;
     if (current) current.trace.emit(entry);
     else if (entry.event === 'failed' || entry.event === 'gpu' && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(entry.message ?? '')) {
@@ -80,7 +80,7 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
         checkpoint: ({ point }) => observed?.checkpoint({ point }),
       });
       let outcome: MeasurementOutcome = 'failed';
-      const sessionDiagnostic = ({ ...entry }: ImageDiagnosticInput): void => {
+      const sessionDiagnostic = ({ ...entry }: { message?: ImageDiagnosticInput['message'], event: ImageDiagnosticInput['event'], stage: ImageDiagnosticInput['stage'], fields: ImageDiagnosticInput['fields'] }): void => {
         if (entry.event === 'start' && entry.stage === 'model-header') performanceTrace.phase({ next: 'model-header' });
         if (entry.event === 'start' && entry.stage === 'model-load') performanceTrace.phase({ next: 'model-load' });
         if (entry.event === 'complete' && entry.stage === 'model-load') performanceTrace.phase({ next: 'prepare' });
@@ -202,7 +202,7 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
           session = createImageGenerationSession({ core, helpers, reader: new FileReaderSync() });
         }
         performanceTrace.phase({ next: 'prepare' });
-        const pendingGeneration = session.generate({
+        const run: Parameters<typeof session.generate>[0]['run'] = {
           request,
           onProgress: notify,
           onLog: log,
@@ -217,7 +217,8 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
               },
             });
           },
-        });
+        };
+        const pendingGeneration = session.generate({ run });
         if (operation.cancelRequested) session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: request.runId } });
         const generated = await pendingGeneration;
         if (failed) throw new Error('Image runtime aborted during generation');

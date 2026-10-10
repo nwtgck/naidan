@@ -14,7 +14,7 @@ function createUnavailableEnvironmentError(): Error {
 export function createTransformersJsScannerWorkerClient(): TransformersJsScannerWorkerClient {
   if (typeof Worker === 'undefined') {
     return {
-      async scanModel({ tasks: _tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }> {
+      async scanModel({ tasks: _tasks }: { tasks: ScanOptions['tasks'] }): Promise<{ files: ScannedModelFile[] }> {
         throw createUnavailableEnvironmentError();
       },
       async dispose(): Promise<void> {
@@ -30,7 +30,7 @@ export function createTransformersJsScannerWorkerClient(): TransformersJsScanner
   const remote = wrapWorkerRemote<ITransformersJsScannerWorker>({ endpoint: worker });
 
   return {
-    async scanModel({ tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }> {
+    async scanModel({ tasks }: { tasks: ScanOptions['tasks'] }): Promise<{ files: ScannedModelFile[] }> {
       return remote.scanModel({ tasks });
     },
     async dispose(): Promise<void> {

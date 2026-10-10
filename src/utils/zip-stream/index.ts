@@ -348,11 +348,8 @@ function createLocalHeader({
   return result;
 }
 
-function createDataDescriptor({
-  crc32,
-  compressedSize,
-  uncompressedSize,
-}: ZipEntryWriteResult): Uint8Array {
+function createDataDescriptor({ result }: { result: ZipEntryWriteResult }): Uint8Array {
+  const { crc32, compressedSize, uncompressedSize } = result;
   return createBytes({
     size: 16,
     write: ({ view }) => {
@@ -640,7 +637,7 @@ export class StreamingZipWriter {
       compressedSize: this.output.position - dataStartOffset,
       uncompressedSize: state.uncompressedSize,
     };
-    await this.output.write({ chunk: createDataDescriptor(result) });
+    await this.output.write({ chunk: createDataDescriptor({ result }) });
     await this.centralDirectory.write({
       chunk: createCentralDirectoryRecord({
         nameBytes,

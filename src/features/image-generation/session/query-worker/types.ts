@@ -67,7 +67,7 @@ export type ImageGenerationQuery = { store: ImageGenerationStoreAccess, sessionI
 export type ImageGenerationQueryResult = { runsWithAssets: ReturnType<typeof toImageGenerationRunId>[], deletedAssetIds: ReturnType<typeof toImageGenerationAssetId>[], pendingDeletions: { assetId: ReturnType<typeof toImageGenerationAssetId>, sessionId: ReturnType<typeof toImageGenerationSessionId>, revision: number }[], page: ImageGenerationAssetPage, runs: ImageGenerationReadResult<ImageGenerationRunSummary> };
 export interface ImageGenerationQueryWorker { query({ request }: { request: z.input<typeof generationQueryRequestSchema> }): Promise<z.input<typeof generationQueryResultSchema>> }
 export interface ImageGenerationQueryClient {
-  query({ store, sessionId, query }: ImageGenerationQuery): Promise<ImageGenerationQueryResult>,
+  query({ store, sessionId, query }: { store: ImageGenerationQuery['store'], sessionId: ImageGenerationQuery['sessionId'], query: ImageGenerationQuery['query'] }): Promise<ImageGenerationQueryResult>,
   dispose(): Promise<void>,
 }
 

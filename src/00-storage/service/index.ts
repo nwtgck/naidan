@@ -243,7 +243,7 @@ export class StorageService {
     return this.provider === null ? undefined : readModelLaunch({ provider: this.provider, chatId });
   }
 
-  async restoreModelLaunch({ chatId, input, requestedVariant, target, signal }: Omit<Parameters<typeof restoreModelLaunch>[0], 'provider'> & { signal: AbortSignal }) {
+  async restoreModelLaunch({ chatId, input, requestedVariant, target, signal }: { chatId: Parameters<typeof restoreModelLaunch>[0]['chatId'], input: Parameters<typeof restoreModelLaunch>[0]['input'], requestedVariant: Parameters<typeof restoreModelLaunch>[0]['requestedVariant'], target: Parameters<typeof restoreModelLaunch>[0]['target'], signal: AbortSignal }) {
     const provider = this.getProvider();
     return this.synchronizer.withLock({
       lockKey: LOCK_METADATA,

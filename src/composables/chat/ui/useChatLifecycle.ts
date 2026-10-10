@@ -52,7 +52,7 @@ export type ChatLifecycleAdapter = {
     injectAddToast,
   }: {
     id: ChatId,
-    injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined,
+    injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: { message: AddToastOptions['message'], actionLabel?: AddToastOptions['actionLabel'], onAction?: AddToastOptions['onAction'], onClose?: AddToastOptions['onClose'], duration?: AddToastOptions['duration'] }) => string) | undefined,
   }): Promise<void>,
 
   deleteAllChats(): Promise<void>,
@@ -165,7 +165,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     injectAddToast,
   }: {
     id: ChatId,
-    injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined,
+    injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: { message: AddToastOptions['message'], actionLabel?: AddToastOptions['actionLabel'], onAction?: AddToastOptions['onAction'], onClose?: AddToastOptions['onClose'], duration?: AddToastOptions['duration'] }) => string) | undefined,
   }): Promise<void> {
     autoTitleScheduler.cancel({ chatId: id });
     chatRuntimeStore.getActiveTitleGeneration({ chatId: id })?.abort();

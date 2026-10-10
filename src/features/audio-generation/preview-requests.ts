@@ -10,7 +10,7 @@ export type AudioPreviewRequests = {
 };
 export type AudioPreviewDelivery = {
   requests: AudioPreviewRequests,
-  onPreview: ({ result, requestVersion }: AudioPreviewEvent) => void | Promise<void>,
+  onPreview: ({ event }: { event: AudioPreviewEvent }) => void | Promise<void>,
 };
 
 export function createAudioPreviewRequests(): { requests: AudioPreviewRequests, request: () => void } {

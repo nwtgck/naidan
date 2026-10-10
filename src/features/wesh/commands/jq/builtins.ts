@@ -2727,7 +2727,7 @@ export function evaluateBuiltin({
   inputMetadata,
   evaluateFirstOutput,
   emitStderr,
-}: EvaluateBuiltinParameters): JqRuntimeResult {
+}: { readonly name: EvaluateBuiltinParameters['name'], readonly args: EvaluateBuiltinParameters['args'], readonly input: EvaluateBuiltinParameters['input'], readonly evaluate: EvaluateBuiltinParameters['evaluate'], readonly takeInputs: EvaluateBuiltinParameters['takeInputs'], readonly inputMetadata: EvaluateBuiltinParameters['inputMetadata'], readonly evaluateFirstOutput: EvaluateBuiltinParameters['evaluateFirstOutput'], readonly emitStderr: EvaluateBuiltinParameters['emitStderr'] }): JqRuntimeResult {
   const parameters: EvaluateBuiltinParameters = {
     name,
     args,
@@ -3033,7 +3033,7 @@ export function evaluateBuiltinWithEvaluatedArguments({
   inputMetadata,
   evaluateFirstOutput,
   emitStderr,
-}: EvaluateBuiltinParameters): JqRuntimeResult {
+}: { readonly name: EvaluateBuiltinParameters['name'], readonly args: EvaluateBuiltinParameters['args'], readonly input: EvaluateBuiltinParameters['input'], readonly evaluate: EvaluateBuiltinParameters['evaluate'], readonly takeInputs: EvaluateBuiltinParameters['takeInputs'], readonly inputMetadata: EvaluateBuiltinParameters['inputMetadata'], readonly evaluateFirstOutput: EvaluateBuiltinParameters['evaluateFirstOutput'], readonly emitStderr: EvaluateBuiltinParameters['emitStderr'] }): JqRuntimeResult {
   return evaluateBuiltinSinglePass({
     name,
     args,
@@ -3055,7 +3055,7 @@ function evaluateBuiltinSinglePass({
   inputMetadata,
   evaluateFirstOutput,
   emitStderr,
-}: EvaluateBuiltinParameters): JqRuntimeResult {
+}: { readonly name: EvaluateBuiltinParameters['name'], readonly args: EvaluateBuiltinParameters['args'], readonly input: EvaluateBuiltinParameters['input'], readonly evaluate: EvaluateBuiltinParameters['evaluate'], readonly takeInputs: EvaluateBuiltinParameters['takeInputs'], readonly inputMetadata: EvaluateBuiltinParameters['inputMetadata'], readonly evaluateFirstOutput: EvaluateBuiltinParameters['evaluateFirstOutput'], readonly emitStderr: EvaluateBuiltinParameters['emitStderr'] }): JqRuntimeResult {
   switch (name) {
   case 'IN': {
     if (args.length < 1 || args.length > 2 || args[0] === undefined) {

@@ -672,10 +672,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
 /** Uses the existing native lane, but deliberately skips the writable-storage
  * capability probe. Model lookup inside generate is read-only; this entry point
  * never imports/downloads weights, changes settings or writes chat history. */
-async function generateReadOnlyLlamaCpp({ owner, input, onEvent, signal, onProgress }: Parameters<LlamaCppBrowserService['generate']>[0] & {
-  owner: ReadOnlyOwner,
-  onProgress({ progress }: { progress: Progress }): void,
-}): Promise<GenerationResult> {
+async function generateReadOnlyLlamaCpp({ owner, input, onEvent, signal, onProgress }: { owner: ReadOnlyOwner, input: Parameters<LlamaCppBrowserService['generate']>[0]['input'], onEvent: Parameters<LlamaCppBrowserService['generate']>[0]['onEvent'], signal: Parameters<LlamaCppBrowserService['generate']>[0]['signal'], onProgress({ progress }: { progress: Progress }): void }): Promise<GenerationResult> {
   if (laneReservations !== 0) throw new LlamaCppBrowserError({ code: 'busy' });
   const accepted = acceptModelRequest({ request: publicGenerateInputSchema.parse({ ...input, debug: 'off', options: { ...options } }), validate: ({ request }) => generateInputSchema.parse(request) });
   return run({
@@ -735,9 +732,7 @@ export function createReadOnlyLlamaCppClient() {
   let pending = 0;
   let closing: Promise<void> | undefined;
   return {
-    async generate({ input, onEvent, signal, onProgress }: Parameters<LlamaCppBrowserService['generate']>[0] & {
-      onProgress({ progress }: { progress: Progress }): void,
-    }): Promise<GenerationResult> {
+    async generate({ input, onEvent, signal, onProgress }: { input: Parameters<LlamaCppBrowserService['generate']>[0]['input'], onEvent: Parameters<LlamaCppBrowserService['generate']>[0]['onEvent'], signal: Parameters<LlamaCppBrowserService['generate']>[0]['signal'], onProgress({ progress }: { progress: Progress }): void }): Promise<GenerationResult> {
       if (lifetime.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
       const combined = signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal;
       pending++;

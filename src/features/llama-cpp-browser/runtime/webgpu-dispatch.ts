@@ -55,7 +55,7 @@ type Pipeline = {
 };
 type Binding = { group: GPUBindGroup | null, offsets: number[] };
 
-function wrapDevice({ device, report }: { device: GPUDevice, report: ({ axis, count, limit, chunks }: DispatchSplit) => void }): GPUDevice {
+function wrapDevice({ device, report }: { device: GPUDevice, report: ({ axis, count, limit, chunks }: { axis: DispatchSplit['axis'], count: DispatchSplit['count'], limit: DispatchSplit['limit'], chunks: DispatchSplit['chunks'] }) => void }): GPUDevice {
   const shaders = new WeakMap<GPUShaderModule, GPUShaderModuleDescriptor>();
   const pipelines = new WeakMap<GPUComputePipeline, Pipeline>();
   const groups = new WeakMap<GPUBindGroup, GPUBindGroupDescriptor>();
@@ -222,7 +222,7 @@ function wrapDevice({ device, report }: { device: GPUDevice, report: ({ axis, co
 /** Passed only into this core factory's lexical navigator binding. No global
  * navigator/GPU prototypes, lcore files, Wasm bytes, or reported limits change. */
 export function createCoreWebGpuNavigator({ navigator, report, observeDevice }: {
-  navigator: Pick<Navigator, 'gpu'> | undefined, report: ({ axis, count, limit, chunks }: DispatchSplit) => void,
+  navigator: Pick<Navigator, 'gpu'> | undefined, report: ({ axis, count, limit, chunks }: { axis: DispatchSplit['axis'], count: DispatchSplit['count'], limit: DispatchSplit['limit'], chunks: DispatchSplit['chunks'] }) => void,
   observeDevice?: ({ device, adapter }: { device: GPUDevice, adapter?: GPUAdapter }) => GPUDevice,
 }): Pick<Navigator, 'gpu'> | undefined {
   if (!navigator?.gpu) return navigator;

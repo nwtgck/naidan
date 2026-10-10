@@ -140,7 +140,7 @@ class OPFSTmpManager {
     }
   }
 
-  private writePendingOwnerCleanups({ ownerScopeIds }: PendingOwnerCleanup) {
+  private writePendingOwnerCleanups({ ownerScopeIds }: { ownerScopeIds: PendingOwnerCleanup['ownerScopeIds'] }) {
     if (!hasLocalStorage()) {
       return;
     }

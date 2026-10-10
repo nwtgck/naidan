@@ -33,11 +33,11 @@ async function openWithKeyboard(): Promise<void> {
   if (open.value) action.value?.focus({ preventScroll: true });
 }
 
-async function toggle({ detail }: MouseEvent): Promise<void> {
+async function toggle({ event }: { event: MouseEvent }): Promise<void> {
   if (open.value) {
     open.value = false; return;
   }
-  if (detail === 0) await openWithKeyboard();
+  if (event.detail === 0) await openWithKeyboard();
   else open.value = true;
 }
 
@@ -55,7 +55,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>
   <span v-if="different" tw-class="shrink-0 inline-block text-xs font-normal" @keydown.esc.stop.prevent="close">
-    <button ref="button" type="button" :disabled="disabled" :aria-expanded="open" :aria-controls="id" aria-haspopup="dialog" @click="toggle" @keydown.down.stop.prevent="openWithKeyboard" data-testid="recommended-field-hint" tw-class="rounded-md px-1.5 py-0.5 text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-900/40 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ label }} {{ display }}</button>
+    <button ref="button" type="button" :disabled="disabled" :aria-expanded="open" :aria-controls="id" aria-haspopup="dialog" @click="toggle({ event: $event })" @keydown.down.stop.prevent="openWithKeyboard" data-testid="recommended-field-hint" tw-class="rounded-md px-1.5 py-0.5 text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 dark:hover:bg-blue-900/40 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{{ label }} {{ display }}</button>
     <MessageActionsMenu v-if="hint" :is-open="open" :trigger-el="button" :width="256" @close="open = false">
       <div :id="id" role="dialog" :aria-label="`${label}: ${String(hint.value)}`" tw-class="p-3 space-y-2 text-xs font-normal" @keydown.esc.stop.prevent="close">
         <span tw-class="block text-gray-600 dark:text-gray-300">{{ lazyStrings.imageGeneration__current_value() }}: {{ String(current) }}</span>

@@ -17,13 +17,15 @@ export function encodeObjectHeader({ type, bodyByteLength }: {
   return textEncoder.encode(`${type} ${bodyByteLength}\0`);
 }
 
-export function encodeObject({ type, body }: GitObject): Uint8Array {
+export function encodeObject({ object }: { object: GitObject }): Uint8Array {
+  const { type, body } = object;
   return concatBytes({
     chunks: [encodeObjectHeader({ type, bodyByteLength: body.byteLength }), body],
   });
 }
 
-export function objectIdFor({ type, body }: GitObject): string {
+export function objectIdFor({ object }: { object: GitObject }): string {
+  const { type, body } = object;
   const hasher = createSha1Hasher();
   hasher.update({ bytes: encodeObjectHeader({ type, bodyByteLength: body.byteLength }) });
   hasher.update({ bytes: body });

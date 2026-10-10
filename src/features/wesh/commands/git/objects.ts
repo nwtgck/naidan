@@ -20,7 +20,7 @@ export async function writeObject({ files, repository, type, body }: {
   body: Uint8Array,
 }): Promise<string> {
   const header = encodeObjectHeader({ type, bodyByteLength: body.byteLength });
-  const objectId = objectIdFor({ type, body });
+  const objectId = objectIdFor({ object: { type, body } });
   const objectDirectory = joinPath({ base: repository.commonDirPath, child: `objects/${objectId.slice(0, 2)}` });
   const objectPath = joinPath({ base: objectDirectory, child: objectId.slice(2) });
   if (!await pathExists({ files, path: objectDirectory })) {
@@ -58,7 +58,7 @@ async function readLooseObject({ files, repository, objectId }: {
     throw new Error(`Corrupt loose object ${objectId}: size mismatch`);
   }
   const type = match[1] as GitObjectType;
-  if (objectIdFor({ type, body }) !== objectId) {
+  if (objectIdFor({ object: { type, body } }) !== objectId) {
     throw new Error(`Corrupt loose object ${objectId}: object id mismatch`);
   }
   return { type, body };

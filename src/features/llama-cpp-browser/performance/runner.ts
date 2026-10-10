@@ -49,7 +49,7 @@ export function createPerformanceRunner({ service, now, date, hidden, waitUntilV
       }
       notify();
     },
-    async start({ plan: inputPlan, environment }: Pick<PerformanceSnapshot, 'plan' | 'environment'>): Promise<void> {
+    async start({ plan: inputPlan, environment }: { plan: PerformanceSnapshot['plan'], environment: PerformanceSnapshot['environment'] }): Promise<void> {
       if (controller) throw new Error('Measurement already running');
       const plan = planSchema.parse(inputPlan);
       const control = new AbortController(); controller = control;

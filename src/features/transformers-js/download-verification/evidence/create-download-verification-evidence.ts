@@ -507,7 +507,7 @@ export async function prepareDownloadVerificationEvidence({ evidence }: {
   };
 }
 
-export async function createDownloadVerificationEvidence({ ...args }: Parameters<typeof prepareDownloadVerificationEvidence>[0]): Promise<DownloadVerificationEvidenceArchive> {
+export async function createDownloadVerificationEvidence({ ...args }: { evidence: Parameters<typeof prepareDownloadVerificationEvidence>[0]['evidence'] }): Promise<DownloadVerificationEvidenceArchive> {
   const { files, fileName } = await prepareDownloadVerificationEvidence(args);
   const blob = await createEvidenceArchive({ files });
   await verifyGeneratedEvidenceArchive({ blob });

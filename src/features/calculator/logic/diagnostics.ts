@@ -40,7 +40,7 @@ export function failCalculatorInput({
   message,
   span,
   hint,
-}: CalculatorDiagnostic): never {
+}: { readonly code: CalculatorDiagnostic['code'], readonly message: CalculatorDiagnostic['message'], readonly span: CalculatorDiagnostic['span'], readonly hint: CalculatorDiagnostic['hint'] }): never {
   throw new CalculatorInputFailure({
     diagnostic: {
       code,

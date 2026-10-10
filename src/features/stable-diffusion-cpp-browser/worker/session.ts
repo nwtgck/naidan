@@ -64,7 +64,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     allocations.push(pointer); return pointer;
   };
   const text = ({ value }: { value: string }) => keep({ pointer: core.utf8(value) });
-  const emit = ({ ...event }: ImageDiagnosticInput): void => {
+  const emit: Emit = ({ ...event }): void => {
     try {
       active?.onDiagnostic?.(event);
     } catch { /* observational */ }
@@ -326,7 +326,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     if (await core.api.sd_ctx_supports_image_generation(context) !== 1) throw new Error('This context does not support image generation');
     modelVersion = core.readUtf8(await core.api.sd_get_model_version_name(context), 256) ?? 'Unknown';
   }
-  async function generate({ ...run }: Run): Promise<(ImagePixels & { modelVersion: string, uniformOutput: boolean }) | CancelledResult> {
+  async function generate({ run: { ...run } }: { run: Run }): Promise<(ImagePixels & { modelVersion: string, uniformOutput: boolean }) | CancelledResult> {
     if (closed || failed || poisoned || active) throw new Error('Image session is busy, failed or released');
     if (sessionId !== undefined && sessionId !== run.request.sessionId) throw new Error('Model composition changed; replace the image worker');
     sessionId ??= run.request.sessionId;
@@ -570,7 +570,7 @@ export function createImageGenerationSession({ core, helpers, reader }: {
     if (active) throw new Error('Do not enter native cleanup during generation');
     closed = true;
     if (inspection) await inspection;
-    const report = ({ ...event }: ImageDiagnosticInput) => {
+    const report = ({ ...event }: { event: ImageDiagnosticInput['event'], message?: ImageDiagnosticInput['message'], stage: ImageDiagnosticInput['stage'], fields: ImageDiagnosticInput['fields'] }) => {
       try {
         onDiagnostic?.(event);
       } catch { /* observational */ }
@@ -602,14 +602,12 @@ export function createImageGenerationSession({ core, helpers, reader }: {
 }
 
 /** One-shot convenience uses the same ownership implementation as retained runs. */
-export async function runImageGeneration({ core, helpers, reader, ...run }: Run & {
-  core: Core, helpers: Pick<HostHelpers, 'mountReadOnlyFile'>, reader: SyncBlobReader,
-}) {
+export async function runImageGeneration({ core, helpers, reader, ...run }: { core: Core, helpers: Pick<HostHelpers, 'mountReadOnlyFile'>, reader: SyncBlobReader, request: Run['request'], onProgress: Run['onProgress'], onLog: Run['onLog'], onDiagnostic?: Run['onDiagnostic'], onPerformance?: Run['onPerformance'], onPreview?: Run['onPreview'] }) {
   const session = createImageGenerationSession({ core, helpers, reader });
   let failure: { error: unknown } | undefined;
   let output: Awaited<ReturnType<typeof session.generate>> | undefined;
   try {
-    output = await session.generate(run);
+    output = await session.generate({ run });
   } catch (error) {
     failure = { error };
   }

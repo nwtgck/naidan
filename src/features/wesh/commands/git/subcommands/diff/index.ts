@@ -133,7 +133,7 @@ async function snapshotWorktreeForIndex({ context, repository, entries }: {
     const bytes = content.mode === 0o100644 || content.mode === 0o100755
       ? await cleanWorktreeBytes({ attributes, files: context.files, repository, path: entry.path, bytes: content.bytes, indexObjectId: entry.objectId })
       : content.bytes;
-    const objectId = objectIdFor({ type: 'blob', body: bytes });
+    const objectId = objectIdFor({ object: { type: 'blob', body: bytes } });
     result.set(entry.path, loadedDiffSnapshotEntry({ path: entry.path, mode: content.mode, objectId, bytes }));
   }
   return result;

@@ -19,6 +19,7 @@ function readListenerOptions({ options }: { options: boolean | AddEventListenerO
     : { capture, once: options.once, passive: options.passive, signal: options.signal };
 }
 
+// eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors the browser Worker constructor, as does the replay implementation.
 export type ProviderReplayTestWorkerConstructor = new (url: string | URL, options: WorkerOptions | undefined) => ProviderReplayTestWorker;
 
 /** One literal Production bootstrap, not a dispatcher that repairs unknown entries. */

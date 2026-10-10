@@ -61,7 +61,7 @@ export async function hashWorktreeEntry({ files, repository, path, write, regula
     : bytes;
   const objectId = write
     ? await writeObject({ files, repository, type: 'blob', body: objectBytes })
-    : objectIdFor({ type: 'blob', body: objectBytes });
+    : objectIdFor({ object: { type: 'blob', body: objectBytes } });
   return { path, objectId, mode, size: bytes.byteLength };
 }
 

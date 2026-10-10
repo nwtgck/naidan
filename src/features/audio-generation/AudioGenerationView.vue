@@ -174,7 +174,7 @@ async function generate(): Promise<void> {
       completionSignal: completion.signal,
       preview: {
         requests: captures.requests,
-        onPreview: ({ result: incoming, requestVersion }) => {
+        onPreview: ({ event: { result: incoming, requestVersion } }) => {
           if (disposed || request !== generation || active.signal.aborted) return;
           const result = audioGenerationPreviewSchema.parse(incoming);
           validateAudioWav(result);

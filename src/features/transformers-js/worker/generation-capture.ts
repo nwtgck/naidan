@@ -368,7 +368,7 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
     incompleteReasons.add(reason);
     return { kind: 'not-recorded', reason };
   }
-  function snapshotStream({ operation, phase, args }: Parameters<NativeStreamRecorder['recordNativeStream']>[0]): z.infer<typeof streamDetailSchema> {
+  function snapshotStream({ operation, phase, args }: { operation: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['operation'], phase: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['phase'], args: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['args'], streamCallOrdinal: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['streamCallOrdinal'] }): z.infer<typeof streamDetailSchema> {
     if (phase !== 'entering' || operation === 'end') return { kind: 'none' };
     switch (operation) {
     case 'put': {
@@ -571,7 +571,7 @@ export function createGenerationCapture({ run, limits: rawLimits, tensorClass }:
                 },
               });
             },
-            recordNativeStream({ operation, phase, streamCallOrdinal, args }: Parameters<NativeStreamRecorder['recordNativeStream']>[0]) {
+            recordNativeStream({ operation, phase, streamCallOrdinal, args }: { operation: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['operation'], phase: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['phase'], streamCallOrdinal: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['streamCallOrdinal'], args: Parameters<NativeStreamRecorder['recordNativeStream']>[0]['args'] }) {
               append({
                 create: () => {
                   if (invocationState.stream.status !== 'available' || !Number.isSafeInteger(streamCallOrdinal) || streamCallOrdinal <= 0) throw new Error('Invalid stream recording identity');

@@ -168,9 +168,7 @@ async function downloadBufferedStream({ openStream, filename, size, signal }: {
  * Neither cancellation nor a partly consumed one-shot source is retried.
  * Completion is stream EOF / Blob-link dispatch, NOT a durable disk-write event.
  */
-export async function downloadStream({ openStream, filename, size, signal }: StreamDownloadOptions & {
-  openStream: StreamFactory,
-}): Promise<void> {
+export async function downloadStream({ openStream, filename, size, signal }: { openStream: StreamFactory, filename: StreamDownloadOptions['filename'], size: StreamDownloadOptions['size'], signal: StreamDownloadOptions['signal'] }): Promise<void> {
   await downloadSource({ openStream, filename, size, signal, fallbackFile: undefined });
 }
 
@@ -185,10 +183,7 @@ export async function downloadFile({ file, filename, signal }: {
   await downloadSource({ openStream: async () => file.stream(), filename, size: file.size, signal, fallbackFile: file });
 }
 
-async function downloadSource({ openStream, filename, size, signal, fallbackFile }: StreamDownloadOptions & {
-  openStream: StreamFactory,
-  fallbackFile: Blob | undefined,
-}): Promise<void> {
+async function downloadSource({ openStream, filename, size, signal, fallbackFile }: { openStream: StreamFactory, filename: StreamDownloadOptions['filename'], size: StreamDownloadOptions['size'], signal: StreamDownloadOptions['signal'], fallbackFile: Blob | undefined }): Promise<void> {
   signal?.throwIfAborted();
   const metadata = downloadMetadataSchema.parse({ filename: normalizeDownloadFilename({ filename }), size });
   const lifecycle = new AbortController();
@@ -393,9 +388,7 @@ async function downloadWithWorker({ target: { registration, worker, base }, meta
 }
 
 /** Takes ownership of stream immediately, including failures before negotiation. */
-export async function downloadReadableStream({ stream, ...options }: StreamDownloadOptions & {
-  stream: ReadableStream<Uint8Array>,
-}): Promise<void> {
+export async function downloadReadableStream({ stream, ...options }: { stream: ReadableStream<Uint8Array>, filename: StreamDownloadOptions['filename'], size: StreamDownloadOptions['size'], signal: StreamDownloadOptions['signal'] }): Promise<void> {
   try {
     await downloadStream({ ...options, openStream: async () => stream });
   } catch (reason) {

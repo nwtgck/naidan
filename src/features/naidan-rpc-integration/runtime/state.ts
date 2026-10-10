@@ -22,13 +22,13 @@ export function createRpcManager({ settings, changed, control, stopping }: { set
   const storage = {
     readIdentity: () => naidanRpcStorage.readIdentity(),
     list: () => naidanRpcStorage.list(),
-    async remember({ ...args }: Parameters<typeof naidanRpcStorage.remember>[0]) {
+    async remember({ ...args }: { access: Parameters<typeof naidanRpcStorage.remember>[0]['access'], registration: Parameters<typeof naidanRpcStorage.remember>[0]['registration'], identity: Parameters<typeof naidanRpcStorage.remember>[0]['identity'] }) {
       const access = await naidanRpcStorage.remember(args); control.registryChanged(); return access;
     },
-    async update({ ...args }: Parameters<typeof naidanRpcStorage.update>[0]) {
+    async update({ ...args }: { access: Parameters<typeof naidanRpcStorage.update>[0]['access'], registration: Parameters<typeof naidanRpcStorage.update>[0]['registration'], expectedRevision: Parameters<typeof naidanRpcStorage.update>[0]['expectedRevision'] }) {
       const revision = await naidanRpcStorage.update(args); control.registryChanged(); return revision;
     },
-    async remove({ ...args }: Parameters<typeof naidanRpcStorage.remove>[0]) {
+    async remove({ ...args }: { access: Parameters<typeof naidanRpcStorage.remove>[0]['access'], id: Parameters<typeof naidanRpcStorage.remove>[0]['id'], expectedRevision: Parameters<typeof naidanRpcStorage.remove>[0]['expectedRevision'] }) {
       await naidanRpcStorage.remove(args); control.registryChanged();
     },
   };
