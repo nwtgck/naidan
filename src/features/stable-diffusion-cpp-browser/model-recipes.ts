@@ -54,7 +54,7 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
     files: [
       // The publisher's full commit id is not yet verified. Use the published
       // main branch for this test catalog entry until it can be pinned.
-      { role: 'diffusion', repository: 'Abiray/Qwen-Image-2.1-Turbo-GGUF', revision: 'main', path: 'qwen_image_2.1_turbo_Q4_K_M.gguf', directory: 'Qwen-Image-2.1-Turbo-GGUF', approximateBytes: 4190000000 },
+      { role: 'diffusion', repository: 'Abiray/Qwen-Image-2.1-Turbo-GGUF', revision: 'main', path: 'qwen_image_2.1_turbo_Q8_0.gguf', directory: 'Qwen-Image-2.1-Turbo-GGUF', approximateBytes: 7590000000 },
       { role: 'vae', repository: 'Comfy-Org/Qwen-Image-2.1', revision: '8150226f50722886a275fa08e7b1fdf961732502', path: 'vae/qwen_image_2.1_vae_bf16.safetensors', directory: 'Qwen-Image-2.1', approximateBytes: 676000000 },
       { role: 'lm', repository: 'Qwen/Qwen3-VL-8B-Instruct-GGUF', revision: '00e7d63528e65d7b64e80e1293a8360b4af6a594', path: 'Qwen3VL-8B-Instruct-Q4_K_M.gguf', directory: 'Qwen3-VL-8B-Instruct-GGUF', approximateBytes: 5030000000 },
     ],
@@ -157,9 +157,9 @@ export const imageModelRecipes: readonly ImageModelRecipe[] = reviewedRecipes.ma
     if (recipe.id === 'qwen-image-2.1-turbo' && file.role === 'diffusion') {
       options.push({ ...file, id: 'q3-k-m', path: 'qwen_image_2.1_turbo_Q3_K_M.gguf', approximateBytes: 3190000000 });
       options.push({ ...file, id: 'q4-k-s', path: 'qwen_image_2.1_turbo_Q4_K_S.gguf', approximateBytes: 4060000000 });
+      options.push({ ...file, id: 'q4-k-m', path: 'qwen_image_2.1_turbo_Q4_K_M.gguf', approximateBytes: 4190000000 });
       options.push({ ...file, id: 'q5-k-m', path: 'qwen_image_2.1_turbo_Q5_K_M.gguf', approximateBytes: 5010000000 });
       options.push({ ...file, id: 'q6-k', path: 'qwen_image_2.1_turbo_Q6_K.gguf', approximateBytes: 5880000000 });
-      options.push({ ...file, id: 'q8-0', path: 'qwen_image_2.1_turbo_Q8_0.gguf', approximateBytes: 7590000000 });
     }
     if ((recipe.id === 'qwen-image-2.1' || recipe.id === 'qwen-image-2.1-turbo') && file.role === 'lm') {
       options.push({ ...file, id: 'q8-0', path: 'Qwen3VL-8B-Instruct-Q8_0.gguf', approximateBytes: 8710000000 });

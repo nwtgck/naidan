@@ -179,7 +179,7 @@ export function useImageGeneration(): ImageGenerationView {
         }
         break;
       case 'qwen-image-2.1':
-        parameters.value.guidance = 6;
+        parameters.value.guidance = turbo ? 1 : 6;
         if (!parameters.value.modelArguments) parameters.value.modelArguments = 'qwen_image_2_1_prefix_cache=false';
         break;
       case 'sd-checkpoint': case 'flux1': case 'flux2-klein-4b': case 'anima': case 'krea2': case 'ernie-image': case 'unknown': break;
@@ -231,9 +231,19 @@ export function useImageGeneration(): ImageGenerationView {
     if (!preset || draftDisabled.value || library.importing.value || disposed) return;
     // Resolution belongs to the composition the user chose. Applying a model
     // preset changes sampling settings without resizing that composition.
-    const { width: _width, height: _height, ...settings } = preset.parameters;
-    parameters.value = { ...parameters.value, ...settings };
-    if (!busy.value) preview.value = { ...preview.value, ...preset.preview };
+    if (preset.recommendedFieldsOnly) {
+      // A partially supported model must not overwrite steps/scheduler with
+      // ordinary browser defaults that are not valid Turbo recommendations.
+      const fields = preset.recommendedFields ?? [];
+      parameters.value = {
+        ...parameters.value,
+        ...Object.fromEntries(fields.filter(field => field !== 'width' && field !== 'height').map(field => [field, preset.parameters[field]])),
+      };
+    } else {
+      const { width: _width, height: _height, ...settings } = preset.parameters;
+      parameters.value = { ...parameters.value, ...settings };
+    }
+    if (!busy.value && !preset.recommendedFieldsOnly) preview.value = { ...preview.value, ...preset.preview };
   }
   function randomSeed(): string {
     return String(Math.max(1, crypto.getRandomValues(new Uint32Array(1))[0] ?? 1));

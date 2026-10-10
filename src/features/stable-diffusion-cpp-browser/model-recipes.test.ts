@@ -48,7 +48,7 @@ it('limits the provisional main revision to the six known Abiray Turbo weights',
   }
 });
 
-it('defaults Qwen Image 2.1 Turbo to Abiray Q4_K_M and switches only its diffusion file', () => {
+it('defaults Qwen Image 2.1 Turbo to Abiray Q8_0 and switches only its diffusion file', () => {
   const turbo = imageModelRecipes.find(recipe => recipe.id === 'qwen-image-2.1-turbo')!;
   const base = imageModelRecipes.find(recipe => recipe.id === 'qwen-image-2.1')!;
   expect(turbo.recommendation).toBeUndefined();
@@ -56,16 +56,17 @@ it('defaults Qwen Image 2.1 Turbo to Abiray Q4_K_M and switches only its diffusi
   const diffusion = turbo.components.find(component => component.role === 'diffusion')!;
   expect(diffusion.defaultOptionId).toBe('default');
   expect(diffusion.options.map(option => [option.id, option.path, option.approximateBytes])).toEqual([
-    ['default', 'qwen_image_2.1_turbo_Q4_K_M.gguf', 4190000000],
+    ['default', 'qwen_image_2.1_turbo_Q8_0.gguf', 7590000000],
     ['q3-k-m', 'qwen_image_2.1_turbo_Q3_K_M.gguf', 3190000000],
     ['q4-k-s', 'qwen_image_2.1_turbo_Q4_K_S.gguf', 4060000000],
+    ['q4-k-m', 'qwen_image_2.1_turbo_Q4_K_M.gguf', 4190000000],
     ['q5-k-m', 'qwen_image_2.1_turbo_Q5_K_M.gguf', 5010000000],
     ['q6-k', 'qwen_image_2.1_turbo_Q6_K.gguf', 5880000000],
-    ['q8-0', 'qwen_image_2.1_turbo_Q8_0.gguf', 7590000000],
   ]);
   expect(diffusion.options.every(option => option.repository === 'Abiray/Qwen-Image-2.1-Turbo-GGUF' && option.revision === 'main')).toBe(true);
   const defaultFiles = selectedRecipeFiles({ recipe: turbo, selections: {} });
   expect(defaultFiles).toEqual(turbo.files);
+  expect(defaultFiles[0]?.path).toBe('qwen_image_2.1_turbo_Q8_0.gguf');
   expect(defaultFiles.slice(1)).toEqual(base.files.slice(1));
   for (const option of diffusion.options) {
     const selected = selectedRecipeFiles({ recipe: turbo, selections: { diffusion: option.id } });

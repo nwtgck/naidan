@@ -39,6 +39,14 @@ it('overrides only selected parameters and keeps common prompts/size/steps after
   expect(result.preset).toBe('z-image-turbo');
 });
 
+it('applies only guidance from the partial Qwen Turbo recommendation during benchmarks', () => {
+  const target = targetFixture({ id: 'qwen-turbo' }); target.facts = { family: 'qwen-image-2.1', variant: 'turbo', evidence: [] };
+  const common = { ...parametersFixture(), width: 640, height: 768, steps: 17, guidance: 6, sampler: 'dpm++2m' as const, scheduler: 'karras' as const, modelArguments: 'custom=1' };
+  const result = benchmarkParameters({ common, target, strategy: 'model-defaults', overrides: {} });
+  expect(result.preset).toBe('qwen-image-2.1-turbo');
+  expect(result.parameters).toEqual({ ...common, guidance: 1 });
+});
+
 it.each([-1, 0, 1.5, 11, NaN])('rejects invalid repeat count %s before creating a Worker', repeats => {
   const options = input(); options.protocol.repeats = repeats; expect(() => createBenchmarkPlan(options)).toThrow();
 });

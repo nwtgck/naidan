@@ -7,7 +7,7 @@ import { scanImageRepositories } from './logic/model-candidates';
 import { imageModelRecipes } from './model-recipes';
 import { ggufFixture, zImageTensors, qwenImageTensors, flux2KleinTensors, animaTensors, krea2Tensors, ernieImageTensors } from './test-utils/weights';
 
-it.each(['z-image-turbo', 'z-image-base', 'qwen-image-2.1', 'flux2-klein-4b', 'anima-turbo-1.1', 'krea2-turbo', 'ernie-image-turbo'] as const)('validates every field in the static %s starting point without replacing prompt or seed', id => {
+it.each(['z-image-turbo', 'z-image-base', 'qwen-image-2.1', 'qwen-image-2.1-turbo', 'flux2-klein-4b', 'anima-turbo-1.1', 'krea2-turbo', 'ernie-image-turbo'] as const)('validates every field in the static %s starting point without replacing prompt or seed', id => {
   const preset = TEST_ONLY.presets[id], original = { ...parametersFixture(), prompt: 'private', negativePrompt: 'custom', seed: '123' };
   const settings = parametersSchema.parse({ ...original, ...preset.parameters });
   expect(settings).toMatchObject({ prompt: 'private', negativePrompt: 'custom', seed: '123' });
@@ -106,11 +106,18 @@ it('recognizes Qwen Image 2.1 Turbo only from catalog provenance and never appli
   expect(unknown).toMatchObject({ family: 'qwen-image-2.1', variant: 'unknown' });
   const knownTurbo = await scan({ entry: turbo.files[0] });
   expect(knownTurbo).toMatchObject({ family: 'qwen-image-2.1', variant: 'turbo', turboHint: true });
-  expect(recommendationForSelection({ model: knownTurbo })).toBeUndefined();
+  const turboHint = recommendationForSelection({ model: knownTurbo });
+  expect(turboHint).toMatchObject({
+    id: 'qwen-image-2.1-turbo',
+    recommendedFieldsOnly: true,
+    recommendedFields: ['width', 'height', 'guidance'],
+    parameters: { width: 1024, height: 1024, guidance: 1 },
+  });
   const knownBase = await scan({ entry: base.files[0] });
   expect(knownBase).toMatchObject({ family: 'qwen-image-2.1', variant: 'base', turboHint: false });
-  expect(recommendationForSelection({ model: knownBase })?.id).toBe('qwen-image-2.1');
+  expect(recommendationForSelection({ model: knownBase })).toMatchObject({ id: 'qwen-image-2.1', parameters: { width: 512, height: 512, guidance: 6 } });
   // A similar-looking GGUF or forged repository revision is not evidence of Turbo weights.
   const unrelated = await scan({ entry: turbo.files[0], revision: 'f'.repeat(40) });
   expect(unrelated.variant).toBe('unknown');
+  expect(recommendationForSelection({ model: unrelated })?.id).toBe('qwen-image-2.1');
 });

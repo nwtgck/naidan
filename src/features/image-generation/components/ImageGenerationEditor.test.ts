@@ -104,6 +104,18 @@ it('connects independent width and height hints without changing other draft fie
   expect(view.applyRecommendedSettings).toHaveBeenCalledOnce();
 });
 
+it('renders Qwen Turbo resolution and guidance hints without suggesting unsupported sampling values', () => {
+  const view = useImageGeneration(); view.draftDisabled = computed(() => false);
+  view.recommendation = computed(() => recommendationForSelection({ model: { family: 'qwen-image-2.1', variant: 'turbo', evidence: [] } }));
+  wrapper = mount(ImageGenerationEditor, { props: { view, active: true } });
+  const hints = wrapper.findAllComponents(ImageRecommendedFieldHint);
+  for (const [field, expected] of [['width', 1024], ['height', 1024], ['guidance', 1]] as const) {
+    const hint = hints.find(item => item.props('field') === field)!;
+    expect(hint.get('[data-testid="recommended-field-hint"]').text()).toContain(String(expected));
+  }
+  expect(hints.find(item => item.props('field') === 'steps')?.find('[data-testid="recommended-field-hint"]').exists()).toBe(false);
+});
+
 it('keeps recommendation evidence compact and marks every external source without losing referrer protection', () => {
   const view = useImageGeneration();
   view.recommendation = computed(() => recommendationForSelection({ model: { family: 'anima', variant: 'turbo', evidence: [] } }));

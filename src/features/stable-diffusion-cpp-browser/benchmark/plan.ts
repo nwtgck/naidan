@@ -18,7 +18,12 @@ export function benchmarkParameters({ common, target, strategy, overrides }: {
     const recommended = recommendationForSelection({ model: target.facts });
     if (recommended) {
       const { guidance, sampler, scheduler, modelArguments } = recommended.parameters;
-      modelValues = { guidance, sampler, scheduler, modelArguments: common.modelArguments || modelArguments }; preset = recommended.id;
+      // The Qwen Turbo partial hint must not impose an unsupported scheduler
+      // or overwrite user-supplied sampling settings during comparison runs.
+      modelValues = recommended.recommendedFieldsOnly
+        ? (recommended.recommendedFields?.includes('guidance') ? { guidance } : {})
+        : { guidance, sampler, scheduler, modelArguments: common.modelArguments || modelArguments };
+      preset = recommended.id;
     }
     break;
   }

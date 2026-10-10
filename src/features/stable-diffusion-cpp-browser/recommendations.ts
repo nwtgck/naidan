@@ -2,13 +2,16 @@ import type { PreviewSettings, Parameters } from './types';
 import type { ModelCandidate } from './logic/model-candidates';
 export type ImageModelFacts = Pick<ModelCandidate, 'family' | 'variant' | 'evidence'>;
 export type ImageGenerationRecommendation = {
-  id: 'z-image-turbo' | 'z-image-base' | 'qwen-image-2.1' | 'flux2-klein-4b' | 'anima-turbo-1.1' | 'krea2-turbo' | 'ernie-image-turbo';
+  id: 'z-image-turbo' | 'z-image-base' | 'qwen-image-2.1' | 'qwen-image-2.1-turbo' | 'flux2-klein-4b' | 'anima-turbo-1.1' | 'krea2-turbo' | 'ernie-image-turbo';
   title: string;
   parameters: Omit<Parameters, 'prompt' | 'negativePrompt' | 'seed'>;
   preview: Pick<PreviewSettings, 'mode' | 'interval' | 'startStep' | 'maxEdge'>;
   sources: readonly { label: string, url: string }[];
   checkedAt: string;
   recommendedFields?: readonly (keyof ImageGenerationRecommendation['parameters'])[];
+  // For an incomplete inference preset, expose and apply only validated fields.
+  // In particular, Turbo's custom sigma schedule is not yet supported.
+  recommendedFieldsOnly?: boolean;
   stepRange?: { minimum: number, maximum: number };
 };
 const upstream = 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be';
@@ -62,6 +65,19 @@ const presets = {
     parameters: { ...browserDefaults, sampler: 'euler', modelArguments: 'qwen_image_2_1_prefix_cache=false' },
     preview: { mode: 'vae', interval: 2, startStep: 8, maxEdge: 256 },
     sources: [{ label: 'stable-diffusion.cpp · Qwen Image 2.1', url: `${upstream}/docs/qwen_image_2.1.md` }],
+  },
+  'qwen-image-2.1-turbo': {
+    id: 'qwen-image-2.1-turbo',
+    title: 'Qwen Image 2.1 Turbo',
+    checkedAt: '2026-10-11',
+    // These three values are useful for testing, but the custom sigma schedule
+    // is not yet exposed by Naidan. Do not advertise/apply the other sampling
+    // defaults as a complete Turbo preset.
+    recommendedFieldsOnly: true,
+    recommendedFields: ['width', 'height', 'guidance'],
+    parameters: { ...browserDefaults, width: 1024, height: 1024, guidance: 1 },
+    preview: { mode: 'vae', interval: 2, startStep: 8, maxEdge: 256 },
+    sources: [{ label: 'Qwen · Qwen Image 2.1 Turbo', url: 'https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo' }],
   },
   'flux2-klein-4b': {
     recommendedFields: ['steps', 'guidance', 'sampler'],
@@ -121,11 +137,11 @@ export function recommendationForSelection({ model }: { model: ImageModelFacts |
     case 'distilled': case 'unknown': return undefined;
     default: { const exhaustive: never = model.variant; throw new Error(String(exhaustive)); }
     }
-  // Turbo needs a dedicated custom sigma schedule, not the Base preset.
-  // The catalog makes its weights selectable but does not yet implement that schedule.
+  // Turbo and Base share the same tensor shape; provenance distinguishes them.
+  // The Turbo entry is deliberately partial until custom sigmas are supported.
   case 'qwen-image-2.1':
     switch (model.variant) {
-    case 'turbo': return undefined;
+    case 'turbo': return presets['qwen-image-2.1-turbo'];
     case 'base': case 'distilled': case 'unknown': return presets['qwen-image-2.1'];
     default: { const exhaustive: never = model.variant; throw new Error(String(exhaustive)); }
     }

@@ -17,7 +17,7 @@ const rpcMocks = vi.hoisted(() => ({ manager: vi.fn() }));
 vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({ getRpcManager: rpcMocks.manager, subscribeRpcState: () => () => {} }));
 const mocks = vi.hoisted(() => {
   const models: Request['models'] = [];
-  let selection: ({ family, turbo }: { family: 'z-image', turbo: boolean }) => void = () => {};
+  let selection: ({ family, turbo }: { family: 'z-image' | 'qwen-image-2.1', turbo: boolean }) => void = () => {};
   return {
     generate: vi.fn(),
     inspectEngine: vi.fn(),
@@ -34,9 +34,10 @@ const mocks = vi.hoisted(() => {
     download: vi.fn(),
     setTransfer: vi.fn(),
     models,
+    facts: { family: 'z-image' as 'z-image' | 'qwen-image-2.1', variant: 'turbo' as 'turbo' | 'base', evidence: [] as string[] },
     storageType: 'opfs',
     listeners: new Set<({ event }: { event: { type: 'migration', timestamp: number } }) => void>(),
-    select(value: { family: 'z-image', turbo: boolean }) {
+    select(value: { family: 'z-image' | 'qwen-image-2.1', turbo: boolean }) {
       selection(value);
     },
     selection(callback: typeof selection) {
@@ -74,7 +75,7 @@ vi.mock('virtual:stable-diffusion-cpp-browser/config', async () => {
 vi.mock('@/features/stable-diffusion-cpp-browser/use-image-library', async () => {
   const { createDisabledImageLibrary } = await import('@/features/stable-diffusion-cpp-browser/library-standalone');
   return {
-    useImageLibrary: ({ onSelection }: { onSelection: ({ family, turbo }: { family: 'z-image', turbo: boolean }) => void }) => {
+    useImageLibrary: ({ onSelection }: { onSelection: ({ family, turbo }: { family: 'z-image' | 'qwen-image-2.1', turbo: boolean }) => void }) => {
       mocks.selection(onSelection);
       const library = createDisabledImageLibrary(); library.main.value = 'selected';
       const transfers = { importing: ref(false), downloading: ref(false) };
@@ -86,7 +87,7 @@ vi.mock('@/features/stable-diffusion-cpp-browser/use-image-library', async () =>
         ...transfers,
         ready: computed(() => true),
         selectedModels: () => mocks.models,
-        selectedFacts: computed(() => ({ family: 'z-image', variant: 'turbo', evidence: [] })),
+        selectedFacts: computed(() => mocks.facts),
         prepareHistoryFiles: () => mocks.prepareFiles(),
         restoreModelSelection() {
           library.main.value = 'missing-primary';
@@ -135,6 +136,7 @@ beforeEach(async () => {
   preferencesInitialized.value = false;
   preferenceSettings.value = { ...DEFAULT_SETTINGS, storageType: 'local', endpoint: { type: 'openai', url: '' } };
   vi.clearAllMocks(); mocks.listeners.clear(); mocks.storageType = 'opfs'; mocks.models = [{ slot: 'model', file: ggufFile() }];
+  mocks.facts = { family: 'z-image', variant: 'turbo', evidence: [] };
   mocks.query.mockResolvedValue({ items: [], total: 0, warnings: [], warningCount: 0 }); mocks.save.mockResolvedValue(undefined); mocks.generate.mockResolvedValue(result());
   mocks.inspectEngine.mockReset().mockResolvedValue({ status: 'ready', snapshot: engineSnapshotFixture() });
   mocks.remove.mockReset().mockResolvedValue(undefined);
@@ -1053,6 +1055,25 @@ describe('hosted image history integration with a synthetic inference client', (
     expect(view.parameters.value).toMatchObject({ width: 768, height: 448, steps: 8, guidance: 1 });
     view.parameters.value.steps = 60; view.applyRecommendedSettings(); await nextTick();
     expect(view.parameters.value).toMatchObject({ width: 768, height: 448, steps: 8, guidance: 1 });
+  });
+
+  it('sets Turbo guidance to one on Qwen selection without resetting size, and keeps Base at six', () => {
+    const view = open(); view.parameters.value.width = 1024; view.parameters.value.height = 1024;
+    mocks.select({ family: 'qwen-image-2.1', turbo: true });
+    expect(view.parameters.value).toMatchObject({ width: 1024, height: 1024, guidance: 1 });
+    mocks.select({ family: 'qwen-image-2.1', turbo: false });
+    expect(view.parameters.value).toMatchObject({ width: 1024, height: 1024, guidance: 6 });
+  });
+
+  it('applies only Turbo guidance without silently replacing the user’s size or custom sampling settings', () => {
+    mocks.facts = { family: 'qwen-image-2.1', variant: 'turbo', evidence: [] };
+    const view = open();
+    view.parameters.value = { ...view.parameters.value, width: 768, height: 640, steps: 34, guidance: 6, sampler: 'dpm++2m', scheduler: 'karras' };
+    view.preview.value = { ...view.preview.value, interval: 9 };
+    expect(view.recommendation.value?.id).toBe('qwen-image-2.1-turbo');
+    view.applyRecommendedSettings();
+    expect(view.parameters.value).toMatchObject({ width: 768, height: 640, steps: 34, guidance: 1, sampler: 'dpm++2m', scheduler: 'karras' });
+    expect(view.preview.value.interval).toBe(9);
   });
 
   it('resolves a browser-random seed once for the accepted request and saved snapshot', async () => {

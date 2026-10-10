@@ -178,11 +178,11 @@ it('offers the Qwen Turbo quantization choices without fetching until explicitly
   const card = wrapper.get('[data-testid="image-recipe-qwen-image-2.1-turbo"]');
   const selector = card.get<HTMLSelectElement>('[data-testid="recipe-option-qwen-image-2.1-turbo-diffusion"]');
   expect(selector.element.value).toBe('default');
-  expect(selector.findAll('option').map(option => option.text())).toEqual(['Q4_K_M', 'Q3_K_M', 'Q4_K_S', 'Q5_K_M', 'Q6_K', 'Q8_0']);
-  await selector.setValue('q8-0');
+  expect(selector.findAll('option').map(option => option.text())).toEqual(['Q8_0', 'Q3_K_M', 'Q4_K_S', 'Q4_K_M', 'Q5_K_M', 'Q6_K']);
+  await selector.setValue('q4-k-m');
   expect(view.downloadRecipe).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
   await card.get('[data-testid="recipe-download-selected-qwen-image-2.1-turbo"]').trigger('click');
-  expect(view.downloadRecipe).toHaveBeenCalledExactlyOnceWith({ recipeId: 'qwen-image-2.1-turbo', selections: { diffusion: 'q8-0' } });
+  expect(view.downloadRecipe).toHaveBeenCalledExactlyOnceWith({ recipeId: 'qwen-image-2.1-turbo', selections: { diffusion: 'q4-k-m' } });
   expect(fetch).not.toHaveBeenCalled();
 });
 
