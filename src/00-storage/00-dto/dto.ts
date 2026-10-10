@@ -491,8 +491,11 @@ export const MessageNodeSchemaDtoV1 = resolveMissingAsUndefined(
 export type MessageNodeDtoV1 = dtozod.infer<typeof MessageNodeSchemaDtoV1>;
 
 // A named interface anchors mutual recursion; a type alias reintroduces TS2502/TS7022.
+// These interfaces are part of the exported schemas' inferred types. Keep them
+// exported so downstream schema compositions can emit named declarations,
+// without widening the recursive branches or exposing native Zod methods.
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- This identity is required for recursive schema inference.
-interface MessageBranchSchemaTypeDtoV1 extends dtozod.DtoObject<{
+export interface MessageBranchSchemaTypeDtoV1 extends dtozod.DtoObject<{
   items: dtozod.DtoArray<typeof MessageNodeSchemaDtoV1>;
   experimental: ReturnType<typeof optionalExperimentalFieldSchemaDto<typeof ExperimentalMessageBranchSchemaDto>>;
 }> {}
@@ -508,7 +511,7 @@ export type MessageBranchDtoV1 = dtozod.infer<typeof MessageBranchSchemaDtoV1>;
 
 // A named interface anchors mutual recursion; a type alias reintroduces TS2502/TS7022.
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- This identity is required for recursive schema inference.
-interface MessageBranchSchemaTypeDtoV2 extends dtozod.DtoObject<{
+export interface MessageBranchSchemaTypeDtoV2 extends dtozod.DtoObject<{
   items: dtozod.DtoArray<typeof MessageNodeSchemaDtoV2>;
   experimental: ReturnType<typeof optionalExperimentalFieldSchemaDto<typeof ExperimentalMessageBranchSchemaDto>>;
 }> {}

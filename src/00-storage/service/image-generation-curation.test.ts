@@ -32,6 +32,57 @@ async function ready({ count, finish }: { count: number, finish: boolean }) {
 }
 
 describe('image archive and global tag identity', () => {
+  it('reads duplicate historical assignments without writes and canonicalizes only an explicit set command', async () => {
+    const h = await ready({ count: 1, finish: true });
+    const tag = { type: 'system' as const, key: 'favorite' as const };
+    await service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 0, assignedAt: 7, tags: [tag] });
+    const file = await fs.file({ path: annotationsPath });
+    file.text = JSON.stringify({
+      assetId: idToRaw({ id: h.asset.id }),
+      sessionId: idToRaw({ id: h.session.id }),
+      revision: 1,
+      state: 'active',
+      tags: [{ tag, assignedAt: 7 }, { tag, assignedAt: 11 }],
+    });
+    const original = file.text;
+    fs.writes.length = 0;
+    expect((await service.loadImageGenerationAssetAnnotations(h.key))?.tags).toEqual([{ tag, assignedAt: 7 }, { tag, assignedAt: 11 }]);
+    expect(fs.writes).toEqual([]);
+    expect(file.text).toBe(original);
+    await service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 1, assignedAt: 20, tags: [tag, { ...tag }] });
+    expect((await service.loadImageGenerationAssetAnnotations(h.key))?.tags).toEqual([{ tag, assignedAt: 7 }]);
+    // Removing a tag remains possible even if its historical assignments repeated.
+    await service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 2, assignedAt: 30, tags: [] });
+    expect((await service.loadImageGenerationAssetAnnotations(h.key))?.tags).toEqual([]);
+  });
+
+  it('deduplicates by typed identity, keeps request order and does not hide unknown tags', async () => {
+    const h = await ready({ count: 1, finish: true });
+    const system = { type: 'system' as const, key: 'favorite' as const };
+    const user = { type: 'user' as const, tagId: toImageGenerationTagId({ raw: 'favorite' }) };
+    const catalog = await service.loadImageGenerationCatalog({ store: h.store });
+    await service.saveImageGenerationCatalog({
+      store: h.store,
+      catalog: {
+        ...catalog,
+        revision: 1,
+        tags: [{ id: user.tagId, name: 'user favorite', state: 'active', createdAt: 1, updatedAt: 1 }],
+      },
+      expectedRevision: 0,
+    });
+    await service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 0, assignedAt: 7, tags: [user, system, { ...user }, { ...system }] });
+    const annotations = await service.loadImageGenerationAssetAnnotations(h.key);
+    expect(annotations?.tags).toEqual([{ tag: user, assignedAt: 7 }, { tag: system, assignedAt: 7 }]);
+    fs.writes.length = 0;
+    const missing = { type: 'user' as const, tagId: toImageGenerationTagId({ raw: 'missing' }) };
+    await expect(service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 1, assignedAt: 9, tags: [user, user, missing, missing] })).rejects.toThrow('unknown');
+    expect(fs.writes).toEqual([]);
+    expect(await service.loadImageGenerationAssetAnnotations(h.key)).toEqual(annotations);
+    await expect(service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 0, assignedAt: 9, tags: [system, system] })).rejects.toThrow('conflict');
+    expect(fs.writes).toEqual([]);
+    expect(await service.loadImageGenerationAssetAnnotations(h.key)).toEqual(annotations);
+  });
+
   it('archives without changing any image bytes, request, or assigned tags, and restores it', async () => {
     const h = await ready({ count: 1, finish: true });
     await service.setImageGenerationAssetTags({ ...h.key, expectedRevision: 0, assignedAt: 7, tags: [{ type: 'system', key: 'favorite' }] });

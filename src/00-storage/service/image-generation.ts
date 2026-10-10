@@ -21,6 +21,14 @@ import { imageGenerationAnnotationsTable, imageGenerationAssetTable, imageGenera
 
 export type { ImageGenerationStoreAccess } from './image-generation/context';
 
+/** DTO strings are not path capabilities. Check the identities this operation
+ * will use as path components before locking/opening storage or publishing bytes.
+ * Display text and other metadata deliberately keep their relaxed DTO contract. */
+function assertImageGenerationPathIds({ ids }: { ids: readonly string[] }): void {
+  for (const id of ids) imageGenerationRawIdSchema.parse(id);
+}
+
+
 /** No directory is created during an ordinary read-only visit. */
 export async function openImageGenerationStore({ storageType, creation }: { storageType: StorageType, creation: 'allow' | 'forbid' }): Promise<ImageGenerationCatalog | undefined> {
   const dto = await openImageGenerationCatalogDto({ storageType, creation });
@@ -78,6 +86,7 @@ export async function loadImageGenerationSession({ store, sessionId }: { store: 
 
 export async function saveImageGenerationSession({ store, session, expectedRevision }: { store: ImageGenerationStoreAccess, session: ImageGenerationSession, expectedRevision: number | undefined }): Promise<ImageGenerationSession> {
   const requested = ExperimentalImageGenerationSessionSchemaDto.parse(imageGenerationSessionToDto({ session }));
+  assertImageGenerationPathIds({ ids: [requested.id] });
   // Validate retained leaves before creating directories or reserving activity.
   JSON.stringify(requested);
   return withImageGenerationStore({
@@ -196,6 +205,13 @@ export async function saveImageGenerationDraft({ store, draft, expectedRevision,
   store: ImageGenerationStoreAccess, draft: ImageGenerationSessionDraft, expectedRevision: number | undefined, writeInputs: () => Promise<void>,
 }): Promise<void> {
   const next = ExperimentalImageGenerationDraftSchemaDto.parse(imageGenerationDraftToDto({ draft }));
+  assertImageGenerationPathIds({
+    ids: [
+      next.sessionId,
+      ...(next.request.imageInputs.initImage ? [next.request.imageInputs.initImage.binaryObjectId] : []),
+      ...next.request.imageInputs.referenceImages.map(image => image.binaryObjectId),
+    ],
+  });
   const serialized = JSON.stringify(next);
   await withImageGenerationStore({
     store,
@@ -216,6 +232,14 @@ export async function saveImageGenerationDraft({ store, draft, expectedRevision,
  * It must not call a lock-taking storageService method recursively. */
 export async function createImageGenerationRun({ store, run, writeInputs }: { store: ImageGenerationStoreAccess, run: ImageGenerationRun, writeInputs: () => Promise<void> }): Promise<void> {
   const requested = ExperimentalImageGenerationRunSchemaDto.parse(imageGenerationRunToDto({ run }));
+  assertImageGenerationPathIds({
+    ids: [
+      requested.id, requested.sessionId,
+      ...requested.sources.flatMap(source => [source.sessionId, source.assetId]),
+      ...(requested.request.imageInputs.initImage ? [requested.request.imageInputs.initImage.binaryObjectId] : []),
+      ...requested.request.imageInputs.referenceImages.map(image => image.binaryObjectId),
+    ],
+  });
   const next = { ...requested, acceptedOrder: undefined };
   if (next.revision !== 0 || next.execution.type !== 'queued') throw new Error('New Image Generation runs must be queued at revision zero.');
   await withImageGenerationStore({
@@ -341,6 +365,12 @@ export async function updateImageGenerationRunExecution({ store, sessionId, runI
  * save may leave bytes, but never deliberately deletes shared BinaryObjects. */
 export async function commitImageGenerationAsset({ store, asset, writeImages }: { store: ImageGenerationStoreAccess, asset: ImageGenerationAsset, writeImages: () => Promise<void> }): Promise<void> {
   const next = ExperimentalImageGenerationAssetSchemaDto.parse(imageGenerationAssetToDto({ asset }));
+  assertImageGenerationPathIds({
+    ids: [
+      next.id, next.sessionId, next.runId, next.result.binaryObjectId,
+      ...next.previews.map(preview => preview.binaryObjectId),
+    ],
+  });
   await withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
@@ -402,7 +432,11 @@ export async function setImageGenerationAssetTags({ store, sessionId, assetId, t
   z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).parse(assignedAt);
   // This is a command limit, not a persisted-data constraint.
   if (tags.length > 256) throw new Error('Too many Image Generation asset tags.');
-  const requested = dtozod.array(ExperimentalImageGenerationTagReferenceSchemaDto).parse(tags.map(tag => imageGenerationTagReferenceToDto({ tag })));
+  const parsed = dtozod.array(ExperimentalImageGenerationTagReferenceSchemaDto).parse(tags.map(tag => imageGenerationTagReferenceToDto({ tag })));
+  // This command sets a collection of identities, not duplicate assignments.
+  // Normalize only the explicit request; stored duplicates remain readable and
+  // read-only operations never rewrite them. DTO parsing also fixes key order.
+  const requested = [...new Map(parsed.map(tag => [JSON.stringify(tag), tag])).values()];
   await withImageGenerationStore({
     store,
     operation: async ({ directory, catalog }) => {
