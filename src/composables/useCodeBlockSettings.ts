@@ -2,7 +2,9 @@ import { ref } from 'vue';
 
 const isLineWrapEnabled = ref(false);
 
+/** @effects `none` */
 export function useCodeBlockSettings() {
+  /** @effects `none` */
   function toggleLineWrap() {
     isLineWrapEnabled.value = !isLineWrapEnabled.value;
   }

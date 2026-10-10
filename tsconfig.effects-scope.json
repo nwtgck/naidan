@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "incremental": false,
+    "composite": false,
+    "types": [],
+    "noEmit": true
+  },
+  "files": [
+    "src/utils/opfs-detection.ts",
+    "src/utils/ollama-detection.ts",
+    "src/composables/useCodeBlockSettings.ts",
+    "src/env.d.ts",
+    "src/composables/useStoragePersistence.ts",
+    "src/composables/useLayout.ts",
+    "src/composables/useOverlay.ts"
+  ],
+  "include": [],
+  "exclude": [
+    "**/*.test.ts"
+  ]
+}

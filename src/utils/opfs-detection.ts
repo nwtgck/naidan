@@ -3,6 +3,7 @@
  * Supported in Chromium-based browsers: Chrome, Edge, Opera, Brave, Vivaldi, Arc, Samsung Internet.
  * Not supported in Firefox or Safari.
  */
+/** @effects `none` */
 export function checkFileSystemAccessSupport(): boolean {
   return typeof window !== 'undefined' && typeof (window as unknown as Record<string, unknown>).showDirectoryPicker === 'function';
 }
@@ -13,6 +14,11 @@ export function checkFileSystemAccessSupport(): boolean {
  * Simply checking for the existence of `navigator.storage.getDirectory` is not enough,
  * as it may exist in insecure contexts or certain environments (like Chrome with file:// protocol)
  * but throw an error when actually called.
+ */
+/** @effects `none` */
+/**
+ * @effectsUNSAFE `opfs.read(*)`, `opfs.write(*)`
+ * -- "Capability probe only; temporary-file creation/removal is intentionally hidden from callers. Cleanup remains best-effort."
  */
 export async function checkOPFSSupport(): Promise<boolean> {
   if (
@@ -35,7 +41,7 @@ export async function checkOPFSSupport(): Promise<boolean> {
       const hasCreateWritable = 'createWritable' in fileHandle && typeof (fileHandle as unknown as Record<string, unknown>).createWritable === 'function';
 
       // Clean up the test file
-      await root.removeEntry(testFileName).catch(() => {});
+      await root.removeEntry(testFileName).catch(/** @effects `none` */ () => {});
 
       if (!hasCreateWritable) {
         console.warn('OPFS detection: getDirectory() succeeded but createWritable is missing (likely Safari without full OPFS support).');

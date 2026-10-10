@@ -26,6 +26,30 @@ jobs:
       - name: Run lint
         run: npm run lint
 
+  effects:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        uses: ./.github/actions/retry-npm-ci
+
+      - name: Check effect tooling types
+        run: npm run typecheck:effects
+
+      - name: Check the explicit effect rollout
+        run: npm run effects:check
+
+      - name: Run effect checker tests
+        run: npm run test:effects
+
   test:
     runs-on: ubuntu-latest
     strategy:

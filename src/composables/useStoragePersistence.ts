@@ -1,6 +1,8 @@
 let hasRequestedInSession = false;
 
+/** @effects `none` */
 export function useStoragePersistence() {
+  /** @effects `none` */
   const requestPersistence = async () => {
     if (hasRequestedInSession) return;
     if (typeof navigator === 'undefined' || !navigator.storage || !navigator.storage.persist) {

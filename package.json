@@ -18,7 +18,12 @@
     "strings:catalogs:test": "npm run test:only-failed -- --config build/boundary-strings/vitest.catalogs.config.ts",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p pwa/tsconfig.json",
     "lint": "eslint . --max-warnings 0",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "tsx tools/effects/lint-fix.ts",
+    "effects:check": "tsx tools/effects/cli.ts check",
+    "effects:fix": "tsx tools/effects/cli.ts fix",
+    "effects:tidy": "tsx tools/effects/cli.ts tidy",
+    "typecheck:effects": "tsc --noEmit -p tsconfig.effects.json",
+    "test:effects": "npm run test:only-failed -- --config vitest.effects.config.ts tools/effects eslint-local-rules/effects.test.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "4.2.0",

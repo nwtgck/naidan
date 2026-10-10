@@ -1,3 +1,4 @@
+import { tsImport } from 'tsx/esm/api';
 import requireDtozod from './eslint-local-rules/require-dtozod.js';
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
@@ -30,6 +31,12 @@ import noXssProneBrowserApis from './eslint-local-rules/no-xss-prone-browser-api
 import preferRootAliasImports from './eslint-local-rules/prefer-root-alias-imports.js';
 import enforceDependencyDirections from './eslint-local-rules/enforce-dependency-directions.js';
 import testStructureSpacing from './eslint-local-rules/test-structure-spacing.js';
+
+// Load the TypeScript rule once, rather than installing a process-wide TS hook.
+const { createEffectsRule } = await tsImport('./eslint-local-rules/effects.ts', import.meta.url);
+const { default: rawEffectsConfig } = await tsImport('./effects.config.ts', import.meta.url);
+const { parseEffectsConfig } = await tsImport('./tools/effects/config-schema.ts', import.meta.url);
+const effectsConfig = parseEffectsConfig({ value: rawEffectsConfig });
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -92,7 +99,7 @@ export default tseslint.config(
   {
     // Preserve upstream structure; Naidan-owned fix integration code and tests remain linted.
     // Temporary test support is excluded from tsconfig.app.json and uses isolated lint configurations.
-    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts', 'eslint-local-rules/fixtures/**', 'src/test-tmp/**', 'scripts/**', 'build/transformers-js-fixes/upstream/**'],
+    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts', 'eslint-local-rules/fixtures/**', 'src/test-tmp/**', 'scripts/**', 'build/transformers-js-fixes/upstream/**', 'tools/effects/fixtures/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -207,6 +214,20 @@ export default tseslint.config(
   enforceDependencyDirections,
   testStructureSpacing,
   requireDtozod,
+  {
+    files: ['tools/effects/**/*.ts', 'effects.config.ts', 'vitest.effects.config.ts', 'eslint-local-rules/effects.ts'],
+    languageOptions: {
+      parserOptions: { project: ['./tsconfig.effects.json'] },
+    },
+  },
+  {
+    files: effectsConfig.files,
+    languageOptions: {
+      parserOptions: { project: ['./tsconfig.effects-scope.json'] },
+    },
+    plugins: { 'local-effects': { rules: { contracts: createEffectsRule({ root: import.meta.dirname, config: effectsConfig }) } } },
+    rules: { 'local-effects/contracts': 'error' },
+  },
   {
     files: ['**/*.test.ts'],
     languageOptions: {

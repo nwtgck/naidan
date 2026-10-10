@@ -12,54 +12,67 @@ const activeFocusAreaVersion = ref(0);
 const mediaShelfVisibility = ref<MediaShelfVisibility>('hidden');
 const preferredEditorMode = ref<'advanced' | 'textarea'>('advanced');
 
+/** @effects `none` */
 export function useLayout() {
+  /** @effects `none` */
   const toggleSidebar = () => {
     isSidebarOpen.value = !isSidebarOpen.value;
   };
 
+  /** @effects `none` */
   const setSidebarOpen = ({ open }: { open: boolean }) => {
     isSidebarOpen.value = open;
   };
 
+  /** @effects `none` */
   const toggleDebug = () => {
     isDebugOpen.value = !isDebugOpen.value;
   };
 
+  /** @effects `none` */
   const setDebugOpen = ({ open }: { open: boolean }) => {
     isDebugOpen.value = open;
   };
 
+  /** @effects `none` */
   const toggleWeshTerminal = () => {
     isWeshTerminalOpen.value = !isWeshTerminalOpen.value;
   };
 
+  /** @effects `none` */
   const setWeshTerminalOpen = ({ open }: { open: boolean }) => {
     isWeshTerminalOpen.value = open;
   };
 
+  /** @effects `none` */
   const toggleChatWeshTerminal = () => {
     isChatWeshTerminalOpen.value = !isChatWeshTerminalOpen.value;
   };
 
+  /** @effects `none` */
   const setChatWeshTerminalOpen = ({ open }: { open: boolean }) => {
     isChatWeshTerminalOpen.value = open;
   };
 
+  /** @effects `none` */
   const setActiveFocusArea = ({ area }: { area: FocusArea }) => {
     activeFocusArea.value = area;
     activeFocusAreaVersion.value += 1;
   };
 
+  /** @effects `none` */
   const setMediaShelfVisibility = ({ visibility }: { visibility: MediaShelfVisibility }) => {
     mediaShelfVisibility.value = visibility;
   };
 
+  /** @effects `none` */
   const setPreferredEditorMode = ({ mode }: { mode: 'advanced' | 'textarea' }) => {
     preferredEditorMode.value = mode;
   };
 
+  /** @effects `none` */
   const toggleMediaShelf = () => {
-    mediaShelfVisibility.value = (() => {
+    mediaShelfVisibility.value = (/** @effects `none` */ () => {
       switch (mediaShelfVisibility.value) {
       case 'visible': return 'hidden';
       case 'hidden': return 'visible';
