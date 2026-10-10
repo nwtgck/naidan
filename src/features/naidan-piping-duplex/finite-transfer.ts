@@ -126,7 +126,7 @@ export class FiniteTransferEndpoint implements FiniteTransfer {
         method,
         body: bytes === undefined ? undefined : new Uint8Array(bytes),
         signal: deadline.signal,
-        headers: this.headers.map<[string, string]>(({ name, value }) => [name, value]),
+        headers: this.headers.map(({ name, value }) => [name, value]),
         credentials: 'omit',
         redirect: 'error',
         cache: 'no-store',

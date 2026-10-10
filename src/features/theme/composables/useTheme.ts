@@ -77,9 +77,7 @@ export function initializeThemeController({ window, document }: {
   }
 
   const mediaQueryList = window.matchMedia('(prefers-color-scheme: dark)');
-  const storage = window.localStorage;
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Keep the existing Storage.getItem calling convention for native handles and test doubles.
-  themeMode.value = readPersistedThemeMode({ storage: { getItem: (key) => storage.getItem(key) } });
+  themeMode.value = readPersistedThemeMode({ storage: window.localStorage });
   applyCurrentTheme({ document, mediaQueryList });
 
   const handleSystemThemeChange = (): void => {
@@ -125,12 +123,10 @@ export function useTheme(): UseThemeApi {
       switch (controllerState.kind) {
       case 'not-initialized':
         throw new Error('The theme controller must be initialized before changing the theme.');
-      case 'initialized': {
+      case 'initialized':
         themeMode.value = mode;
-        const storage = controllerState.window.localStorage;
         writePersistedThemeMode({
-          // eslint-disable-next-line local-rules-named-args/require-named-args -- Keep the existing Storage.setItem calling convention for native handles and test doubles.
-          storage: { setItem: (key, value) => storage.setItem(key, value) },
+          storage: controllerState.window.localStorage,
           mode,
         });
         applyCurrentTheme({
@@ -138,7 +134,6 @@ export function useTheme(): UseThemeApi {
           mediaQueryList: controllerState.mediaQueryList,
         });
         return;
-      }
       default: {
         const _ex: never = controllerState;
         return _ex;

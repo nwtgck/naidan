@@ -98,8 +98,7 @@ function createPrivacyFetchBrokerClient({
   const activeStreams = new Set<() => void>();
   let disposed = false;
   let readyResolved = false;
-  // TODO(effects): Model implicit undefined initializers so this initializer can be omitted.
-  let iframe: HTMLIFrameElement | undefined = undefined;
+  let iframe: HTMLIFrameElement | undefined;
 
   const resolvePendingRequest = ({
     requestId,

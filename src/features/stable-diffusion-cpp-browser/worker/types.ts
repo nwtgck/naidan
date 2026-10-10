@@ -19,8 +19,7 @@ export interface ImageClient {
   updatePreview({ settings }: { settings: PreviewSettings }): void;
   inspectEngine(): Promise<ImageEngineInspection>;
   cancel(): void;
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Preserve the existing optional release contract without destructuring undefined in a type signature.
-  release(options?: { reason?: ImageReleaseReason }): void;
+  release({ reason }?: { reason?: ImageReleaseReason }): void;
   dispose(): void;
 }
 export const TEST_ONLY = {

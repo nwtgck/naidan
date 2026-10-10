@@ -1,8 +1,9 @@
 import { handleFakeLmOllamaRequest } from '@/features/fake-lm/api/fakeLmOllamaApi';
 import { handleFakeLmOpenAiRequest } from '@/features/fake-lm/api/fakeLmOpenAiApi';
+import type { LmFetch } from '@/features/lm/fetch';
 
 // eslint-disable-next-line local-rules-named-args/require-named-args -- fake fetch must match the native fetch signature.
-export const fakeLmFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+export const fakeLmFetch: LmFetch = async (input, init) => {
   const request = await normalizeFakeLmFetchRequest({ input, init });
   const response = await handleFakeLmOpenAiRequest({ url: request.url, init: request.init })
     ?? await handleFakeLmOllamaRequest({ url: request.url, init: request.init });

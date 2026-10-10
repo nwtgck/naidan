@@ -1,3 +1,4 @@
+import type { LmFetch } from '@/features/lm/fetch';
 import type { FakeLmDebugModeStatus } from '@/features/fake-lm/runtime/fakeLmDebugMode';
 import { createModuleLoader } from '@/utils/module-loader';
 import { promiseAllKeyed } from '@/utils/promise';
@@ -30,7 +31,7 @@ const fakeLmLexiconModuleLoader = createModuleLoader({
 export async function createFakeLmFetchForEndpoint({ endpointUrl, fakeLmDebugModeStatus }: {
   endpointUrl: string | undefined,
   fakeLmDebugModeStatus: FakeLmDebugModeStatus,
-}) {
+}): Promise<LmFetch | undefined> {
   const { createFakeLmFetchForEndpoint } = await fakeLmFetchModuleLoader.load();
   return createFakeLmFetchForEndpoint({ endpointUrl, fakeLmDebugModeStatus });
 }

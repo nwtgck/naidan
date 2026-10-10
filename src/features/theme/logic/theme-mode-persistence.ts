@@ -12,8 +12,7 @@ function decodePersistedThemeMode({ rawValue }: {
 }
 
 export function readPersistedThemeMode({ storage }: {
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Keep the existing Storage.getItem calling convention for native handles and test doubles.
-  storage: { getItem(key: string): string | null },
+  storage: Pick<Storage, 'getItem'>,
 }): ThemeMode {
   try {
     return decodePersistedThemeMode({
@@ -26,8 +25,7 @@ export function readPersistedThemeMode({ storage }: {
 }
 
 export function writePersistedThemeMode({ storage, mode }: {
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Keep the existing Storage.setItem calling convention for native handles and test doubles.
-  storage: { setItem(key: string, value: string): void },
+  storage: Pick<Storage, 'setItem'>,
   mode: ThemeMode,
 }): void {
   const validatedMode = ThemeModeSchema.parse(mode);

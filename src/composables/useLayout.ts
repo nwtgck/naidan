@@ -12,67 +12,54 @@ const activeFocusAreaVersion = ref(0);
 const mediaShelfVisibility = ref<MediaShelfVisibility>('hidden');
 const preferredEditorMode = ref<'advanced' | 'textarea'>('advanced');
 
-/** @effects [] */
 export function useLayout() {
-  /** @effects [] */
   const toggleSidebar = () => {
     isSidebarOpen.value = !isSidebarOpen.value;
   };
 
-  /** @effects [] */
   const setSidebarOpen = ({ open }: { open: boolean }) => {
     isSidebarOpen.value = open;
   };
 
-  /** @effects [] */
   const toggleDebug = () => {
     isDebugOpen.value = !isDebugOpen.value;
   };
 
-  /** @effects [] */
   const setDebugOpen = ({ open }: { open: boolean }) => {
     isDebugOpen.value = open;
   };
 
-  /** @effects [] */
   const toggleWeshTerminal = () => {
     isWeshTerminalOpen.value = !isWeshTerminalOpen.value;
   };
 
-  /** @effects [] */
   const setWeshTerminalOpen = ({ open }: { open: boolean }) => {
     isWeshTerminalOpen.value = open;
   };
 
-  /** @effects [] */
   const toggleChatWeshTerminal = () => {
     isChatWeshTerminalOpen.value = !isChatWeshTerminalOpen.value;
   };
 
-  /** @effects [] */
   const setChatWeshTerminalOpen = ({ open }: { open: boolean }) => {
     isChatWeshTerminalOpen.value = open;
   };
 
-  /** @effects [] */
   const setActiveFocusArea = ({ area }: { area: FocusArea }) => {
     activeFocusArea.value = area;
     activeFocusAreaVersion.value += 1;
   };
 
-  /** @effects [] */
   const setMediaShelfVisibility = ({ visibility }: { visibility: MediaShelfVisibility }) => {
     mediaShelfVisibility.value = visibility;
   };
 
-  /** @effects [] */
   const setPreferredEditorMode = ({ mode }: { mode: 'advanced' | 'textarea' }) => {
     preferredEditorMode.value = mode;
   };
 
-  /** @effects [] */
   const toggleMediaShelf = () => {
-    mediaShelfVisibility.value = (/** @effects [] */ () => {
+    mediaShelfVisibility.value = (() => {
       switch (mediaShelfVisibility.value) {
       case 'visible': return 'hidden';
       case 'hidden': return 'visible';
