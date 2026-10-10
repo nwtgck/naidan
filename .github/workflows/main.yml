@@ -236,6 +236,9 @@ jobs:
           EOF
           done
 
+      - name: Install Wrangler with retry
+        uses: ./.github/actions/install-wrangler-with-retry
+
       - name: Publish to Cloudflare Pages
         id: cloudflare_pages_deploy
         uses: cloudflare/wrangler-action@v4
@@ -273,6 +276,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          cache: 'npm'
+
       - name: Download full dist build artifact
         uses: actions/download-artifact@v7
         with:
@@ -298,6 +307,9 @@ jobs:
             Content-Disposition: attachment; filename="${ZIP_STEM}-v${VERSION}.zip"
           EOF
           done
+
+      - name: Install Wrangler with retry
+        uses: ./.github/actions/install-wrangler-with-retry
 
       - name: Publish to Cloudflare Pages (local-only)
         id: cloudflare_pages_deploy_local
@@ -416,6 +428,9 @@ jobs:
             Content-Disposition: attachment; filename="${ZIP_STEM}-v${VERSION}.zip"
           EOF
           done
+
+      - name: Install Wrangler with retry
+        uses: ./.github/actions/install-wrangler-with-retry
 
       - name: Publish to Cloudflare Pages (Curated)
         id: cloudflare_pages_deploy_curated
