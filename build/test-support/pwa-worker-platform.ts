@@ -119,9 +119,11 @@ class RequestEvent extends LifetimeEvent {
   }
 }
 
-export function createWorkerHarness({ script, scope, cacheStorage, clients, fetch }: {
+export function createWorkerHarness({ script, scope, cacheStorage, clients, fetch, registration = { scope }, skipWaiting = async () => {} }: {
   script: string;
   scope: string;
+  registration?: { scope: string; active?: ServiceWorker | null; installing?: ServiceWorker | null; waiting?: ServiceWorker | null };
+  skipWaiting?: () => Promise<void>;
   cacheStorage: MemoryCacheStorage;
   clients: TestClients;
   fetch: typeof globalThis.fetch;
@@ -131,7 +133,7 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
   const listeners = new Map<EventListenerOrEventListenerObject, EventListener>();
   const global = {
     location,
-    registration: { scope },
+    registration,
     caches: cacheStorage.native(),
     clients,
     addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
@@ -152,7 +154,7 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
       const wrapper = listeners.get(listener);
       if (wrapper) target.removeEventListener(type, wrapper);
     },
-    skipWaiting: async () => {},
+    skipWaiting,
   };
   vm.runInNewContext(script, {
     self: global,
@@ -183,6 +185,8 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
     ReadableStream,
     MessageChannel,
     MessagePort,
+    AbortController,
+    AbortSignal,
   }, { filename: 'generated-sw.js' });
 
   function lifecycle(type: 'install' | 'activate'): Promise<void> {
@@ -218,11 +222,11 @@ export function createWorkerHarness({ script, scope, cacheStorage, clients, fetc
     return response;
   }
 
-  function messageWithPorts({ data, clientId, ports }: { data: unknown; clientId: string; ports: MessagePort[] }): Promise<void> {
+  function messageWithPorts({ data, clientId, ports, source = clients.clients.get(clientId) }: { data: unknown; clientId: string; ports: MessagePort[]; source?: unknown }): Promise<void> {
     const event = Object.assign(new LifetimeEvent('message'), {
       data,
       origin: new URL(scope).origin,
-      source: clients.clients.get(clientId),
+      source,
       ports,
     });
     target.dispatchEvent(event);

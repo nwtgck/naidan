@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { MessageChannel, MessagePort } from 'node:worker_threads';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { requestNetworkUpdate } from './worker-request';
-import { USE_NETWORK_MESSAGE } from './protocol';
+import { requestBuildId, requestNetworkUpdate, requestOfflineCompletion } from './worker-request';
+import { BUILD_ID_MESSAGE, COMPLETE_OFFLINE_MESSAGE, USE_NETWORK_MESSAGE } from './protocol';
 
 beforeEach(() => vi.stubGlobal('MessageChannel', MessageChannel));
 
@@ -66,6 +66,29 @@ describe('service worker message transport', () => {
     const rejected = expect(result).rejects.toThrow('did not enable');
     await vi.advanceTimersByTimeAsync(5000); await rejected;
     expect(close).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('validates a worker identity and releases both ports', async () => {
+    const close = vi.spyOn(MessagePort.prototype, 'close');
+    await expect(requestBuildId({ worker: workerWithReply({ type: BUILD_ID_MESSAGE, buildId: 'same-package-version-different-build' }), signal })).resolves.toBe('same-package-version-different-build');
+    expect(close).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([null, false, {}, { type: BUILD_ID_MESSAGE }, { type: BUILD_ID_MESSAGE, buildId: '' }, { type: BUILD_ID_MESSAGE, buildId: '   ' }, { type: USE_NETWORK_MESSAGE, buildId: 'b' }])('never guesses an identity from %j', async data => {
+    await expect(requestBuildId({ worker: workerWithReply(data), signal })).rejects.toThrow('Invalid');
+  });
+
+  it('accepts only the literal worker-owned completion acknowledgement', async () => {
+    await expect(requestOfflineCompletion({ worker: workerWithReply(COMPLETE_OFFLINE_MESSAGE), buildId: 'b', signal })).resolves.toBeUndefined();
+    await expect(requestOfflineCompletion({ worker: workerWithReply(false), buildId: 'b', signal })).rejects.toThrow('not accepted');
+  });
+
+  it('releases identity requests which an older worker does not understand', async () => {
+    vi.useFakeTimers();
+    const result = requestBuildId({ worker: { postMessage() {} } as unknown as ServiceWorker, signal });
+    const failure = expect(result).rejects.toThrow('did not identify');
+    await vi.advanceTimersByTimeAsync(5000); await failure;
     expect(vi.getTimerCount()).toBe(0);
   });
 });

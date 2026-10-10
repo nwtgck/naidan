@@ -34,7 +34,11 @@ export interface DownloadWorkerScope {
 const clientSchema = z.object({ id: z.string().min(1), type: z.literal('window'), url: z.string().url() });
 const MAX_DOWNLOADS = 8;
 
-export function installStreamDownloadWorker({ scope }: { scope: DownloadWorkerScope }): void {
+export function installStreamDownloadWorker({ scope, canPrepare = () => true, onIdle = () => {} }: {
+  scope: DownloadWorkerScope;
+  canPrepare?: () => boolean;
+  onIdle?: () => void;
+}): { isIdle: () => boolean } {
   const base = new URL(scope.registration.scope);
   const root = new URL(DOWNLOAD_ROOT, base);
   type Session = {
@@ -98,7 +102,7 @@ export function installStreamDownloadWorker({ scope }: { scope: DownloadWorkerSc
       channel.close();
       data.close();
     };
-    if (!prepared.success || !owner.success || active.size >= MAX_DOWNLOADS) {
+    if (!prepared.success || !owner.success || active.size >= MAX_DOWNLOADS || !canPrepare()) {
       reject(); return;
     }
     const ownerUrl = new URL(owner.data.url);
@@ -166,6 +170,7 @@ export function installStreamDownloadWorker({ scope }: { scope: DownloadWorkerSc
         } else channel.send({ message: { type: 'consumed' }, transferables: [] });
         channel.close();
         releaseLease?.();
+        if (active.size === 0) onIdle();
       },
       response() {
         preparedLifetime.resolve();
@@ -275,6 +280,7 @@ export function installStreamDownloadWorker({ scope }: { scope: DownloadWorkerSc
       event.respondWith(Response.error());
     }
   });
+  return { isIdle: () => active.size === 0 };
 }
 
 export const TEST_ONLY = {

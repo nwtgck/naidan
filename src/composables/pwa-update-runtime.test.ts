@@ -24,6 +24,7 @@ describe('page-scoped PWA runtime', () => {
   it('registers once even if PWAManager is remounted', () => {
     startPWAUpdateRuntime(); startPWAUpdateRuntime();
     expect(start).toHaveBeenCalledOnce();
+    expect(start.mock.calls[0]![0].pageBuildId).toBe(__PWA_BUILD_ID__);
   });
 
   it('publishes early actions to the real shared state', () => {
