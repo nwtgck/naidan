@@ -144,8 +144,33 @@ it('pauses with an unpublished checkpoint and supports an explicit retry', async
   expect(await listImageRepositories({ signal: undefined })).toHaveLength(1);
 });
 
+it('downloads only a known experimental Abiray Turbo main source with SHA-256 verification', async () => {
+  const turbo = {
+    ...file,
+    repository: 'Abiray/Qwen-Image-2.1-Turbo-GGUF',
+    revision: 'main',
+    path: 'qwen_image_2.1_turbo_Q4_K_M.gguf',
+  };
+  const bytes = gguf();
+  calls.fetch.mockImplementation(async ({ request }: { request: { url: string } }) => request.url.includes('/api/')
+    ? response({ bytes: metadata({ bytes, path: turbo.path }), status: 200, headers: {} })
+    : response({ bytes, status: 200, headers: {} }));
+  await downloadImageRecipe({ files: [turbo], signal: new AbortController().signal, onProgress() {} });
+  expect(calls.fetch.mock.calls[0]![0].request.url).toContain('/Abiray/Qwen-Image-2.1-Turbo-GGUF/tree/main?');
+  const repositories = await listImageRepositories({ signal: undefined });
+  expect(repositories).toHaveLength(1);
+  expect(repositories[0]!.files[0]!.receipt?.source).toEqual({
+    kind: 'hugging-face',
+    repository: turbo.repository,
+    revision: 'main',
+    path: turbo.path,
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+  });
+  expect(new Uint8Array(await repositories[0]!.files[0]!.file.arrayBuffer())).toEqual(bytes);
+});
+
 it('rejects malicious revisions and paths before storage or network', async () => {
-  for (const invalid of [{ ...file, revision: '../main' }, { ...file, path: '../evil.gguf' }, { ...file, repository: '../model' }]) {
+  for (const invalid of [{ ...file, revision: '../main' }, { ...file, revision: 'main' }, { ...file, path: '../evil.gguf' }, { ...file, repository: '../model' }]) {
     await expect(downloadImageRecipe({ files: [invalid], signal: new AbortController().signal, onProgress() {} })).rejects.toThrow();
   }
   expect(calls.fetch).not.toHaveBeenCalled(); expect(root.children.size).toBe(0);

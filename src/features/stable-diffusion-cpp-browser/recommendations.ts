@@ -121,7 +121,14 @@ export function recommendationForSelection({ model }: { model: ImageModelFacts |
     case 'distilled': case 'unknown': return undefined;
     default: { const exhaustive: never = model.variant; throw new Error(String(exhaustive)); }
     }
-  case 'qwen-image-2.1': return presets['qwen-image-2.1'];
+  // Turbo needs a dedicated custom sigma schedule, not the Base preset.
+  // The catalog makes its weights selectable but does not yet implement that schedule.
+  case 'qwen-image-2.1':
+    switch (model.variant) {
+    case 'turbo': return undefined;
+    case 'base': case 'distilled': case 'unknown': return presets['qwen-image-2.1'];
+    default: { const exhaustive: never = model.variant; throw new Error(String(exhaustive)); }
+    }
   case 'flux2-klein-4b':
     switch (model.variant) {
     case 'distilled': return presets['flux2-klein-4b'];

@@ -220,11 +220,12 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
       // Published immutable catalog provenance can identify a training variant
       // whose exported header has no training label. Require structure AND receipt.
       const source = fileMap.get(path)?.receipt?.source;
-      if ((facts.family === 'z-image' || facts.family === 'flux2-klein-4b' || facts.family === 'anima' || facts.family === 'krea2' || facts.family === 'ernie-image') && source?.kind === 'hugging-face') {
+      if ((facts.family === 'z-image' || facts.family === 'qwen-image-2.1' || facts.family === 'flux2-klein-4b' || facts.family === 'anima' || facts.family === 'krea2' || facts.family === 'ernie-image') && source?.kind === 'hugging-face') {
         const family = facts.family;
         const recipeIds = (() => {
           switch (family) {
           case 'z-image': return ['z-image-turbo', 'z-image-base'];
+          case 'qwen-image-2.1': return ['qwen-image-2.1-turbo', 'qwen-image-2.1'];
           case 'flux2-klein-4b': return ['flux2-klein-4b'];
           case 'anima': return ['anima-turbo-1.1'];
           case 'krea2': return ['krea2-turbo'];
@@ -239,13 +240,15 @@ export async function scanImageRepositories({ repositories, signal, onProgress }
           switch (recipe.id) {
           case 'z-image-turbo':
             facts.variant = 'turbo'; facts.turboHint = true; facts.evidence.push('Turbo variant: verified catalog download receipt'); break;
-          case 'z-image-base':
+          case 'z-image-base': case 'qwen-image-2.1':
             facts.variant = 'base'; facts.turboHint = false; facts.evidence.push('Base variant: verified catalog download receipt'); break;
+          case 'qwen-image-2.1-turbo':
+            facts.variant = 'turbo'; facts.turboHint = true; facts.evidence.push('Turbo variant: catalog download receipt'); break;
           case 'flux2-klein-4b':
             facts.variant = 'distilled'; facts.evidence.push('Distilled variant: verified catalog download receipt'); break;
           case 'anima-turbo-1.1': case 'krea2-turbo': case 'ernie-image-turbo':
             facts.variant = 'turbo'; facts.evidence.push('Turbo variant: verified catalog download receipt'); break;
-          case 'qwen-image-2.1': case 'sdxl-base-1.0': break;
+          case 'sdxl-base-1.0': break;
           default: { const exhaustive: never = recipe.id; throw new Error(String(exhaustive)); }
           }
         }

@@ -91,3 +91,26 @@ it.each([
     else expect(preset).toBeUndefined();
   }
 });
+
+it('recognizes Qwen Image 2.1 Turbo only from catalog provenance and never applies Base guidance', async () => {
+  const turbo = imageModelRecipes.find(recipe => recipe.id === 'qwen-image-2.1-turbo')!;
+  const base = imageModelRecipes.find(recipe => recipe.id === 'qwen-image-2.1')!;
+  const file = ggufFixture({ name: 'opaque.gguf', tensors: qwenImageTensors, metadata: {}, extraBytes: 0 }).file;
+  const scan = async ({ entry, revision }: { entry: typeof turbo.files[number] | undefined, revision?: string }) => {
+    const source = entry && { kind: 'hugging-face' as const, repository: entry.repository, revision: revision ?? entry.revision, path: entry.path, sha256: '0'.repeat(64) };
+    const receipt = source && { version: 1 as const, kind: 'naidan-model-file' as const, size: file.size, lastModified: file.lastModified, source };
+    const result = await scanImageRepositories({ repositories: [{ id: 'user/x', name: 'x', files: [{ path: file.name, file, ...(receipt ? { receipt } : {}) }] }], signal: undefined });
+    return result.candidates[0]!;
+  };
+  const unknown = await scan({ entry: undefined });
+  expect(unknown).toMatchObject({ family: 'qwen-image-2.1', variant: 'unknown' });
+  const knownTurbo = await scan({ entry: turbo.files[0] });
+  expect(knownTurbo).toMatchObject({ family: 'qwen-image-2.1', variant: 'turbo', turboHint: true });
+  expect(recommendationForSelection({ model: knownTurbo })).toBeUndefined();
+  const knownBase = await scan({ entry: base.files[0] });
+  expect(knownBase).toMatchObject({ family: 'qwen-image-2.1', variant: 'base', turboHint: false });
+  expect(recommendationForSelection({ model: knownBase })?.id).toBe('qwen-image-2.1');
+  // A similar-looking GGUF or forged repository revision is not evidence of Turbo weights.
+  const unrelated = await scan({ entry: turbo.files[0], revision: 'f'.repeat(40) });
+  expect(unrelated.variant).toBe('unknown');
+});

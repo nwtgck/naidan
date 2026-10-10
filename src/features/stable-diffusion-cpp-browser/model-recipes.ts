@@ -1,7 +1,7 @@
 /** Static acquisition recipes, not a remote model catalog or an inference
  * compatibility database. Opening/expanding the catalog performs no I/O.
- * Repository revisions were checked on 2026-09-27. Quantized weights are
- * publisher-provided files; Naidan never asks the user to convert or re-split.
+ * Repository revisions were checked on 2026-09-27 unless noted below.
+ * Quantized weights are publisher-provided files; Naidan never asks the user to convert or re-split.
  * Keep paths relative to EACH repository, including split_files/ and vae/.
  */
 export type ImageRecipeFile = {
@@ -13,7 +13,7 @@ export type ImageRecipeFile = {
   approximateBytes: number;
 };
 export type ImageModelRecipe = {
-  id: 'z-image-turbo' | 'qwen-image-2.1' | 'z-image-base' | 'sdxl-base-1.0' | 'flux2-klein-4b' | 'anima-turbo-1.1' | 'krea2-turbo' | 'ernie-image-turbo';
+  id: 'z-image-turbo' | 'qwen-image-2.1' | 'qwen-image-2.1-turbo' | 'z-image-base' | 'sdxl-base-1.0' | 'flux2-klein-4b' | 'anima-turbo-1.1' | 'krea2-turbo' | 'ernie-image-turbo';
   title: string;
   recommendation?: 'maintainer-tested';
   files: readonly ImageRecipeFile[];
@@ -43,6 +43,18 @@ const reviewedRecipes: readonly Omit<ImageModelRecipe, 'components'>[] = [
     source: 'https://github.com/leejet/stable-diffusion.cpp/blob/88411ef1e0688ff2df1010aeeb5d92b2d8cea2be/docs/qwen_image_2.1.md',
     files: [
       { role: 'diffusion', repository: 'leejet/Qwen-Image-2.1-GGUF', revision: '9db551d8368b5d1aa0b93cfe46cd54bb4750eae1', path: 'qwen_image_2.1-Q4_K.gguf', directory: 'Qwen-Image-2.1-GGUF', approximateBytes: 4200000000 },
+      { role: 'vae', repository: 'Comfy-Org/Qwen-Image-2.1', revision: '8150226f50722886a275fa08e7b1fdf961732502', path: 'vae/qwen_image_2.1_vae_bf16.safetensors', directory: 'Qwen-Image-2.1', approximateBytes: 676000000 },
+      { role: 'lm', repository: 'Qwen/Qwen3-VL-8B-Instruct-GGUF', revision: '00e7d63528e65d7b64e80e1293a8360b4af6a594', path: 'Qwen3VL-8B-Instruct-Q4_K_M.gguf', directory: 'Qwen3-VL-8B-Instruct-GGUF', approximateBytes: 5030000000 },
+    ],
+  },
+  {
+    id: 'qwen-image-2.1-turbo',
+    title: 'Qwen Image 2.1 Turbo',
+    source: 'https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo',
+    files: [
+      // The publisher's full commit id is not yet verified. Use the published
+      // main branch for this test catalog entry until it can be pinned.
+      { role: 'diffusion', repository: 'Abiray/Qwen-Image-2.1-Turbo-GGUF', revision: 'main', path: 'qwen_image_2.1_turbo_Q4_K_M.gguf', directory: 'Qwen-Image-2.1-Turbo-GGUF', approximateBytes: 4190000000 },
       { role: 'vae', repository: 'Comfy-Org/Qwen-Image-2.1', revision: '8150226f50722886a275fa08e7b1fdf961732502', path: 'vae/qwen_image_2.1_vae_bf16.safetensors', directory: 'Qwen-Image-2.1', approximateBytes: 676000000 },
       { role: 'lm', repository: 'Qwen/Qwen3-VL-8B-Instruct-GGUF', revision: '00e7d63528e65d7b64e80e1293a8360b4af6a594', path: 'Qwen3VL-8B-Instruct-Q4_K_M.gguf', directory: 'Qwen3-VL-8B-Instruct-GGUF', approximateBytes: 5030000000 },
     ],
@@ -142,7 +154,14 @@ export const imageModelRecipes: readonly ImageModelRecipe[] = reviewedRecipes.ma
         approximateBytes: 8040000000,
       });
     }
-    if (recipe.id === 'qwen-image-2.1' && file.role === 'lm') {
+    if (recipe.id === 'qwen-image-2.1-turbo' && file.role === 'diffusion') {
+      options.push({ ...file, id: 'q3-k-m', path: 'qwen_image_2.1_turbo_Q3_K_M.gguf', approximateBytes: 3190000000 });
+      options.push({ ...file, id: 'q4-k-s', path: 'qwen_image_2.1_turbo_Q4_K_S.gguf', approximateBytes: 4060000000 });
+      options.push({ ...file, id: 'q5-k-m', path: 'qwen_image_2.1_turbo_Q5_K_M.gguf', approximateBytes: 5010000000 });
+      options.push({ ...file, id: 'q6-k', path: 'qwen_image_2.1_turbo_Q6_K.gguf', approximateBytes: 5880000000 });
+      options.push({ ...file, id: 'q8-0', path: 'qwen_image_2.1_turbo_Q8_0.gguf', approximateBytes: 7590000000 });
+    }
+    if ((recipe.id === 'qwen-image-2.1' || recipe.id === 'qwen-image-2.1-turbo') && file.role === 'lm') {
       options.push({ ...file, id: 'q8-0', path: 'Qwen3VL-8B-Instruct-Q8_0.gguf', approximateBytes: 8710000000 });
     }
     return { role: file.role, defaultOptionId: 'default', options };

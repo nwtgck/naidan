@@ -280,7 +280,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     const family = (() => {
       switch (recipe.id) {
       case 'z-image-turbo': case 'z-image-base': return 'z-image' as const;
-      case 'qwen-image-2.1': return 'qwen-image-2.1' as const;
+      case 'qwen-image-2.1': case 'qwen-image-2.1-turbo': return 'qwen-image-2.1' as const;
       case 'sdxl-base-1.0': return 'sd-checkpoint' as const;
       case 'flux2-klein-4b': return 'flux2-klein-4b' as const;
       case 'anima-turbo-1.1': return 'anima' as const;
@@ -353,7 +353,7 @@ export function useImageLibrary({ blocked, downloadsBlocked, onSelection, depend
     const destinationId = hostDirectories.destination.value; selectionVersion++; unavailableLoras = [];
     switch (recipe.id) {
     case 'z-image-turbo': case 'z-image-base': recipeIntent = { family: 'z-image', files, destinationId }; break;
-    case 'qwen-image-2.1': recipeIntent = { family: 'qwen-image-2.1', files, destinationId }; break;
+    case 'qwen-image-2.1': case 'qwen-image-2.1-turbo': recipeIntent = { family: 'qwen-image-2.1', files, destinationId }; break;
     case 'sdxl-base-1.0': recipeIntent = { family: 'sd-checkpoint', files, destinationId }; break;
     case 'flux2-klein-4b': recipeIntent = { family: 'flux2-klein-4b', files, destinationId }; break;
     case 'anima-turbo-1.1': recipeIntent = { family: 'anima', files, destinationId }; break;
