@@ -7,11 +7,11 @@ type PendingUse = { store: ImageGenerationStoreAccess, sessionId: ImageGeneratio
  * another run, recompute its timestamp, or retain a component/native resource. */
 export function createImagePendingSessionUses() {
   const entries = new Map<string, PendingUse>();
-  function key({ store, runId }: PendingUse): string {
+  function key({ store, runId }: { store: PendingUse['store'], sessionId: PendingUse['sessionId'], runId: PendingUse['runId'] }): string {
     return JSON.stringify([store.storageType, store.storeId, runId]);
   }
   return {
-    add({ store, sessionId, runId }: PendingUse): void {
+    add({ store, sessionId, runId }: { store: PendingUse['store'], sessionId: PendingUse['sessionId'], runId: PendingUse['runId'] }): void {
       const value = { store: { ...store }, sessionId, runId };
       entries.set(key(value), value);
     },
@@ -19,7 +19,7 @@ export function createImagePendingSessionUses() {
       return [...entries.values()].filter(entry => entry.store.storageType === store.storageType && entry.store.storeId === store.storeId)
         .map(entry => ({ ...entry, store: { ...entry.store } }));
     },
-    complete({ store, sessionId, runId }: PendingUse): void {
+    complete({ store, sessionId, runId }: { store: PendingUse['store'], sessionId: PendingUse['sessionId'], runId: PendingUse['runId'] }): void {
       entries.delete(key({ store, sessionId, runId }));
     },
     removeSession({ store, sessionId }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId }): void {

@@ -1,7 +1,7 @@
 import { createEmptyFakeLmInputAnalysis } from '@/features/fake-lm/core/inputAnalysis';
 import { streamFakeLmMarkdown, type StreamFakeLmMarkdownInput } from '@/features/fake-lm/core/stream';
 
-async function generateFakeLmMarkdown({ language, mode, seed, thinkingEffort, inputAnalysis, signal }: Omit<StreamFakeLmMarkdownInput, 'chunking' | 'inputAnalysis'> & { inputAnalysis?: StreamFakeLmMarkdownInput['inputAnalysis'] }): Promise<string> {
+async function generateFakeLmMarkdown({ language, mode, seed, thinkingEffort, inputAnalysis, signal }: { language: StreamFakeLmMarkdownInput['language'], mode: StreamFakeLmMarkdownInput['mode'], seed: StreamFakeLmMarkdownInput['seed'], thinkingEffort: StreamFakeLmMarkdownInput['thinkingEffort'], inputAnalysis?: StreamFakeLmMarkdownInput['inputAnalysis'], signal: StreamFakeLmMarkdownInput['signal'] }): Promise<string> {
   let markdown = '';
 
   for await (const item of streamFakeLmMarkdown({

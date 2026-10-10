@@ -117,11 +117,11 @@ export interface ScanOptions {
 }
 
 export interface ITransformersJsScannerWorker {
-  scanModel({ tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }>,
+  scanModel({ tasks }: { tasks: ScanOptions['tasks'] }): Promise<{ files: ScannedModelFile[] }>,
 }
 
 export interface TransformersJsScannerWorkerClient {
-  scanModel({ tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }>,
+  scanModel({ tasks }: { tasks: ScanOptions['tasks'] }): Promise<{ files: ScannedModelFile[] }>,
   dispose(): Promise<void>,
 }
 
@@ -618,7 +618,8 @@ export interface ITransformersJsWorker {
     // A separate top-level proxy; nested callbacks are not cloneable.
     onGenerationEvent?: WorkerProxy<({ event }: { event: InferenceGenerationEvent }) => void | Promise<void>>,
   ): Promise<void>,
-  takeGenerationCapture({ runId, workerEpoch }: GenerationCaptureReadRequest): Promise<GenerationCaptureReadResult>,
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink supplies the complete request for validation before any fields are read.
+  takeGenerationCapture(request: GenerationCaptureReadRequest): Promise<GenerationCaptureReadResult>,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Comlink proxy callbacks must be top-level arguments; nested proxy callbacks are not structured-cloneable.
   runModelSupportInvestigationScenario(
     scenario: TransformersJsProductionInvestigationScenario,

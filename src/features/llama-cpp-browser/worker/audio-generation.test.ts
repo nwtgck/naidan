@@ -284,7 +284,7 @@ describe.each([4, 8] as const)('continuing audio previews with %i-byte pointers'
       },
       preview: {
         requestedVersion: () => version,
-        onPreview: async ({ result, requestVersion }) => {
+        onPreview: async ({ event: { result, requestVersion } }) => {
           expect(native.api.mtmd_helper_gen_audio_free).not.toHaveBeenCalled();
           previews.push(result); versions.push(requestVersion);
           // Growing Wasm after a preview cannot invalidate the delivered copy.

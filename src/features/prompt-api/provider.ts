@@ -28,7 +28,7 @@ function hasConfiguredLmParameters({ parameters }: {
 }
 
 export class PromptApiProvider implements LmProvider {
-  chat({ messages, model, parameters, tools, readBinaryObject, signal }: Parameters<LmProvider['chat']>[0]): AsyncIterable<ChatGenerationItem> {
+  chat({ messages, model, parameters, tools, readBinaryObject, signal }: { messages: Parameters<LmProvider['chat']>[0]['messages'], model: Parameters<LmProvider['chat']>[0]['model'], parameters: Parameters<LmProvider['chat']>[0]['parameters'], tools: Parameters<LmProvider['chat']>[0]['tools'], readBinaryObject: Parameters<LmProvider['chat']>[0]['readBinaryObject'], signal: Parameters<LmProvider['chat']>[0]['signal'], debug: Parameters<LmProvider['chat']>[0]['debug'] }): AsyncIterable<ChatGenerationItem> {
     const snapshot = snapshotChatRequest({ messages, parameters, tools });
     return createChatGenerationStream({
       signal,

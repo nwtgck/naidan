@@ -24,7 +24,7 @@ export interface MockServerHandlerContext {
   readonly node: MockServerNodeAccess,
 }
 
-export type MockServerHandler = ({ request, requestNumber, node }: MockServerHandlerContext) =>
+export type MockServerHandler = ({ request, requestNumber, node }: { readonly request: MockServerHandlerContext['request'], readonly requestNumber: MockServerHandlerContext['requestNumber'], readonly node: MockServerHandlerContext['node'] }) =>
   | Response
   | MockServerHandled
   | Promise<Response | MockServerHandled>;

@@ -155,21 +155,17 @@ export type OwnedReplayCacheControl = {
 };
 
 /** Zero-cache inference boundary; existing callers cannot silently acquire KV. */
-export function replayCapturedFullInvocation({ ...args }: InvocationReplayArguments): CapturedReplayResult {
+export function replayCapturedFullInvocation({ ...args }: { invocation: InvocationReplayArguments['invocation'], options: InvocationReplayArguments['options'], runtime: InvocationReplayArguments['runtime'], modelConfig: InvocationReplayArguments['modelConfig'], parameters: InvocationReplayArguments['parameters'] }): CapturedReplayResult {
   return replayCapturedInvocation({ ...args, cacheControl: undefined });
 }
 
 /** Explicit full-prefix, synthetic-cache boundary for recorded continuation. */
-export function replayCapturedFullInvocationWithOwnedCache({ cacheControl, ...args }: InvocationReplayArguments & {
-  cacheControl: OwnedReplayCacheControl;
-}): CapturedReplayResult {
+export function replayCapturedFullInvocationWithOwnedCache({ cacheControl, ...args }: { cacheControl: OwnedReplayCacheControl, invocation: InvocationReplayArguments['invocation'], options: InvocationReplayArguments['options'], runtime: InvocationReplayArguments['runtime'], modelConfig: InvocationReplayArguments['modelConfig'], parameters: InvocationReplayArguments['parameters'] }): CapturedReplayResult {
   return replayCapturedInvocation({ ...args, cacheControl });
 }
 
 /** Native inference replacement only; no output is released before all gates. */
-function replayCapturedInvocation({ invocation, options, runtime, modelConfig, parameters, cacheControl }: InvocationReplayArguments & {
-  cacheControl: OwnedReplayCacheControl | undefined;
-}): CapturedReplayResult {
+function replayCapturedInvocation({ invocation, options, runtime, modelConfig, parameters, cacheControl }: { invocation: InvocationReplayArguments['invocation'], options: InvocationReplayArguments['options'], runtime: InvocationReplayArguments['runtime'], modelConfig: InvocationReplayArguments['modelConfig'], parameters: InvocationReplayArguments['parameters'], cacheControl: OwnedReplayCacheControl | undefined }): CapturedReplayResult {
   const checked = invocationSchema.parse(invocation);
   verifyInvocationEvidence({ invocation: checked });
   const label = `${checked.scenario}/call-${checked.callOrdinal}`;
@@ -332,7 +328,7 @@ type ReplayOutputGap = {
   scenario: z.infer<typeof captureScenarioSchema>;
   requestInput: unknown;
   expectedEventsBeforeGap: readonly unknown[];
-  verifyInput: ({ options, runtime, model, tokenizer }: Parameters<ProviderReplayGenerate>[0]) => void;
+  verifyInput: ({ options, runtime, model, tokenizer }: { options: Parameters<ProviderReplayGenerate>[0]['options'], runtime: Parameters<ProviderReplayGenerate>[0]['runtime'], model: Parameters<ProviderReplayGenerate>[0]['model'], tokenizer: Parameters<ProviderReplayGenerate>[0]['tokenizer'] }) => void;
 };
 
 /** Reviewed current public contracts are not mutations of historical capture. */
@@ -455,7 +451,7 @@ export async function verifyCapturedFullReplay({ evidence: source, artifactPaths
   evidence: unknown; artifactPaths: readonly string[];
   imagePlatform: Parameters<typeof createProviderReplayTestRuntime>[0]['imagePlatform'];
   unavailableOutputs: readonly ReplayOutputGap[];
-  completeResult: (({ options, runtime, model, tokenizer, callOrdinal, result }: Parameters<ProviderReplayGenerate>[0] & { callOrdinal: number; result: ReturnType<typeof replayCapturedFullInvocation> }) => Awaited<ReturnType<ProviderReplayGenerate>>) | undefined;
+  completeResult: (({ options, runtime, model, tokenizer, callOrdinal, result }: { options: Parameters<ProviderReplayGenerate>[0]['options'], runtime: Parameters<ProviderReplayGenerate>[0]['runtime'], model: Parameters<ProviderReplayGenerate>[0]['model'], tokenizer: Parameters<ProviderReplayGenerate>[0]['tokenizer'], callOrdinal: number, result: ReturnType<typeof replayCapturedFullInvocation> }) => Awaited<ReturnType<ProviderReplayGenerate>>) | undefined;
   expectedLoadReceipt: z.infer<typeof productionLoadReceiptSchema> | undefined;
   reviewedPublicContract: ReviewedProviderReplayContract | undefined;
 }) {

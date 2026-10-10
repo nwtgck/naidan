@@ -210,30 +210,11 @@ export interface WorkerGenerationRuntimeState {
   qwen3_5SequenceCache: QwenSequenceCache | undefined,
 }
 
-interface GenerationStrategyContext {
-  continuationOwner?: string,
-  model: PreTrainedModel,
-  tokenizer: PreTrainedTokenizer,
-  messages: InferenceMessage[],
-  onChunk: ({ chunk }: { chunk: string }) => void,
-  onRawChunk: ({ chunk }: { chunk: string }) => void,
-  onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void,
-  params: LmParameters | undefined,
-  tools: WorkerToolDefinition[] | undefined,
-  runtimeState: WorkerGenerationRuntimeState,
-  stoppingCriteria: {
-    reset(): void,
-    interrupt(): void,
-  },
-  debugLog: ({ event, details }: { event: string, details: Record<string, unknown> }) => void,
-  observationSink: GenerationStrategyObservationSink | undefined,
-  generationCapture: GenerationCaptureCall | undefined,
-  onGenerationEvent: (({ event }: { event: InferenceGenerationEvent }) => void) | undefined,
-}
+type GenerationStrategyContext = Parameters<GenerationStrategy['generate']>[0];
 
 export interface GenerationStrategy {
   kind: 'standard' | 'gpt-oss' | 'qwen3_5' | 'gemma4',
-  generate({ model, tokenizer, messages, onChunk, onRawChunk, onToolCalls, params, tools, runtimeState, stoppingCriteria, debugLog, observationSink }: GenerationStrategyContext): Promise<void>,
+  generate({ model, tokenizer, messages, onChunk, onRawChunk, onToolCalls, params, tools, runtimeState, stoppingCriteria, debugLog, observationSink }: { continuationOwner?: string, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, messages: InferenceMessage[], onChunk: ({ chunk }: { chunk: string }) => void, onRawChunk: ({ chunk }: { chunk: string }) => void, onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void, params: LmParameters | undefined, tools: WorkerToolDefinition[] | undefined, runtimeState: WorkerGenerationRuntimeState, stoppingCriteria: { reset(): void, interrupt(): void, }, debugLog: ({ event, details }: { event: string, details: Record<string, unknown> }) => void, observationSink: GenerationStrategyObservationSink | undefined, generationCapture: GenerationCaptureCall | undefined, onGenerationEvent: (({ event }: { event: InferenceGenerationEvent }) => void) | undefined }): Promise<void>,
 }
 
 function detectStandardReasoningProtocol({
@@ -329,7 +310,7 @@ const standardGenerationStrategy: GenerationStrategy = {
     observationSink,
     generationCapture,
     onGenerationEvent,
-  }: GenerationStrategyContext) {
+  }) {
     const hasToolHistory = messages.some(message => message.role === 'tool' || message.tool_calls?.length);
     const toolHandling: StandardToolHandling = tools?.length || hasToolHistory
       ? resolveStandardToolHandling({ tokenizer, debugLog })
@@ -511,7 +492,7 @@ const gptOssGenerationStrategy: GenerationStrategy = {
     observationSink,
     generationCapture,
     onGenerationEvent,
-  }: GenerationStrategyContext) {
+  }) {
     const stateOwner = runtimeState.generationStateOwner;
     const previousCache = runtimeState.gptOssPastKeyValues;
     runtimeState.gptOssPastKeyValues = null;
@@ -529,7 +510,7 @@ const gptOssGenerationStrategy: GenerationStrategy = {
       stoppingCriteria,
       onInputPrepared: observationSink === undefined
         ? undefined
-        : ({ fullConversationInputs, cacheDecision }) => {
+        : ({ observation: { fullConversationInputs, cacheDecision } }) => {
           emitGenerationObservation({
             observationSink,
             emit: ({ sink }) => sink.onFullConversationInputPrepared({
@@ -576,7 +557,7 @@ const gemma4GenerationStrategy: GenerationStrategy = {
     observationSink,
     generationCapture,
     onGenerationEvent,
-  }: GenerationStrategyContext) {
+  }) {
     if (!runtimeState.gemma4Processor) {
       throw new Error('Gemma 4 processor not loaded');
     }
@@ -729,7 +710,7 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
     observationSink,
     generationCapture,
     onGenerationEvent,
-  }: GenerationStrategyContext) {
+  }) {
     if (!runtimeState.qwen3_5Processor) {
       throw new Error('Qwen3.5 processor not loaded');
     }

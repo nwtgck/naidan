@@ -62,7 +62,7 @@ export const transformersJsService = {
 
   async restart() {},
 
-  async runInferenceOperation({ signal: _signal, operation: _operation }: TransformersJsInferenceOperation): Promise<void> {
+  async runInferenceOperation({ signal: _signal, operation: _operation }: { signal: TransformersJsInferenceOperation['signal'], operation: TransformersJsInferenceOperation['operation'] }): Promise<void> {
     throw unsupportedError();
   },
 

@@ -503,7 +503,7 @@ describe('generation-scoped preview delivery', () => {
     const deliver = transport.remote.generateAudio.mock.calls.at(-1)![3] as (event: AudioPreviewEvent) => Promise<void>;
     const preview = { ...audioResult(), frames: 72, finishReason: 'preview' as const };
     await deliver({ result: preview, requestVersion: 1 }); await deliver({ result: preview, requestVersion: 1 });
-    expect(onPreview).toHaveBeenCalledOnce(); captures.request();
+    expect(onPreview).toHaveBeenCalledExactlyOnceWith({ event: { result: preview, requestVersion: 1 } }); captures.request();
     expect(transport.remote.requestAudioPreview).toHaveBeenLastCalledWith({ generationId: 1, requestVersion: 2 });
     expect(transport.remote.finishAudioGeneration).not.toHaveBeenCalled(); expect(transport.remote.cancelGeneration).not.toHaveBeenCalled();
     gate.resolve(audioResult()); await pending;

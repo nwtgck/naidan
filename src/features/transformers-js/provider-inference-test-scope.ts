@@ -2,11 +2,7 @@ import type { TransformersJsInferenceScope, TransformersJsInferenceOperation } f
 import type { TransformersJsProviderService } from './provider-hosted';
 
 /** Pass-through scope for Provider-only fixtures, not a concurrency oracle. */
-export async function runProviderTestInferenceOperation({ service, signal, operation }: TransformersJsInferenceOperation & {
-  service: Pick<TransformersJsProviderService, 'getState' | 'loadDownloadedModel' | 'generateText'> & {
-    generateMessage?: ({ messages, onEvent, params, tools, continuationOwner, signal }: Parameters<TransformersJsInferenceScope['generateMessage']>[0] & { signal: AbortSignal }) => Promise<void>,
-  },
-}): Promise<void> {
+export async function runProviderTestInferenceOperation({ service, signal, operation }: { signal: TransformersJsInferenceOperation['signal'], operation: TransformersJsInferenceOperation['operation'], service: Pick<TransformersJsProviderService, 'getState' | 'loadDownloadedModel' | 'generateText'> & { generateMessage?: ({ messages, onEvent, params, tools, continuationOwner, signal }: { messages: Parameters<TransformersJsInferenceScope['generateMessage']>[0]['messages'], onEvent: Parameters<TransformersJsInferenceScope['generateMessage']>[0]['onEvent'], params: Parameters<TransformersJsInferenceScope['generateMessage']>[0]['params'], tools: Parameters<TransformersJsInferenceScope['generateMessage']>[0]['tools'], continuationOwner: Parameters<TransformersJsInferenceScope['generateMessage']>[0]['continuationOwner'], signal: AbortSignal }) => Promise<void>, } }): Promise<void> {
   const activeSignal = signal ?? new AbortController().signal;
   await operation({
     scope: {

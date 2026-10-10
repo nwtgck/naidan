@@ -14,11 +14,11 @@ class HostedLlamaCppBrowserProvider implements LmProvider {
     return (await this.service.listModels({ signal })).map(model => model.name);
   }
 
-  chat({ messages, model, parameters, tools, readBinaryObject, debug, signal }: Parameters<LmProvider['chat']>[0]): AsyncIterable<ChatGenerationItem> {
+  chat({ messages, model, parameters, tools, readBinaryObject, debug, signal }: { messages: Parameters<LmProvider['chat']>[0]['messages'], model: Parameters<LmProvider['chat']>[0]['model'], parameters: Parameters<LmProvider['chat']>[0]['parameters'], tools: Parameters<LmProvider['chat']>[0]['tools'], readBinaryObject: Parameters<LmProvider['chat']>[0]['readBinaryObject'], debug: Parameters<LmProvider['chat']>[0]['debug'], signal: Parameters<LmProvider['chat']>[0]['signal'] }): AsyncIterable<ChatGenerationItem> {
     return createLlamaCppGeneration({ request: { messages, model, parameters, tools, readBinaryObject, debug, signal }, generate: this.service.generate.bind(this.service) });
   }
 
-  async runChatOperation({ signal, operation, onProgress }: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]): Promise<void> {
+  async runChatOperation({ signal, operation, onProgress }: { signal: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['signal'], operation: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['operation'], onProgress?: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['onProgress'] }): Promise<void> {
     const notify = ({ progress }: { progress: LmOperationProgress }): void => {
       try {
         if (onProgress) void Promise.resolve(onProgress({ progress })).catch(() => undefined);

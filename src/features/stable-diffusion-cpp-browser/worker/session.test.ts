@@ -155,10 +155,12 @@ it('observes only an idle loaded session, never native callbacks, closed session
   const session = createImageGenerationSession(h), callbacks: Promise<ImageEngineInspection>[] = [];
   expect(await session.inspectEngine()).toEqual({ status: 'unavailable', reason: 'not-loaded' });
   await session.generate({
-    request: requestFixture(),
-    onProgress: vi.fn(),
-    onLog() {
-      callbacks.push(session.inspectEngine());
+    run: {
+      request: requestFixture(),
+      onProgress: vi.fn(),
+      onLog() {
+        callbacks.push(session.inspectEngine());
+      },
     },
   });
   for (const pending of callbacks) expect(await pending).toEqual({ status: 'unavailable', reason: 'busy' });
@@ -168,16 +170,27 @@ it('observes only an idle loaded session, never native callbacks, closed session
   expect(h.api.sd_ctx_get_runtime_info).toHaveBeenCalledOnce(); expect(h.api.sd_ctx_get_memory_info).toHaveBeenCalledOnce();
 });
 
+it('snapshots the run callback bindings before awaiting native work', async () => {
+  const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 });
+  const session = createImageGenerationSession(h), originalLog = vi.fn(), laterLog = vi.fn();
+  const run = { request: requestFixture(), onProgress: vi.fn(), onLog: originalLog };
+  const pending = session.generate({ run }); run.onLog = laterLog;
+  await pending;
+  expect(originalLog).toHaveBeenCalled(); expect(laterLog).not.toHaveBeenCalled();
+  await session.generate({ run }); expect(laterLog).toHaveBeenCalled();
+  await session.close();
+});
+
 it('reserves the next run but waits for an in-flight idle observation before native generation', async () => {
   const h = harness({ pointerBytes: 4, outcome: 'success', channels: 3 }); enableSnapshotGetters({ h });
   const session = createImageGenerationSession(h), run = { request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() };
-  await session.generate(run);
+  await session.generate({ run });
   const waiting = Promise.withResolvers<void>();
   const getter = vi.mocked(h.api.sd_ctx_get_runtime_info!), original = getter.getMockImplementation()!;
   getter.mockImplementationOnce(async (...args) => {
     await waiting.promise; return original(...args);
   });
-  const observation = session.inspectEngine(), generation = session.generate(run);
+  const observation = session.inspectEngine(), generation = session.generate({ run });
   expect(h.api.generate_image).toHaveBeenCalledOnce();
   expect(await session.inspectEngine()).toEqual({ status: 'unavailable', reason: 'busy' });
   waiting.resolve(); await observation; await generation;
@@ -187,14 +200,14 @@ it('reserves the next run but waits for an in-flight idle observation before nat
 it('keeps retryable observation failure separate from generation and forbids native cleanup after an observation trap', async () => {
   const h = harness({ pointerBytes: 8, outcome: 'success', channels: 3 }); enableSnapshotGetters({ h });
   const session = createImageGenerationSession(h), run = { request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() };
-  await session.generate(run);
+  await session.generate({ run });
   vi.mocked(h.api.sd_ctx_get_memory_info!).mockRejectedValueOnce(new Error('Observation unavailable'));
   expect(await session.inspectEngine()).toMatchObject({ status: 'failed', disposition: 'retryable' });
-  await session.generate(run); expect(h.api.generate_image).toHaveBeenCalledTimes(2);
+  await session.generate({ run }); expect(h.api.generate_image).toHaveBeenCalledTimes(2);
   vi.mocked(h.api.sd_ctx_get_memory_info!).mockRejectedValueOnce(new WebAssembly.RuntimeError('memory access out of bounds'));
   const freed = vi.mocked(h.core.free).mock.calls.length;
   expect(await session.inspectEngine()).toMatchObject({ status: 'failed', disposition: 'retire-worker' });
-  await expect(session.generate(run)).rejects.toThrow('failed'); await session.close();
+  await expect(session.generate({ run })).rejects.toThrow('failed'); await session.close();
   expect(h.api.generate_image).toHaveBeenCalledTimes(2); expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.core.free).toHaveBeenCalledTimes(freed);
 });
 
@@ -219,10 +232,12 @@ it('opens a new graph diagnostic window per retained request and never toggles i
   for (const [index, debug] of (['on', 'on', 'off'] as const).entries()) {
     const observed: number[] = []; callsDuringCallbacks.push(observed);
     await session.generate({
-      request: { ...request, runId: index, debug },
-      onProgress: vi.fn(),
-      onLog() {
-        observed.push(vi.mocked(h.api.sd_set_graph_diagnostics).mock.calls.length);
+      run: {
+        request: { ...request, runId: index, debug },
+        onProgress: vi.fn(),
+        onLog() {
+          observed.push(vi.mocked(h.api.sd_set_graph_diagnostics).mock.calls.length);
+        },
       },
     });
   }
@@ -268,7 +283,7 @@ it.each([4, 8] as const)('keeps LoRA sources mounted while changing strengths an
   ];
   const session = createImageGenerationSession({ core: h.core, helpers: h.helpers, reader: h.reader });
   const onDiagnostic = vi.fn();
-  const run = () => session.generate({ request, onProgress: vi.fn(), onLog: vi.fn(), onDiagnostic });
+  const run = () => session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn(), onDiagnostic } });
   await run();
   const image = h.recordPointers.get('sd_img_gen_params_t')!;
   const records = BigInt(h.fields.get(`sd_img_gen_params_t:${image}:loras`)!);
@@ -561,14 +576,14 @@ it.each([4, 8] as const)('retains one context and mounts across different prompt
   const h = harness({ pointerBytes, outcome: 'success', channels: 3 });
   const session = createImageGenerationSession(h), request = requestFixture(); request.sessionId = 'retained';
   const args = { request, onProgress: vi.fn(), onLog: vi.fn(), onDiagnostic: vi.fn() };
-  await session.generate(args);
+  await session.generate({ run: args });
   const ctxRecord = h.recordPointers.get('sd_ctx_params_t')!;
   expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.events).not.toContain('unmount');
   expect(h.core.free).not.toHaveBeenCalledWith(ctxRecord);
   const firstImage = h.recordPointers.get('sd_img_gen_params_t')!;
   expect(h.core.free).toHaveBeenCalledWith(firstImage);
   request.parameters.prompt = 'another image'; request.parameters.seed = '123'; request.runId++;
-  await session.generate(args);
+  await session.generate({ run: args });
   expect(h.api.new_sd_ctx).toHaveBeenCalledTimes(1); expect(h.helpers.mountReadOnlyFile).toHaveBeenCalledTimes(1);
   expect(h.api.generate_image).toHaveBeenCalledTimes(2); expect(h.api.free_sd_images).toHaveBeenCalledTimes(2);
   expect(h.core.module.addFunction).toHaveBeenCalledTimes(3);
@@ -585,10 +600,10 @@ it('rejects simultaneous generation/cleanup and cannot reuse a poisoned context'
     started.resolve(); return pending.promise;
   });
   const session = createImageGenerationSession(h), args = { request: requestFixture(), onProgress: vi.fn(), onLog: vi.fn() };
-  const first = session.generate(args); await started.promise;
-  await expect(session.generate(args)).rejects.toThrow('busy'); await expect(session.close()).rejects.toThrow('cleanup during generation');
+  const first = session.generate({ run: args }); await started.promise;
+  await expect(session.generate({ run: args })).rejects.toThrow('busy'); await expect(session.close()).rejects.toThrow('cleanup during generation');
   const failed = expect(first).rejects.toThrow('native trap'); pending.reject(new WebAssembly.RuntimeError('native trap')); await failed;
-  await expect(session.generate(args)).rejects.toThrow('failed'); await session.close();
+  await expect(session.generate({ run: args })).rejects.toThrow('failed'); await session.close();
   expect(h.api.free_sd_ctx).not.toHaveBeenCalled(); expect(h.events).not.toContain('unmount');
 });
 
@@ -615,7 +630,7 @@ it.each([4, 8] as const)('turns previews ON/OFF during native generation using o
     expect(h.core.module._sdc_sd_set_preview_callback).toHaveBeenCalledTimes(3);
     return result;
   });
-  await session.generate({ request, onProgress: vi.fn(), onLog: vi.fn(), onPreview });
+  await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn(), onPreview } });
   expect(onPreview.mock.calls.map(([{ capture }]) => [capture.step, capture.revision])).toEqual([[1, 1], [3, 3]]);
   expect(onPreview.mock.calls[0]![0].capture.image.pixels[0]).toBe(71); // copy survived free_sd_images
   await session.close();
@@ -623,7 +638,7 @@ it.each([4, 8] as const)('turns previews ON/OFF during native generation using o
 
 it('keeps raw preview control disabled after a native trap', async () => {
   const h = harness({ pointerBytes: 8, outcome: 'trap', channels: 3 }), session = createImageGenerationSession(h), request = requestFixture(); request.runId = 1;
-  await expect(session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() })).rejects.toThrow();
+  await expect(session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } })).rejects.toThrow();
   const writes = h.previewWrites.length;
   expect(session.updatePreview({ control: { type: 'naidan-image-preview-control-v1', runId: 1, revision: 1, settings: { ...request.preview, enabled: true } } })).toBe(false);
   await session.close(); expect(h.previewWrites).toHaveLength(writes);
@@ -705,7 +720,7 @@ it.each([4, 8] as const)('cooperatively cancels native sampling, cleans run memo
   vi.mocked(h.api.generate_image).mockImplementationOnce(() => {
     entered.resolve(); return native.promise;
   });
-  const task = session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() });
+  const task = session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
   await entered.promise;
   expect(session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 9 } })).toBe(false);
   expect(session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 8 } })).toBe(true);
@@ -717,7 +732,7 @@ it.each([4, 8] as const)('cooperatively cancels native sampling, cleans run memo
   expect(vi.mocked(h.api.sd_set_graph_diagnostics).mock.calls).toEqual([[1], [0]]);
   expect(h.api.sd_cancel_generation).toHaveBeenCalledWith(200000n, 2);
   expect(h.api.free_sd_ctx).not.toHaveBeenCalled();
-  const next = await session.generate({ request: { ...request, runId: 9 }, onProgress: vi.fn(), onLog: vi.fn() });
+  const next = await session.generate({ run: { request: { ...request, runId: 9 }, onProgress: vi.fn(), onLog: vi.fn() } });
   expect('pixels' in next).toBe(true); expect(h.api.new_sd_ctx).toHaveBeenCalledTimes(1);
   await session.close(); expect(h.api.free_sd_ctx).toHaveBeenCalledTimes(1);
 });
@@ -729,14 +744,14 @@ it('waits for initialization to return and keeps the context when cancelled whil
     entered.resolve(); return load.promise;
   });
   const session = createImageGenerationSession(h), request = requestFixture(); request.runId = 1; request.debug = 'on';
-  const task = session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() }); await entered.promise;
+  const task = session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } }); await entered.promise;
   session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 1 } });
   expect(h.core.module._sdc_sd_cancel_generation).not.toHaveBeenCalled();
   expect(h.api.sd_set_graph_diagnostics).toHaveBeenCalledExactlyOnceWith(1);
   load.resolve(200000n); expect(await task).toEqual({ cancelled: true, modelResident: true });
   expect(vi.mocked(h.api.sd_set_graph_diagnostics).mock.calls).toEqual([[1], [0]]);
   expect(h.api.generate_image).not.toHaveBeenCalled();
-  await session.generate({ request: { ...request, runId: 2 }, onProgress: vi.fn(), onLog: vi.fn() });
+  await session.generate({ run: { request: { ...request, runId: 2 }, onProgress: vi.fn(), onLog: vi.fn() } });
   expect(h.api.new_sd_ctx).toHaveBeenCalledOnce(); await session.close();
 });
 
@@ -746,7 +761,7 @@ it('does not confuse a trap after a cancel request with successful cancellation'
   vi.mocked(h.api.generate_image).mockImplementationOnce(() => {
     entered.resolve(); return native.promise;
   });
-  const task = session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() }); await entered.promise;
+  const task = session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } }); await entered.promise;
   session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 1 } });
   native.reject(new WebAssembly.RuntimeError('out of bounds'));
   await expect(task).rejects.toThrow('out of bounds');
@@ -763,10 +778,10 @@ it('emits zero per-run file traffic for a retained generation without re-reading
     source.read(new Uint8Array(12), 0); return 200000n;
   });
   const onDiagnostic = vi.fn(), options = { request, onDiagnostic, onProgress: vi.fn(), onLog: vi.fn() };
-  await session.generate(options);
+  await session.generate({ run: options });
   const read = onDiagnostic.mock.calls.map(([event]) => event.fields).find(fields => fields.metric === 'file-read-run');
   expect(read).toMatchObject({ reads: 1, bytes: 12, blobReads: 1 });
-  onDiagnostic.mockClear(); await session.generate({ ...options, request: { ...request, runId: request.runId + 1 } });
+  onDiagnostic.mockClear(); await session.generate({ run: { ...options, request: { ...request, runId: request.runId + 1 } } });
   const second = onDiagnostic.mock.calls.map(([event]) => event.fields).find(fields => fields.metric === 'file-read-run');
   expect(second).toMatchObject({ reads: 0, bytes: 0, blobReads: 0, blobBytes: 0, cacheHits: 0, readMs: 0 });
   expect(h.api.new_sd_ctx).toHaveBeenCalledOnce(); await session.close();
@@ -805,11 +820,11 @@ it.each([4, 8] as const)('keeps image pixels until native return, updates and cl
     return original(ctx, params, imagesOut, countOut);
   });
   try {
-    await session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() });
+    await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
     value = 8; request.imageInputs = { initImage: undefined, strength: 0.4, referenceImages: [second] };
-    await session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() });
+    await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
     request.imageInputs.referenceImages = [];
-    await session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() });
+    await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
     expect(observed).toEqual([9, 8, -1]); expect(h.api.new_sd_ctx).toHaveBeenCalledOnce();
     expect(bitmap.close).toHaveBeenCalledTimes(3);
     await session.close();
@@ -827,7 +842,7 @@ it('settles cancellation during input decode without entering native generation 
   const request = requestFixture(); request.runId = 1;
   request.imageInputs.initImage = new File(['one'], 'image.png', { type: 'image/png' });
   try {
-    const run = session.generate({ request, onProgress: vi.fn(), onLog: vi.fn() });
+    const run = session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
     await vi.waitFor(() => expect(createImageBitmap).toHaveBeenCalledOnce());
     expect(session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 1 } })).toBe(true);
     decode.resolve(bitmap);

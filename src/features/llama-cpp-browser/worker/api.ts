@@ -148,7 +148,7 @@ export function createWorkerApi(): WorkerServerApi<LlamaCppWorkerApi> {
             shouldComplete: () => finishRequested,
             preview: onPreview ? {
               requestedVersion: () => previewVersion,
-              onPreview: async ({ ...event }) => {
+              onPreview: async ({ event }) => {
                 if (controller.signal.aborted) return;
                 const acceptedEvent = audioPreviewEventSchema.parse(event);
                 // Acknowledge each user-requested copy before continuing. Do not

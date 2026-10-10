@@ -100,7 +100,7 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
   };
   let generated = 0;
   let flushPartial: (() => Promise<void>) | undefined;
-  const progress = ({ phase, completed, total }: Progress): void => onProgress({ progress: { phase, completed, total } });
+  const progress = ({ phase, completed, total }: { phase: Progress['phase'], completed: Progress['completed'], total: Progress['total'] }): void => onProgress({ progress: { phase, completed, total } });
   const checkCancelled = (): void => {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   };

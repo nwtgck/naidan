@@ -260,7 +260,7 @@ async function readPackObjectAtOffset({ context, objectOffset, depth, readExtern
     throw new Error(`unsupported pack object type ${header.typeCode}`);
   }
 
-  if (objectIdFor(object) !== range.objectId) {
+  if (objectIdFor({ object }) !== range.objectId) {
     throw new Error(`packed object id mismatch at offset ${objectOffset}`);
   }
   return object;

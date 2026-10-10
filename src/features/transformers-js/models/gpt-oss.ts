@@ -30,7 +30,7 @@ type GptOssInputPreparedObservation = {
   },
 };
 
-type GptOssInputPreparedObserver = ({ fullConversationInputs, cacheDecision }: GptOssInputPreparedObservation) => void;
+type GptOssInputPreparedObserver = ({ observation }: { observation: GptOssInputPreparedObservation }) => void;
 
 function emitGptOssInputPrepared({
   onInputPrepared,
@@ -41,7 +41,7 @@ function emitGptOssInputPrepared({
 }): void {
   if (onInputPrepared === undefined) return;
   try {
-    onInputPrepared(prepare());
+    onInputPrepared({ observation: prepare() });
   } catch {
     // Investigation instrumentation is diagnostic-only. Never change the
     // Production generation path because observation or reconstruction failed.

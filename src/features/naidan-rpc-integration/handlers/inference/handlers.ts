@@ -13,7 +13,7 @@ import type { InferenceBudget } from './budget';
 export type InferenceDependencies = { resources: ReadOnlyInferenceResources; inputBudget: InferenceBudget; deliveryBudget: InferenceBudget };
 const chatItemSchema = chatCatalogItemSchema.strict();
 
-export function listChatModels({ resources, signal }: { resources: ReadOnlyInferenceResources } & PeerInvocation<'listChatModels'>) {
+export function listChatModels({ resources, signal }: { resources: ReadOnlyInferenceResources, signal: PeerInvocation<'listChatModels'>['signal'], input: PeerInvocation<'listChatModels'>['input'], notify: PeerInvocation<'listChatModels'>['notify'] }) {
   return computationSource<z.infer<typeof chatItemSchema>>({
     signal,
     run: async ({ signal, emit }) => {
@@ -23,7 +23,7 @@ export function listChatModels({ resources, signal }: { resources: ReadOnlyInfer
   });
 }
 
-export function listImageModels({ resources, signal }: { resources: ReadOnlyInferenceResources } & PeerInvocation<'listImageModels'>) {
+export function listImageModels({ resources, signal }: { resources: ReadOnlyInferenceResources, signal: PeerInvocation<'listImageModels'>['signal'], input: PeerInvocation<'listImageModels'>['input'], notify: PeerInvocation<'listImageModels'>['notify'] }) {
   return computationSource<z.infer<typeof imageCatalogItemSchema>>({
     signal,
     run: async ({ signal, emit }) => {
@@ -33,7 +33,7 @@ export function listImageModels({ resources, signal }: { resources: ReadOnlyInfe
   });
 }
 
-export function generateChat({ resources, inputBudget, input, signal, notify }: InferenceDependencies & PeerInvocation<'generateChat'>) {
+export function generateChat({ resources, inputBudget, input, signal, notify }: { resources: InferenceDependencies['resources'], inputBudget: InferenceDependencies['inputBudget'], input: PeerInvocation<'generateChat'>['input'], signal: PeerInvocation<'generateChat'>['signal'], notify: PeerInvocation<'generateChat'>['notify'], deliveryBudget: InferenceDependencies['deliveryBudget'] }) {
   return {
     events: computationSource<Uint8Array>({
       signal,
@@ -102,7 +102,7 @@ export function generateChat({ resources, inputBudget, input, signal, notify }: 
   };
 }
 
-export function generateImage({ resources, inputBudget, deliveryBudget, input, signal, notify }: InferenceDependencies & PeerInvocation<'generateImage'>) {
+export function generateImage({ resources, inputBudget, deliveryBudget, input, signal, notify }: { resources: InferenceDependencies['resources'], inputBudget: InferenceDependencies['inputBudget'], deliveryBudget: InferenceDependencies['deliveryBudget'], input: PeerInvocation<'generateImage'>['input'], signal: PeerInvocation<'generateImage'>['signal'], notify: PeerInvocation<'generateImage'>['notify'] }) {
   const { modelSelection, parameters, preview, imageInputs, ...rest } = input; rest satisfies Record<PropertyKey, never>;
   return createImageResponse({
     signal,

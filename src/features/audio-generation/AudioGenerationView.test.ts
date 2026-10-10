@@ -445,7 +445,7 @@ describe('catalog placement and continuing previews', () => {
     expect(args.preview!.requests.version).toBe(1); expect(args.cancellationSignal?.aborted).toBe(false); expect(args.completionSignal?.aborted).toBe(false);
     expect(view.get<HTMLButtonElement>('[data-testid="audio-preview"]').element.disabled).toBe(true);
     await view.get('[data-testid="audio-text"]').setValue('Later edits do not change the request');
-    await args.preview!.onPreview({ requestVersion: 1, result: { ...audioResult(), frames: 72, finishReason: 'preview' } }); await nextTick();
+    await args.preview!.onPreview({ event: { requestVersion: 1, result: { ...audioResult(), frames: 72, finishReason: 'preview' } } }); await nextTick();
     expect(view.findAll('[data-testid="audio-player"]')).toHaveLength(1);
     expect(view.get('[data-testid="audio-result-steps"]').text()).toBe('72');
     expect(view.get('[data-testid="audio-result-text"]').text()).toBe('Hello');
@@ -453,7 +453,7 @@ describe('catalog placement and continuing previews', () => {
     expect(view.get<HTMLButtonElement>('[data-testid="audio-preview"]').element.disabled).toBe(false);
     expect(view.get<HTMLButtonElement>('[data-testid="audio-generate"]').element.disabled).toBe(true);
     await view.get('[data-testid="audio-preview"]').trigger('click');
-    await args.preview!.onPreview({ requestVersion: 2, result: { ...audioResult(), frames: 144, finishReason: 'preview' } }); await nextTick();
+    await args.preview!.onPreview({ event: { requestVersion: 2, result: { ...audioResult(), frames: 144, finishReason: 'preview' } } }); await nextTick();
     expect(view.findAll('[data-testid="audio-player"]')).toHaveLength(2);
     gate.resolve({ ...audioResult(), frames: 200 }); await flushPromises();
     expect(view.findAll('[data-testid="audio-result-steps"]').map(node => node.text())).toEqual(['200', '144', '72']);
@@ -465,13 +465,13 @@ describe('catalog placement and continuing previews', () => {
     const view = await ready(); const gate = Promise.withResolvers<ReturnType<typeof audioResult>>(); service.generateAudio.mockReturnValueOnce(gate.promise);
     await submit({ view });
     const args = service.generateAudio.mock.calls[0]![0];
-    await args.preview!.onPreview({ requestVersion: 1, result: { ...audioResult(), frames: 72, finishReason: 'preview' } }); await nextTick();
+    await args.preview!.onPreview({ event: { requestVersion: 1, result: { ...audioResult(), frames: 72, finishReason: 'preview' } } }); await nextTick();
     await view.get('[data-testid="audio-stop"]').trigger('click');
-    await args.preview!.onPreview({ requestVersion: 2, result: { ...audioResult(), frames: 144, finishReason: 'preview' } });
+    await args.preview!.onPreview({ event: { requestVersion: 2, result: { ...audioResult(), frames: 144, finishReason: 'preview' } } });
     gate.resolve({ ...audioResult(), frames: 200 }); await flushPromises();
     expect(view.findAll('[data-testid="audio-player"]')).toHaveLength(1);
     const created = urls.create.mock.calls.length; view.unmount(); wrapper = undefined;
-    await args.preview!.onPreview({ requestVersion: 3, result: { ...audioResult(), frames: 216, finishReason: 'preview' } });
+    await args.preview!.onPreview({ event: { requestVersion: 3, result: { ...audioResult(), frames: 216, finishReason: 'preview' } } });
     expect(urls.create).toHaveBeenCalledTimes(created); expect(urls.revoke).toHaveBeenCalledOnce();
   });
 });

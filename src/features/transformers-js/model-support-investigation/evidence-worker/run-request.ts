@@ -34,7 +34,7 @@ export function encodeEvidenceRun({ run }: { run: ModelSupportInvestigationRun }
 
 /** The ordinary Run graph retains its existing JSON validation contract. The
  * host-only Provider field is separately decoded and identity-validated here. */
-export function decodeEvidenceRun({ run, providerCaptureEvidence, providerInvestigationEvidence }: z.infer<typeof encodedEvidenceRunSchema>): ModelSupportInvestigationRun {
+export function decodeEvidenceRun({ run, providerCaptureEvidence, providerInvestigationEvidence }: { run: z.infer<typeof encodedEvidenceRunSchema>['run'], providerCaptureEvidence?: z.infer<typeof encodedEvidenceRunSchema>['providerCaptureEvidence'], providerInvestigationEvidence?: z.infer<typeof encodedEvidenceRunSchema>['providerInvestigationEvidence'] }): ModelSupportInvestigationRun {
   validateRuntimeControlBindings({ run });
   if (Object.hasOwn(run, 'productionProviderCapture') || Object.hasOwn(run, 'productionProviderInvestigation')) throw new Error('Raw Provider capture is not allowed in Evidence request JSON');
   if (providerCaptureEvidence === undefined && providerInvestigationEvidence === undefined) return run as unknown as ModelSupportInvestigationRun;

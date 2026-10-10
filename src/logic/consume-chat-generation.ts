@@ -107,7 +107,7 @@ export async function consumeChatGeneration({ node, items, abortController, onCh
     return pending;
   }
 
-  async function consumePart({ partId, index, type, chunks, completeness }: Extract<ChatGenerationItem, { type: 'text' | 'reasoning' }>): Promise<void> {
+  async function consumePart({ partId, index, type, chunks, completeness }: { partId: Extract<ChatGenerationItem, { type: 'text' | 'reasoning' }>['partId'], index: Extract<ChatGenerationItem, { type: 'text' | 'reasoning' }>['index'], type: Extract<ChatGenerationItem, { type: 'text' | 'reasoning' }>['type'], chunks: Extract<ChatGenerationItem, { type: 'text' | 'reasoning' }>['chunks'], completeness: Extract<ChatGenerationItem, { type: 'text' | 'reasoning' }>['completeness'] }): Promise<void> {
     // Attach a handler at receipt, not after the child has drained. Producers also
     // own rejection handlers for any child descriptors not yet handed to us.
     const finalState = completeness.then(

@@ -38,8 +38,10 @@ describe('wesh git core lifecycle', () => {
 
   it('uses canonical Git object identifiers for blobs', () => {
     expect(objectIdFor({
-      type: 'blob',
-      body: textEncoder.encode('hello\n'),
+      object: {
+        type: 'blob',
+        body: textEncoder.encode('hello\n'),
+      },
     })).toBe('ce013625030ba8dba906f756967f9e9ca394464a');
   });
 

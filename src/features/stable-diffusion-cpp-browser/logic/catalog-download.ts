@@ -8,7 +8,7 @@ export type { CatalogDownloadProgress } from '@/features/stable-diffusion-cpp-br
 type Report = ({ progress }: { progress: CatalogDownloadProgress }) => void;
 export type ImageDownloadDestination = { kind: 'opfs' } | { kind: 'host', directoryId: string };
 export type ImageRecipeDownloadRequest = { files: readonly ImageDownloadSource[], signal: AbortSignal, onProgress: Report, destination?: ImageDownloadDestination };
-export type ImageRecipeDownloader = ({ files, signal, onProgress }: ImageRecipeDownloadRequest) => Promise<void>;
+export type ImageRecipeDownloader = ({ files, signal, onProgress }: { files: ImageRecipeDownloadRequest['files'], signal: ImageRecipeDownloadRequest['signal'], onProgress: ImageRecipeDownloadRequest['onProgress'], destination?: ImageRecipeDownloadRequest['destination'] }) => Promise<void>;
 
 function notify({ report, progress }: { report: Report, progress: CatalogDownloadProgress }): void {
   try {
@@ -21,7 +21,7 @@ function notify({ report, progress }: { report: Report, progress: CatalogDownloa
  * components; pending files can only be resumed by another explicit action.
  * File acquisition is role-independent, including optional adapter downloads.
  */
-export async function downloadImageRecipe({ files, signal, onProgress, fetch, destination }: ImageRecipeDownloadRequest & { fetch: CatalogFetch }): Promise<void> {
+export async function downloadImageRecipe({ files, signal, onProgress, fetch, destination }: { files: ImageRecipeDownloadRequest['files'], signal: ImageRecipeDownloadRequest['signal'], onProgress: ImageRecipeDownloadRequest['onProgress'], fetch: CatalogFetch, destination?: ImageRecipeDownloadRequest['destination'] }): Promise<void> {
   z.array(imageDownloadSourceSchema).min(1).max(16).parse(files);
   if (new Set(files.map(file => `${file.repository}/${file.path}`)).size !== files.length) throw new Error('Duplicate catalog file');
   if (!navigator.locks || (destination?.kind !== 'host' && !navigator.storage?.getDirectory)) throw new Error('Safe model download storage is unavailable');

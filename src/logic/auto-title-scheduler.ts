@@ -75,7 +75,7 @@ export function createAutoTitleScheduler({ quietMs, now, onError }: {
   }
 
   return {
-    schedule({ chatId, run }: TitleJob): void {
+    schedule({ chatId, run }: { chatId: TitleJob['chatId'], run: TitleJob['run'] }): void {
       cancel({ chatId });
       pending.set(chatId, { chatId, run });
       quietUntil = now() + quietMs;

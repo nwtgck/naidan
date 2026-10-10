@@ -34,6 +34,59 @@ function isObjectDestructuringParameter(node) {
   );
 }
 
+function getObjectParameterType(node) {
+  const pattern = node?.type === 'AssignmentPattern' ? node.left : node;
+  return pattern?.type === 'ObjectPattern' ? pattern.typeAnnotation?.typeAnnotation : undefined;
+}
+
+function isVisibleShapeWrapper({ node, state }) {
+  // Only known shape-preserving wrappers qualify. Accepting any F<{ ... }>
+  // would also accept Pick, key remapping, or aliases that ignore their input.
+  if (!state.services || !state.checker) {
+    return false;
+  }
+
+  const tsNode = state.services.esTreeNodeToTSNodeMap.get(node.typeName);
+  let symbol = tsNode && state.checker.getSymbolAtLocation(tsNode);
+  if (symbol?.flags & ts.SymbolFlags.Alias) {
+    symbol = state.checker.getAliasedSymbol(symbol);
+  }
+
+  return (symbol?.getDeclarations() ?? []).some((declaration) => {
+    if (!ts.isTypeAliasDeclaration(declaration)) {
+      return false;
+    }
+    const fileName = normalizePath(declaration.getSourceFile().fileName);
+    return (
+      (declaration.name.text === 'Readonly' && /\/typescript\/lib\/lib\.[^/]+\.d\.ts$/u.test(fileName)) ||
+      (declaration.name.text === 'WorkerTransfer' && fileName.endsWith('/src/utils/worker-transport.ts'))
+    );
+  });
+}
+
+function isInlineNamedArgsType({ node, state }) {
+  if (node.type === 'TSTypeLiteral') {
+    return true;
+  }
+  if (node.type === 'TSUnionType' || node.type === 'TSIntersectionType') {
+    return node.types.every((part) => isInlineNamedArgsType({ node: part, state }));
+  }
+  if (node.type === 'TSTypeReference') {
+    const arguments_ = (node.typeArguments ?? node.typeParameters)?.params ?? [];
+    return arguments_.length === 1 && isVisibleShapeWrapper({ node, state }) && isInlineNamedArgsType({ node: arguments_[0], state });
+  }
+  return false;
+}
+
+function hasNonInlineNamedArgsType({ params, state }) {
+  return params.some((param) => {
+    const type = getObjectParameterType(param);
+    // Contextually typed implementations need not repeat their canonical
+    // signature. This check governs explicit outer parameter annotations.
+    return Boolean(type && !isInlineNamedArgsType({ node: type, state }));
+  });
+}
+
 function isTypePredicateReturnType(node) {
   const returnType = node.returnType?.typeAnnotation;
   return returnType?.type === 'TSTypePredicate';
@@ -280,7 +333,7 @@ function isObjectLiteralPropertyContextuallyExternal({ checker, tsNode }) {
 }
 
 function isClassMethodImplementingExternalSignature({ checker, tsNode }) {
-  if (!ts.isMethodDeclaration(tsNode) || !ts.isClassDeclaration(tsNode.parent)) {
+  if (!ts.isMethodDeclaration(tsNode) || (!ts.isClassDeclaration(tsNode.parent) && !ts.isClassExpression(tsNode.parent))) {
     return false;
   }
 
@@ -460,8 +513,12 @@ function getTypedExpressionContextNode(node) {
   return undefined;
 }
 
+function isClassMethodDefinition(node) {
+  return node?.type === 'MethodDefinition' || node?.type === 'TSAbstractMethodDefinition';
+}
+
 function getExternalContextEstreeNode(node) {
-  if (node.parent?.type === 'MethodDefinition' && node.parent.value === node) {
+  if (isClassMethodDefinition(node.parent) && node.parent.value === node) {
     return node.parent;
   }
 
@@ -469,7 +526,7 @@ function getExternalContextEstreeNode(node) {
 }
 
 function canHaveTypeCheckedExternalContext(node) {
-  if (node.parent?.type === 'MethodDefinition' && node.parent.value === node) {
+  if (isClassMethodDefinition(node.parent) && node.parent.value === node) {
     return true;
   }
 
@@ -481,7 +538,7 @@ function canHaveTypeCheckedExternalContext(node) {
     );
   }
 
-  return Boolean(getTypedExpressionContextNode(node));
+  return isDirectCallArgument(node) || Boolean(getTypedExpressionContextNode(node));
 }
 
 function isTypeCheckedExternalBoundaryCallback({ node, state }) {
@@ -554,9 +611,13 @@ function isVueComputedSetter(node, vueComputedLocalNames) {
   return propertyName === 'set' && vueComputedLocalNames.has(calleeName);
 }
 
-function isAllowedExternalBoundaryCallback({ node, state }) {
-  return (
-    isTypeCheckedExternalBoundaryCallback({ node, state }) ||
+function isAllowedExternalBoundaryCallback({ node, state, requiresVerifiedContext }) {
+  if (isTypeCheckedExternalBoundaryCallback({ node, state })) {
+    return true;
+  }
+  // Preserve legacy positional adapters, but do not let a shadowed constructor
+  // or imported binding bypass explicit outer-type checks by name alone.
+  return !requiresVerifiedContext && (
     isWebStreamUnderlyingSourceOrSinkCallback(node) ||
     isVueComputedSetter(node, state.vueComputedLocalNames)
   );
@@ -608,7 +669,7 @@ function normalizePath(filePath = '') {
 function isPromiseAllKeyedCompatibilitySignature({ filePath, node, params }) {
   return (
     normalizePath(filePath).endsWith('/src/utils/promise.ts') &&
-    node.type === 'FunctionDeclaration' &&
+    (node.type === 'FunctionDeclaration' || node.type === 'TSDeclareFunction') &&
     node.id?.name === 'promiseAllKeyed' &&
     node.parent?.type === 'ExportNamedDeclaration' &&
     params.length === 1
@@ -659,7 +720,7 @@ function getFunctionNameHintText(node) {
 
     if (
       current.type === 'Property' ||
-      current.type === 'MethodDefinition' ||
+      isClassMethodDefinition(current) ||
       current.type === 'PropertyDefinition' ||
       current.type === 'TSPropertySignature' ||
       current.type === 'TSMethodSignature'
@@ -702,6 +763,7 @@ function getReportMessageId({ node, params }) {
 
   if (
     node.type === 'TSFunctionType' ||
+    node.type === 'TSConstructorType' ||
     node.type === 'TSCallSignatureDeclaration' ||
     node.type === 'TSConstructSignatureDeclaration' ||
     node.type === 'TSMethodSignature'
@@ -729,7 +791,7 @@ const TAILWIND_COMPILER_MACRO_NAMES = new Set([
 ]);
 
 function isTailwindCompilerMacroDeclaration({ node, filePath }) {
-  if (node.type !== 'FunctionDeclaration' || !TAILWIND_COMPILER_MACRO_NAMES.has(node.id?.name)) {
+  if ((node.type !== 'FunctionDeclaration' && node.type !== 'TSDeclareFunction') || !TAILWIND_COMPILER_MACRO_NAMES.has(node.id?.name)) {
     return false;
   }
   const normalizedFilePath = filePath.replaceAll('\\', '/');
@@ -747,31 +809,42 @@ function checkFunctionLike(node, context, state) {
     return;
   }
 
+  const params = getFunctionParams(node);
+  // Language-defined calling conventions and the existing compatibility API
+  // are not Naidan-owned named-args bags, even when a parameter is destructured.
   if (
-    (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') &&
-    isDirectCallArgument(node)
+    isTypePredicateReturnType(node) ||
+    isTaggedTemplateFunctionSignature({ params, sourceCode }) ||
+    isPromiseAllKeyedCompatibilitySignature({ filePath: state.filePath, node, params })
   ) {
     return;
   }
+  const nonInlineType = hasNonInlineNamedArgsType({ params, state });
 
-  const params = getFunctionParams(node);
+  if (
+    (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') &&
+    isDirectCallArgument(node) &&
+    !nonInlineType
+  ) {
+    return;
+  }
 
   if (isAllowedSignature({
     filePath: state.filePath,
     node,
     params,
     sourceCode,
-  })) {
+  }) && !nonInlineType) {
     return;
   }
 
-  if (isAllowedExternalBoundaryCallback({ node, state })) {
+  if (isAllowedExternalBoundaryCallback({ node, state, requiresVerifiedContext: nonInlineType })) {
     return;
   }
 
   context.report({
     node,
-    messageId: getReportMessageId({ node, params }),
+    messageId: nonInlineType ? 'requireInlineNamedArgsType' : getReportMessageId({ node, params }),
   });
 }
 
@@ -779,12 +852,13 @@ export const rule = {
   meta: {
     type: 'problem',
     docs: {
-      description: 'Require Naidan-defined callables to use Swift-style named args.',
+      description: 'Require Naidan-defined callables to use destructured named args with an inline outer object type.',
     },
     schema: [],
     messages: {
+      requireInlineNamedArgsType: 'Write the named-args outer object type inline, e.g. fn({ value }: { value: Value }). Wrap a cohesive value as { value }: { value: Value } instead of expanding it. Preserve true external callback contracts.',
       requireNamedArgs: 'Use named args: no args, Record<never, never>, or one destructured object param. Disable only for true external/deprecated contracts.',
-      requireNamedArgsDestructure: 'Use one destructured object param, e.g. fn({ value }: Args). Disable only for true external/deprecated contracts.',
+      requireNamedArgsDestructure: 'Use one destructured object param, e.g. fn({ value }: { value: Value }). Disable only for true external/deprecated contracts.',
       requireNamedArgsWrap: 'Wrap positional params into one object param, e.g. fn({ id, name }). Disable only for true external/deprecated contracts.',
       requireNamedArgsTypeSignature: 'Naidan callback/signature types should use one object param. Import external callback types instead of redefining them.',
       requireNamedArgsAssignment: "Use named args, or type the assignment target with an external callback type, e.g. Window['onstorage']. Disable only for true external/deprecated contracts.",
@@ -815,6 +889,15 @@ export const rule = {
         checkFunctionLike(node, context, state);
       },
       TSFunctionType(node) {
+        checkFunctionLike(node, context, state);
+      },
+      TSConstructorType(node) {
+        checkFunctionLike(node, context, state);
+      },
+      TSDeclareFunction(node) {
+        checkFunctionLike(node, context, state);
+      },
+      TSEmptyBodyFunctionExpression(node) {
         checkFunctionLike(node, context, state);
       },
       TSCallSignatureDeclaration(node) {

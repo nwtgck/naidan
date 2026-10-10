@@ -9,7 +9,7 @@ declare module 'virtual:naidan-standalone-worker-runtime' {
 declare module 'virtual:file-protocol-standalone/worker/advanced-text-editor-v3' {
   import type { StandaloneWorkerCreateOptions, StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
 
-  export function createStandaloneWorker(options?: StandaloneWorkerCreateOptions): Promise<Worker>;
+  export function createStandaloneWorker({ name, startupTimeoutMs }?: { readonly name?: StandaloneWorkerCreateOptions['name'], readonly startupTimeoutMs?: StandaloneWorkerCreateOptions['startupTimeoutMs'] }): Promise<Worker>;
   export function debugGetStandaloneWorkerRuntimeDiagnostics(): StandaloneWorkerRuntimeDiagnostics;
   export function scheduleStandaloneWorkerBootstrapWarmup(): void;
   export function disposeStandaloneWorkerBootstrap(): void;
@@ -18,7 +18,7 @@ declare module 'virtual:file-protocol-standalone/worker/advanced-text-editor-v3'
 declare module 'virtual:file-protocol-standalone/worker/highlight' {
   import type { StandaloneWorkerCreateOptions, StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
 
-  export function createStandaloneWorker(options?: StandaloneWorkerCreateOptions): Promise<Worker>;
+  export function createStandaloneWorker({ name, startupTimeoutMs }?: { readonly name?: StandaloneWorkerCreateOptions['name'], readonly startupTimeoutMs?: StandaloneWorkerCreateOptions['startupTimeoutMs'] }): Promise<Worker>;
   export function debugGetStandaloneWorkerRuntimeDiagnostics(): StandaloneWorkerRuntimeDiagnostics;
   export function scheduleStandaloneWorkerBootstrapWarmup(): void;
   export function disposeStandaloneWorkerBootstrap(): void;
@@ -27,7 +27,7 @@ declare module 'virtual:file-protocol-standalone/worker/highlight' {
 declare module 'virtual:file-protocol-standalone/worker/wesh' {
   import type { StandaloneWorkerCreateOptions, StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
 
-  export function createStandaloneWorker(options?: StandaloneWorkerCreateOptions): Promise<Worker>;
+  export function createStandaloneWorker({ name, startupTimeoutMs }?: { readonly name?: StandaloneWorkerCreateOptions['name'], readonly startupTimeoutMs?: StandaloneWorkerCreateOptions['startupTimeoutMs'] }): Promise<Worker>;
   export function debugGetStandaloneWorkerRuntimeDiagnostics(): StandaloneWorkerRuntimeDiagnostics;
   export function scheduleStandaloneWorkerBootstrapWarmup(): void;
   export function disposeStandaloneWorkerBootstrap(): void;
@@ -36,7 +36,7 @@ declare module 'virtual:file-protocol-standalone/worker/wesh' {
 declare module 'virtual:file-protocol-standalone/worker/global-search' {
   import type { StandaloneWorkerCreateOptions, StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
 
-  export function createStandaloneWorker(options?: StandaloneWorkerCreateOptions): Promise<Worker>;
+  export function createStandaloneWorker({ name, startupTimeoutMs }?: { readonly name?: StandaloneWorkerCreateOptions['name'], readonly startupTimeoutMs?: StandaloneWorkerCreateOptions['startupTimeoutMs'] }): Promise<Worker>;
   export function debugGetStandaloneWorkerRuntimeDiagnostics(): StandaloneWorkerRuntimeDiagnostics;
   export function scheduleStandaloneWorkerBootstrapWarmup(): void;
   export function disposeStandaloneWorkerBootstrap(): void;
@@ -45,7 +45,7 @@ declare module 'virtual:file-protocol-standalone/worker/global-search' {
 declare module 'virtual:file-protocol-standalone/worker/file-explorer' {
   import type { StandaloneWorkerCreateOptions, StandaloneWorkerRuntimeDiagnostics } from '@/features/file-protocol-standalone/worker/standalone-worker-runtime.types';
 
-  export function createStandaloneWorker(options?: StandaloneWorkerCreateOptions): Promise<Worker>;
+  export function createStandaloneWorker({ name, startupTimeoutMs }?: { readonly name?: StandaloneWorkerCreateOptions['name'], readonly startupTimeoutMs?: StandaloneWorkerCreateOptions['startupTimeoutMs'] }): Promise<Worker>;
   export function debugGetStandaloneWorkerRuntimeDiagnostics(): StandaloneWorkerRuntimeDiagnostics;
   export function scheduleStandaloneWorkerBootstrapWarmup(): void;
   export function disposeStandaloneWorkerBootstrap(): void;

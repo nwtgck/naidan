@@ -58,11 +58,11 @@ export class NaidanRpcLmProvider implements LmProvider {
     };
   }
 
-  chat({ ...request }: Parameters<LmProvider['chat']>[0]): AsyncIterable<ChatGenerationItem> {
+  chat({ ...request }: { messages: Parameters<LmProvider['chat']>[0]['messages'], model: Parameters<LmProvider['chat']>[0]['model'], parameters: Parameters<LmProvider['chat']>[0]['parameters'], tools: Parameters<LmProvider['chat']>[0]['tools'], readBinaryObject: Parameters<LmProvider['chat']>[0]['readBinaryObject'], debug: Parameters<LmProvider['chat']>[0]['debug'], signal: Parameters<LmProvider['chat']>[0]['signal'] }): AsyncIterable<ChatGenerationItem> {
     return createLlamaCppGeneration({ request, generate: async ({ ...args }) => this.generate({ client: await this.client() })(args) });
   }
 
-  async runChatOperation({ signal, operation }: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]): Promise<void> {
+  async runChatOperation({ signal, operation }: { signal: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['signal'], operation: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['operation'], onProgress?: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['onProgress'] }): Promise<void> {
     // A multi-tool operation stays pinned to this session. A later reconnect
     // cannot silently redirect its next generation to a new RPC peer instance.
     const client = await this.client(); signal?.throwIfAborted();

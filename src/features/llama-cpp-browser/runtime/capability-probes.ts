@@ -12,7 +12,7 @@ export const suspensionProbe = new Uint8Array([
   10, 6, 1, 4, 0, 16, 0, 11,
 ]);
 type PromiseIntegration = {
-
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Mirrors the browser WebAssembly.Suspending constructor.
   Suspending: new (callback: () => Promise<number>) => WebAssembly.ImportValue,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Browser JSPI API signature.
   promising: (callback: WebAssembly.ExportValue) => () => Promise<number>,

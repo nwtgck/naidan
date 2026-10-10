@@ -15,7 +15,7 @@ class HostedTransformersJsProvider implements LmProvider {
     this.service = service;
   }
 
-  chat({ messages, model, parameters, tools, readBinaryObject, debug, signal }: Parameters<LmProvider['chat']>[0]): AsyncIterable<ChatGenerationItem> {
+  chat({ messages, model, parameters, tools, readBinaryObject, debug, signal }: { messages: Parameters<LmProvider['chat']>[0]['messages'], model: Parameters<LmProvider['chat']>[0]['model'], parameters: Parameters<LmProvider['chat']>[0]['parameters'], tools: Parameters<LmProvider['chat']>[0]['tools'], readBinaryObject: Parameters<LmProvider['chat']>[0]['readBinaryObject'], debug: Parameters<LmProvider['chat']>[0]['debug'], signal: Parameters<LmProvider['chat']>[0]['signal'] }): AsyncIterable<ChatGenerationItem> {
     const request = snapshotChatRequest({ messages, model, parameters, tools, readBinaryObject, debug, signal });
     // Direct callers own one generation. A common tool loop uses the scoped
     // facade below so its intervening waits keep the same lane and cache owner.
@@ -32,7 +32,7 @@ class HostedTransformersJsProvider implements LmProvider {
     });
   }
 
-  async runChatOperation({ signal, operation }: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]): Promise<void> {
+  async runChatOperation({ signal, operation }: { signal: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['signal'], operation: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['operation'], onProgress?: Parameters<NonNullable<LmProvider['runChatOperation']>>[0]['onProgress'] }): Promise<void> {
     const controller = new AbortController();
     const abort = () => controller.abort(signal?.reason);
     signal?.addEventListener('abort', abort, { once: true });

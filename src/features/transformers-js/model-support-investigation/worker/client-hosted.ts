@@ -409,7 +409,7 @@ export function createModelSupportInvestigationWorkerClient({
         if (userInterruptionRequested && !force) return;
         onCheckpoint({ checkpoint: { ...structuredClone(checkpoint), ...(retainedReplayMetadata === undefined ? {} : { replayMetadata: retainedReplayMetadata }), ...(retainedNativeEvidence === undefined ? {} : { nativeEvidence: retainedNativeEvidence }) } });
       };
-      const publishEvent = ({ event }: Parameters<typeof onEvent>[0]): void => {
+      const publishEvent = ({ event }: { event: Parameters<typeof onEvent>[0]['event'] }): void => {
         if (userInterruptionRequested) return;
         checkpoint = recordInvestigationEvent({ checkpoint, event, now });
         onEvent({ event });

@@ -383,8 +383,8 @@ describe('preview control isolation', () => {
     await api.requestAudioPreview({ generationId: 100, requestVersion: 9 }); expect(operation.preview?.requestedVersion()).toBe(0);
     await api.requestAudioPreview({ generationId: 101, requestVersion: 2 });
     await api.requestAudioPreview({ generationId: 101, requestVersion: 1 }); expect(operation.preview?.requestedVersion()).toBe(2);
-    await operation.preview!.onPreview({ requestVersion: 2, result: { ...audioResult(), frames: 72, finishReason: 'preview' } });
-    expect(onPreview).toHaveBeenCalledOnce(); expect(operation.cancellationSignal?.aborted).toBe(false); expect(operation.shouldComplete?.()).toBe(false);
+    await operation.preview!.onPreview({ event: { requestVersion: 2, result: { ...audioResult(), frames: 72, finishReason: 'preview' } } });
+    expect(onPreview).toHaveBeenCalledExactlyOnceWith({ requestVersion: 2, result: { ...audioResult(), frames: 72, finishReason: 'preview' } }); expect(operation.cancellationSignal?.aborted).toBe(false); expect(operation.shouldComplete?.()).toBe(false);
     await expect(api.generateAudio(audioRequest({ generationId: 102 }), () => {}, () => {})).rejects.toThrow('busy');
     await api.finishAudioGeneration({ generationId: 101 }); await api.requestAudioPreview({ generationId: 101, requestVersion: 3 });
     expect(operation.preview?.requestedVersion()).toBe(2); gate.resolve(); await pending;

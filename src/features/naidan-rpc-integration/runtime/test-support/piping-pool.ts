@@ -12,7 +12,7 @@ type Queued = {
  * must finish or cancel before another operation can use its slot. */
 export function createPipingFetchPool({ capacity, request }: {
   capacity: number;
-  request({ input, init }: FetchArguments): Promise<Response>;
+  request({ input, init }: { input: FetchArguments['input'], init: FetchArguments['init'] }): Promise<Response>;
 }) {
   const queue: Queued[] = [];
   let active = 0, peak = 0;
@@ -63,7 +63,7 @@ export function createPipingFetchPool({ capacity, request }: {
     get stats() {
       return { active, queued: queue.length, peak };
     },
-    request({ input, init }: FetchArguments): Promise<Response> {
+    request({ input, init }: { input: FetchArguments['input'], init: FetchArguments['init'] }): Promise<Response> {
       const args = { input, init };
       const signal = args.init?.signal;
       if (!signal) return Promise.reject(new Error('Finite relay requests require a signal'));

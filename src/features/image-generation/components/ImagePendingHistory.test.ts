@@ -45,7 +45,7 @@ it('remounts, previews and downloads retained pixels, then retries the same save
   wrapper.unmount(); expect(mocks.revoke).toHaveBeenCalledWith('blob:pending'); expect(pendingImageHistory.list()).toHaveLength(1);
   wrapper = mount(ImagePendingHistory); await flushPromises();
   await wrapper.get('[data-testid="pending-history-retry"]').trigger('click'); await flushPromises();
-  expect(value.save).toHaveBeenCalledTimes(2); expect(value.save.mock.calls[1]![0]).toBe(value.save.mock.calls[0]![0]);
+  expect(value.save).toHaveBeenCalledTimes(2); expect(value.save.mock.calls[1]![0].publication).toBe(value.save.mock.calls[0]![0].publication);
   expect(wrapper.find('[data-testid="image-pending-history"]').exists()).toBe(false); wrapper.unmount();
 });
 

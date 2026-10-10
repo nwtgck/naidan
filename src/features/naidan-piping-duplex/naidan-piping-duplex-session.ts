@@ -55,9 +55,7 @@ export class NaidanPipingDuplexSession {
     void this.closed.catch(() => {});
   }
 
-  private static async connectInternal({ piping, identity, signal, publicHandshakeData, handshakeData, code, role, verifyPeer }: ConnectionInput & {
-    code: string; role: NaidanPipingRole | undefined; verifyPeer: NaidanPipingPeerVerifier;
-  }): Promise<NaidanPipingDuplexSession> {
+  private static async connectInternal({ piping, identity, signal, publicHandshakeData, handshakeData, code, role, verifyPeer }: { piping: ConnectionInput['piping'], identity: ConnectionInput['identity'], signal: ConnectionInput['signal'], publicHandshakeData?: ConnectionInput['publicHandshakeData'], handshakeData?: ConnectionInput['handshakeData'], code: string, role: NaidanPipingRole | undefined, verifyPeer: NaidanPipingPeerVerifier }): Promise<NaidanPipingDuplexSession> {
     signal.throwIfAborted();
     // Snapshot caller-owned settings and bytes before the first asynchronous step.
     const local = { privateKey: identity.privateKey, publicKey: ownBytes({ bytes: identity.publicKey, maxBytes: 32 }) };
@@ -99,9 +97,7 @@ export class NaidanPipingDuplexSession {
 
   /** One bounded authentication candidate. Its signal must belong to the
    * connection intent, not to the DATA session that it may replace. */
-  static async preparePinnedContact({ piping, identity, expectedPeer, purpose = 'naidan-piping-duplex/v1', signal, publicHandshakeData, handshakeData, heldContext }: ConnectionInput & {
-    expectedPeer: Uint8Array; purpose?: string; heldContext: Uint8Array | undefined;
-  }): Promise<PreparedPinnedConnection | { kind: 'same-connection' }> {
+  static async preparePinnedContact({ piping, identity, expectedPeer, purpose = 'naidan-piping-duplex/v1', signal, publicHandshakeData, handshakeData, heldContext }: { piping: ConnectionInput['piping'], identity: ConnectionInput['identity'], expectedPeer: Uint8Array, signal: ConnectionInput['signal'], publicHandshakeData?: ConnectionInput['publicHandshakeData'], handshakeData?: ConnectionInput['handshakeData'], heldContext: Uint8Array | undefined, purpose?: string }): Promise<PreparedPinnedConnection | { kind: 'same-connection' }> {
     signal.throwIfAborted();
     const limits = validateReceiveLimits({ limits: piping.receiveLimits ?? DEFAULT_RECEIVE_LIMITS });
     const liveness = validateLiveness({ liveness: piping.liveness ?? DEFAULT_LIVENESS });
@@ -163,7 +159,7 @@ export class NaidanPipingDuplexSession {
     };
   }
 
-  static async connectPinned({ ...input }: ConnectionInput & { expectedPeer: Uint8Array; purpose?: string }): Promise<NaidanPipingDuplexSession> {
+  static async connectPinned({ ...input }: { piping: ConnectionInput['piping'], identity: ConnectionInput['identity'], signal: ConnectionInput['signal'], publicHandshakeData?: ConnectionInput['publicHandshakeData'], handshakeData?: ConnectionInput['handshakeData'], expectedPeer: Uint8Array, purpose?: string }): Promise<NaidanPipingDuplexSession> {
     const prepared = await this.preparePinnedContact({ ...input, heldContext: undefined });
     switch (prepared.kind) {
     case 'candidate': return prepared.finish();
@@ -172,9 +168,7 @@ export class NaidanPipingDuplexSession {
     }
   }
 
-  static pair({ code, role, verifyPeer, ...input }: ConnectionInput & {
-    code: string; role?: NaidanPipingRole; verifyPeer: NaidanPipingPeerVerifier;
-  }): Promise<NaidanPipingDuplexSession> {
+  static pair({ code, role, verifyPeer, ...input }: { code: string, role?: NaidanPipingRole, verifyPeer: NaidanPipingPeerVerifier, piping: ConnectionInput['piping'], identity: ConnectionInput['identity'], signal: ConnectionInput['signal'], publicHandshakeData?: ConnectionInput['publicHandshakeData'], handshakeData?: ConnectionInput['handshakeData'] }): Promise<NaidanPipingDuplexSession> {
     return this.connectInternal({ ...input, code, role, verifyPeer });
   }
 

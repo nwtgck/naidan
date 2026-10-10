@@ -20,7 +20,7 @@ export function copyNativeImage({ core, pointer }: { core: Core, pointer: bigint
 }
 
 /** Statistics only: white/black may be intentional. Never retry from colour. */
-export function imagePixelStatistics({ pixels }: Pick<ImagePixels, 'pixels'>) {
+export function imagePixelStatistics({ pixels }: { pixels: ImagePixels['pixels'] }) {
   let min = 255, max = 0, alphaMin = 255, alphaMax = 0, white = 0, black = 0, identical = true;
   for (let i = 0; i < pixels.length; i += 4) {
     const r = pixels[i]!, g = pixels[i + 1]!, b = pixels[i + 2]!, a = pixels[i + 3]!;

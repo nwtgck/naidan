@@ -26,7 +26,7 @@ export type SyntheticSessionObservation = {
 };
 
 /** Small, identifiable test bytes. This is deliberately not an ONNX model. */
-export function createSyntheticModelBody({ modelId, revision, path }: SyntheticBodyIdentity): Uint8Array {
+export function createSyntheticModelBody({ modelId, revision, path }: { modelId: SyntheticBodyIdentity['modelId'], revision: SyntheticBodyIdentity['revision'], path: SyntheticBodyIdentity['path'] }): Uint8Array {
   const identity = identitySchema.parse({ modelId, revision, path });
   const sha256 = createHash('sha256').update(JSON.stringify(identity)).digest('hex');
   return new TextEncoder().encode(JSON.stringify({ format: 'naidan-synthetic-model-body-v1', identity, sha256 }));

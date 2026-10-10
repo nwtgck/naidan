@@ -252,7 +252,7 @@ export function useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustN
     injectAddToast,
   }: {
     id: string,
-    injectAddToast?: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined,
+    injectAddToast?: (({ message, actionLabel, onAction, onClose, duration }: { message: AddToastOptions['message'], actionLabel?: AddToastOptions['actionLabel'], onAction?: AddToastOptions['onAction'], onClose?: AddToastOptions['onClose'], duration?: AddToastOptions['duration'] }) => string) | undefined,
   }) {
     await chatLifecycle.deleteChat({
       id: toChatId({ raw: id }),

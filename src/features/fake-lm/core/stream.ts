@@ -31,7 +31,7 @@ export type StreamFakeLmMarkdownInput = {
   },
 };
 
-export async function* streamFakeLmMarkdown({ language, mode, seed, thinkingEffort, inputAnalysis, signal, chunking }: StreamFakeLmMarkdownInput): AsyncIterable<FakeLmStreamItem> {
+export async function* streamFakeLmMarkdown({ language, mode, seed, thinkingEffort, inputAnalysis, signal, chunking }: { language: StreamFakeLmMarkdownInput['language'], mode: StreamFakeLmMarkdownInput['mode'], seed: StreamFakeLmMarkdownInput['seed'], thinkingEffort: StreamFakeLmMarkdownInput['thinkingEffort'], inputAnalysis: StreamFakeLmMarkdownInput['inputAnalysis'], signal: StreamFakeLmMarkdownInput['signal'], chunking: StreamFakeLmMarkdownInput['chunking'] }): AsyncIterable<FakeLmStreamItem> {
   const lexicons = await loadLanguageLexicons({ language });
   const ctx: FakeLmContext = {
     random: createSeededNonCryptoPseudoRandom({ seed: mixSeed({ seed, salt: `text:${language}:${mode}:${thinkingEffort}` }) }),

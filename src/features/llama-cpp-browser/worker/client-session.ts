@@ -4,7 +4,7 @@ import { audioGenerationResultSchema, audioPreviewEventSchema, type AudioPreview
 import { profileCapabilitiesSchema } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 import { deletionPlanSchema, deletionResultSchema } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { classifyFailure, diagnosticSchema, dispatchLimitDetails, logDiagnostic, logFailure, type Diagnostic } from '@/features/llama-cpp-browser/debug-log';
-import { workerProxy, type WorkerProxy, type WorkerRemote } from '@/utils/worker-transport';
+import { workerProxy, type WorkerRemote } from '@/utils/worker-transport';
 import { errorCode, generationEventSchema, generationResultSchema, LlamaCppBrowserError, modelSchema, modelsSchema, progressSchema, type LocalModel, type Progress } from '@/features/llama-cpp-browser/types';
 import { workerAudioCallSchema, workerPrepareCallSchema, workerGenerateCallSchema, type LlamaCppWorkerApi, type LlamaCppWorkerClient } from './types';
 
@@ -143,7 +143,7 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
     }
   }
   async function importWithCancellation({ call, onProgress, signal }: {
-    call: ({ generationId, report }: { generationId: number, report: WorkerProxy<({ phase, completed, total }: Progress) => void> }) => Promise<LocalModel>,
+    call: ({ generationId, report }: { generationId: number, report: Parameters<LlamaCppWorkerApi['importModel']>[1] }) => Promise<LocalModel>,
     onProgress: ({ progress }: { progress: Progress }) => void,
     signal: AbortSignal | undefined,
   }): Promise<LocalModel> {
@@ -154,8 +154,9 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
         call: () => call({
           generationId,
           report: workerProxy({
-            value: ({ ...event }: Progress) => {
-              if (acceptingProgress && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(event) });
+            // eslint-disable-next-line local-rules-named-args/require-named-args -- This proxy receives a Progress value as a top-level Comlink argument.
+            value: (progress: Progress) => {
+              if (acceptingProgress && !disposed && !signal?.aborted) onProgress({ progress: progressSchema.parse(progress) });
             },
           }),
         }),
@@ -335,13 +336,14 @@ export function createLlamaCppWorkerSessionClient({ worker, remote, disposeTrans
                   if (checkpoint.event === 'native-error' && (!lastNativeFailure || checkpoint.failureKind === 'webgpu-dispatch-limit')) lastNativeFailure = checkpoint;
                 },
               }), preview ? workerProxy({
-                value: async ({ ...event }: AudioPreviewEvent) => {
+                // eslint-disable-next-line local-rules-named-args/require-named-args -- This proxy receives an AudioPreviewEvent as a top-level Comlink argument.
+                value: async (event: AudioPreviewEvent) => {
                   if (!acceptingEvents || disposed || cancellationSignal?.aborted) return;
                   const acceptedEvent = audioPreviewEventSchema.parse(event);
                   if (acceptedEvent.requestVersion <= deliveredVersion) return;
                   if (acceptedEvent.requestVersion > sentVersion) throw new LlamaCppBrowserError({ code: 'worker-failed' });
                   deliveredVersion = acceptedEvent.requestVersion;
-                  await preview.onPreview(acceptedEvent);
+                  await preview.onPreview({ event: acceptedEvent });
                 },
               }) : undefined);
             started = true;

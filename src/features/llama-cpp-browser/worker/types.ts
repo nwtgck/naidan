@@ -27,9 +27,9 @@ export type WorkerAudioCall = z.infer<typeof workerAudioCallSchema>;
 
 export interface LlamaCppWorkerApi {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method with a top-level progress proxy.
-  prepareModel(request: WorkerPrepareCall, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>): Promise<void>;
+  prepareModel(request: WorkerPrepareCall, onProgress: WorkerProxy<(progress: Progress) => void>): Promise<void>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.
-  generateAudio(request: WorkerAudioCall, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>, onDiagnostic: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>, onPreview?: WorkerProxy<({ result, requestVersion }: AudioPreviewEvent) => Promise<void>>): Promise<AudioGenerationResult>;
+  generateAudio(request: WorkerAudioCall, onProgress: WorkerProxy<(progress: Progress) => void>, onDiagnostic: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>, onPreview?: WorkerProxy<(event: AudioPreviewEvent) => Promise<void>>): Promise<AudioGenerationResult>;
   probeProfiles(): Promise<ProfileCapabilities>;
   verifyStorage({ probeId }: { probeId: string }): Promise<boolean>;
   release(): Promise<void>;
@@ -38,12 +38,12 @@ export interface LlamaCppWorkerApi {
   requestAudioPreview({ generationId, requestVersion }: { generationId: number, requestVersion: number }): Promise<void>;
   listModels(): Promise<LocalModel[]>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.
-  importModel(request: { file: File, generationId: number }, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>): Promise<LocalModel>;
+  importModel(request: { file: File, generationId: number }, onProgress: WorkerProxy<(progress: Progress) => void>): Promise<LocalModel>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method with a top-level callback.
-  importDirectory(request: { directory: ModelDirectoryInput, generationId: number }, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>): Promise<LocalModel>;
+  importDirectory(request: { directory: ModelDirectoryInput, generationId: number }, onProgress: WorkerProxy<(progress: Progress) => void>): Promise<LocalModel>;
   removeModel({ plan }: { plan: DeletionPlan }): Promise<DeletionResult>;
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Direct Comlink method; proxied callbacks must be top-level arguments.
-  generate(request: WorkerGenerateCall, onEvent: WorkerProxy<({ event }: { event: GenerationEvent }) => Promise<void>>, onProgress: WorkerProxy<({ phase, completed, total }: Progress) => void>, onDiagnostic?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>, onSummary?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>): Promise<GenerationResult>;
+  generate(request: WorkerGenerateCall, onEvent: WorkerProxy<({ event }: { event: GenerationEvent }) => Promise<void>>, onProgress: WorkerProxy<(progress: Progress) => void>, onDiagnostic?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>, onSummary?: WorkerProxy<({ diagnostic }: { diagnostic: Diagnostic }) => void>): Promise<GenerationResult>;
 }
 export interface LlamaCppWorkerClient {
   prepareModel({ request, onProgress, signal }: { request: WorkerPrepareInput, onProgress: ({ progress }: { progress: Progress }) => void, signal: AbortSignal | undefined }): Promise<void>;

@@ -1006,7 +1006,7 @@ export function useImageGeneration(): ImageGenerationView {
           });
           const output = finishImageGenerationSnapshot({ snapshot: imageSnapshot, result: { ...result, uniformOutput: result.uniformOutput ?? false }, previews, elapsedMs });
           if (historyWriter) {
-            pendingImageHistory.retain({ ...output, save: historyWriter.save });
+            pendingImageHistory.retain({ ...output, save: ({ publication }) => historyWriter.save(publication) });
           }
           publication = output;
         }
