@@ -54,7 +54,7 @@ it('retains a snapshot even if the original file changes afterwards', async () =
   expect(await snapshot.metadata.find(entry => entry.path === 'session.json')!.blob.text()).toContain('雨の夜景');
 });
 
-it.each(['draft', 'asset', 'annotations'])('fails explicitly on unknown %s metadata instead of producing an incomplete archive', async kind => {
+it.each(['draft', 'asset', 'annotations'])('exports %s file snapshots with future fields without rewriting canonical data', async kind => {
   const h = await setup();
   const part = kind === 'draft' ? 'draft.json' : kind === 'asset' ? 'assets/aa/asset-aa.json' : 'annotations/aa/asset-aa.json';
   const file = await fs.file({ path: `/naidan-storage/experimental/image-generation/sessions/aa/session-aa/${part}` });
@@ -63,7 +63,10 @@ it.each(['draft', 'asset', 'annotations'])('fails explicitly on unknown %s metad
     const directory = await fs.directory({ path: `/naidan-storage/experimental/image-generation/sessions/aa/session-aa/${kind === 'asset' ? 'assets' : 'annotations'}/aa` });
     await directory.removeEntry('index.json'); // Require reconstruction from canonical data.
   }
-  await expect(collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id })).rejects.toThrow();
+  const snapshot = await collectImageGenerationSessionMetadata({ store: h.store, sessionId: h.session.id });
+  const exported = snapshot.metadata.find(entry => entry.path === part);
+  expect(exported).toBeDefined();
+  expect(await exported!.blob.text()).toBe(file.text);
   expect(file.text).toContain('future');
 });
 

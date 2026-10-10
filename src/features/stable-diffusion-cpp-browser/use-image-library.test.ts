@@ -4,6 +4,8 @@ import { effectScope } from 'vue';
 import { useImageLibrary } from './use-image-library';
 import { scanImageRepositories, type ModelInventory } from './logic/model-candidates';
 import type { LocalImageRepository } from './logic/repository-store';
+import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
+import { DEFAULT_SETTINGS } from '@/01-models/types';
 import { idToRaw } from '@/01-models/ids';
 import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTextTensors } from './test-utils/weights';
 
@@ -317,4 +319,29 @@ it('keeps the exact main and component Files after an unrelated import, but refr
   await h.library.refresh();
   const rescanned = h.library.selectedModels()!;
   rescanned.forEach((model, index) => expect(model.file).not.toBe(before[index]!.file));
+});
+
+it.each(['models/user/0/original/../z_image_turbo.gguf', '/models/user/0/original/z_image_turbo.gguf'])('restores an unresolved stored path without new filesystem access or fallback: %s', async path => {
+  const h = harness({ entries: repositories(), scan: undefined });
+  await h.library.refresh();
+  expect(h.library.ready.value).toBe(true);
+  const provider = new MemoryStorageProvider();
+  await provider.saveSettings({
+    settings: {
+      ...DEFAULT_SETTINGS,
+      storageType: 'local',
+      endpoint: { type: 'openai', url: '' },
+      experimental: {
+        ...DEFAULT_SETTINGS.experimental,
+        browserImageGeneration: { modelSelection: { primary: { slot: 'diffusion', location: { kind: 'opfs', path } }, components: [], loras: [] } },
+      },
+    },
+  });
+  const selection = (await provider.loadSettings())?.experimental?.browserImageGeneration?.modelSelection;
+  if (!selection) throw new Error('Missing restored model selection');
+  const result = h.library.restoreModelSelection({ selection });
+  expect(result.missing).toContain(path);
+  expect(h.library.selectedModels()).toBeUndefined();
+  expect(h.library.ready.value).toBe(false);
+  expect(h.list).toHaveBeenCalledOnce();
 });

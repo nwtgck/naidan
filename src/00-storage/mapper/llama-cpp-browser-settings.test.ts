@@ -28,6 +28,9 @@ describe('llama.cpp browser model download destination settings', () => {
   it.each<LlamaCppBrowserSettings['modelDownloadDestination']>([
     { kind: 'opfs' },
     { kind: 'host', directoryId: toHostModelDirectoryId({ raw: 'linked-lm-models' }) },
+    // An unresolved identifier is still a string; using the directory is a
+    // separate operation and must not be inferred from successful DTO parsing.
+    { kind: 'host', directoryId: toHostModelDirectoryId({ raw: '' }) },
   ])('roundtrips the explicit destination independently of image generation preferences: %j', modelDownloadDestination => {
     const imageDirectoryId = toHostModelDirectoryId({ raw: 'linked-image-models' });
     const saved = settingsToDto({
@@ -95,7 +98,6 @@ describe('llama.cpp browser model download destination settings', () => {
     { modelDownloadDestination: {} },
     { modelDownloadDestination: { kind: 'future_destination' } },
     { modelDownloadDestination: { kind: 'host' } },
-    { modelDownloadDestination: { kind: 'host', directoryId: '' } },
     { modelDownloadDestination: { kind: 'host', directoryId: 42 } },
   ])('isolates an unreadable llama.cpp group without discarding unrelated settings: %j', invalid => {
     const dto = SettingsSchemaDto.parse({

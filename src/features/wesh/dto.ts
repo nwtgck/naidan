@@ -1,32 +1,32 @@
-import { z } from 'zod';
+import * as dtozod from '@/utils/dtozod';
 
-const BaseEntrySchemaDto = z.object({
-  mode: z.number().int().min(0).max(0o7777),
-  uid: z.number().optional(),
-  gid: z.number().optional(),
-  mtime: z.number().optional(),
+const BaseEntrySchemaDto = dtozod.object({
+  mode: dtozod.number(),
+  uid: dtozod.number().optional(),
+  gid: dtozod.number().optional(),
+  mtime: dtozod.number().optional(),
 });
 
 export const SymlinkEntrySchemaDto = BaseEntrySchemaDto.extend({
-  type: z.literal('symlink'),
-  targetPath: z.string(),
+  type: dtozod.literal('symlink'),
+  targetPath: dtozod.string(),
 });
 
 export const FifoEntrySchemaDto = BaseEntrySchemaDto.extend({
-  type: z.literal('fifo'),
+  type: dtozod.literal('fifo'),
 });
 
 export const CharDevEntrySchemaDto = BaseEntrySchemaDto.extend({
-  type: z.literal('chardev'),
+  type: dtozod.literal('chardev'),
 });
 
-export const WeshRegistryEntrySchemaDto = z.discriminatedUnion('type', [
+export const WeshRegistryEntrySchemaDto = dtozod.discriminatedUnion('type', [
   SymlinkEntrySchemaDto,
   FifoEntrySchemaDto,
   CharDevEntrySchemaDto,
 ]);
 
-export type WeshRegistryEntryDto = z.infer<typeof WeshRegistryEntrySchemaDto>;
+export type WeshRegistryEntryDto = dtozod.infer<typeof WeshRegistryEntrySchemaDto>;
 
 // Constants for system data
 export const WESH_SYSTEM_DIR = '.wesh-system';

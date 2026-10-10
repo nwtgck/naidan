@@ -65,8 +65,8 @@ export async function writeImageGenerationText({ directory, name, text }: { dire
 export function createImageGenerationTable<R, S>({ directory, layout, recordSchema, indexSchema, recordId, summaryId, summarize, validateRecord, validateSummary, unavailableRecord }: {
   directory: FileSystemDirectoryHandle | undefined,
   layout: 'files' | 'session-directories',
-  recordSchema: z.ZodType<R>,
-  indexSchema: z.ZodType<{ items: S[] }>,
+  recordSchema: Pick<z.ZodType<R>, 'parse'>,
+  indexSchema: Pick<z.ZodType<{ items: S[] }>, 'parse'>,
   recordId: ({ record }: { record: R }) => string,
   summaryId: ({ summary }: { summary: S }) => string,
   summarize: ({ record }: { record: R }) => S,

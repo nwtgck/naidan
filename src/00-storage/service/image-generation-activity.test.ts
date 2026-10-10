@@ -263,3 +263,62 @@ describe('durable, wall-clock-independent image session activity', () => {
     expect(file.text).toBe(mismatching);
   });
 });
+
+describe('permissive DTO reads with guarded activity mutations', () => {
+  it.each([-1, 0.5, 2 ** 53, Number.MAX_SAFE_INTEGER])('reads but never advances an unusable sequence %s', async sequence => {
+    const { store, a } = await setup();
+    const file = await fs.file({ path: `${root}/session-activity.json` });
+    file.text = JSON.stringify({ version: 1, sequence, pending: [] });
+    const before = file.text;
+    expect((await journal()).sequence).toBe(sequence);
+    const run = generationRunFixture({ id: 'run-aa', sessionId: a.id, count: 1, seed: '42' });
+    const writeInputs = vi.fn(async () => {});
+    await expect(service.createImageGenerationRun({ store, run, writeInputs })).rejects.toThrow();
+    // Input preparation precedes reservation, but no canonical run may be published.
+    expect(writeInputs).toHaveBeenCalledOnce();
+    expect(await service.loadImageGenerationRun({ store, sessionId: a.id, runId: run.id })).toBeUndefined();
+    expect(file.text).toBe(before);
+    const listed = await service.listImageGenerationSessions({ store });
+    expect(listed.items).toHaveLength(2);
+    expect(listed.warningCount).toBe(1);
+    expect(file.text).toBe(before);
+  });
+
+  it('does not reuse an invalid pending receipt even when the requested run matches', async () => {
+    const { store, a } = await setup();
+    const file = await fs.file({ path: `${root}/session-activity.json` });
+    file.text = JSON.stringify({
+      version: 1,
+      sequence: 3,
+      pending: [{ sessionId: idToRaw({ id: a.id }), runId: 'run-aa', order: 1.5 }],
+    });
+    const before = file.text;
+    expect((await journal()).pending[0]?.order).toBe(1.5);
+    await expect(accept({ store, session: a, id: 'run-aa', time: 1 })).rejects.toThrow();
+    expect(file.text).toBe(before);
+  });
+
+  it('keeps future journal fields loadable while preserving all known clock values', async () => {
+    const { store, a } = await setup();
+    const file = await fs.file({ path: `${root}/session-activity.json` });
+    const before = await journal();
+    file.text = JSON.stringify({ ...before, future: true });
+    await accept({ store, session: a, id: 'run-aa', time: 1 });
+    expect((await journal()).sequence).toBe(before.sequence + 1);
+    expect((await journal()).pending).toHaveLength(1);
+  });
+
+  it('preserves a malformed accepted order instead of applying it to a session', async () => {
+    const { store, a } = await setup();
+    await accept({ store, session: a, id: 'run-aa', time: 1 });
+    const file = await fs.file({ path: `${root}/sessions/aa/session-aa/runs/aa/run-aa.json` });
+    const raw = JSON.parse(file.text);
+    raw.acceptedOrder = -1;
+    file.text = JSON.stringify(raw);
+    const before = (await fs.file({ path: `${root}/session-activity.json` })).text;
+    const listed = await service.listImageGenerationSessions({ store });
+    expect(listed.items).toHaveLength(2);
+    expect(listed.warningCount).toBe(1);
+    expect((await fs.file({ path: `${root}/session-activity.json` })).text).toBe(before);
+  });
+});

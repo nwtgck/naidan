@@ -56,7 +56,7 @@ it('preserves unknown recovery facts while retaining a valid image asset', () =>
   expect(ExperimentalImageGenerationSchemaDto.safeParse({ ...dto, result: { ...dto.result, confirmation: 'confirmed' } }).success).toBe(false);
 });
 
-it('rejects malformed connection provenance rather than mapping it to the local provider', () => {
+it('rejects unknown profiles but retains remote provenance with an unfamiliar peer ID', () => {
   const run = remote();
   expect(() => imageGenerationRequestToDto({ request: { ...run.request, runtime: { ...run.request.runtime, profile: 'unknown-provider' } as never } })).toThrow();
   expect(() => imageGenerationRequestToDto({ request: { ...run.request, runtime: { ...run.request.runtime, peerPublicKey: 'wrong' } as never } })).toThrow();

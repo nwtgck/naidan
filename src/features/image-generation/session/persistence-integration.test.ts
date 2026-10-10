@@ -290,10 +290,17 @@ describe('curation and Unicode tag rename', () => {
     expect((await loadImageGenerationAssetAnnotations(base))?.revision).toBe(1);
   });
 
-  it('rejects unknown and duplicate tag assignments', async () => {
+  it('rejects unknown tags but treats repeated assignments as one requested identity', async () => {
     const { store, session, asset } = await published(); const base = { store, sessionId: session.id, assetId: asset.id, assignedAt: 20, expectedRevision: 0 };
     await expect(setImageGenerationAssetTags({ ...base, tags: [{ type: 'user', tagId: toImageGenerationTagId({ raw: 'missing-tag' }) }] })).rejects.toThrow('unknown');
-    await expect(setImageGenerationAssetTags({ ...base, tags: [favorite, favorite] })).rejects.toThrow('Duplicate');
+    await setImageGenerationAssetTags({ ...base, tags: [favorite, { ...favorite }] });
+    const first = await loadImageGenerationAssetAnnotations(base);
+    expect(first).toMatchObject({ revision: 1, tags: [{ tag: favorite, assignedAt: 20 }] });
+    // Lost acknowledgements may retry the same set with or without duplicates.
+    await setImageGenerationAssetTags({ ...base, tags: [favorite] });
+    expect(await loadImageGenerationAssetAnnotations(base)).toEqual(first);
+    await setImageGenerationAssetTags({ ...base, expectedRevision: 1, assignedAt: 30, tags: [favorite, favorite] });
+    expect((await loadImageGenerationAssetAnnotations(base))?.tags).toEqual([{ tag: favorite, assignedAt: 20 }]);
   });
 
   it('archives tag definitions without erasing historical assignments', async () => {
@@ -442,10 +449,32 @@ describe('additional publication boundary failures', () => {
     expect(h.writes).toEqual([]);
   });
 
-  it.each(['', ' ', '　'])('rejects blank session titles before storage: %j', async title => {
-    const { store } = await createStore(); h.getDirectory.mockClear();
-    await expect(saveImageGenerationSession({ store, session: { ...generationSessionFixture({ id: 'session-aB' }), title }, expectedRevision: undefined })).rejects.toThrow();
-    expect(h.getDirectory).not.toHaveBeenCalled();
+  it.each(['', ' ', '　'])('round-trips blank session titles as persisted strings: %j', async title => {
+    const { store } = await createStore();
+    // Incomplete display text must not make a structurally valid session unreadable.
+    const saved = await saveImageGenerationSession({ store, session: { ...generationSessionFixture({ id: 'session-aB' }), title }, expectedRevision: undefined });
+    expect(saved.title).toBe(title);
+    expect(await loadImageGenerationSession({ store, sessionId: saved.id })).toEqual(saved);
+    expect((await listImageGenerationSessions({ store })).items).toEqual([saved]);
+    const renamed = await saveImageGenerationSession({ store, session: { ...saved, title: 'named', revision: 1 }, expectedRevision: 0 });
+    const cleared = await saveImageGenerationSession({ store, session: { ...renamed, title, revision: 2 }, expectedRevision: 1 });
+    await saveImageGenerationSession({ store, session: cleared, expectedRevision: 1 });
+    expect(await loadImageGenerationSession({ store, sessionId: saved.id })).toEqual(cleared);
+    expect((await listImageGenerationSessions({ store })).items).toEqual([cleared]);
+  });
+
+  it('keeps long titles while still rejecting a stored non-string title without rewriting it', async () => {
+    const { store } = await createStore();
+    const title = 'long title'.repeat(100);
+    const saved = await saveImageGenerationSession({ store, session: { ...generationSessionFixture({ id: 'session-aB' }), title }, expectedRevision: undefined });
+    expect((await loadImageGenerationSession({ store, sessionId: saved.id }))?.title).toBe(title);
+    const file = await h.file({ path: `${sessionPath({ id: saved.id })}/session.json` });
+    file.text = JSON.stringify({ ...saved, title: 42 });
+    const invalid = file.text;
+    h.writes.length = 0;
+    await expect(loadImageGenerationSession({ store, sessionId: saved.id })).rejects.toThrow();
+    expect(file.text).toBe(invalid);
+    expect(h.writes).toEqual([]);
   });
 
   it('does not report an exact empty listing when directory enumeration fails', async () => {

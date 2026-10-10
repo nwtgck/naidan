@@ -30,8 +30,9 @@ it('accepts future object fields without mutating the known editor values', () =
   expect(editor).toEqual({ primary: undefined, components: [], loras: [] });
 });
 
-it('rejects duplicate component slots and invalid adapter controls', () => {
+it('preserves duplicate component slots but still rejects invalid numeric representations', () => {
   const file = { location: { kind: 'opfs', path: 'models/test.gguf' } };
-  expect(ExperimentalRemoteImageModelEditorSchemaDto.safeParse({ primary: undefined, components: [{ slot: 'vae', file }, { slot: 'vae', file }], loras: [] }).success).toBe(false);
+  const components = [{ slot: 'vae', file }, { slot: 'vae', file }];
+  expect(ExperimentalRemoteImageModelEditorSchemaDto.parse({ primary: undefined, components, loras: [] }).components).toEqual(components);
   expect(ExperimentalRemoteImageModelEditorSchemaDto.safeParse({ primary: undefined, components: [], loras: [{ file, strength: Number.NaN, enabled: 'disabled' }] }).success).toBe(false);
 });

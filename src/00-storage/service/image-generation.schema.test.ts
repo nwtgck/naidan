@@ -35,8 +35,12 @@ describe('Image Generation persistence contracts', () => {
     { name: 'lineage', extend: ({ dto }) => ({ ...dto, sources: [{ role: 'settings', sessionId: 'session-bb', assetId: 'asset-aa', future: true }] }) },
   ];
 
-  it.each(futureShapes)('rejects rather than silently strips unknown $name fields', ({ extend }) => {
-    expect(ExperimentalImageGenerationRunSchemaDto.safeParse(extend({ dto: imageGenerationRunToDto({ run: runFixture() }) })).success).toBe(false);
+  it.each(futureShapes)('loads and resaves known fields while stripping future $name fields', ({ extend }) => {
+    const original = imageGenerationRunToDto({ run: runFixture() });
+    const parsed = ExperimentalImageGenerationRunSchemaDto.parse(extend({ dto: original }));
+    expect(JSON.stringify(parsed)).not.toContain('"future"');
+    expect(parsed.request).toEqual(original.request);
+    expect(ExperimentalImageGenerationRunSchemaDto.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
   });
 
   it('reads runtime records with additional fields without changing known generation settings', () => {
@@ -46,13 +50,13 @@ describe('Image Generation persistence contracts', () => {
     expect(imageGenerationRunToDomain({ dto: parsed })).toEqual(run);
   });
 
-  it('does not confuse immutable output plans with requested random seeds', () => {
+  it('loads stored seed plans without recomputing or enforcing the current planner', () => {
     const dto = imageGenerationRunToDto({ run: runFixture() });
-    expect(ExperimentalImageGenerationRunSchemaDto.safeParse({ ...dto, seeds: ['1', '2', '3', '4'] }).success).toBe(false);
-    expect(ExperimentalImageGenerationRunSchemaDto.safeParse({ ...dto, request: { ...dto.request, parameters: { ...dto.request.parameters, seed: '-1' } } }).success).toBe(false);
+    expect(ExperimentalImageGenerationRunSchemaDto.safeParse({ ...dto, seeds: ['1', '2', '3', '4'] }).success).toBe(true);
+    expect(ExperimentalImageGenerationRunSchemaDto.safeParse({ ...dto, request: { ...dto.request, parameters: { ...dto.request.parameters, seed: '-1' } } }).success).toBe(true);
   });
 
-  it.each(['候補', 'CANDIDATE', 'ガ'])('rejects duplicate or unnormalized catalog labels: %s', name => {
+  it.each(['候補', 'CANDIDATE', 'ガ'])('retains duplicate or unnormalized catalog labels as saved data: %s', name => {
     const sameKeyName = name === 'CANDIDATE' ? 'candidate' : name;
     const catalog = {
       version: 1,
@@ -65,7 +69,7 @@ describe('Image Generation persistence contracts', () => {
         { id: 'tag-bb', name: sameKeyName, createdAt: 1, updatedAt: 1, state: 'archived' },
       ],
     };
-    expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse(catalog).success).toBe(false);
+    expect(ExperimentalImageGenerationCatalogSchemaDto.parse(catalog).tags).toEqual(catalog.tags);
   });
 
   it('keeps reserved system tags structurally distinct from user identifiers', () => {
@@ -94,6 +98,25 @@ describe('legacy request mapper reuse', () => {
 });
 
 describe('experimental presentation preferences', () => {
+  it('loads future preference keys and numeric values without blanket rejection', () => {
+    const raw = {
+      version: 1,
+      id: 'catalog-aa',
+      revision: 1,
+      createdAt: 1,
+      tags: [],
+      preferences: {
+        assistantLayout: 'docked',
+        experimentalNoticeDismissedAt: -1,
+        unrecognizedPreference: true,
+      },
+    };
+    const parsed = ExperimentalImageGenerationCatalogSchemaDto.parse(raw);
+    expect(parsed.preferences.assistantLayout).toBe('docked');
+    expect(parsed.preferences.experimentalNoticeDismissedAt).toBe(-1);
+    expect(parsed.preferences).not.toHaveProperty('unrecognizedPreference');
+  });
+
   it('keeps the acknowledgement and dock choice in the global catalog, not individual sessions', () => {
     const raw = { version: 1, id: 'catalog-aa', revision: 1, createdAt: 1, tags: [], preferences: { assistantLayout: 'docked', experimentalNoticeDismissedAt: 2 } };
     const dto = ExperimentalImageGenerationCatalogSchemaDto.parse(JSON.parse(JSON.stringify(raw)));
@@ -107,11 +130,9 @@ describe('experimental presentation preferences', () => {
 
   it.each([
     { assistantLayout: 'unknown' },
-    { assistantLayout: 'docked', experimentalNoticeDismissedAt: -1 },
     { assistantLayout: 'docked', experimentalNoticeDismissedAt: '2' },
     { assistantLayout: 'docked', experimentalNoticeDismissedAt: Number.POSITIVE_INFINITY },
-    { assistantLayout: 'docked', unrecognizedPreference: true },
-  ])('rejects invalid or unknown preferences instead of discarding them: %j', preferences => {
+  ])('rejects wrong field types and unknown discriminators: %j', preferences => {
     expect(ExperimentalImageGenerationCatalogSchemaDto.safeParse({ version: 1, id: 'catalog-aa', revision: 1, createdAt: 1, tags: [], preferences }).success).toBe(false);
   });
 });
