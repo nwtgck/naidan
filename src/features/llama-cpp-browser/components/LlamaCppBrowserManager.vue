@@ -56,8 +56,9 @@ const applyConfirmedDefault: ApplyDefaultModel = async ({ model, previous }) => 
   // Revalidate locally after confirmation: another tab may have removed it.
   // This check must not contact Hugging Face or initialize the model runtime.
   await refresh();
-  if (listError.value || !models.value.some(entry => entry.id === model.id) || !props.applyDefaultModel) throw new Error('Local model unavailable');
-  return props.applyDefaultModel({ model, previous });
+  const available = models.value.find(entry => entry.id === model.id);
+  if (listError.value || !available || !props.applyDefaultModel) throw new Error('Local model unavailable');
+  return props.applyDefaultModel({ model: available, previous });
 };
 
 const localError = ref<ErrorCode>();

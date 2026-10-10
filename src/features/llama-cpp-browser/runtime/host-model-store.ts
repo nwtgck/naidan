@@ -2,6 +2,7 @@ import { type HostModelDirectoryId, idToRaw } from '@/01-models/ids';
 import { listHuggingFaceModels, repositoryDirectories } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { LlamaCppBrowserError, type LocalModel } from '@/features/llama-cpp-browser/types';
 import { hostModelRoot, parseHostModelReference } from './model-destination';
+import { hostModelPublicName } from './host-model-aliases';
 import type { ModelDirectory } from './model-directory';
 
 export type HostModelInventoryIssue = { directoryId: string, directoryName: string, message: string };
@@ -32,7 +33,7 @@ export async function listHostStoredModels({ directories, signal }: {
       for (const model of models) {
         const { repository, modelPath } = parseHostModelReference({ name: model.id });
         if (modelPath === undefined) continue;
-        result.push({ ...model, source: { kind: 'host', directoryId, directoryName: directory.name, repository, path: modelPath } });
+        result.push({ ...model, name: hostModelPublicName({ name: model.id, directories }), source: { kind: 'host', directoryId, directoryName: directory.name, repository, path: modelPath } });
       }
     } catch (error) {
       signal?.throwIfAborted();

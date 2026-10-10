@@ -1,12 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { storageService } from '@/00-storage/service';
+import { toHostModelDirectoryId } from '@/01-models/ids';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { createModelAvailabilityCache, inspectLocalModel, type ModelAvailability } from './availability';
 const calls = vi.hoisted(() => ({ read: vi.fn() }));
+vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: vi.fn() } }));
 vi.mock('../runtime/model-store', () => ({ storedModelDirectory: calls.read }));
 
 beforeEach(() => vi.resetAllMocks());
 
 describe('local-only missing-model inspection', () => {
+  it('resolves public folder aliases before inspecting the canonical storage identity', async () => {
+    vi.mocked(storageService.loadHostModelDirectories).mockResolvedValue([{ id: toHostModelDirectoryId({ raw: 'root' }), name: 'Models' }]);
+    calls.read.mockResolvedValue({});
+    expect(await inspectLocalModel({ modelId: 'host/Models/owner/repo:model.gguf' })).toBe('available');
+    expect(calls.read).toHaveBeenCalledExactlyOnceWith({ name: 'host/root/owner/repo:model.gguf' });
+  });
+
+  it('does not inspect a different root when a public alias is no longer registered', async () => {
+    vi.mocked(storageService.loadHostModelDirectories).mockResolvedValue([]);
+    expect(await inspectLocalModel({ modelId: 'host/Models/owner/repo:model.gguf' })).toBe('missing');
+    expect(calls.read).not.toHaveBeenCalled();
+  });
+
   it('looks up the resolved model rather than listing all models or launching a Worker', async () => {
     calls.read.mockResolvedValue({});
     expect(await inspectLocalModel({ modelId: 'user/example' })).toBe('available');

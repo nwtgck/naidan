@@ -234,6 +234,19 @@ describe('catalog quantization selection', () => {
     expect(discoverRepository).toHaveBeenCalledOnce();
   });
 
+  it('uses the public inventory name when a repository lookup returns the canonical Host ID', async () => {
+    const canonical = { ...localQat, id: `host/root/${official.repository}:${qatPath}`, name: `host/root/${official.repository}:${qatPath}` };
+    const available = { ...canonical, name: `host/Models/${official.repository}:${qatPath}` };
+    vi.mocked(installedSelection).mockResolvedValue(canonical);
+    const wrapper = render({ suggestion: gemma, models: [available] });
+    await wrapper.setProps({ destination: { kind: 'host', directoryId: 'root' } });
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-suggestion-details-toggle"]').trigger('click');
+    await wrapper.get('[data-testid="llama-suggestion-check"]').trigger('click'); await flushPromises();
+    await wrapper.get('[data-testid="llama-default-model-action"]').trigger('click');
+    expect(wrapper.emitted('selectDefault')).toEqual([[available]]);
+  });
+
   it('shows and emits only the exact installed source/quantization, without changing defaults on selection', async () => {
     const wrapper = render({ suggestion: gemma, models: [localCommunity] }); await flushPromises();
     expect(wrapper.find('[data-testid="llama-default-model-action"]').exists()).toBe(false);

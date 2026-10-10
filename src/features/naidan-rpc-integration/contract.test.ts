@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { methodNames } from '@/features/naidan-rpc';
+import { compile } from '@/features/naidan-rpc/schema';
 import {
   chatModelReferenceSchema,
   describePeerMethods,
@@ -40,6 +41,70 @@ it('accepts only local repository references, including a named quantization', (
   expect(chatModelReferenceSchema.safeParse('hf.co/example/model:Q4_K_M').success).toBe(true);
   expect(chatModelReferenceSchema.safeParse('hf.co/example/model:../Q4').success).toBe(false);
   expect(chatModelReferenceSchema.safeParse('user/local.gguf').success).toBe(true);
+});
+
+it.each([
+  'host/Models/owner/repo:model.gguf',
+  'host/Models-2/owner/repo:subdir%2Fmodel.gguf',
+  'host/%E3%83%A2%E3%83%87%E3%83%AB%20Folder/owner/repo:model%20file.gguf',
+  'host/legacy-directory-id/owner/repo:model.gguf',
+])('preserves a canonical Host model reference without resolving its alias: %s', ref => {
+  expect(chatModelReferenceSchema.parse(ref)).toBe(ref);
+  expect(naidanPeerContract.methods.generateChat.input.shape.model.parse(ref)).toBe(ref);
+});
+
+it('accepts a Host alias in the listChatModels item contract', () => {
+  const plan = compile({ schema: naidanPeerContract.methods.listChatModels.result, capabilitiesAllowed: true, callbacksAllowed: false });
+  if (plan.node.kind !== 'capability' || plan.node.capability.kind !== 'stream') throw new Error('Expected a model item stream');
+  const item = { ref: 'host/Models/owner/repo:subdir%2Fmodel.gguf', label: 'Model' };
+  expect(plan.node.capability.item.parse(item)).toEqual(item);
+});
+
+it('preserves long Host aliases as both references and labels in the full model item contract', () => {
+  const plan = compile({ schema: naidanPeerContract.methods.listChatModels.result, capabilitiesAllowed: true, callbacksAllowed: false });
+  if (plan.node.kind !== 'capability' || plan.node.capability.kind !== 'stream') throw new Error('Expected a model item stream');
+  const schema = plan.node.capability.item;
+  const ref = `host/${encodeURIComponent('模'.repeat(255))}/owner/repo:model.gguf`;
+  const item = { ref, label: ref };
+  expect(ref.length).toBeGreaterThan(1024);
+  expect(schema.parse(item)).toEqual(item);
+  expect(schema.safeParse({ ref, label: 'M'.repeat(4096) }).success).toBe(true);
+  expect(schema.safeParse({ ref, label: 'M'.repeat(4097) }).success).toBe(false);
+  expect(schema.safeParse({ ref: 'user/model.gguf', label: 'M'.repeat(1024) }).success).toBe(true);
+  expect(schema.safeParse({ ref: 'user/model.gguf', label: 'M'.repeat(1025) }).success).toBe(false);
+});
+
+it.each([
+  'host/Models/owner/repo',
+  'host/Models/owner/repo:',
+  'host/Models/owner/repo:model.bin',
+  'host/Models/owner/repo:../model.gguf',
+  'host/Models/owner/repo:%2E%2E%2Fmodel.gguf',
+  'host/Models/owner/repo:subdir/model.gguf',
+  'host/Models/owner/repo:subdir%2fmodel.gguf',
+  'host/Models/owner/repo:%00model.gguf',
+  'host/Models/owner/repo:%ZZ.gguf',
+  'host/Models/owner/repo:%E0%A4%A.gguf',
+  'host/%4Dodels/owner/repo:model.gguf',
+  'host/%ZZ/owner/repo:model.gguf',
+  'host//owner/repo:model.gguf',
+  'host/Models/../repo:model.gguf',
+])('rejects malformed, noncanonical, or incomplete Host reference %s', ref => {
+  expect(chatModelReferenceSchema.safeParse(ref).success).toBe(false);
+});
+
+it('reserves the larger reference bound for Host models and preserves remote restrictions', () => {
+  const suffix = '/owner/repo:model.gguf';
+  const encodedAlias = `host/${encodeURIComponent('模'.repeat(255))}${suffix}`;
+  expect(chatModelReferenceSchema.parse(encodedAlias)).toBe(encodedAlias);
+  const atLimit = `host/${'M'.repeat(4096 - 'host/'.length - suffix.length)}${suffix}`;
+  expect(chatModelReferenceSchema.parse(atLimit)).toBe(atLimit);
+  expect(chatModelReferenceSchema.safeParse(atLimit.replace('host/', 'host/M')).success).toBe(false);
+  expect(chatModelReferenceSchema.safeParse('m'.repeat(512)).success).toBe(true);
+  expect(chatModelReferenceSchema.safeParse('m'.repeat(513)).success).toBe(false);
+  for (const ref of ['other/Models/owner/repo:model.gguf', 'user/model%20file.gguf', 'hf.co/owner/repo:model%20file.gguf']) {
+    expect(chatModelReferenceSchema.safeParse(ref).success).toBe(false);
+  }
 });
 
 it('does not throw while validating a malformed or oversized seed', () => {

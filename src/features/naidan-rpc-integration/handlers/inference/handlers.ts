@@ -1,7 +1,7 @@
 import { errorCode } from '@/features/llama-cpp-browser/types';
 import { z } from 'zod';
 import { NaidanRpcError } from '@/features/naidan-rpc';
-import { peerChatEventSchema, imageCatalogItemSchema, chatModelReferenceSchema } from '@/features/naidan-rpc-integration/contract';
+import { peerChatEventSchema, imageCatalogItemSchema, chatCatalogItemSchema } from '@/features/naidan-rpc-integration/contract';
 import { collectBytes, computationSource } from '@/features/naidan-rpc-integration/codecs/transfer';
 import { receiveTranscript, eventBytes, TRANSCRIPT_LIMIT, OUTPUT_LIMIT } from '@/features/naidan-rpc-integration/codecs/chat-wire';
 import { peerImageDimensions } from '@/features/naidan-rpc-integration/codecs/image-bounds';
@@ -11,7 +11,7 @@ import type { ReadOnlyInferenceResources, PeerInvocation } from './resources';
 import type { InferenceBudget } from './budget';
 
 export type InferenceDependencies = { resources: ReadOnlyInferenceResources; inputBudget: InferenceBudget; deliveryBudget: InferenceBudget };
-const chatItemSchema = z.strictObject({ ref: chatModelReferenceSchema, label: z.string().min(1).max(1024) });
+const chatItemSchema = chatCatalogItemSchema.strict();
 
 export function listChatModels({ resources, signal }: { resources: ReadOnlyInferenceResources } & PeerInvocation<'listChatModels'>) {
   return computationSource<z.infer<typeof chatItemSchema>>({

@@ -270,6 +270,19 @@ describe('local GGUF manager', () => {
     expect(wrapper.get('[data-testid="llama-cpp-browser-model-list"]').findAll('li')).toHaveLength(2);
   });
 
+  it('applies the fresh public name when a confirmed model originally used its storage ID', async () => {
+    const canonical = { ...storedModel, id: 'host/root/owner/repo:model.gguf', name: 'host/root/owner/repo:model.gguf' };
+    const available = { ...canonical, name: 'host/Models/owner/repo:model.gguf' };
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([canonical]);
+    const applyDefaultModel = vi.fn(async () => 'applied' as const);
+    const wrapper = mount(LlamaCppBrowserManager, { props: { defaultModel: { endpoint: { type: 'ollama', url: 'http://localhost:11434' }, modelId: 'old' }, applyDefaultModel }, global: { stubs: { Teleport: true } } }); wrappers.push(wrapper);
+    await flushPromises();
+    await wrapper.get('[data-testid="llama-cpp-browser-model-list"] [data-testid="llama-default-model-action"]').trigger('click');
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([available]);
+    await wrapper.get('[data-testid="llama-default-confirm"]').trigger('click'); await flushPromises();
+    expect(applyDefaultModel).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ model: available }));
+  });
+
   it('shows the resolved automatic profile and disables unavailable choices without disabling model storage', async () => {
     vi.mocked(llamaCppBrowserService.probeProfiles).mockImplementation(async () => {
       const capabilities: ProfileCapabilities = {

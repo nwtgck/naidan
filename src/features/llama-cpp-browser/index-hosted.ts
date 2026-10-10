@@ -1,3 +1,5 @@
+import { z } from 'zod';
+import { resolveStoredModelName } from './host-model-names';
 import { storageService } from '@/00-storage/service';
 import { listHostStoredModels, recordOpfsInventoryIssue } from './runtime/host-model-store';
 import { resolveRuntimeProfile } from './runtime/detect-profile';
@@ -10,6 +12,22 @@ import type { LlamaCppWorkerClient } from './worker/types';
 import { errorCode, generateInputSchema, LlamaCppBrowserError, type LocalModel, type EngineState, type Progress, type RuntimeOptions, type GenerationResult } from './types';
 import type { LlamaCppBrowserService, LlamaCppPerformanceScope } from './service-contract';
 import { logDiagnostic, logFailure } from './debug-log';
+
+// Public Host names may contain long, percent-encoded folder aliases. Validate
+// the rest of the request synchronously, then validate canonical worker input
+// after resolving the accepted name. Ordinary model constraints stay unchanged.
+const publicModelNameSchema = z.union([generateInputSchema.shape.model, z.string().startsWith('host/')]);
+const publicGenerateInputSchema = generateInputSchema.extend({ model: publicModelNameSchema });
+const publicAudioInputSchema = audioGenerationInputSchema.extend({ model: publicModelNameSchema });
+
+function acceptModelRequest<T extends { model: string }>({ request, validate }: {
+  request: T, validate: ({ request }: { request: T }) => T,
+}): Promise<T> {
+  const pending = resolveStoredModelName({ name: request.model }).then(model => validate({ request: { ...request, model } }));
+  // A request may wait behind another operation before its lane awaits it.
+  void pending.catch(() => {});
+  return pending;
+}
 
 let state: EngineState = { status: 'idle' };
 let options: RuntimeOptions = defaultRuntimeOptions();
@@ -125,8 +143,9 @@ function progress({ progress }: { progress: Progress }): void {
   publish({ next: { status: 'working', progress } });
 }
 
-async function run<T>({ signal, operation, kind, owner }: {
+async function run<T>({ signal, operation, kind, owner, ready }: {
   owner: ReadOnlyOwner | undefined,
+  ready: Promise<unknown> | undefined,
   kind: 'operation' | 'probe' | 'read-only' | 'measurement',
   signal: AbortSignal | undefined,
   operation: ({ worker, signal }: { worker: LlamaCppWorkerClient, signal: AbortSignal }) => Promise<T>,
@@ -146,6 +165,7 @@ async function run<T>({ signal, operation, kind, owner }: {
   });
   try {
     await predecessor;
+    await ready;
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
     switch (kind) {
     case 'probe': if (epoch !== profileEpoch) throw new LlamaCppBrowserError({ code: 'aborted' }); break;
@@ -262,6 +282,8 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
   async prepareModel({ model, signal, onProgress }) {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
     const acceptedOptions = { ...options };
+    // Resolve at acceptance so a shared advisory probe cannot retarget warmup.
+    const accepted = acceptModelRequest({ request: { model }, validate: ({ request }) => ({ model: generateInputSchema.shape.model.parse(request.model) }) });
     // A capability-only probe owns no model. Share it instead of suppressing
     // the Welcome Screen's one-shot warmup when its advisory probes first.
     // Do not reserve a warmup lane while waiting: a foreground send still wins.
@@ -275,6 +297,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     // EngineState still says idle. Do not evict or wait behind another chat.
     if (laneReservations > 0) return 'skipped-busy';
     return run({
+      ready: accepted,
       kind: 'operation',
       owner: undefined,
       signal,
@@ -289,7 +312,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
           report({ progress: { phase: 'initializing', completed: 0, total: 0 } });
           const concreteOptions = await resolveGenerationOptions({ worker, options: acceptedOptions, signal: undefined });
           if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-          await worker.prepareModel({ request: { model, options: concreteOptions, debug: 'off' }, onProgress: report, signal });
+          await worker.prepareModel({ request: { model: (await accepted).model, options: concreteOptions, debug: 'off' }, onProgress: report, signal });
           return 'ready' as const;
         } finally {
           acceptingProgress = false;
@@ -309,7 +332,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
       return observeProbe({ pending: Promise.resolve(profileState.capabilities), signal });
     }
     if (!profileProbe) {
-      const pending = run({ kind: 'probe', owner: undefined, signal: undefined, operation: ({ worker }) => ensureProfiles({ worker, signal: undefined }) });
+      const pending = run({ ready: undefined, kind: 'probe', owner: undefined, signal: undefined, operation: ({ worker }) => ensureProfiles({ worker, signal: undefined }) });
       profileProbe = pending;
       void pending.finally(() => {
         if (profileProbe === pending) profileProbe = undefined;
@@ -370,6 +393,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
   },
   importModel({ file, signal }) {
     return run({
+      ready: undefined,
       kind: 'operation',
       owner: undefined,
       signal,
@@ -388,6 +412,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
   },
   importDirectory({ directory, signal }) {
     return run({
+      ready: undefined,
       kind: 'operation',
       owner: undefined,
       signal,
@@ -425,31 +450,35 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
   },
   generate({ input, onEvent, signal }) {
     // Snapshot accepted inputs before waiting in the queue; Vue proxies never cross RPC.
-    const initialRequest = generateInputSchema.parse({ ...input, options: { ...options } });
+    const initialRequest = acceptModelRequest({ request: publicGenerateInputSchema.parse({ ...input, options: { ...options } }), validate: ({ request }) => generateInputSchema.parse(request) });
     return run({
+      ready: initialRequest,
       kind: 'operation',
       owner: undefined,
       signal,
       operation: async ({ worker, signal }) => {
       // Only the Worker knows whether weights/context actually need preparation.
+        const request = await initialRequest;
         progress({ progress: { phase: 'prefill', completed: 0, total: 0 } });
-        const concreteOptions = await resolveGenerationOptions({ worker, options: initialRequest.options, signal: undefined });
+        const concreteOptions = await resolveGenerationOptions({ worker, options: request.options, signal: undefined });
         if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-        return worker.generate({ request: { ...initialRequest, options: concreteOptions }, onEvent, onProgress: progress, signal });
+        return worker.generate({ request: { ...request, options: concreteOptions }, onEvent, onProgress: progress, signal });
       },
     });
   },
   generateAudio({ input, cancellationSignal, completionSignal, preview }) {
-    const initialRequest = audioGenerationInputSchema.parse({ ...input, options: { ...options } });
+    const initialRequest = acceptModelRequest({ request: publicAudioInputSchema.parse({ ...input, options: { ...options } }), validate: ({ request }) => audioGenerationInputSchema.parse(request) });
     return run({
+      ready: initialRequest,
       kind: 'operation',
       owner: undefined,
       signal: cancellationSignal,
       operation: async ({ worker, signal }) => {
+        const request = await initialRequest;
         progress({ progress: { phase: 'initializing', completed: 0, total: 0 } });
-        const concreteOptions = await resolveGenerationOptions({ worker, options: initialRequest.options, signal: undefined });
+        const concreteOptions = await resolveGenerationOptions({ worker, options: request.options, signal: undefined });
         if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-        return worker.generateAudio({ request: { ...initialRequest, options: concreteOptions }, onProgress: progress, cancellationSignal: signal, completionSignal, preview });
+        return worker.generateAudio({ request: { ...request, options: concreteOptions }, onProgress: progress, cancellationSignal: signal, completionSignal, preview });
       },
     });
   },
@@ -465,6 +494,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     let observedFailure: { error: unknown } | undefined;
     try {
       await run({
+        ready: undefined,
         kind: 'operation',
         owner: undefined,
         signal,
@@ -484,7 +514,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
             if (pending) throw new LlamaCppBrowserError({ code: 'busy' });
             if (observedFailure) throw observedFailure.error;
             if (controller.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
-            const request = generateInputSchema.parse({ ...input, options: acceptedOptions });
+            const acceptedRequest = acceptModelRequest({ request: publicGenerateInputSchema.parse({ ...input, options: acceptedOptions }), validate: ({ request }) => generateInputSchema.parse(request) });
             const local = new AbortController();
             const sources = [...new Set([signal, controller.signal].filter(value => value !== undefined))];
             const removers = sources.map(source => {
@@ -501,6 +531,8 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
               };
               try {
                 if (local.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
+                const request = await acceptedRequest;
+                local.signal.throwIfAborted();
                 report({ progress: { phase: 'prefill', completed: 0, total: 0 } });
                 const concreteOptions = await resolveGenerationOptions({ worker, options: acceptedOptions, signal: undefined });
                 if (local.signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
@@ -551,6 +583,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     // Fail rather than silently warming behind an unrelated operation.
     if (laneReservations > 0) throw new LlamaCppBrowserError({ code: 'busy' });
     await run({
+      ready: undefined,
       owner: undefined,
       kind: 'measurement',
       signal,
@@ -567,6 +600,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
           if (!open) throw new Error('The performance operation is closed.');
           if (pending) throw new LlamaCppBrowserError({ code: 'busy' });
           if (failure) throw failure.error;
+          const acceptedRequest = acceptModelRequest({ request: publicGenerateInputSchema.parse({ ...input, options: concreteOptions }), validate: ({ request }) => generateInputSchema.parse(request) });
           const local = new AbortController();
           const abort = () => local.abort();
           const sources = [...new Set([signal, controller.signal])];
@@ -577,7 +611,8 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
           pending = Promise.resolve().then(async () => {
             try {
               local.signal.throwIfAborted();
-              const request = generateInputSchema.parse({ ...input, options: concreteOptions });
+              const request = await acceptedRequest;
+              local.signal.throwIfAborted();
               return await worker.generate({
                 request: { ...request, measurement: { sequence, observation } },
                 onEvent,
@@ -642,17 +677,19 @@ async function generateReadOnlyLlamaCpp({ owner, input, onEvent, signal, onProgr
   onProgress({ progress }: { progress: Progress }): void,
 }): Promise<GenerationResult> {
   if (laneReservations !== 0) throw new LlamaCppBrowserError({ code: 'busy' });
-  const accepted = generateInputSchema.parse({ ...input, debug: 'off', options: { ...options } });
+  const accepted = acceptModelRequest({ request: publicGenerateInputSchema.parse({ ...input, debug: 'off', options: { ...options } }), validate: ({ request }) => generateInputSchema.parse(request) });
   return run({
+    ready: accepted,
     kind: 'read-only',
     owner,
     signal,
     operation: async ({ worker, signal }) => {
       progress({ progress: { phase: 'initializing', completed: 0, total: 0 } });
-      const profile = await resolveRuntimeProfile({ profile: accepted.options.profile });
+      const request = await accepted;
+      const profile = await resolveRuntimeProfile({ profile: request.options.profile });
       signal.throwIfAborted();
       return worker.generate({
-        request: { ...accepted, options: { ...accepted.options, profile } },
+        request: { ...request, options: { ...request.options, profile } },
         onEvent,
         onProgress: ({ progress: value }) => {
           if (signal.aborted) return;

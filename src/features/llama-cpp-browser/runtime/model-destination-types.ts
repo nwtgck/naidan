@@ -32,6 +32,18 @@ export function parseHostModelReference({ name }: { name: string }): { destinati
   return { destination: { kind: 'host', directoryId }, repository, modelPath };
 }
 
+/** Validate the public segment separately: suffixes and encoded folder names
+ * are not directory IDs and must not inherit their length constraint.
+ */
+export function parsePublicHostModelReference({ name }: { name: string }): { alias: string, repository: string, modelPath: string | undefined } {
+  const match = /^host\/([^/]+)\/(.+)$/.exec(name);
+  if (!match) throw new Error('Invalid public linked model reference');
+  const alias = decodeURIComponent(match[1]!);
+  if (encodeURIComponent(alias) !== match[1]) throw new Error('Invalid public linked model reference');
+  const { repository, modelPath } = parseHostModelReference({ name: `host/root/${match[2]}` });
+  return { alias, repository, modelPath };
+}
+
 export function isHostDestination(destination: ModelDestination | undefined): destination is Extract<ModelDestination, { kind: 'host' }> {
   if (!destination) return false;
   switch (destination.kind) {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parsePublicHostModelReference } from '@/features/llama-cpp-browser/runtime/model-destination-types';
 import { contract, describeMethods, methodDescriptorSchema, methodNames, procedure, rpc } from '@/features/naidan-rpc';
 import type { NaidanRpcClient, NaidanRpcImplementation } from '@/features/naidan-rpc';
 
@@ -17,7 +18,17 @@ export const relativeModelPathSchema = z.string().min(1).max(4096).refine(path =
   return path.split('/').every(part => part !== '' && part !== '.' && part !== '..');
 }, 'Use a relative path inside an existing model root');
 
-export const chatModelReferenceSchema = z.string().min(1).max(512).refine(value => {
+export const chatModelReferenceSchema = z.string().min(1).max(4096).refine(value => {
+  if (value.startsWith('host/')) {
+    try {
+      // Public aliases remain opaque here; only the serving host resolves them.
+      return parsePublicHostModelReference({ name: value }).modelPath !== undefined;
+    } catch {
+      return false;
+    }
+  }
+  // The larger bound is reserved for encoded Host aliases and file paths.
+  if (value.length > 512) return false;
   if (!value.startsWith('hf.co/') || !value.includes(':')) {
     return relativeModelPathSchema.safeParse(value).success;
   }
@@ -25,6 +36,12 @@ export const chatModelReferenceSchema = z.string().min(1).max(512).refine(value 
   return value.slice(0, at).split('/').length === 3 && relativeModelPathSchema.safeParse(value.slice(0, at)).success &&
     !value.slice(at + 1).includes('/') && relativeModelPathSchema.safeParse(value.slice(at + 1)).success;
 });
+
+export const chatCatalogItemSchema = z.object({
+  ref: chatModelReferenceSchema,
+  label: z.string().min(1).max(4096),
+}).refine(({ ref, label }) => ref.startsWith('host/') || label.length <= 1024,
+  'Non-Host model labels must not exceed 1024 characters');
 
 export const imageLocationSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -253,10 +270,7 @@ const controlledMethods = {
   listChatModels: procedure({
     input: z.object({}),
     result: rpc.stream({
-      item: z.object({
-        ref: chatModelReferenceSchema,
-        label: z.string().min(1).max(1024),
-      }),
+      item: chatCatalogItemSchema,
     }),
     notifications: {},
   }),

@@ -129,7 +129,7 @@ watch([() => props.models, quantization, multimodal, plan, queue.changed, destin
       const directories = await repositoryDirectories({ repository: quantization.value.repository, destination: destination.value });
       if (directories.some(directory => directory.id === known.id && directory.projectorPath !== undefined)) found = known;
     }
-    if (!cancelled && !disposed) installed.value = found;
+    if (!cancelled && !disposed) installed.value = found ? props.models.find(model => model.id === found.id) ?? found : undefined;
   } catch {
     if (!cancelled && !disposed) localError.value = true;
   } finally {

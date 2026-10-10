@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { parseHostModelReference } from './runtime/model-destination-types';
+import { parseHostModelReference, parsePublicHostModelReference } from './runtime/model-destination-types';
 
 export const profileSchema = z.enum(['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'cpu-wasm64', 'cpu-wasm32']);
 export type LlamaCppProfile = z.infer<typeof profileSchema>;
@@ -31,15 +31,21 @@ export const modelSchema = z.object({
     }
     return /^(?!\.{1,2}$)(?:hf\.co\/[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*(?::[^/\\]+)?|user\/[^/\\]+)$/i.test(value);
   }).refine(value => !Array.from(value).some(character => character.charCodeAt(0) < 32)),
-  name: z.string().min(1).max(1024),
+  // Public aliases can be longer than opaque IDs after percent encoding.
+  name: z.string().min(1).max(4096),
   source: z.object({ kind: z.literal('host'), directoryId: z.string(), directoryName: z.string(), repository: z.string(), path: z.string() }).strict().optional(),
   size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   importedAt: z.number().int().nonnegative(),
-}).strict().refine(({ id, name }) => name.length <= 512 || (id.startsWith('host/') && name === id), {
-  // Linked model names remain routable canonical IDs, including nested paths.
-  // Preserve the existing display-name limit for every other model source.
+}).strict().refine(({ id, name }) => {
+  if (!id.startsWith('host/')) return name.length <= 512;
+  try {
+    return parsePublicHostModelReference({ name }).modelPath !== undefined;
+  } catch {
+    return false;
+  }
+}, {
   path: ['name'],
-  error: 'Long model names must match a canonical linked model ID',
+  error: 'Linked model names must be valid public linked references',
 });
 export const modelDirectoryInputSchema = z.object({ name: z.string().min(1), files: z.array(z.object({ path: z.string().min(1), file: z.instanceof(File) }).strict()).min(1) }).strict();
 export type ModelDirectoryInput = z.infer<typeof modelDirectoryInputSchema>;
