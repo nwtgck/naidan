@@ -122,6 +122,14 @@ describe('OnboardingModal.vue', () => {
     });
   });
 
+  it('restores the active focus area when a route hides onboarding without dismissing it', () => {
+    const wrapper = mount(OnboardingModal);
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'onboarding' });
+    wrapper.unmount();
+    expect(mockSetActiveFocusArea).toHaveBeenLastCalledWith({ area: 'chat' });
+    expect(mockIsOnboardingDismissed.value).toBe(false);
+  });
+
   it.each([false, true])('starts local browser onboarding only after a stored model is selected with standalone=%s', async standalone => {
     vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', standalone);
     const list = vi.spyOn(llamaCppBrowserService, 'listModels').mockResolvedValue([]);

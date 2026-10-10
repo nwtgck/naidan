@@ -97,6 +97,7 @@ import { shouldIncludeWritableTmpMount } from '@/features/wesh/mount-policy';
 import { hasChatOverrides } from '@/logic/chat-settings-resolver';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/logic/settings-labels';
+import { resolveChatTextSubmissionAction, type ChatTextSubmissionAction } from '@/logic/chat-text-submission';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import { tw } from 'virtual:naidan-tailwind';
 import { useToast } from '@/composables/useToast';
@@ -284,6 +285,7 @@ const container = ref<HTMLElement | null>(null);
 const {
   settings,
   save: saveSettings,
+  setIsOnboardingDismissed,
   setFakeLmDebugModeStatus,
 } = useSettings();
 const router = useRouter();
@@ -847,6 +849,43 @@ const isChatSubmissionEnabled = computed(() => {
   }
   }
 });
+
+const chatTextSubmissionAction = computed<ChatTextSubmissionAction>(() => {
+  const resolved = resolvedSettings.value;
+  const type = resolvedEndpointType.value;
+  if (resolved === null || type === undefined || !modelLaunch.maySend.value || !modelRecovery.maySend.value) {
+    return 'blocked';
+  }
+  const buildAvailability = getEndpointBuildAvailability({ type });
+  switch (buildAvailability) {
+  case 'unavailable-in-standalone':
+    return 'blocked';
+  case 'available':
+    break;
+  default: {
+    const _ex: never = buildAvailability;
+    throw new Error(`Unhandled endpoint build availability: ${_ex}`);
+  }
+  }
+  if (type === 'browser_provided_lm' && promptApiRuntimeState.value.status !== 'ready') return 'blocked';
+
+  const globalSetupIncomplete = !isConfiguredEndpoint({ endpoint: settings.value.endpoint })
+    || !settings.value.defaultModelId;
+  return resolveChatTextSubmissionAction({
+    endpoint: resolved.endpoint,
+    modelId: resolved.modelId,
+    endpointSource: resolved.sources.endpoint,
+    modelSource: resolved.sources.modelId,
+    globalSetupIncomplete,
+    canSubmit: isChatSubmissionEnabled.value,
+  });
+});
+
+function requestOnboarding(): void {
+  // A dismissed but unfinished global setup can be reopened without consuming
+  // or scheduling the user's chat draft for automatic submission.
+  setIsOnboardingDismissed({ dismissed: false });
+}
 
 const enabledToolNames = computed(() => {
   const chatValue = chat.value;
@@ -1759,6 +1798,8 @@ watch(
       :above-input-visibility="activeApprovalRequest !== undefined || activeChoiceRequest !== undefined ? 'visible' : 'hidden'"
       :is-streaming="isChatStreaming"
       :is-submission-enabled="isChatSubmissionEnabled"
+      :text-submission-action="chatTextSubmissionAction"
+      @request-onboarding="requestOnboarding"
       :can-generate-image="canGenerateImage"
       :has-image-model="hasImageModel"
       :available-image-models="availableImageModels"

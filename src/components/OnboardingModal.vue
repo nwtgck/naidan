@@ -170,6 +170,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (unsubscribe) unsubscribe();
+  // Route exclusions can unmount the modal without changing the dismissed flag.
+  // The ordinary dismissal watcher never runs in that case.
+  if (show.value) setActiveFocusArea({ area: 'chat' });
 });
 
 // Subscribe and auto-load only while Transformers.js is selected. The service

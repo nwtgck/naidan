@@ -77,6 +77,10 @@ function createStartupHarness({ path = '/' }: {
     routes: [
       { path: '/', component: loadRouteComponent },
       { path: '/chat/:id', component: loadRouteComponent },
+      { path: '/image-generation', component: loadRouteComponent },
+      { path: '/image-generation/models', component: loadRouteComponent },
+      { path: '/audio-generation', component: loadRouteComponent },
+      { path: '/audio-generation/voices', component: loadRouteComponent },
     ],
   });
   const navigationGate = createInitialNavigationGate({ router });
@@ -163,6 +167,35 @@ describe('app startup', () => {
     dispose();
     expect(startRpcAutomaticConnections).toHaveBeenCalledOnce();
     expect(disposeRpcAutomaticConnections).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    '/image-generation',
+    '/image-generation/models',
+    '/audio-generation',
+    '/audio-generation/voices',
+  ])('skips the onboarding-only paint for the initial %s route', async path => {
+    const settings = createSettingsStore({ onboardingDismissed: false });
+    const harness = createStartupHarness({ path });
+    const startup = startApp({
+      startupState: harness.startupState,
+      settingsStore: settings.settingsStore,
+      router: harness.router,
+      navigationGate: harness.navigationGate,
+      window: harness.window,
+    });
+    await flushPromises();
+
+    expect(settings.isOnboardingDismissed.value).toBe(false);
+    expect(loadChatsForAppStartup).toHaveBeenCalledOnce();
+    expect(harness.startupState.value.kind).toBe('rendering-main');
+    expect(harness.animationFrameCallbacks).toHaveLength(1);
+
+    flushPresentationPaint({ callbacks: harness.animationFrameCallbacks });
+    const dispose = await startup;
+    expect(harness.router.currentRoute.value.path).toBe(path);
+    expect(harness.startupState.value.kind).toBe('ready');
+    dispose();
   });
 
   it('gives onboarding one paint and then renders the real app before dismissal', async () => {

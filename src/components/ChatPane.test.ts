@@ -118,6 +118,7 @@ const mockRenameChat = vi.fn().mockImplementation(({ newTitle }) => {
   }
 });
 const mockSaveSettings = vi.fn().mockResolvedValue(undefined);
+const mockSetIsOnboardingDismissed = vi.fn();
 const mockActiveGenerations = reactive(new Map());
 const mockCurrentChat = ref<Chat | null>({
   id: toChatId({ raw: '1' }),
@@ -722,6 +723,7 @@ vi.mock('../composables/useSettings', () => ({
     isFetchingModels: mockFetchingModels,
     fetchModels: mockFetchAvailableModels,
     save: mockSaveSettings,
+    setIsOnboardingDismissed: mockSetIsOnboardingDismissed,
     setFakeLmDebugModeStatus: mockSetFakeLmDebugModeStatus,
   }),
 }));
@@ -850,7 +852,7 @@ function resetMocks() {
   mockResolvedSettings.value = {
     endpoint: { type: 'openai', url: 'http://localhost' },
     modelId: 'global-default-model',
-    sources: { modelId: 'global', titleModelId: 'global' },
+    sources: { endpoint: 'global', modelId: 'global', titleModelId: 'global' },
   };
   mockInheritedSettings.value = {
     endpoint: { type: 'openai', url: 'http://localhost' },
@@ -1941,6 +1943,73 @@ describe.each([
       }
     },
   );
+
+  it.each([
+    {
+      label: 'endpoint only missing',
+      endpoint: { type: 'openai', url: '' },
+      modelId: 'global-default-model',
+    },
+    {
+      label: 'model only missing',
+      endpoint: { type: 'openai', url: 'http://localhost' },
+      modelId: '',
+    },
+    {
+      label: 'both missing',
+      endpoint: { type: 'openai', url: '' },
+      modelId: '',
+    },
+  ] satisfies { label: string, endpoint: Endpoint, modelId: string }[])(
+    'opens onboarding from the real send button when $label, preserving the draft',
+    async ({ endpoint, modelId }) => {
+      mockSettings.value = { ...mockSettings.value, endpoint, defaultModelId: modelId };
+      mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint, modelId };
+      wrapper = mountChatPane({ global: { plugins: [router] } });
+      await flushPromises();
+      const textarea = wrapper.get<HTMLTextAreaElement>('[data-testid="chat-input"]');
+      await textarea.setValue('hello');
+      const sendButton = wrapper.get<HTMLButtonElement>('[data-testid="send-button"]');
+      expect(sendButton.element.disabled).toBe(false);
+      expect(wrapper.getComponent(ChatInput).props('textSubmissionAction')).toBe('open-onboarding');
+
+      await sendButton.trigger('click');
+      await flushPromises();
+      expect(mockSetIsOnboardingDismissed).toHaveBeenCalledExactlyOnceWith({ dismissed: false });
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      expect(textarea.element.value).toBe('hello');
+
+      // Closing the modal without completing setup must permit reopening.
+      await sendButton.trigger('click');
+      expect(mockSetIsOnboardingDismissed).toHaveBeenCalledTimes(2);
+      expect(mockSendMessage).not.toHaveBeenCalled();
+
+      mockSettings.value = { ...mockSettings.value, endpoint: { type: 'openai', url: 'http://localhost' }, defaultModelId: 'model-1' };
+      mockResolvedSettings.value = { ...mockResolvedSettings.value, endpoint: mockSettings.value.endpoint, modelId: 'model-1' };
+      await nextTick();
+      expect(wrapper.getComponent(ChatInput).props('textSubmissionAction')).toBe('send');
+      expect(mockSendMessage).not.toHaveBeenCalled();
+      await sendButton.trigger('click');
+      await flushPromises();
+      expect(mockSendMessage).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('does not open global onboarding for a broken chat-scoped endpoint override', async () => {
+    mockSettings.value = { ...mockSettings.value, endpoint: { type: 'openai', url: '' }, defaultModelId: '' };
+    mockResolvedSettings.value = {
+      ...mockResolvedSettings.value,
+      endpoint: { type: 'openai', url: '' },
+      modelId: 'model-1',
+      sources: { ...mockResolvedSettings.value.sources, endpoint: 'chat', modelId: 'chat' },
+    };
+    wrapper = mountChatPane({ global: { plugins: [router] } });
+    await flushPromises();
+    await wrapper.get('[data-testid="chat-input"]').setValue('hello');
+    expect(wrapper.get<HTMLButtonElement>('[data-testid="send-button"]').element.disabled).toBe(true);
+    expect(wrapper.getComponent(ChatInput).props('textSubmissionAction')).toBe('blocked');
+    expect(mockSetIsOnboardingDismissed).not.toHaveBeenCalled();
+  });
 
   it.each([
     { shortcut: 'Ctrl+Enter', ctrlKey: true, metaKey: false },

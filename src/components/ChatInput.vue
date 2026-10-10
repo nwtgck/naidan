@@ -28,6 +28,7 @@ import { useConfirm } from '@/composables/useConfirm';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/logic/settings-labels';
+import type { ChatTextSubmissionAction } from '@/logic/chat-text-submission';
 import { lazyStrings, ensureStrings } from '@/strings';
 import { loadChatWorkerMountsModule } from '@/features/wesh/chat-worker-mounts-loader';
 
@@ -67,6 +68,7 @@ const props = defineProps<{
   aboveInputVisibility: 'visible' | 'hidden',
   isStreaming: boolean,
   isSubmissionEnabled?: boolean,
+  textSubmissionAction?: ChatTextSubmissionAction,
   canGenerateImage: boolean,
   hasImageModel: boolean,
   availableImageModels: string[],
@@ -75,6 +77,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'auto-sent'): void,
+  (e: 'request-onboarding'): void,
   (e: 'sent'): void,
   (e: 'update:visibility', value: 'submerged' | 'peeking' | 'active'): void,
   (e: 'update:isAnimatingHeight', value: boolean): void,
@@ -87,6 +90,11 @@ const isFocused = ref(false);
 const isHovered = ref(false);
 
 const isChatStreaming = computed(() => props.isStreaming);
+const textSubmissionAction = computed<ChatTextSubmissionAction>(() => props.textSubmissionAction
+  ?? (props.isSubmissionEnabled === false ? 'blocked' : 'send'));
+const isSendActionEnabled = computed(() => isImageMode.value
+  ? props.isSubmissionEnabled !== false
+  : textSubmissionAction.value !== 'blocked');
 const chatId = computed(() => props.chatId);
 const chatConversation = useChatConversation();
 const chatDraft = useChatDraft();
@@ -914,15 +922,26 @@ async function handleGenerateImage() {
 }
 
 async function handleSend() {
-  if (
-    props.isSubmissionEnabled === false
-    || (!input.value.trim() && attachments.value.length === 0)
-    || props.isStreaming
-  ) return;
+  if ((!input.value.trim() && attachments.value.length === 0) || props.isStreaming) return;
 
   if (isImageMode.value) {
+    if (props.isSubmissionEnabled === false) return;
     await handleGenerateImage();
     return;
+  }
+
+  switch (textSubmissionAction.value) {
+  case 'blocked':
+    return;
+  case 'open-onboarding':
+    emit('request-onboarding');
+    return;
+  case 'send':
+    break;
+  default: {
+    const _ex: never = textSubmissionAction.value;
+    throw new Error(`Unhandled submission action: ${_ex}`);
+  }
   }
 
   const text = input.value;
@@ -1059,7 +1078,11 @@ watch(
 
     autoSendState.value = 'sent';
     input.value = props.autoSendPrompt;
-    await handleSend();
+    // Route-driven prompts must not re-open onboarding after the user closes it.
+    // They are consumed without sending when setup or other prerequisites are missing.
+    if (isImageMode.value ? props.isSubmissionEnabled !== false : textSubmissionAction.value === 'send') {
+      await handleSend();
+    }
     emit('auto-sent');
   },
   { immediate: true },
@@ -1404,7 +1427,7 @@ defineExpose({
 
         <button
           @click="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : handleSend()"
-          :disabled="!isChatStreaming && (isSubmissionEnabled === false || (!input.trim() && attachments.length === 0))"
+          :disabled="!isChatStreaming && (!isSendActionEnabled || (!input.trim() && attachments.length === 0))"
           tw-class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
           :title="isChatStreaming ? lazyStrings.ChatInput__stop_generating_with_shortcut({ shortcut: 'Esc' }) : lazyStrings.ChatInput__send_message_with_shortcut({ shortcut: sendShortcutText })"
           :data-testid="isChatStreaming ? 'abort-button' : 'send-button'"
