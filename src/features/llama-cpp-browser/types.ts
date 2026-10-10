@@ -39,7 +39,7 @@ export const modelSchema = z.object({
 }).strict().refine(({ id, name }) => {
   if (!id.startsWith('host/')) return name.length <= 512;
   try {
-    return parsePublicHostModelReference({ name }).modelPath !== undefined;
+    return parsePublicHostModelReference({ name }).selector !== undefined;
   } catch {
     return false;
   }

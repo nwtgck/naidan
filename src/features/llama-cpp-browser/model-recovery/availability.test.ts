@@ -1,3 +1,4 @@
+import { selectHostModel } from '@/features/llama-cpp-browser/runtime/host-model-store';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { storageService } from '@/00-storage/service';
 import { toHostModelDirectoryId } from '@/01-models/ids';
@@ -5,15 +6,18 @@ import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 import { createModelAvailabilityCache, inspectLocalModel, type ModelAvailability } from './availability';
 const calls = vi.hoisted(() => ({ read: vi.fn() }));
 vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: vi.fn() } }));
+vi.mock('../runtime/host-model-store', () => ({ selectHostModel: vi.fn() }));
 vi.mock('../runtime/model-store', () => ({ storedModelDirectory: calls.read }));
 
 beforeEach(() => vi.resetAllMocks());
 
 describe('local-only missing-model inspection', () => {
-  it('resolves public folder aliases before inspecting the canonical storage identity', async () => {
+  it.each(['model.gguf', 'Q4'])('resolves public folder aliases and %s before inspecting the canonical storage identity', async selector => {
     vi.mocked(storageService.loadHostModelDirectories).mockResolvedValue([{ id: toHostModelDirectoryId({ raw: 'root' }), name: 'Models' }]);
+    vi.mocked(selectHostModel).mockResolvedValue({ id: 'host/root/owner/repo:model.gguf', name: 'host/root/owner/repo:Q4', modelPath: 'model.gguf', projectorPath: undefined, files: [] });
     calls.read.mockResolvedValue({});
-    expect(await inspectLocalModel({ modelId: 'host/Models/owner/repo:model.gguf' })).toBe('available');
+    expect(await inspectLocalModel({ modelId: `host/Models/owner/repo:${selector}` })).toBe('available');
+    expect(selectHostModel).toHaveBeenCalledExactlyOnceWith({ name: `host/root/owner/repo:${selector}` });
     expect(calls.read).toHaveBeenCalledExactlyOnceWith({ name: 'host/root/owner/repo:model.gguf' });
   });
 

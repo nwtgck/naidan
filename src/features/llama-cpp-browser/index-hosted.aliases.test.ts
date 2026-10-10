@@ -1,3 +1,4 @@
+import { selectHostModel } from './runtime/host-model-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { storageService } from '@/00-storage/service';
 import { toHostModelDirectoryId } from '@/01-models/ids';
@@ -5,7 +6,7 @@ import { defaultAudioParameters } from '@/features/audio-generation/types';
 import { audioResult } from '@/features/audio-generation/test-utils/wav';
 import type { LlamaCppBrowserService } from './service-contract';
 import type { LlamaCppWorkerClient } from './worker/types';
-import type { GenerationResult } from './types';
+import { LlamaCppBrowserError, type GenerationResult } from './types';
 import type { ProfileCapabilities } from './runtime/profile-capabilities';
 
 const worker = vi.hoisted(() => ({
@@ -23,6 +24,8 @@ vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWor
 vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: vi.fn() } }));
 vi.mock('./runtime/model-store', () => ({ listStoredModels: vi.fn(), removeStoredModel: vi.fn(), withModelMutationLock: ({ operation }: { operation: () => Promise<unknown> }) => operation() }));
 vi.mock('./runtime/detect-profile', () => ({ resolveRuntimeProfile: vi.fn(async () => 'cpu-wasm32') }));
+
+vi.mock('./runtime/host-model-store', () => ({ selectHostModel: vi.fn(), listHostStoredModels: vi.fn(), recordOpfsInventoryIssue: vi.fn() }));
 
 let hosted: typeof import('./index-hosted');
 let service: LlamaCppBrowserService;
@@ -84,6 +87,7 @@ function receivedModel({ entry }: { entry: Entry }) {
 beforeEach(async () => {
   vi.resetModules(); vi.resetAllMocks();
   vi.mocked(storageService.loadHostModelDirectories).mockResolvedValue([directory({ id: 'root', name: 'Models' })]);
+  vi.mocked(selectHostModel).mockImplementation(async ({ name }) => ({ id: name, name, modelPath: 'model.gguf', projectorPath: undefined, files: [] }));
   worker.subscribeDisposed.mockReturnValue(() => {});
   worker.canReuse.mockReturnValue(true);
   worker.probeProfiles.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
@@ -102,6 +106,13 @@ afterEach(() => {
 describe.each(entries)('host alias at the %s execution boundary', entry => {
   it('passes the canonical ID to the worker', async () => {
     await execute({ entry, model: alias });
+    expect(receivedModel({ entry })).toBe(canonical);
+  });
+
+  it('resolves a public variant to an exact file identity', async () => {
+    vi.mocked(selectHostModel).mockResolvedValue({ id: canonical, name: 'host/root/owner/repo:Q4_K_M', modelPath: 'model.gguf', projectorPath: undefined, files: [] });
+    await execute({ entry, model: 'host/Models/owner/repo:Q4_K_M' });
+    expect(selectHostModel).toHaveBeenCalledExactlyOnceWith({ name: 'host/root/owner/repo:Q4_K_M' });
     expect(receivedModel({ entry })).toBe(canonical);
   });
 
@@ -132,6 +143,16 @@ describe.each(entries)('host alias at the %s execution boundary', entry => {
     if (entry !== 'generation-scope' && entry !== 'performance-scope') expect(factory).not.toHaveBeenCalled();
   });
 
+  it.each(['missing-model', 'unsupported-input'] as const)('stops an unresolved selector before native execution: %s', async code => {
+    vi.mocked(selectHostModel).mockRejectedValue(new LlamaCppBrowserError({ code }));
+    await expect(execute({ entry, model: 'host/Models/owner/repo:model.bin' })).rejects.toThrow(code);
+    expect(selectHostModel).toHaveBeenCalledExactlyOnceWith({ name: 'host/root/owner/repo:model.bin' });
+    expect(worker.generate).not.toHaveBeenCalled();
+    expect(worker.generateAudio).not.toHaveBeenCalled();
+    expect(worker.prepareModel).not.toHaveBeenCalled();
+    if (entry !== 'generation-scope' && entry !== 'performance-scope') expect(factory).not.toHaveBeenCalled();
+  });
+
   it('resolves a duplicate folder through its assigned suffix', async () => {
     vi.mocked(storageService.loadHostModelDirectories).mockResolvedValue([
       directory({ id: 'root', name: 'Models' }), directory({ id: 'other', name: 'Models' }),
@@ -156,6 +177,20 @@ describe('host alias acceptance before the serialized lane', () => {
     await active; await pending;
     expect(receivedModel({ entry })).toBe(canonical);
     expect(storageService.loadHostModelDirectories).toHaveBeenCalledOnce();
+  });
+
+  it('captures the variant selection before the lane and does not select a replacement later', async () => {
+    const gate = Promise.withResolvers<GenerationResult>();
+    worker.generate.mockReturnValueOnce(gate.promise);
+    const active = execute({ entry: 'generate', model: 'user/blocker' });
+    await vi.waitFor(() => expect(worker.generate).toHaveBeenCalledOnce());
+    vi.mocked(selectHostModel).mockResolvedValue({ id: canonical, name: 'host/root/owner/repo:Q4', modelPath: 'model.gguf', projectorPath: undefined, files: [] });
+    const pending = execute({ entry: 'generate', model: 'host/Models/owner/repo:Q4' });
+    await vi.waitFor(() => expect(selectHostModel).toHaveBeenCalledOnce());
+    vi.mocked(selectHostModel).mockResolvedValue({ id: 'host/root/owner/repo:replacement.gguf', name: canonical, modelPath: 'replacement.gguf', projectorPath: undefined, files: [] });
+    gate.resolve(result); await active; await pending;
+    expect(receivedModel({ entry: 'generate' })).toBe(canonical);
+    expect(selectHostModel).toHaveBeenCalledOnce();
   });
 
   it('reserves request order while an earlier alias lookup is unresolved', async () => {

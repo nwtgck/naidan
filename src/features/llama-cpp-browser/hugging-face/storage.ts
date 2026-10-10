@@ -1,9 +1,10 @@
+import { hostModelSelector } from '@/features/llama-cpp-browser/runtime/model-destination-types';
 import { hostDownloadMarker, hostDownloadMarkerPath } from './host-download-marker';
 import { isHostDestination, hostModelRoot, hostModelReference, type ModelDestination } from '@/features/llama-cpp-browser/runtime/model-destination';
 import { huggingFaceModelId } from '@/01-models/llama-cpp-browser-model-launch';
 import { OPFS_MODELS_DIR } from '@/constants';
 import { rankedProjectors } from './presentation';
-import { modelGroups, variantLabel, isProjector } from './model-variants';
+import { modelGroups, modelVariantName, isProjector } from './model-variants';
 import { deletionPlanSchema, executeDeletionPlan, type DeletionPlan, type DeletionResult } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { describeDirectory, opfsRoot, readModelFiles, resolveModelFiles, validGguf, type ModelDirectory } from '@/features/llama-cpp-browser/runtime/model-directory';
 import { LlamaCppBrowserError, type LocalModel } from '@/features/llama-cpp-browser/types';
@@ -96,10 +97,10 @@ async function describeRepositoryDirectories({ repository, actual, onlyModelPath
       if (onlyModelPath !== undefined && resolved.modelPath !== onlyModelPath) continue;
       if (!await allValid({ files })) continue;
       const id = isHostDestination(destination) ? hostModelReference({ directoryId: destination.directoryId, repository, modelPath: resolved.modelPath }) : huggingFaceModelId({ repository, modelPath: resolved.modelPath });
-      const split = /-\d{5}-of-(\d{5})\.gguf$/i.exec(resolved.modelPath);
-      const label = variantLabel({ repository, path: resolved.modelPath });
-      // Split identities are visible even before a same-stem unsplit file is added.
-      const name = isHostDestination(destination) ? id : `${modelName({ repository })}:${label}${split ? ` (split-${split[1]})` : ''}`;
+      const variant = modelVariantName({ repository, path: resolved.modelPath });
+      const name = isHostDestination(destination)
+        ? hostModelSelector({ directoryId: destination.directoryId, repository, selector: variant })
+        : `${modelName({ repository })}:${variant}`;
       result.push({ id, name, files, ...resolved });
     } catch (error) {
       if (!(error instanceof LlamaCppBrowserError)) throw error;
@@ -139,11 +140,27 @@ export function parseModelReference({ name }: { name: string }): { repository: s
   return { repository: repositorySchema.parse(colon < 0 ? value : value.slice(0, colon)), variant: colon < 0 ? undefined : value.slice(colon + 1) };
 }
 
-export async function resolveRepositoryModel({ name }: { name: string }): Promise<ModelDirectory> {
-  const { repository, variant } = parseModelReference({ name }); const models = await repositoryDirectories({ repository });
-  const matching = variant === undefined ? models : models.filter(model => model.id === name || model.name === name);
+/** Exact file identities and public variants share one namespace. Never let an
+ * exact match silently win over a different model's variant (or vice versa).
+ */
+export function selectRepositoryModel({ models, repository, selectors }: { models: ModelDirectory[], repository: string, selectors: string[] | undefined }): ModelDirectory {
+  const matching = selectors === undefined ? models : models.filter(model => selectors.some(selector => model.modelPath === selector || modelVariantName({ repository, path: model.modelPath }) === selector));
   if (matching.length !== 1) throw new LlamaCppBrowserError({ code: matching.length ? 'unsupported-input' : 'missing-model' });
   return matching[0]!;
+}
+
+export async function resolveRepositoryModel({ name }: { name: string }): Promise<ModelDirectory> {
+  const { repository, variant } = parseModelReference({ name });
+  // OPFS historically exposes raw labels and percent-encoded file identities.
+  // Match both spellings, rejecting collisions rather than preferring either.
+  const selectors = variant === undefined ? undefined : [variant];
+  if (variant !== undefined) {
+    try {
+      const decoded = decodeURIComponent(variant);
+      if (encodeURIComponent(decoded) === variant) selectors!.push(decoded);
+    } catch { /* A literal percent in an existing raw label is not URI encoding. */ }
+  }
+  return selectRepositoryModel({ models: await repositoryDirectories({ repository }), repository, selectors });
 }
 
 export async function listHuggingFaceModels({ destination, onIssue }: { destination?: ModelDestination, onIssue?: ({ repository, error }: { repository: string, error: unknown }) => void } = {}): Promise<LocalModel[]> {

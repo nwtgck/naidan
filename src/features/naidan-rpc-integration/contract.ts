@@ -22,7 +22,7 @@ export const chatModelReferenceSchema = z.string().min(1).max(4096).refine(value
   if (value.startsWith('host/')) {
     try {
       // Public aliases remain opaque here; only the serving host resolves them.
-      return parsePublicHostModelReference({ name: value }).modelPath !== undefined;
+      return parsePublicHostModelReference({ name: value }).selector !== undefined;
     } catch {
       return false;
     }

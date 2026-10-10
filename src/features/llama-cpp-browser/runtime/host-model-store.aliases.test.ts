@@ -12,7 +12,7 @@ function directory({ id, name }: { id: string, name: string }) {
 
 function storedModel({ directoryId }: { directoryId: string }) {
   const id = hostModelReference({ directoryId, repository: 'owner/repo', modelPath: 'nested/model.gguf' });
-  return { id, name: id, size: 128, importedAt: 1 };
+  return { id, name: `host/${directoryId}/owner/repo:nested%2Fmodel`, size: 128, importedAt: 1 };
 }
 
 beforeEach(() => {
@@ -29,10 +29,10 @@ describe('host model inventory public names', () => {
 
     expect(models).toEqual([{
       ...stored,
-      name: 'host/My%20Models/owner/repo:nested%2Fmodel.gguf',
+      name: 'host/My%20Models/owner/repo:nested%2Fmodel',
       source: { kind: 'host', directoryId: 'opaque-root', directoryName: 'My Models', repository: 'owner/repo', path: 'nested/model.gguf' },
     }]);
-    expect(stored.name).toBe(stored.id);
+    expect(stored.name).toBe('host/opaque-root/owner/repo:nested%2Fmodel');
     expect(listHuggingFaceModels).toHaveBeenCalledExactlyOnceWith({ destination: { kind: 'host', directoryId: 'opaque-root' }, onIssue: expect.any(Function) });
   });
 
@@ -50,7 +50,7 @@ describe('host model inventory public names', () => {
     const models = await listHostStoredModels({ directories, signal: undefined });
 
     expect(models).toHaveLength(1);
-    expect(models[0]?.name).toBe(`host/${expected}/owner/repo:nested%2Fmodel.gguf`);
+    expect(models[0]?.name).toBe(`host/${expected}/owner/repo:nested%2Fmodel`);
     expect(models[0]?.id).toBe('host/root-1/owner/repo:nested%2Fmodel.gguf');
     expect(models[0]?.source?.directoryName).toBe('Models');
     expect(getHostModelInventoryIssues()).toContainEqual({ directoryId: 'root-0', directoryName: 'Models', message: 'Linked model folder permission expired' });

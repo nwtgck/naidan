@@ -1,5 +1,6 @@
+import { parseHostModelSelector } from './model-destination-types';
 import { type HostModelDirectoryId, idToRaw } from '@/01-models/ids';
-import { listHuggingFaceModels, repositoryDirectories } from '@/features/llama-cpp-browser/hugging-face/storage';
+import { listHuggingFaceModels, repositoryDirectories, selectRepositoryModel } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { LlamaCppBrowserError, type LocalModel } from '@/features/llama-cpp-browser/types';
 import { hostModelRoot, parseHostModelReference } from './model-destination';
 import { hostModelPublicName } from './host-model-aliases';
@@ -33,7 +34,7 @@ export async function listHostStoredModels({ directories, signal }: {
       for (const model of models) {
         const { repository, modelPath } = parseHostModelReference({ name: model.id });
         if (modelPath === undefined) continue;
-        result.push({ ...model, name: hostModelPublicName({ name: model.id, directories }), source: { kind: 'host', directoryId, directoryName: directory.name, repository, path: modelPath } });
+        result.push({ ...model, name: hostModelPublicName({ name: model.name, directories }), source: { kind: 'host', directoryId, directoryName: directory.name, repository, path: modelPath } });
       }
     } catch (error) {
       signal?.throwIfAborted();
@@ -44,11 +45,21 @@ export async function listHostStoredModels({ directories, signal }: {
   return result;
 }
 
-/** Worker resolution reads only the captured IDB handle, never UI settings. */
+/** Resolve a public selector once, before accepting it into the native lane. */
+export async function selectHostModel({ name }: { name: string }): Promise<ModelDirectory> {
+  const { destination, repository, selector } = parseHostModelSelector({ name });
+  if (selector === undefined) throw new LlamaCppBrowserError({ code: 'missing-model' });
+  await hostModelRoot({ destination, mode: 'read' });
+  const models = await repositoryDirectories({ repository, destination });
+  return selectRepositoryModel({ models, repository, selectors: [selector] });
+}
+
+/** Workers use captured exact identities, never reinterpret a vanished file as
+ * a newly added variant. Handle permissions and current bytes are still checked.
+ */
 export async function resolveHostModel({ name }: { name: string }): Promise<ModelDirectory> {
   const { destination, repository, modelPath } = parseHostModelReference({ name });
   if (modelPath === undefined) throw new LlamaCppBrowserError({ code: 'missing-model' });
-  await hostModelRoot({ destination, mode: 'read' });
   const models = await repositoryDirectories({ repository, destination });
   const selected = models.find(model => model.id === name);
   if (!selected) throw new LlamaCppBrowserError({ code: 'missing-model' });

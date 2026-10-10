@@ -1,3 +1,5 @@
+import { isModelSourceSegment } from '@/01-models/llama-cpp-browser-model-launch';
+
 /** Labels depend only on the repository and group path, never on its siblings. */
 export function variantLabel({ repository, path }: { repository: string, path: string }): string {
   const parts = path.split('/'); const filename = parts.pop()!;
@@ -14,6 +16,14 @@ export function variantLabel({ repository, path }: { repository: string, path: s
   return [...parts, stem].join('/');
 }
 
+/** Stored selectors preserve split identity even without an unsplit sibling. */
+export function modelVariantName({ repository, path }: { repository: string, path: string }): string {
+  const split = /-\d{5}-of-(\d{5})\.gguf$/i.exec(path);
+  const name = `${variantLabel({ repository, path })}${split ? ` (split-${split[1]})` : ''}`;
+  // Degenerate stems such as '.gguf' must still have a routable selector.
+  return name.split('/').every(name => isModelSourceSegment({ name })) ? name : path;
+}
+
 export function isProjector({ path }: { path: string }): boolean {
   return (path.split('/').at(-1) ?? '').toLowerCase().includes('mmproj');
 }
@@ -25,7 +35,7 @@ export function modelGroups<T extends { path: string }>({ files }: { files: T[] 
       projectors.push(file); continue;
     }
     const split = /^(.*)-\d{5}-of-(\d{5})(\.gguf)$/i.exec(file.path);
-    const key = split ? `${split[1]}-of-${split[2]}${split[3]}` : file.path;
+    const key = split ? `split:${split[1]}-of-${split[2]}${split[3]}` : `file:${file.path}`;
     const group = groups.get(key) ?? []; group.push(file); groups.set(key, group);
   }
   const ordered = ({ group }: { group: T[] }): T[] => group.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);

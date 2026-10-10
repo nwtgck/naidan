@@ -65,6 +65,9 @@ export async function fetchModelsForChat({
       && mutableChat.modelId
       && !models.includes(mutableChat.modelId)
       && !(endpoint.type === 'llama_cpp_browser' && /^(?:hf\.co|host)\//.test(mutableChat.modelId))
+      // RPC can still resolve saved Host file references after its catalog starts
+      // publishing variant names; an absent listing must not erase that choice.
+      && !(endpoint.type === 'naidan_rpc' && mutableChat.modelId.startsWith('host/'))
     ) {
       let replacement = '';
       switch (endpoint.type) {

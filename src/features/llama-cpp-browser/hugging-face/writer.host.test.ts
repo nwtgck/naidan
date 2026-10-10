@@ -8,7 +8,7 @@ import { MemoryDirectory, MemoryFile } from '@/features/stable-diffusion-cpp-bro
 import { listHostImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
 import { createDownloadWriter } from './writer';
 import { listHuggingFaceModels, listPendingDownloads, repositoryFolder, selectedFile, readJournal, installedSelection } from './storage';
-import { listHostStoredModels, getHostModelInventoryIssues } from '@/features/llama-cpp-browser/runtime/host-model-store';
+import { listHostStoredModels, getHostModelInventoryIssues, selectHostModel } from '@/features/llama-cpp-browser/runtime/host-model-store';
 import { storedModelDirectory, prepareModelRemoval, removeStoredModel } from '@/features/llama-cpp-browser/runtime/model-store';
 import type { DownloadSelection } from './types';
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: vi.fn() } }));
@@ -48,9 +48,10 @@ describe('direct linked-folder model storage', () => {
     const folder = await root.getDirectoryHandle('owner').then(owner => owner.getDirectoryHandle('repository'));
     const saved = await folder.getDirectoryHandle('nested').then(nested => nested.getFileHandle('model.gguf')); expect(saved.data).toEqual(bytes());
     const models = await listHostStoredModels({ directories: [{ id: toHostModelDirectoryId({ raw: destination.directoryId }), name: 'models' }], signal: undefined });
-    expect(models).toHaveLength(1); expect(models[0]?.name).toBe('host/models/owner/repository:nested%2Fmodel.gguf');
+    expect(models).toHaveLength(1); expect(models[0]?.name).toBe('host/models/owner/repository:nested%2Fmodel');
     expect(models[0]?.source).toMatchObject({ directoryName: 'models', path: 'nested/model.gguf' });
-    const name = resolveHostModelName({ name: models[0]!.name, directories: [{ id: toHostModelDirectoryId({ raw: destination.directoryId }), name: 'models' }] });
+    const reference = resolveHostModelName({ name: models[0]!.name, directories: [{ id: toHostModelDirectoryId({ raw: destination.directoryId }), name: 'models' }] });
+    const name = (await selectHostModel({ name: reference })).id;
     expect(name).toBe(models[0]!.id);
     const loaded = await storedModelDirectory({ name }); expect(loaded.files[0]?.handle).toBe(saved); expect(loaded.files[0]?.storageKind).toBe('host');
     expect((await installedSelection({ selection, destination }))?.id).toBe(models[0]?.id);
@@ -67,8 +68,9 @@ describe('direct linked-folder model storage', () => {
     expect(models).toHaveLength(2);
     const deep = models.find(model => model.source?.path === path)!;
     expect(deep.name.length).toBeGreaterThan(512); expect(deep.name.length).toBeLessThanOrEqual(1024);
-    expect(deep.name).toBe(`host/models/owner/repository:${encodeURIComponent(path)}`);
-    const name = resolveHostModelName({ name: deep.name, directories: [{ id: toHostModelDirectoryId({ raw: destination.directoryId }), name: 'models' }] });
+    expect(deep.name).toBe(`host/models/owner/repository:${encodeURIComponent(path.replace(/\.gguf$/, ''))}`);
+    const reference = resolveHostModelName({ name: deep.name, directories: [{ id: toHostModelDirectoryId({ raw: destination.directoryId }), name: 'models' }] });
+    const name = (await selectHostModel({ name: reference })).id;
     expect(name).toBe(deep.id);
     expect(generateInputSchema.shape.model.parse(name)).toBe(name);
     expect((await storedModelDirectory({ name })).modelPath).toBe(path);
@@ -92,7 +94,7 @@ describe('direct linked-folder model storage', () => {
     expect(await listHuggingFaceModels({ destination })).toEqual([]);
     expect((await listHostImageRepositories({ directories: [{ id: destination.directoryId, name: root.name }], signal: undefined }))[0]?.files).toEqual([]);
     await finish({ writer, index: 1 }); await finish({ writer, index: 2 }); await writer.finish();
-    const model = (await listHuggingFaceModels({ destination }))[0]!; const loaded = await storedModelDirectory({ name: model.name });
+    const model = (await listHuggingFaceModels({ destination }))[0]!; const loaded = await storedModelDirectory({ name: model.id });
     expect(loaded.files).toHaveLength(3); expect(loaded.projectorPath).toBe('mmproj-F16.gguf');
   });
 

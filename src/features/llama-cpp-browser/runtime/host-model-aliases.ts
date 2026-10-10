@@ -1,6 +1,6 @@
 import { idToRaw, type HostModelDirectoryId } from '@/01-models/ids';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
-import { hostModelReference, parseHostModelReference, parsePublicHostModelReference } from './model-destination-types';
+import { hostModelSelector, parseHostModelSelector, parsePublicHostModelReference } from './model-destination-types';
 
 type Directories = readonly { id: HostModelDirectoryId, name: string }[];
 
@@ -32,22 +32,22 @@ export function hostModelDirectoryAliases({ directories }: { directories: Direct
 
 export function hostModelPublicName({ name, directories }: { name: string, directories: Directories }): string {
   if (!name.startsWith('host/')) return name;
-  const { destination, repository, modelPath } = parseHostModelReference({ name });
+  const { destination, repository, selector } = parseHostModelSelector({ name });
   const alias = hostModelDirectoryAliases({ directories }).get(destination.directoryId);
   if (alias === undefined) throw new LlamaCppBrowserError({ code: 'missing-model' });
-  const canonical = hostModelReference({ directoryId: 'root', repository, modelPath });
+  const canonical = hostModelSelector({ directoryId: 'root', repository, selector });
   return `host/${encodeURIComponent(alias)}/${canonical.slice('host/root/'.length)}`;
 }
 
 export function resolveHostModelName({ name, directories }: { name: string, directories: Directories }): string {
   if (!name.startsWith('host/')) return name;
   try {
-    const { alias, repository, modelPath } = parsePublicHostModelReference({ name });
+    const { alias, repository, selector } = parsePublicHostModelReference({ name });
     const aliases = hostModelDirectoryAliases({ directories });
     const directoryId = [...aliases].find(([, value]) => value === alias)?.[0]
       ?? (aliases.has(alias) ? alias : undefined);
-    if (directoryId === undefined || modelPath === undefined) throw new LlamaCppBrowserError({ code: 'missing-model' });
-    return hostModelReference({ directoryId, repository, modelPath });
+    if (directoryId === undefined || selector === undefined) throw new LlamaCppBrowserError({ code: 'missing-model' });
+    return hostModelSelector({ directoryId, repository, selector });
   } catch {
     // Never guess a root, fall back to OPFS, or resolve an unregistered ID.
     throw new LlamaCppBrowserError({ code: 'missing-model' });

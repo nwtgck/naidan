@@ -45,18 +45,22 @@ it('accepts only local repository references, including a named quantization', (
 
 it.each([
   'host/Models/owner/repo:model.gguf',
+  'host/Models/owner/repo:Q4_K_M',
+  'host/Models/owner/repo:model.bin',
+  'host/Models/owner/repo:nested%2Fcustom%3A100%25',
+  'host/Models/owner/repo:Q4_K_M%20(split-00002)',
   'host/Models-2/owner/repo:subdir%2Fmodel.gguf',
   'host/%E3%83%A2%E3%83%87%E3%83%AB%20Folder/owner/repo:model%20file.gguf',
   'host/legacy-directory-id/owner/repo:model.gguf',
-])('preserves a canonical Host model reference without resolving its alias: %s', ref => {
+])('preserves a public Host selector without resolving its alias or inventory: %s', ref => {
   expect(chatModelReferenceSchema.parse(ref)).toBe(ref);
   expect(naidanPeerContract.methods.generateChat.input.shape.model.parse(ref)).toBe(ref);
 });
 
-it('accepts a Host alias in the listChatModels item contract', () => {
+it.each(['subdir%2Fmodel.gguf', 'Q4_K_M', 'model.bin'])('accepts a Host selector in the listChatModels item contract: %s', selector => {
   const plan = compile({ schema: naidanPeerContract.methods.listChatModels.result, capabilitiesAllowed: true, callbacksAllowed: false });
   if (plan.node.kind !== 'capability' || plan.node.capability.kind !== 'stream') throw new Error('Expected a model item stream');
-  const item = { ref: 'host/Models/owner/repo:subdir%2Fmodel.gguf', label: 'Model' };
+  const item = { ref: `host/Models/owner/repo:${selector}`, label: 'Model' };
   expect(plan.node.capability.item.parse(item)).toEqual(item);
 });
 
@@ -77,7 +81,6 @@ it('preserves long Host aliases as both references and labels in the full model 
 it.each([
   'host/Models/owner/repo',
   'host/Models/owner/repo:',
-  'host/Models/owner/repo:model.bin',
   'host/Models/owner/repo:../model.gguf',
   'host/Models/owner/repo:%2E%2E%2Fmodel.gguf',
   'host/Models/owner/repo:subdir/model.gguf',
