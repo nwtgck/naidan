@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { RemoteImageModelEditor } from '@/01-models/image-generation-preferences';
 import type { RemoteImageModelFile } from '@/01-models/image-generation-history';
-import { imageFileSchema, imageComponentSlotSchema, imageModelSelectionSchema } from '@/features/naidan-peer-rpc/contract';
-import type { PeerImageCatalogItem, PeerImageModelSelection } from '@/features/naidan-peer-rpc/contract';
+import { imageFileSchema, imageComponentSlotSchema, imageModelSelectionSchema } from '@/features/naidan-rpc-integration/contract';
+import type { PeerImageCatalogItem, PeerImageModelSelection } from '@/features/naidan-rpc-integration/contract';
 import { componentMatch, componentRequirements, knownImageFamily } from './model-configuration';
 import type { ImageModelChoice } from '@/features/stable-diffusion-cpp-browser/library-view';
 

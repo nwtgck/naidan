@@ -1,3 +1,4 @@
+import { toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { describe, expect, it } from 'vitest';
 import type { Endpoint } from '@/01-models/types';
 import { cloneImagePromptTranslationOverride, imagePromptTranslationEndpointLabel, resolveImagePromptTranslation } from './settings';
@@ -43,4 +44,16 @@ it('merges LM fields independently through all three layers without turning inhe
     session: { endpoint: undefined, modelId: undefined, lmParameters: { temperature: 0, topP: undefined, maxCompletionTokens: undefined, presencePenalty: undefined, frequencyPenalty: undefined, stop: [], reasoning: { effort: 'none' } } },
   });
   expect(target.lmParameters).toMatchObject({ temperature: 0, topP: 0.7, maxCompletionTokens: 500, stop: [], reasoning: { effort: 'none' } });
+});
+
+it('clones an unavailable session RPC value without inheriting another peer', () => {
+  const endpoint: Endpoint = { type: 'unsupported_experimental_endpoint', persistedType: 'naidan_rpc' };
+  const session = { endpoint, modelId: 'explicit-model', lmParameters: undefined };
+  const workspace = { endpoint: { type: 'naidan_rpc' as const, registrationId: toNaidanRpcRegistrationId({ raw: 'peer-B' }) }, modelId: 'other-model', lmParameters: undefined };
+  const cloned = cloneImagePromptTranslationOverride({ value: session });
+  const target = resolveImagePromptTranslation({ session: cloned, workspace, global });
+  expect(target.endpointSource).toBe('session'); expect(target.modelId).toBe('explicit-model');
+  if (target.endpoint.type !== 'unsupported_experimental_endpoint') throw new Error('Unavailable endpoint was replaced');
+  expect(target.endpoint.persistedType).toBe('naidan_rpc');
+  expect(target.endpoint).not.toBe(endpoint);
 });

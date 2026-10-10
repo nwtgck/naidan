@@ -6,7 +6,7 @@ import { contract, procedure, expose, rpc, NaidanRpcPeer, NaidanRpcPublicError }
 import type { NaidanRpcExposure } from '@/features/naidan-rpc';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
 import { promiseAllKeyed } from '@/utils/promise';
-import { VALUE_BYTES } from './primitives';
+import { VALUE_BYTES, BYTE_PULL_BYTES } from './primitives';
 
 const stops: (() => void)[] = [];
 
@@ -14,10 +14,12 @@ afterEach(() => {
   for (const stop of stops.splice(0)) stop();
 });
 
-function peers({ aExports, bExports, capacity }: { aExports: NaidanRpcExposure[]; bExports: NaidanRpcExposure[]; capacity: number }) {
+function peers({ aExports, bExports, capacity, maxCallTimeoutMs }: {
+  aExports: NaidanRpcExposure[]; bExports: NaidanRpcExposure[]; capacity: number; maxCallTimeoutMs: number | undefined;
+}) {
   const transport = transportPair({ capacity, fragmentBytes: 1021 }), stop = new AbortController();
-  const a = new NaidanRpcPeer({ transport: transport.a, exports: aExports, limits: { maxCalls: capacity, maxCallTimeoutMs: 2000 }, signal: stop.signal });
-  const b = new NaidanRpcPeer({ transport: transport.b, exports: bExports, limits: { maxCalls: capacity, maxCallTimeoutMs: 2000 }, signal: stop.signal });
+  const a = new NaidanRpcPeer({ transport: transport.a, exports: aExports, limits: { maxCalls: capacity, maxCallTimeoutMs }, signal: stop.signal });
+  const b = new NaidanRpcPeer({ transport: transport.b, exports: bExports, limits: { maxCalls: capacity, maxCallTimeoutMs }, signal: stop.signal });
   stops.push(() => {
     stop.abort(); transport.close();
   }); return { a, b, transport, stop };
@@ -56,7 +58,7 @@ it('returns explicitly public error context while keeping ordinary exception tex
       },
     },
   });
-  const { a } = peers({ aExports: [], bExports: [exports], capacity: 2 });
+  const { a } = peers({ maxCallTimeoutMs: 2000, aExports: [], bExports: [exports], capacity: 2 });
   const publicCall = a.client({ contract: arithmetic }).sum({ input: { x: 0, y: undefined }, on: {}, signal: undefined, timeoutMs: 1500 });
   await expect(publicCall.result).rejects.toMatchObject({ code: 'HANDLER_FAILED', details });
   await expect(publicCall.closed).rejects.toMatchObject({ code: 'HANDLER_FAILED', details });
@@ -79,7 +81,7 @@ it('preserves public context on a late stream failure and still completes retire
       }, { highWaterMark: 0 }),
     },
   });
-  const { a, transport } = peers({ aExports: [], bExports: [exports], capacity: 2 });
+  const { a, transport } = peers({ maxCallTimeoutMs: 2000, aExports: [], bExports: [exports], capacity: 2 });
   const call = a.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: 1500 });
   await expect((await call.result).getReader().read()).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED', details });
   await expect(call.closed).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED', details });
@@ -89,7 +91,7 @@ it('preserves public context on a late stream failure and still completes retire
 it('transfers a valid typed item beyond the internal transfer piece size', async () => {
   const definition = contract({ name: 'example.item-limit', methods: { run: procedure({ input: z.object({}), result: rpc.stream({ item: z.string() }), notifications: {} }) } });
   const exports = expose({ contract: definition, allowedMethods: ['run'], implementation: { run: () => source({ items: ['x'.repeat(21848)] }) } });
-  const { a } = peers({ aExports: [], bExports: [exports], capacity: 2 });
+  const { a } = peers({ maxCallTimeoutMs: 2000, aExports: [], bExports: [exports], capacity: 2 });
   const call = a.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: 1500 });
   const reader = (await call.result).getReader();
   expect((await reader.read()).value).toBe('x'.repeat(21848));
@@ -101,6 +103,7 @@ it('transfers large finite input, reverse callback, notification and result with
   const api = contract({ name: 'example.large-finite', methods: { run: procedure({ input: z.object({ text: z.string(), answer: rpc.callback({ input: z.string(), result: z.string() }) }), result: z.object({ text: z.string() }), notifications: { progress: z.object({ text: z.string() }) } }) } });
   const text = '🌲'.repeat(32768), notices: string[] = [];
   const { a } = peers({
+    maxCallTimeoutMs: 2000,
     aExports: [],
     bExports: [expose({
       contract: api,
@@ -128,14 +131,14 @@ it('transfers large finite input, reverse callback, notification and result with
 });
 
 it('two peers call concurrently and return finite values with optional field normalization', async () => {
-  const { a, b, transport } = peers({ aExports: [math], bExports: [math], capacity: 8 });
+  const { a, b, transport } = peers({ maxCallTimeoutMs: 2000, aExports: [math], bExports: [math], capacity: 8 });
   const calls = [a, b, a, b].map((peer, index) => peer.client({ contract: arithmetic }).sum({ input: { x: index, y: undefined }, on: {}, signal: undefined, timeoutMs: 1500 }));
   expect(await Promise.all(calls.map(call => call.result))).toEqual([0, 1, 2, 3]);
   await Promise.all(calls.map(call => call.closed)); expect(transport.stats()).toEqual({ active: 0, total: 4 });
 });
 
 it('unknown method fails explicitly without executing another method', async () => {
-  const { a } = peers({ aExports: [], bExports: [math], capacity: 2 });
+  const { a } = peers({ maxCallTimeoutMs: 2000, aExports: [], bExports: [math], capacity: 2 });
   const newer = contract({ name: 'example.math', methods: { sumv2: arithmetic.methods.sum } });
   const call = a.client({ contract: newer }).sumv2({ input: { x: 1, y: 2 }, on: {}, signal: undefined, timeoutMs: 500 });
   await expect(call.result).rejects.toMatchObject({ code: 'METHOD_NOT_FOUND' });
@@ -169,7 +172,7 @@ it('returned nested streams can be consumed before the root invocation finishes'
       }),
     },
   });
-  const { a, transport } = peers({ aExports: [], bExports: [implementation], capacity: 2 });
+  const { a, transport } = peers({ maxCallTimeoutMs: 2000, aExports: [], bExports: [implementation], capacity: 2 });
   const call = a.client({ contract: definition }).convert({ input: { values: source({ items: [1, 2, 3] }) }, on: {}, signal: undefined, timeoutMs: 1500 });
   const result = await call.result;
   const values = await promiseAllKeyed({ numbers: collect({ stream: result.nested.numbers }), text: collect({ stream: result.nested.text }) });
@@ -195,7 +198,7 @@ it('reverse callbacks return values concurrently without acquiring another lower
       calculate: async ({ input }) => Promise.all([1, 2, 3].map(value => input.transform({ value }))),
     },
   });
-  const { a, transport } = peers({ aExports: [], bExports: [implementation], capacity: 1 });
+  const { a, transport } = peers({ maxCallTimeoutMs: 2000, aExports: [], bExports: [implementation], capacity: 1 });
   const call = a.client({ contract: definition }).calculate({
     input: {
       transform: async ({ value }) => {
@@ -222,7 +225,7 @@ it('old implementations decline unknown streams without reading their sources', 
       cancels++;
     },
   }, { highWaterMark: 0 });
-  const { a } = peers({ aExports: [], bExports: [expose({ contract: legacy, allowedMethods: methodNames({ contract: legacy }), implementation: { run: ({ input }) => input.value } })], capacity: 2 });
+  const { a } = peers({ maxCallTimeoutMs: 2000, aExports: [], bExports: [expose({ contract: legacy, allowedMethods: methodNames({ contract: legacy }), implementation: { run: ({ input }) => input.value } })], capacity: 2 });
   const call = a.client({ contract: newer }).run({ input: { value: 7, extra: upload }, on: {}, signal: undefined, timeoutMs: 1500 });
   expect(await call.result).toBe(7); await call.closed;
   expect(pulls).toBe(0); expect(cancels).toBe(1);
@@ -241,6 +244,7 @@ it('one result stream cancellation does not cancel its independent sibling', asy
   });
   let cancelled = 0;
   const { a } = peers({
+    maxCallTimeoutMs: 2000,
     aExports: [],
     bExports: [expose({
       contract: definition,
@@ -267,16 +271,18 @@ it('one result stream cancellation does not cancel its independent sibling', asy
 
 it('raw byte streams transfer large source chunks through bounded item frames', async () => {
   const definition = contract({ name: 'example.bytes', methods: { echo: procedure({ input: z.object({ data: rpc.byteStream() }), result: rpc.byteStream(), notifications: {} }) } });
-  const { a, transport } = peers({ aExports: [], bExports: [expose({ contract: definition, allowedMethods: methodNames({ contract: definition }), implementation: { echo: ({ input }) => input.data } })], capacity: 1 });
+  const { a, transport } = peers({ maxCallTimeoutMs: undefined, aExports: [], bExports: [expose({ contract: definition, allowedMethods: methodNames({ contract: definition }), implementation: { echo: ({ input }) => input.data } })], capacity: 1 });
   const input = new Uint8Array(199999); for (let index = 0; index < input.length; index++) input[index] = index % 251;
-  const call = a.client({ contract: definition }).echo({ input: { data: source({ items: [input] }) }, on: {}, signal: undefined, timeoutMs: 1500 });
+  // Byte correctness and fragmentation are not a wall-clock latency contract.
+  // Keep the external test-runner bound, without an ordinary-work RPC deadline.
+  const call = a.client({ contract: definition }).echo({ input: { data: source({ items: [input] }) }, on: {}, signal: undefined, timeoutMs: undefined });
   const values = await collect({ stream: await call.result });
-  expect(Buffer.concat(values)).toEqual(Buffer.from(input)); expect(values.every(value => value.length <= 16384)).toBe(true);
+  expect(Buffer.concat(values)).toEqual(Buffer.from(input)); expect(values.every(value => value.length <= BYTE_PULL_BYTES)).toBe(true);
   await call.closed; expect(transport.stats().total).toBe(1);
 });
 
 it('input scalar metadata is snapshotted before awaiting a lower stream', async () => {
-  const { a } = peers({ aExports: [], bExports: [math], capacity: 2 });
+  const { a } = peers({ maxCallTimeoutMs: 2000, aExports: [], bExports: [math], capacity: 2 });
   const input = { x: 3, y: 4 };
   const call = a.client({ contract: arithmetic }).sum({ input, on: {}, signal: undefined, timeoutMs: 1000 });
   input.x = 99; expect(await call.result).toBe(7); await call.closed;
@@ -285,6 +291,7 @@ it('input scalar metadata is snapshotted before awaiting a lower stream', async 
 it('a declared callback error is an invocation error that application code can catch', async () => {
   const definition = contract({ name: 'example.cb-error', methods: { run: procedure({ input: z.object({ action: rpc.callback({ input: z.object({}), result: z.string() }) }), result: z.string(), notifications: {} }) } });
   const { a } = peers({
+    maxCallTimeoutMs: 2000,
     aExports: [],
     bExports: [expose({
       contract: definition,
@@ -317,6 +324,7 @@ it('a declared callback error is an invocation error that application code can c
 it('a callback remains valid while a returned lazy stream still uses it', async () => {
   const definition = contract({ name: 'example.lazy-callback', methods: { run: procedure({ input: z.object({ transform: rpc.callback({ input: z.object({ value: z.number() }), result: z.number() }) }), result: rpc.stream({ item: z.number() }), notifications: {} }) } });
   const { a } = peers({
+    maxCallTimeoutMs: 2000,
     aExports: [],
     bExports: [expose({
       contract: definition,
@@ -340,7 +348,7 @@ it('a callback remains valid while a returned lazy stream still uses it', async 
 
 it('a call timeout fails pending streams without cancelling another parallel call', async () => {
   const definition = contract({ name: 'example.deadline', methods: { stream: procedure({ input: z.object({}), result: rpc.stream({ item: z.number() }), notifications: {} }) } });
-  const { a } = peers({ aExports: [], bExports: [math, expose({ contract: definition, allowedMethods: methodNames({ contract: definition }), implementation: { stream: () => new ReadableStream<number>({ pull() {} }, { highWaterMark: 0 }) } })], capacity: 3 });
+  const { a } = peers({ maxCallTimeoutMs: 2000, aExports: [], bExports: [math, expose({ contract: definition, allowedMethods: methodNames({ contract: definition }), implementation: { stream: () => new ReadableStream<number>({ pull() {} }, { highWaterMark: 0 }) } })], capacity: 3 });
   const call = a.client({ contract: definition }).stream({ input: {}, on: {}, signal: undefined, timeoutMs: 100 });
   const result = await call.result, reading = result.getReader().read();
   await expect(reading).rejects.toMatchObject({ code: 'DEADLINE_EXCEEDED' });
@@ -354,6 +362,7 @@ it('new result fields containing streams are declined by old callers without sou
   const modern = contract({ name: 'example.output-compat', methods: { run: procedure({ input: z.object({}), result: z.object({ value: z.number(), extra: rpc.byteStream() }), notifications: {} }) } });
   let pulls = 0, cancellations = 0;
   const { a } = peers({
+    maxCallTimeoutMs: 2000,
     aExports: [],
     bExports: [expose({
       contract: modern,
@@ -381,7 +390,7 @@ it('new result fields containing streams are declined by old callers without sou
 
 it('unused input is stopped after finite result and input aliasing fails before opening a transport', async () => {
   const definition = contract({ name: 'example.input', methods: { run: procedure({ input: z.object({ a: rpc.byteStream(), b: rpc.byteStream() }), result: z.number(), notifications: {} }) } });
-  const { a, transport } = peers({ aExports: [], bExports: [expose({ contract: definition, allowedMethods: methodNames({ contract: definition }), implementation: { run: () => 4 } })], capacity: 2 });
+  const { a, transport } = peers({ maxCallTimeoutMs: 2000, aExports: [], bExports: [expose({ contract: definition, allowedMethods: methodNames({ contract: definition }), implementation: { run: () => 4 } })], capacity: 2 });
   let cancelled = 0;
   const stream = () => new ReadableStream<Uint8Array>({
     cancel() {
@@ -401,6 +410,7 @@ it('an uncooperative handler keeps its admission reservation after cancellation'
   let invoked = 0, release: (() => void) | undefined;
   const started = Promise.withResolvers<void>();
   const { a } = peers({
+    maxCallTimeoutMs: 2000,
     aExports: [],
     bExports: [expose({
       contract: definition,
@@ -426,6 +436,7 @@ it('notifications are latest-value signals and slow observers do not block respo
   const definition = contract({ name: 'example.progress', methods: { run: procedure({ input: z.object({}), result: z.number(), notifications: { progress: z.number() } }) } });
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>(); const seen: number[] = [];
   const { a } = peers({
+    maxCallTimeoutMs: 2000,
     aExports: [],
     bExports: [expose({
       contract: definition,
@@ -455,7 +466,7 @@ it('notifications are latest-value signals and slow observers do not block respo
 
 it('byte streams skip empty chunks while retaining correct content and termination', async () => {
   const definition = contract({ name: 'example.empty-bytes', methods: { run: procedure({ input: z.object({}), result: rpc.byteStream(), notifications: {} }) } });
-  const { a } = peers({ aExports: [], bExports: [expose({ contract: definition, allowedMethods: methodNames({ contract: definition }), implementation: { run: () => source({ items: [new Uint8Array(), new Uint8Array([5, 7]), new Uint8Array()] }) } })], capacity: 1 });
+  const { a } = peers({ maxCallTimeoutMs: 2000, aExports: [], bExports: [expose({ contract: definition, allowedMethods: methodNames({ contract: definition }), implementation: { run: () => source({ items: [new Uint8Array(), new Uint8Array([5, 7]), new Uint8Array()] }) } })], capacity: 1 });
   const call = a.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
   expect(Buffer.concat(await collect({ stream: await call.result }))).toEqual(Buffer.from([5, 7])); await call.closed;
 });
@@ -464,6 +475,7 @@ it('oversized finite metadata fails without opening a lower stream or starting a
   const definition = contract({ name: 'example.metadata', methods: { run: procedure({ input: z.string(), result: z.number(), notifications: {} }) } });
   let called = 0;
   const { a, transport } = peers({
+    maxCallTimeoutMs: 2000,
     aExports: [],
     bExports: [expose({
       contract: definition,
@@ -493,7 +505,7 @@ it('pausing admission preserves an admitted invocation but denies new calls unti
       },
     },
   });
-  const { a, b } = peers({ aExports: [], bExports: [implementation], capacity: 4 });
+  const { a, b } = peers({ maxCallTimeoutMs: 2000, aExports: [], bExports: [implementation], capacity: 4 });
   const active = a.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: 1500 });
   await started.promise; b.setIncomingAdmission({ status: 'suspended' });
   const denied = a.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: 1500 });
@@ -514,6 +526,7 @@ it('a suspended admission exception does not grant revoked methods or survive di
     },
   });
   const { a, b } = peers({
+    maxCallTimeoutMs: 2000,
     aExports: [],
     bExports: [expose({
       contract: definition,

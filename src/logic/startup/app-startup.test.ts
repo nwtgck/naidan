@@ -15,7 +15,7 @@ const loadChatsForAppStartup = vi.hoisted(() => vi.fn(async () => {}));
 const activateChatBootstrap = vi.hoisted(() => vi.fn());
 const disposeRpcAutomaticConnections = vi.hoisted(() => vi.fn());
 const startRpcAutomaticConnections = vi.hoisted(() => vi.fn(() => disposeRpcAutomaticConnections));
-vi.mock('@/features/naidan-peer-rpc/runtime/feature', () => ({ startRpcAutomaticConnections }));
+vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({ startRpcAutomaticConnections }));
 
 vi.mock('@/MainApp.vue', () => ({
   default: MainApp,

@@ -1,3 +1,5 @@
+import { LocalStorageProvider } from '@/00-storage/service/local-storage';
+import { STORAGE_KEY_PREFIX } from '@/constants';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ImportExportService, type IImportExportStorage } from './service';
 import JSZip from 'jszip';
@@ -122,6 +124,72 @@ describe('ImportExportService', () => {
     systemPrompt: undefined,
     lmParameters: undefined,
     ...overrides,
+  });
+
+  it('preserves distinct unavailable RPC leaves through archive import and actual provider JSON', async () => {
+    localStorage.clear();
+    const provider = new LocalStorageProvider();
+    await provider.saveSettings({ settings: createValidSettings({ systemPrompt: 'Keep this prompt', defaultModelId: 'keep-model' }) });
+    mockStorage.loadSettings.mockImplementation(() => provider.loadSettings());
+    mockStorage.updateSettings.mockImplementation(async ({ updater }) => {
+      const next = await updater({ current: await provider.loadSettings() });
+      await provider.saveSettings({ settings: next });
+    });
+    for (const marker of ['A', 'B']) {
+      const raw = { type: 'future-rpc', registrationId: 'registration-A', future: { nested: [marker] } };
+      const zip = new JSZip();
+      zip.file('export-manifest.json', '{}');
+      zip.file('settings.json', JSON.stringify({ ...createValidSettingsDto(), endpoint: { type: 'experimental_type', experimental: { endpoint: raw } } }));
+      await service.executeImport({
+        zipFile: await zip.generateAsync({ type: 'blob' }),
+        config: {
+          data: { mode: 'append' },
+          settings: { endpoint: 'replace', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
+        },
+      });
+      const reloaded = await provider.loadSettings();
+      expect(reloaded?.endpoint.type).toBe('unsupported_experimental_endpoint');
+      expect(reloaded?.systemPrompt).toBe('Keep this prompt'); expect(reloaded?.defaultModelId).toBe('keep-model');
+      expect(JSON.parse(localStorage.getItem(`${STORAGE_KEY_PREFIX}lsp:settings`)!).endpoint).toEqual({ type: 'experimental_type' });
+    }
+    await provider.saveSettings({ settings: createValidSettings() });
+    const kept = await provider.loadSettings();
+    const zip = new JSZip(); zip.file('export-manifest.json', '{}');
+    zip.file('settings.json', JSON.stringify({ ...createValidSettingsDto(), endpoint: { type: 'experimental_type', experimental: { endpoint: { type: 'naidan_rpc', future: 'must not replace' } } } }));
+    await service.executeImport({
+      zipFile: await zip.generateAsync({ type: 'blob' }),
+      config: {
+        data: { mode: 'append' },
+        settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
+      },
+    });
+    expect((await provider.loadSettings())?.endpoint).toEqual(kept?.endpoint);
+    expect(mockStorage.clearAll).not.toHaveBeenCalled();
+  });
+
+  it('keeps a structurally unsupported imported image destination unavailable without preserving its raw block', async () => {
+    localStorage.clear(); const provider = new LocalStorageProvider();
+    mockStorage.loadSettings.mockImplementation(() => provider.loadSettings());
+    mockStorage.clearAll.mockImplementation(() => provider.clearAll());
+    mockStorage.updateSettings.mockImplementation(async ({ updater }) => provider.saveSettings({ settings: await updater({ current: await provider.loadSettings() }) }));
+    const editor = { components: [], loras: [] };
+    const entries = [{ registrationId: 'legacy-A', peerPublicKey: 'A'.repeat(43), editor }, { registrationId: 'registration-B', peerPublicKey: 'B'.repeat(43), editor }, { registrationId: 'legacy-C', peerPublicKey: 'C'.repeat(43), editor }];
+    const route = { kind: 'naidan_rpc', registration: { registrationId: 'legacy-A' } };
+    const zip = new JSZip(); zip.file('export-manifest.json', '{}');
+    zip.file('settings.json', JSON.stringify({ ...createValidSettingsDto(), experimental: { locale: 'ja', browserImageGeneration: { width: 768, remoteModelEditors: entries, inferenceLocation: route } } }));
+    await service.executeImport({
+      zipFile: await zip.generateAsync({ type: 'blob' }),
+      config: {
+        data: { mode: 'replace' },
+        settings: { endpoint: 'replace', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
+      },
+    });
+    const saved = JSON.parse(localStorage.getItem(`${STORAGE_KEY_PREFIX}lsp:settings`)!);
+    expect(saved.experimental.browserImageGeneration).toMatchObject({ inferenceLocation: { kind: 'unavailable' } });
+    expect(saved.experimental.browserImageGeneration.remoteModelEditors).toBeUndefined();
+    const reloaded = await provider.loadSettings();
+    expect(reloaded?.experimental?.locale).toBe('ja');
+    expect(reloaded?.experimental?.browserImageGeneration?.inferenceLocation).toEqual({ kind: 'unavailable' });
   });
 
   describe('exportData', () => {

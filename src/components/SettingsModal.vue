@@ -31,7 +31,7 @@ const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () 
 const StorageTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./StorageTab.vue') });
 const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectsTab.vue') });
 const VolumeSettingsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./VolumeSettingsTab.vue') });
-const NaidanRpcTab = defineAsyncComponent(() => import('@/features/naidan-peer-rpc/components/NaidanRpcTab.vue'));
+const NaidanRpcTab = defineAsyncComponent(() => import('@/features/naidan-rpc-integration/components/NaidanRpcTab.vue'));
 const DeveloperTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./DeveloperTab.vue') });
 const AboutTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AboutTab.vue') });
 const GlobalToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('@/features/tools/components/GlobalToolsSettings.vue') });

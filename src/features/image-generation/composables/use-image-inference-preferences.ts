@@ -1,3 +1,4 @@
+import { areImageInferenceLocationsEqual } from '@/01-models/image-generation-preferences';
 import { onScopeDispose, watch, type Ref } from 'vue';
 import { idToRaw } from '@/01-models/ids';
 import type { Settings } from '@/01-models/types';
@@ -19,7 +20,7 @@ export function useImageInferencePreferences({ settings, initialized, inferenceL
   let previous: ReturnType<ImageInferenceLocationView['capturePreferences']> | undefined;
   let pendingLocation: ImageInferenceLocationPreference | undefined;
   let pendingEditors = new Map<string, RemoteImageModelEditorPreference>();
-  const key = ({ preference }: { preference: RemoteImageModelEditorPreference }) => `${idToRaw({ id: preference.connectionId })}:${idToRaw({ id: preference.peerId })}`;
+  const key = ({ preference }: { preference: RemoteImageModelEditorPreference }) => `${idToRaw({ id: preference.registrationId })}:${idToRaw({ id: preference.peerPublicKey })}`;
   function invalidate({ owner }: { owner: (() => boolean) | undefined }): void {
     if (owner !== isCurrent) return;
     hydrated = false; isCurrent = undefined; previous = undefined;
@@ -40,12 +41,16 @@ export function useImageInferencePreferences({ settings, initialized, inferenceL
           const base = experimental?.browserImageGeneration;
           const editors = new Map((base?.remoteModelEditors ?? []).map(preference => [key({ preference }), preference]));
           for (const [id, preference] of changedEditors) editors.set(id, preference);
+          const merged = (base?.remoteModelEditors ?? []).map(preference => {
+            const id = key({ preference }), next = editors.get(id)!; editors.delete(id); return next;
+          });
+          merged.push(...editors.values());
           return {
             ...experimental,
             browserImageGeneration: {
               ...base,
               ...(changedLocation ? { inferenceLocation: changedLocation } : {}),
-              ...(changedEditors.size ? { remoteModelEditors: [...editors.values()] } : {}),
+              ...(changedEditors.size ? { remoteModelEditors: merged } : {}),
             },
           };
         },
@@ -85,7 +90,7 @@ export function useImageInferencePreferences({ settings, initialized, inferenceL
     if (!isCurrent()) {
       invalidate({ owner: isCurrent }); return;
     }
-    if (JSON.stringify(value.inferenceLocation) !== JSON.stringify(previous.inferenceLocation)) pendingLocation = value.inferenceLocation;
+    if (!areImageInferenceLocationsEqual({ left: value.inferenceLocation, right: previous.inferenceLocation })) pendingLocation = value.inferenceLocation;
     const oldEditors = new Map(previous.remoteModelEditors.map(preference => [key({ preference }), preference]));
     for (const preference of value.remoteModelEditors) {
       const id = key({ preference });

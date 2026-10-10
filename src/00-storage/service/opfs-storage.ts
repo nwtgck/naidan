@@ -530,11 +530,11 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
     const dto = chatMetaToDto({ domain: meta });
-    ChatMetaSchemaDto.parse(dto);
+    const serialized = JSON.stringify(ChatMetaSchemaDto.parse(dto));
     const dir = await this.getDir({ name: 'chat-metas' });
     const fileHandle = await dir.getFileHandle(`${idToRaw({ id: meta.id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(dto));
+    await writable.write(serialized);
     await writable.close();
   }
 
@@ -608,11 +608,11 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
     const dto = chatGroupToDto({ domain: chatGroup });
-    ChatGroupSchemaDto.parse(dto);
+    const serialized = JSON.stringify(ChatGroupSchemaDto.parse(dto));
     const dir = await this.getDir({ name: 'chat-groups' });
     const fileHandle = await dir.getFileHandle(`${idToRaw({ id: chatGroup.id })}.json`, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(dto));
+    await writable.write(serialized);
     await writable.close();
   }
 
@@ -828,12 +828,12 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async saveSettings({ settings }: { settings: Settings }): Promise<void> {
-    await this.ensureRoot();
     const dto = settingsToDto({ domain: settings });
-    const validated = SettingsSchemaDto.parse(dto);
+    const serialized = JSON.stringify(SettingsSchemaDto.parse(dto));
+    await this.ensureRoot();
     const fileHandle = await this.root!.getFileHandle('settings.json', { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(validated));
+    await writable.write(serialized);
     await writable.close();
   }
 
@@ -843,7 +843,8 @@ export class OPFSStorageProvider extends IStorageProvider {
       const fileHandle = await this.root!.getFileHandle('settings.json');
       const file = await fileHandle.getFile();
       return settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(await file.text())) });
-    } catch {
+    } catch (error) {
+      // Unavailable RPC bytes must not masquerade as absent settings.
       return null;
     }
   }

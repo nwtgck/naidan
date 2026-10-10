@@ -138,8 +138,8 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
     const dto = chatMetaToDto({ domain: meta });
-    ChatMetaSchemaDto.parse(dto);
-    localStorage.setItem(`${KEY_META_PREFIX}${idToRaw({ id: meta.id })}`, JSON.stringify(dto));
+    const serialized = JSON.stringify(ChatMetaSchemaDto.parse(dto));
+    localStorage.setItem(`${KEY_META_PREFIX}${idToRaw({ id: meta.id })}`, serialized);
   }
 
   async saveChatContent({ id, content }: { id: ChatId, content: ChatContent }): Promise<void> {
@@ -216,8 +216,8 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
     const dto = chatGroupToDto({ domain: chatGroup });
-    ChatGroupSchemaDto.parse(dto);
-    localStorage.setItem(`${KEY_GROUP_PREFIX}${idToRaw({ id: chatGroup.id })}`, JSON.stringify(dto));
+    const serialized = JSON.stringify(ChatGroupSchemaDto.parse(dto));
+    localStorage.setItem(`${KEY_GROUP_PREFIX}${idToRaw({ id: chatGroup.id })}`, serialized);
   }
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
@@ -264,7 +264,8 @@ export class LocalStorageProvider extends IStorageProvider {
     if (!raw) return null;
     try {
       return settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(raw)) });
-    } catch {
+    } catch (error) {
+      // Unavailable RPC bytes must not masquerade as absent settings.
       return null;
     }
   }

@@ -1,7 +1,10 @@
+import { NaidanRpcByteBudget, type RpcByteOwner } from './byte-budget';
+import { retireUnadoptedStreams, RpcRetirementError } from '@/features/naidan-rpc/stream-retirement';
+import { NaidanRpcCallBudget } from '@/features/naidan-rpc/call-budget';
 import { pack } from '@/features/naidan-rpc/schema';
 import { RpcConversation } from '@/features/naidan-rpc/call';
 import type { Observer } from '@/features/naidan-rpc/call';
-import { check, deferred, duration, NaidanRpcError } from '@/features/naidan-rpc/primitives';
+import { check, deferred, duration, NaidanRpcError, NaidanRpcProtocolError } from '@/features/naidan-rpc/primitives';
 import { prepareMethod, checkAllowedMethods } from '@/features/naidan-rpc/contract';
 import type { Contract, NaidanRpcClient, NaidanRpcExposure, NaidanRpcMethodName, PreparedMethod } from '@/features/naidan-rpc/contract';
 import type { NaidanRpcDuplex, NaidanRpcTransport } from '@/features/naidan-rpc/transport';
@@ -10,21 +13,30 @@ export type NaidanRpcLimits = { maxCalls: number; maxCallTimeoutMs: number | und
 const owned = new WeakSet<NaidanRpcTransport>();
 /** Both peers may expose and call methods. A single RPC peer exclusively consumes a transport iterator. */
 export class NaidanRpcPeer {
+  /** First logical termination; retirement remains separately owned. */
+  private readonly ending = deferred<Readonly<{ error: unknown; protocolError: NaidanRpcProtocolError | undefined }>>();
+  readonly ended = this.ending.promise;
   readonly closed: Promise<void>;
   private readonly transport: NaidanRpcTransport;
   private readonly stop = new AbortController();
   private readonly methods = new Map<string, { contract: Contract; methods: ReadonlyMap<string, PreparedMethod>; allowed: ReadonlySet<string> }>();
   private readonly calls = new Set<RpcConversation>();
   private readonly limits: NaidanRpcLimits;
+  private readonly callBudget: NaidanRpcCallBudget;
+  private readonly byteBudget: NaidanRpcByteBudget;
+  private networkRetirement: Promise<void> | undefined;
   private opening = 0;
   private activityRevision = 0;
   private readonly pendingInvocations = new Set<Promise<void>>();
   private inputRetirement: Promise<unknown> = Promise.resolve();
   private incomingAdmission: 'open' | 'suspended' = 'open';
   private readonly allowedWhileSuspended = new Map<string, ReadonlySet<string>>();
-  private failure: unknown;
+  private failure: { error: unknown } | undefined;
+  private protocolError: NaidanRpcProtocolError | undefined;
   private retirementFailure: { error: unknown } | undefined;
-  constructor({ transport, exports, limits, signal }: {
+  constructor({ transport, exports, limits, signal, callBudget, byteBudget }: {
+    byteBudget?: NaidanRpcByteBudget;
+    callBudget?: NaidanRpcCallBudget;
     transport: NaidanRpcTransport; exports: readonly NaidanRpcExposure[]; limits: NaidanRpcLimits; signal: AbortSignal;
   }) {
     const { maxCalls, maxCallTimeoutMs, ...rest } = limits; rest satisfies Record<PropertyKey, never>;
@@ -39,6 +51,8 @@ export class NaidanRpcPeer {
         allowed: checkAllowedMethods({ contract: exposure.contract, allowedMethods: [...exposure.allowedMethods] }),
       });
     }
+    this.callBudget = callBudget ?? new NaidanRpcCallBudget({ capacity: maxCalls });
+    this.byteBudget = byteBudget ?? new NaidanRpcByteBudget();
     signal.throwIfAborted(); owned.add(transport); this.transport = transport; this.limits = { maxCalls, maxCallTimeoutMs };
     const forward = () => this.dispose(); signal.addEventListener('abort', forward, { once: true });
     if (signal.aborted) forward();
@@ -55,39 +69,59 @@ export class NaidanRpcPeer {
     };
     this.stop.signal.addEventListener('abort', closeInput, { once: true });
     if (this.stop.signal.aborted) closeInput();
-    void transport.closed.then(() => this.dispose(), error => {
-      this.failure = error; this.dispose();
+    void transport.ended.then(({ error }) => {
+      if (error !== undefined) this.failure ??= { error }; this.dispose();
+    }, error => {
+      // ended is required to resolve, but a broken adapter must still retire.
+      this.failure ??= { error }; this.dispose();
     });
+    void transport.closed.catch(error => {
+      this.retirementFailure ??= { error }; this.dispose();
+    });
+    const sharedCalls = this.callBudget;
     this.closed = (async () => {
       try {
         while (!this.stop.signal.aborted) {
           const next = await input.next(); if (next.done) break;
           if (this.stop.signal.aborted || this.calls.size + this.opening >= maxCalls) {
-            this.discardDuplex({ duplex: next.value, reason: 'RPC capacity or shutdown' }); continue;
+            await this.discardDuplex({ duplex: next.value, reason: 'RPC capacity or shutdown' }); continue;
+          }
+          const release = sharedCalls.reserve();
+          if (!release) {
+            await this.discardDuplex({ duplex: next.value, reason: 'Shared RPC capacity' }); continue;
           }
           try {
-            this.adopt({ duplex: next.value, role: 'callee', timeoutMs: maxCallTimeoutMs });
-          } catch {
-            this.discardDuplex({ duplex: next.value, reason: 'RPC transport ownership failed' });
+            this.adopt({ duplex: next.value, role: 'callee', timeoutMs: maxCallTimeoutMs, release });
+          } catch (error) {
+            if (error instanceof RpcRetirementError) {
+              this.retirementFailure ??= { error: error.cause }; this.dispose();
+            }
+            await this.discardDuplex({ duplex: next.value, reason: 'RPC transport ownership failed' });
+            if (!this.retirementFailure) release();
           }
         }
       } catch (error) {
-        if (!this.stop.signal.aborted) this.failure = error;
+        if (!this.stop.signal.aborted) this.failure ??= { error };
       } finally {
         this.dispose(); signal.removeEventListener('abort', forward); this.stop.signal.removeEventListener('abort', closeInput);
       }
-      if (this.failure) throw this.failure;
+      if (this.failure) throw this.failure.error;
     })();
     void this.closed.catch(() => {});
   }
   /** Until adoption succeeds, the peer still owns disposal of this duplex.
    * Cleanup failures poison retirement; they are not ordinary call failures.
    * Do not release the manager's transport lease on an unconfirmed abort. */
-  private discardDuplex({ duplex, reason }: { duplex: NaidanRpcDuplex; reason: string }): void {
+  private async discardDuplex({ duplex, reason }: { duplex: NaidanRpcDuplex; reason: string }): Promise<void> {
     try {
       duplex.abort({ reason });
     } catch (error) {
       this.retirementFailure ??= { error }; this.dispose();
+    }
+    try {
+      await retireUnadoptedStreams({ readable: duplex.readable, writable: duplex.writable, reason, onFailure: ({ error }) => this.recordRetirementFailure({ error }) });
+    } catch (error) {
+      this.retirementFailure ??= { error: error instanceof RpcRetirementError ? error.cause : error }; this.dispose();
     }
   }
   private lookup({ contract, method }: { contract: string; method: string }): PreparedMethod {
@@ -125,12 +159,34 @@ export class NaidanRpcPeer {
     exposure.allowed = next;
     for (const call of this.calls) call.revokeMethods({ contract: contract.name, removed });
   }
-  private adopt({ duplex, role, timeoutMs }: { duplex: NaidanRpcDuplex; role: 'caller' | 'callee'; timeoutMs: number | undefined }): RpcConversation {
+  private adopt({ duplex, role, timeoutMs, release, memory = this.byteBudget.owner() }: { memory?: RpcByteOwner; duplex: NaidanRpcDuplex; role: 'caller' | 'callee'; timeoutMs: number | undefined; release(): void }): RpcConversation {
     this.activityRevision++;
-    const call = new RpcConversation({ duplex, role, timeoutMs, resolveMethod: ({ contract, method }) => this.lookup({ contract, method }) });
+    const call = new RpcConversation({
+      memory,
+      duplex,
+      role,
+      timeoutMs,
+      onRetirementFailure: ({ error }) => this.recordRetirementFailure({ error }),
+      onProtocolFailure: ({ error }) => {
+        if (this.stop.signal.aborted || !this.calls.has(call)) return;
+        switch (error.diagnostic.kind) {
+        case 'truncated-header': return; // An interrupted stream is not connection incompatibility.
+        case 'wrong-protocol-magic': case 'invalid-protocol-version': case 'unsupported-protocol-version':
+          if (!this.failure) {
+            this.failure = { error }; this.protocolError = error;
+          }
+          this.dispose(); return;
+        case 'malformed-advertisement': return; // Only the authenticated transport adapter validates advertisements.
+        default: { const exhaustive: never = error.diagnostic; throw new Error(String(exhaustive)); }
+        }
+      },
+      resolveMethod: ({ contract, method }) => this.lookup({ contract, method }),
+    });
     this.calls.add(call);
     // Native/user work that ignores cancellation keeps its reservation until its promise settles.
-    void call.retired.promise.then(() => this.calls.delete(call), error => {
+    void call.retired.promise.then(() => {
+      release(); this.calls.delete(call);
+    }, error => {
       // Keep a failed adopted stream's cleanup in the peer's final outcome even
       // after its call leaves the active set. Do not reopen capacity on failure.
       this.retirementFailure ??= { error }; this.dispose(); this.calls.delete(call);
@@ -169,7 +225,9 @@ export class NaidanRpcPeer {
     const allotted = Math.min(timeoutMs ?? Infinity, this.limits.maxCallTimeoutMs ?? Infinity), until = performance.now() + allotted;
     const timer = Number.isFinite(allotted) ? setTimeout(() => terminate({ code: 'DEADLINE_EXCEEDED' }), allotted) : undefined;
     let reserved = false;
+    let release: (() => void) | undefined;
     let unadopted: NaidanRpcDuplex | undefined;
+    const memory = this.byteBudget.owner();
     // Install ownership before pack/openStream can invoke trusted callbacks.
     // A lower transport may finish opening after cancellation; retirement must
     // wait until that late duplex has been aborted, not merely count live calls.
@@ -180,33 +238,43 @@ export class NaidanRpcPeer {
       try {
         stop.signal.throwIfAborted();
         check({ condition: this.calls.size + this.opening < this.limits.maxCalls, code: 'RESOURCE_EXHAUSTED' });
+        release = this.callBudget.reserve();
+        check({ condition: release !== undefined, code: 'RESOURCE_EXHAUSTED' });
+        this.opening++; reserved = true;
         let next = 1;
         const packed = pack({
+          memory,
           plan: prepared.input,
           value: input,
           allocate: () => {
             const id = next; next += 2; return id;
           },
         });
-        this.opening++; reserved = true;
         const duplex = await this.transport.openStream({ signal: stop.signal });
         unadopted = duplex;
         if (stop.signal.aborted || performance.now() >= until) {
           stop.signal.throwIfAborted(); throw new NaidanRpcError({ code: 'DEADLINE_EXCEEDED' });
         }
+        conversation = this.adopt({ duplex, memory, role: 'caller', timeoutMs: Number.isFinite(until) ? Math.max(1, Math.ceil(until - performance.now())) : undefined, release: release! });
+        release = undefined;
         this.opening--; reserved = false;
-        conversation = this.adopt({ duplex, role: 'caller', timeoutMs: Number.isFinite(until) ? Math.max(1, Math.ceil(until - performance.now())) : undefined });
         unadopted = undefined;
         conversation.start({ contract, method, prepared, packed, on, timeoutMs: Number.isFinite(allotted) ? allotted : undefined });
         void conversation.result.promise.then(result.resolve, result.reject);
         await conversation.closed.promise; closed.resolve();
       } catch (error) {
         result.reject(error); closed.reject(error);
+        if (error instanceof RpcRetirementError) {
+          this.retirementFailure ??= { error: error.cause }; this.dispose();
+        }
       } finally {
         // A constructor/lock acquisition can fail after openStream succeeded.
         // Such a duplex is not in calls and must not escape this owner.
-        if (unadopted) this.discardDuplex({ duplex: unadopted, reason: 'RPC opening ended before adoption' });
+        if (unadopted) await this.discardDuplex({ duplex: unadopted, reason: 'RPC opening ended before adoption' });
         if (reserved) this.opening--;
+        if (!this.retirementFailure) {
+          release?.(); if (!conversation) memory.clear();
+        }
         clearTimeout(timer); this.stop.signal.removeEventListener('abort', parent); signal?.removeEventListener('abort', parent);
         this.pendingInvocations.delete(invocationRetired.promise); invocationRetired.resolve();
       }
@@ -219,6 +287,22 @@ export class NaidanRpcPeer {
         void reason; terminate({ code: 'CANCELLED' });
       },
     };
+  }
+  /** Fences old dispatch and joins transport ownership only. Calls remain in
+   * this peer's full retirement and shared call budget until native work ends. */
+  retireNetwork(): Promise<void> {
+    if (this.networkRetirement) return this.networkRetirement;
+    this.dispose();
+    this.networkRetirement = (async () => {
+      const results = await Promise.allSettled([this.closed.catch(() => {}), this.inputRetirement, ...this.pendingInvocations, ...[...this.calls].map(call => call.retireNetwork())]);
+      for (const result of results) switch (result.status) {
+      case 'fulfilled': break;
+      case 'rejected': throw result.reason;
+      default: { const exhaustive: never = result; throw new Error(String(exhaustive)); }
+      }
+      if (this.retirementFailure) throw this.retirementFailure.error;
+    })();
+    void this.networkRetirement.catch(() => {}); return this.networkRetirement;
   }
   /** Abort is a protocol state, not proof that native work has stopped. The
    * connection owner awaits this barrier before releasing shared ownership. */
@@ -242,9 +326,13 @@ export class NaidanRpcPeer {
   idleRevision(): number | undefined {
     return !this.stop.signal.aborted && this.calls.size === 0 && this.opening === 0 && this.pendingInvocations.size === 0 ? this.activityRevision : undefined;
   }
+  private recordRetirementFailure({ error }: { error: unknown }): void {
+    this.retirementFailure ??= { error }; this.dispose();
+  }
   /** Stops owned calls and the exclusive iterator, not the borrowed transport's entire session. */
   dispose(): void {
     if (this.stop.signal.aborted) return;
+    this.ending.resolve(Object.freeze({ error: this.failure ? this.failure.error : this.retirementFailure?.error, protocolError: this.protocolError }));
     this.allowedWhileSuspended.clear();
     this.stop.abort(); for (const call of this.calls) call.abort({ code: 'CANCELLED' }); this.methods.clear();
   }

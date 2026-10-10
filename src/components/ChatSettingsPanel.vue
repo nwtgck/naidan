@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import RpcConnectionSelect from '@/features/naidan-peer-rpc/components/RpcConnectionSelect.vue';
-import type { NaidanRpcConnectionId } from '@/01-models/ids';
+import RpcRegistrationSelect from '@/features/naidan-rpc-integration/components/RpcRegistrationSelect.vue';
+import type { NaidanRpcRegistrationId } from '@/01-models/ids';
 import { getEndpointBuildAvailability } from '@/logic/endpoint-build-availability';
 import { ensureStrings, lazyStrings } from '@/strings';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
@@ -909,7 +909,7 @@ function setLocalTitleEndpointType({
     });
     return;
   case 'naidan_rpc': {
-    const nextEndpoint: Endpoint = { type: endpointType, connectionId: undefined };
+    const nextEndpoint: Endpoint = { type: endpointType, registrationId: undefined };
     setLocalTitleGeneration({
       titleGeneration: {
         endpoint: nextEndpoint,
@@ -1460,8 +1460,8 @@ function resetLocalModelsWhenEndpointNamespaceChanges({
 }
 
 
-async function changeRpcConnection({ connectionId, title }: { connectionId: NaidanRpcConnectionId | undefined, title: boolean }): Promise<void> {
-  const nextEndpoint: Endpoint = { type: 'naidan_rpc', connectionId };
+async function changeRpcRegistration({ registrationId, title }: { registrationId: NaidanRpcRegistrationId | undefined, title: boolean }): Promise<void> {
+  const nextEndpoint: Endpoint = { type: 'naidan_rpc', registrationId };
   if (title) {
     setLocalTitleGeneration({ titleGeneration: { endpoint: nextEndpoint, model: explicitTitleModel({ modelId: undefined }) } });
   } else {
@@ -1485,7 +1485,7 @@ async function updateEndpointType({
     resetLocalModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: effectiveEndpoint.value });
     break;
   case 'naidan_rpc':
-    localSettings.value.endpoint = { type: endpointType, connectionId: undefined };
+    localSettings.value.endpoint = { type: endpointType, registrationId: undefined };
     clearBrowserProvidedLmModelOverrides();
     resetLocalModelsWhenEndpointNamespaceChanges({ previousEndpoint, nextEndpoint: effectiveEndpoint.value });
     break;
@@ -1770,8 +1770,8 @@ defineExpose({
               </select>
             </div>
 
-            <RpcConnectionSelect v-if="localSettings.endpoint?.type === 'naidan_rpc'" :model-value="localSettings.endpoint.connectionId"
-                                 @update:model-value="connectionId => changeRpcConnection({ connectionId, title: false })" />
+            <RpcRegistrationSelect v-if="localSettings.endpoint?.type === 'naidan_rpc'" :model-value="localSettings.endpoint.registrationId"
+                                   @update:model-value="registrationId => changeRpcRegistration({ registrationId, title: false })" />
             <PromptApiStatus v-if="effectiveEndpointType === 'browser_provided_lm'" show-ready />
 
             <div tw-class="space-y-2" v-if="effectiveEndpoint && isHttpEndpoint(effectiveEndpoint)">
@@ -1928,8 +1928,8 @@ defineExpose({
                     disabled
                   >{{ lazyStrings.SHARED__unsupported_experimental_endpoint() }}</option>
                 </select>
-                <RpcConnectionSelect v-if="localTitleEndpoint !== 'inherit' && localTitleEndpoint !== 'same_scope' && localTitleEndpoint.type === 'naidan_rpc'"
-                                     :model-value="localTitleEndpoint.connectionId" @update:model-value="connectionId => changeRpcConnection({ connectionId, title: true })" />
+                <RpcRegistrationSelect v-if="localTitleEndpoint !== 'inherit' && localTitleEndpoint !== 'same_scope' && localTitleEndpoint.type === 'naidan_rpc'"
+                                       :model-value="localTitleEndpoint.registrationId" @update:model-value="registrationId => changeRpcRegistration({ registrationId, title: true })" />
               </div>
 
               <div tw-class="space-y-2">

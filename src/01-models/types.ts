@@ -1,5 +1,5 @@
 import type { ImageInferenceLocationPreference, RemoteImageModelEditorPreference } from './image-generation-preferences';
-import type { NaidanRpcConnectionId } from '@/01-models/ids';
+import type { NaidanRpcRegistrationId } from '@/01-models/ids';
 /**
  * Domain Definitions (Single Source of Truth)
  *
@@ -85,7 +85,7 @@ export type UnsupportedExperimentalEndpoint = {
   persistedType: string | undefined,
 };
 
-export type NaidanRpcEndpoint = { type: 'naidan_rpc', connectionId: NaidanRpcConnectionId | undefined };
+export type NaidanRpcEndpoint = { type: 'naidan_rpc', registrationId: NaidanRpcRegistrationId | undefined };
 
 export type SupportedEndpoint = NaidanRpcEndpoint | HttpEndpoint | TransformersJsEndpoint | BrowserProvidedLmEndpoint | LlamaCppBrowserEndpoint;
 export type Endpoint = SupportedEndpoint | UnsupportedExperimentalEndpoint;

@@ -1,7 +1,7 @@
 import { exactObject } from '@/utils/exact-object';
 import {
   ExperimentalImageGenerationSessionSchemaDto, ExperimentalImageGenerationSessionIndexSchemaDto,
-  ExperimentalImageGenerationRunSchemaDto, ExperimentalImageGenerationRunIndexSchemaDto,
+  ExperimentalImageGenerationRunSchemaDto, ExperimentalImageGenerationRunIndexSchemaDto, unavailableRunRpcRecord,
   ExperimentalImageGenerationAssetSchemaDto, ExperimentalImageGenerationAssetIndexSchemaDto,
   ExperimentalImageGenerationAssetAnnotationsSchemaDto, ExperimentalImageGenerationAnnotationsIndexSchemaDto,
   type ExperimentalImageGenerationRunDto, type ExperimentalImageGenerationRunSummaryDto,
@@ -66,6 +66,7 @@ export async function imageGenerationSessionTable({ directory, create }: { direc
     summarize: ({ record }) => ({ ...record }),
     validateRecord() {},
     validateSummary() {},
+    unavailableRecord: undefined,
   });
 }
 
@@ -92,6 +93,11 @@ export async function imageGenerationRunTable({ directory, sessionId, create }: 
     recordId: ({ record }) => record.id,
     summaryId: ({ summary }) => summary.id,
     summarize: summarizeRun,
+    unavailableRecord({ raw }) {
+      const value = unavailableRunRpcRecord({ raw });
+      if (value !== undefined) assertSessionIdentity({ actual: value.sessionId, expected: sessionId });
+      return value;
+    },
     validateRecord: ({ record }) => assertSessionIdentity({ actual: record.sessionId, expected: sessionId }),
     validateSummary: ({ summary }) => assertSessionIdentity({ actual: summary.sessionId, expected: sessionId }),
   });
@@ -106,6 +112,7 @@ export async function imageGenerationAssetTable({ directory, sessionId, create }
     recordId: ({ record }) => record.id,
     summaryId: ({ summary }) => summary.id,
     summarize: summarizeAsset,
+    unavailableRecord: undefined,
     validateRecord: ({ record }) => assertSessionIdentity({ actual: record.sessionId, expected: sessionId }),
     validateSummary: ({ summary }) => assertSessionIdentity({ actual: summary.sessionId, expected: sessionId }),
   });
@@ -120,6 +127,7 @@ export async function imageGenerationAnnotationsTable({ directory, sessionId, cr
     recordId: ({ record }) => record.assetId,
     summaryId: ({ summary }) => summary.assetId,
     summarize: ({ record }) => ({ ...record }),
+    unavailableRecord: undefined,
     validateRecord: ({ record }) => assertSessionIdentity({ actual: record.sessionId, expected: sessionId }),
     validateSummary: ({ summary }) => assertSessionIdentity({ actual: summary.sessionId, expected: sessionId }),
   });

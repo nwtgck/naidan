@@ -1,1 +1,1 @@
-export const NaidanRpcTab__automatic_connection_help = (): string => "Naidan 시작 시 이 연결을 재개하고 예기치 않은 연결 끊김 후 다시 연결을 시도합니다. 수동으로 연결을 끊으면 이 페이지에서 자동 연결이 중지되며 새로고침 후 다시 적용됩니다.";
+export const NaidanRpcTab__automatic_connection_help = (): string => "이 설정은 Naidan을 시작할 때만 적용됩니다. 현재 페이지의 연결이나 재연결 시도에는 영향을 주지 않습니다. 이 페이지에서 연결 시도를 중지하려면 ‘연결 해제’를 선택하세요.";

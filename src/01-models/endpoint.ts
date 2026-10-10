@@ -46,7 +46,7 @@ export function getSupportedEndpointType({
 
 export function isConfiguredEndpoint({ endpoint }: { endpoint: Endpoint }): boolean {
   switch (endpoint.type) {
-  case 'naidan_rpc': return endpoint.connectionId !== undefined;
+  case 'naidan_rpc': return endpoint.registrationId !== undefined;
   case 'openai':
   case 'ollama':
     return endpoint.url !== '';
@@ -77,7 +77,7 @@ export function selectHttpEndpointSeed({
 
 export function cloneEndpoint({ endpoint }: { endpoint: Endpoint }): Endpoint {
   switch (endpoint.type) {
-  case 'naidan_rpc': return { type: 'naidan_rpc', connectionId: endpoint.connectionId };
+  case 'naidan_rpc': return { type: 'naidan_rpc', registrationId: endpoint.registrationId };
   case 'openai':
   case 'ollama':
     return {
@@ -142,8 +142,8 @@ export function areEndpointModelNamespacesEqual({
 }): boolean {
   if (left.type === 'naidan_rpc' || right.type === 'naidan_rpc') {
     if (left.type !== 'naidan_rpc' || right.type !== 'naidan_rpc') return false;
-    const { type: _leftType, connectionId: leftId, ...leftRest } = left;
-    const { type: _rightType, connectionId: rightId, ...rightRest } = right;
+    const { type: _leftType, registrationId: leftId, ...leftRest } = left;
+    const { type: _rightType, registrationId: rightId, ...rightRest } = right;
     leftRest satisfies Record<PropertyKey, never>; rightRest satisfies Record<PropertyKey, never>;
     return leftId === rightId;
   }
@@ -275,8 +275,8 @@ export function areEndpointsEqual({
 }): boolean {
   if (left.type === 'naidan_rpc' || right.type === 'naidan_rpc') {
     if (left.type !== 'naidan_rpc' || right.type !== 'naidan_rpc') return false;
-    const { type: _leftType, connectionId: leftId, ...leftRest } = left;
-    const { type: _rightType, connectionId: rightId, ...rightRest } = right;
+    const { type: _leftType, registrationId: leftId, ...leftRest } = left;
+    const { type: _rightType, registrationId: rightId, ...rightRest } = right;
     leftRest satisfies Record<PropertyKey, never>; rightRest satisfies Record<PropertyKey, never>;
     return leftId === rightId;
   }

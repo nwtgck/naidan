@@ -286,3 +286,24 @@ it('does not republish an input deleted through the workspace deletion boundary'
   await expect(saveImageGenerationRecord({ storageType: 'opfs', record: original, writeImages })).rejects.toThrow('permanently deleted');
   expect(writeImages).not.toHaveBeenCalled();
 });
+
+it('mutates readable local history while retaining an unavailable RPC sibling and shared bytes', async () => {
+  const local = record({ id: 'local-aB', prompt: 'local', createdAt: 1 });
+  await saveImageGenerationRecord({ storageType: 'opfs', record: local, writeImages: async () => {} });
+  const directory = await shard();
+  const raw = JSON.parse((await directory.getFileHandle('local-aB.json')).text);
+  raw.id = 'remote-aB'; raw.request.runtime = { profile: 'naidan-rpc', registrationId: 'legacy-registration', peerId: 'B'.repeat(43), label: 'Unavailable peer' };
+  const remote = await directory.getFileHandle('remote-aB.json', { create: true }); remote.text = JSON.stringify(raw);
+  const preserved = remote.text;
+  const storage = await root.getDirectoryHandle('naidan-storage');
+  const binaries = await storage.getDirectoryHandle('binary-objects', { create: true });
+  const binaryShard = await binaries.getDirectoryHandle('al', { create: true });
+  const shared = await binaryShard.getFileHandle('image-final.bin', { create: true }); shared.text = 'shared immutable bytes';
+  await saveImageGenerationRecord({ storageType: 'opfs', record: record({ id: 'new-aB', prompt: 'another local', createdAt: 3 }), writeImages: async () => {} });
+  await deleteImageGenerationRecord({ storageType: 'opfs', id: local.id });
+  expect(remote.text).toBe(preserved); expect(shared.text).toBe('shared immutable bytes');
+  expect(directory.children.has('remote-aB.json')).toBe(true);
+  const page = await queryImageGenerationHistory({ storageType: 'opfs', query });
+  expect(page.items.map(item => item.id)).toEqual([toImageGenerationId({ raw: 'new-aB' })]);
+  expect(page.warningCount).toBeGreaterThan(0);
+});

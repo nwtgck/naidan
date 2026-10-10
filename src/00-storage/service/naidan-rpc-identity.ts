@@ -1,6 +1,13 @@
 import { ExperimentalNaidanRpcIdentitySchemaDto } from '@/00-storage/00-dto/experimental-naidan-rpc.dto';
 import type { NaidanRpcIdentity } from '@/01-models/naidan-rpc';
 
+/** Identity policy belongs to the owner of the key, not the DTO shape. */
+function validateIdentity({ value }: { value: unknown }): NaidanRpcIdentity {
+  const identity = ExperimentalNaidanRpcIdentitySchemaDto.parse(value), key = identity.privateKey;
+  if (key.type !== 'private' || key.extractable || key.algorithm.name !== 'X25519' || key.usages.length !== 1 || key.usages[0] !== 'deriveBits'
+    || !/^[A-Za-z0-9_-]{43}$/.test(identity.publicKey)) throw new Error('Invalid RPC identity');
+  return identity;
+}
 const databaseName = 'naidan-experimental-rpc-identity';
 const identityStore = 'identity';
 function openDatabase(): Promise<IDBDatabase> {
@@ -68,7 +75,7 @@ export async function readRpcIdentity(): Promise<NaidanRpcIdentity | undefined> 
       const request = transaction.objectStore(identityStore).get('self');
       request.onsuccess = () => {
         try {
-          result({ value: request.result === undefined ? undefined : ExperimentalNaidanRpcIdentitySchemaDto.parse(request.result) });
+          result({ value: request.result === undefined ? undefined : validateIdentity({ value: request.result }) });
         } catch (error) {
           fail({ error });
         }
@@ -79,7 +86,7 @@ export async function readRpcIdentity(): Promise<NaidanRpcIdentity | undefined> 
 /** Insert once. A registry save failure leaves this committed key available for
  * retry; no registry, labels, permissions or session state belong in IndexedDB. */
 export async function rememberRpcIdentity({ identity }: { identity: NaidanRpcIdentity }): Promise<void> {
-  const key = ExperimentalNaidanRpcIdentitySchemaDto.parse(identity);
+  const key = validateIdentity({ value: identity });
   return transact({
     mode: 'readwrite',
     run: ({ transaction, result, fail }) => {
@@ -87,7 +94,7 @@ export async function rememberRpcIdentity({ identity }: { identity: NaidanRpcIde
       request.onsuccess = () => {
         try {
           if (request.result === undefined) store.add(key, 'self');
-          else if (ExperimentalNaidanRpcIdentitySchemaDto.parse(request.result).publicKey !== key.publicKey) throw new Error('The local RPC identity changed');
+          else if (validateIdentity({ value: request.result }).publicKey !== key.publicKey) throw new Error('The local RPC identity changed');
           result({ value: undefined });
         } catch (error) {
           fail({ error });

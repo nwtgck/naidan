@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import NaidanRpcFeatureRow from '@/features/naidan-peer-rpc/components/NaidanRpcFeatureRow.vue';
+import NaidanRpcFeatureRow from '@/features/naidan-rpc-integration/components/NaidanRpcFeatureRow.vue';
 import { computed } from 'vue';
 import { AlertTriangleIcon, FlaskConicalIcon, FolderIcon, ListRestartIcon, TerminalIcon } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';

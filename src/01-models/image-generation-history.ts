@@ -1,4 +1,4 @@
-import type { BinaryObjectId, HostModelDirectoryId, ImageGenerationId, NaidanRpcConnectionId, NaidanRpcPeerId } from './ids';
+import type { BinaryObjectId, HostModelDirectoryId, ImageGenerationId, NaidanRpcRegistrationId, NaidanRpcPeerPublicKey } from './ids';
 
 /** Shared by the image workspace and its public persistence service. */
 export type ImageGenerationModelFile = {
@@ -24,8 +24,8 @@ export type RemoteImageModelSelection = {
 };
 export type ImageGenerationRemoteRuntime = {
   profile: 'naidan-rpc',
-  connectionId: NaidanRpcConnectionId,
-  peerId: NaidanRpcPeerId,
+  registrationId: NaidanRpcRegistrationId,
+  peerPublicKey: NaidanRpcPeerPublicKey,
   label: string,
   modelSelection: RemoteImageModelSelection | undefined,
 };

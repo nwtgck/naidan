@@ -16,6 +16,7 @@ async function rejectedHandshake({ failure }: { failure: 'pin' | 'binding' | 'fi
   const toA = mailbox(), toB = mailbox(), stop = new AbortController();
   let sendsFromInitiator = 0, responderFlights = 0;
   const left = establishNaidanPipingKeys({
+    responseTimeoutMs: 75_000,
     role: 'initiator',
     identity: identities.a,
     expectedPeer: failure === 'pin' ? identities.other.publicKey : identities.b.publicKey,
@@ -29,6 +30,7 @@ async function rejectedHandshake({ failure }: { failure: 'pin' | 'binding' | 'fi
     },
   });
   const right = establishNaidanPipingKeys({
+    responseTimeoutMs: 75_000,
     role: 'responder',
     identity: identities.b,
     expectedPeer: identities.a.publicKey,
@@ -81,6 +83,7 @@ it('pre-cancelled key establishment sends no handshake message', async () => {
   const stop = new AbortController(), reason = new Error('Do not start'); stop.abort(reason);
   const send = vi.fn(), receive = vi.fn();
   await expect(establishNaidanPipingKeys({
+    responseTimeoutMs: 75_000,
     role: 'initiator',
     identity: identities.a,
     expectedPeer: identities.b.publicKey,
@@ -95,6 +98,7 @@ it('missing pin or binding lengths fail without network or handshake-channel use
   const identity = await createNaidanPipingIdentity(), send = vi.fn(), receive = vi.fn();
   for (const length of [0, 31, 33]) {
     await expect(establishNaidanPipingKeys({
+      responseTimeoutMs: 75_000,
       role: 'initiator',
       identity,
       expectedPeer: new Uint8Array(length),
@@ -103,6 +107,7 @@ it('missing pin or binding lengths fail without network or handshake-channel use
       signal: new AbortController().signal,
     })).rejects.toThrow();
     await expect(establishNaidanPipingKeys({
+      responseTimeoutMs: 75_000,
       role: 'initiator',
       identity,
       expectedPeer: identity.publicKey,

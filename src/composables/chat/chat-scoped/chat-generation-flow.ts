@@ -221,7 +221,7 @@ export async function sendMessageToTargetChat({
           type: endpoint.type,
         };
       case 'naidan_rpc':
-        return { hasReachableEndpoint: endpoint.connectionId !== undefined, url: undefined, type: endpoint.type };
+        return { hasReachableEndpoint: endpoint.registrationId !== undefined, url: undefined, type: endpoint.type };
       case 'llama_cpp_browser':
       case 'transformers_js':
       case 'browser_provided_lm':

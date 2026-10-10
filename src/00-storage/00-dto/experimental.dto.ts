@@ -73,7 +73,7 @@ export type ExperimentalToolConfigsDto = z.infer<typeof ExperimentalToolConfigsS
 export const ExperimentalExperimentalTypeEndpointSchemaDto =
   resolveMissingAsUndefined(z.object({
     endpoint: missingAsUndefined(z.union([
-      resolveMissingAsUndefined(z.object({ type: z.literal('naidan_rpc'), connectionId: missingAsUndefined(z.string().regex(/^[A-Za-z0-9_-]{8,128}$/)) })),
+      resolveMissingAsUndefined(z.object({ type: z.literal('naidan_rpc'), registrationId: missingAsUndefined(z.string()) })),
       resolveMissingAsUndefined(z.object({
         type: z.literal('browser_provided_lm'),
       })),
@@ -146,8 +146,6 @@ export const ExperimentalRemoteImageModelFileSchemaDto = z.object({
   expected: z.object({ size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), lastModified: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) }).optional(),
 });
 
-const connectionIdSchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
-const peerIdSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
 export const ExperimentalRemoteImageModelEditorSchemaDto = resolveMissingAsUndefined(z.object({
   primary: missingAsUndefined(resolveMissingAsUndefined(z.object({
@@ -167,20 +165,21 @@ export const ExperimentalRemoteImageModelEditorSchemaDto = resolveMissingAsUndef
 }));
 export type ExperimentalRemoteImageModelEditorDto = z.infer<typeof ExperimentalRemoteImageModelEditorSchemaDto>;
 
-export const ExperimentalImageInferenceLocationPreferenceSchemaDto = z.discriminatedUnion('kind', [
+export const ExperimentalImageInferenceLocationPreferenceSchemaDto = z.union([
   z.object({ kind: z.literal('local') }),
+  z.object({ kind: z.literal('unavailable') }),
   resolveMissingAsUndefined(z.object({
     kind: z.literal('naidan_rpc'),
-    connection: missingAsUndefined(z.object({ connectionId: connectionIdSchema, peerId: peerIdSchema })),
+    registration: missingAsUndefined(z.object({ registrationId: z.string(), peerPublicKey: z.string() })),
   })),
 ]);
 export type ExperimentalImageInferenceLocationPreferenceDto = z.infer<typeof ExperimentalImageInferenceLocationPreferenceSchemaDto>;
 
 export const ExperimentalRemoteImageModelEditorPreferencesSchemaDto = z.array(z.object({
-  connectionId: connectionIdSchema,
-  peerId: peerIdSchema,
+  registrationId: z.string(),
+  peerPublicKey: z.string(),
   editor: ExperimentalRemoteImageModelEditorSchemaDto,
-})).max(32).refine(items => new Set(items.map(item => `${item.connectionId}:${item.peerId}`)).size === items.length);
+}));
 export type ExperimentalRemoteImageModelEditorPreferenceDto = z.infer<typeof ExperimentalRemoteImageModelEditorPreferencesSchemaDto>[number];
 
 export const ExperimentalImageGenerationPathSchemaDto = z.string().min(1).refine(value =>
@@ -328,24 +327,23 @@ export const optionalExperimentalFieldSchemaDto = <TSchema extends z.ZodObject>(
     const unreadable: Record<string, unknown> = {};
 
     for (const [key, rawValue] of Object.entries(input)) {
-      const fieldSchema = schema.shape[key];
+      const fieldSchema = Object.hasOwn(schema.shape, key) ? schema.shape[key] : undefined;
 
       if (fieldSchema === undefined) {
-        unreadable[key] = rawValue;
+        Object.defineProperty(unreadable, key, { value: rawValue, enumerable: true, configurable: true, writable: true });
         continue;
       }
 
       const result = fieldSchema.safeParse(rawValue);
 
       if (result.success) {
-        valueInput[key] = result.data;
+        Object.defineProperty(valueInput, key, { value: result.data, enumerable: true, configurable: true, writable: true });
       } else {
-        unreadable[key] = rawValue;
+        Object.defineProperty(unreadable, key, { value: rawValue, enumerable: true, configurable: true, writable: true });
       }
     }
 
     const value = schema.parse(valueInput) as ExperimentalOutput<TSchema>;
-
     return Object.keys(unreadable).length === 0
       ? value
       : attachUnreadable({ value, unreadable });

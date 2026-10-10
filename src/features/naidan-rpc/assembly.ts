@@ -1,3 +1,4 @@
+import type { RpcByteOwner } from './byte-budget';
 import { check } from '@/features/naidan-rpc/primitives';
 
 /** Allocate in proportion to received bytes, never an untrusted declaration.
@@ -6,8 +7,9 @@ export class ByteAssembly {
   private bytes: Uint8Array<ArrayBuffer> = new Uint8Array();
   private used = 0;
   private readonly limit: number;
-  constructor({ limit }: { limit: number }) {
-    this.limit = limit;
+  private readonly memory: RpcByteOwner | undefined;
+  constructor({ limit, memory }: { limit: number; memory?: RpcByteOwner }) {
+    this.limit = limit; this.memory = memory?.fork();
   }
   get byteLength(): number {
     return this.used;
@@ -16,11 +18,15 @@ export class ByteAssembly {
     const required = this.used + bytes.length;
     check({ condition: required <= this.limit, code: 'RESOURCE_EXHAUSTED' });
     if (required > this.bytes.length) {
-      const grown = new Uint8Array(Math.min(this.limit, Math.max(required, this.bytes.length * 2, 1024)));
+      const size = Math.min(this.limit, Math.max(required, this.bytes.length * 2, 1024));
+      const grown = this.memory?.allocate({ bytes: size }) ?? new Uint8Array(size);
       grown.set(this.bytes.subarray(0, this.used));
-      this.bytes = grown;
+      this.memory?.release({ bytes: this.bytes }); this.bytes = grown;
     }
     this.bytes.set(bytes, this.used); this.used = required;
+  }
+  dispose(): void {
+    this.memory?.clear(); this.bytes = new Uint8Array(); this.used = 0;
   }
   finish(): Uint8Array<ArrayBuffer> {
     return this.bytes.subarray(0, this.used);

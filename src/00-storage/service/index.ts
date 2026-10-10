@@ -1,4 +1,5 @@
-import { ExperimentalImageGenerationSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
+import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-storage/mapper/image-generation';
+import { ExperimentalImageGenerationSchemaDto, ExperimentalImageGenerationDraftSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
 import type { ImageGenerationSessionId } from '@/01-models/ids';
 import type { ImageGenerationExportSnapshot } from './image-generation-export';
@@ -25,7 +26,7 @@ import { StorageSynchronizer, type ChangeListener, type StorageChangeEvent } fro
 import { idToRaw, toChatId, toBinaryObjectId } from '@/01-models/ids';
 import type { ImageGenerationId } from '@/01-models/ids';
 import type { ImageGenerationRecord } from '@/01-models/image-generation-history';
-import type { NaidanRpcConnection } from '@/01-models/naidan-rpc';
+import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
 import { readNaidanRpcRegistry, writeNaidanRpcRegistry, sameNaidanRpcRegistry } from './naidan-rpc-registry';
 import type { NaidanRpcRegistryAccess, NaidanRpcRegistrySnapshot } from './naidan-rpc-registry';
 
@@ -431,12 +432,12 @@ export class StorageService {
   }
   async updateNaidanRpcRegistry({ access, updater }: {
     access: NaidanRpcRegistryAccess,
-    updater({ connections }: { connections: readonly NaidanRpcConnection[] }): Promise<readonly NaidanRpcConnection[]>,
+    updater({ registrations }: { registrations: readonly NaidanRpcRegistration[] }): Promise<readonly NaidanRpcRegistration[]>,
   }): Promise<NaidanRpcRegistryAccess> {
     const persistence = this.rpcRegistryPersistence();
     switch (persistence) {
     case 'durable':
-      if (typeof navigator === 'undefined' || !navigator.locks?.request) throw new Error('Saving RPC connections requires Web Locks');
+      if (typeof navigator === 'undefined' || !navigator.locks?.request) throw new Error('Saving RPC registrations requires Web Locks');
       break;
     case 'session': break;
     default: { const exhaustive: never = persistence; throw new Error(String(exhaustive)); }
@@ -451,8 +452,8 @@ export class StorageService {
           persistence: this.rpcRegistryPersistence(),
         });
         if (!sameNaidanRpcRegistry({ left: access, right: current.access })) throw new Error('The RPC storage registry changed. Reload before saving.');
-        const connections = await updater({ connections: current.connections });
-        return writeNaidanRpcRegistry({ provider, current, connections });
+        const registrations = await updater({ registrations: current.registrations });
+        return writeNaidanRpcRegistry({ provider, current, registrations });
       },
     });
     this.notify({ event: { type: 'naidan_rpc_registry', timestamp: Date.now() } });
@@ -666,7 +667,18 @@ export class StorageService {
   }): Promise<void> {
     if (this.getCurrentType() !== 'opfs' || store.storageType !== 'opfs') throw new Error('Image Generation requires the original OPFS storage provider.');
     const provider = this.getProvider();
-    const accepted = structuredClone(publication);
+    const accepted = (() => {
+      switch (publication.type) {
+      case 'run': case 'asset': return structuredClone(publication);
+      case 'draft': return {
+        ...publication,
+        draft: imageGenerationDraftToDomain({
+          dto: ExperimentalImageGenerationDraftSchemaDto.parse(imageGenerationDraftToDto({ draft: publication.draft })),
+        }),
+      };
+      default: { const exhaustive: never = publication; throw new Error(String(exhaustive)); }
+      }
+    })();
     const images = files.map(file => ({ ...file }));
     const service = await import('./image-generation');
     const { publishImageGenerationBinaries } = await import('./image-generation-binaries');

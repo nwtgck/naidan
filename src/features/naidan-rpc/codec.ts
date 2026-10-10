@@ -1,4 +1,5 @@
-import { check, FRAME_BYTES, ownBytes, validKey, NaidanRpcPublicError } from '@/features/naidan-rpc/primitives';
+import type { RpcByteOwner } from './byte-budget';
+import { check, FRAME_BYTES, validKey, NaidanRpcPublicError } from '@/features/naidan-rpc/primitives';
 
 export type ReferenceMode = 'bytes' | 'items' | 'callback';
 /** A protocol capability is not a user object with a magic property. */
@@ -15,7 +16,7 @@ const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 function enforceCodecLimit({ constraint, limit, observed }: { constraint: string; limit: number; observed: number }): void {
   if (observed > limit) throw new NaidanRpcPublicError({ code: 'RESOURCE_EXHAUSTED', details: { scope: 'rpc-codec', constraint, limit, observed } });
 }
-function utf8({ text }: { text: string }): Uint8Array<ArrayBuffer> {
+function utf8({ text, memory }: { text: string; memory?: RpcByteOwner }): Uint8Array<ArrayBuffer> {
   // TextEncoder would silently replace unmatched UTF-16 surrogates.
   for (let at = 0; at < text.length; at++) {
     const value = text.charCodeAt(at);
@@ -24,20 +25,24 @@ function utf8({ text }: { text: string }): Uint8Array<ArrayBuffer> {
       check({ condition: next >= 0xdc00 && next <= 0xdfff, code: 'INVALID_ARGUMENT' });
     } else check({ condition: value < 0xdc00 || value > 0xdfff, code: 'INVALID_ARGUMENT' });
   }
-  return encoder.encode(text);
+  if (!memory) return encoder.encode(text);
+  const bytes = memory.allocate({ bytes: text.length * 3 });
+  const { written } = encoder.encodeInto(text, bytes);
+  return bytes.subarray(0, written);
 }
 /** A closed RFC 8949 subset: definite lengths, string keys, finite numbers and two application-local tags. */
-export function encode({ value, limit }: { value: unknown; limit: number }): Uint8Array<ArrayBuffer> {
+export function encode({ value, limit, memory }: { value: unknown; limit: number; memory?: RpcByteOwner }): Uint8Array<ArrayBuffer> {
   check({ condition: Number.isInteger(limit) && limit >= 1 && limit <= FRAME_BYTES, code: 'INVALID_ARGUMENT' });
-  let buffer = new Uint8Array(Math.min(limit, 1024)), view = new DataView(buffer.buffer);
+  let buffer = memory?.allocate({ bytes: Math.min(limit, 1024) }) ?? new Uint8Array(Math.min(limit, 1024)), view = new DataView(buffer.buffer);
   let at = 0, nodes = 0;
   const ancestors = new Set<object>();
   const reserve = ({ count }: { count: number }) => {
     const required = at + count;
     enforceCodecLimit({ constraint: 'encoded-bytes', limit, observed: required });
     if (required > buffer.length) {
-      const expanded = new Uint8Array(Math.min(limit, Math.max(required, buffer.length * 2)));
-      expanded.set(buffer.subarray(0, at)); buffer = expanded; view = new DataView(buffer.buffer);
+      const size = Math.min(limit, Math.max(required, buffer.length * 2));
+      const expanded = memory?.allocate({ bytes: size }) ?? new Uint8Array(size);
+      expanded.set(buffer.subarray(0, at)); memory?.release({ bytes: buffer }); buffer = expanded; view = new DataView(buffer.buffer);
     }
   };
   const byte = ({ value }: { value: number }) => {
@@ -74,7 +79,13 @@ export function encode({ value, limit }: { value: unknown; limit: number }): Uin
         byte({ value: 0xfb }); reserve({ count: 8 }); view.setFloat64(at, value, false); at += 8;
       }
       return;
-    case 'string': { enforceCodecLimit({ constraint: 'string-code-units', limit, observed: value.length }); const bytes = utf8({ text: value }); head({ major: 3, value: bytes.length }); raw({ bytes }); return; }
+    case 'string': { enforceCodecLimit({ constraint: 'string-code-units', limit, observed: value.length }); const bytes = utf8({ text: value, memory });
+      try {
+        head({ major: 3, value: bytes.length }); raw({ bytes });
+      } finally {
+        memory?.release({ bytes });
+      }
+      return; }
     case 'object': break;
     default: throw new Error('Unsupported RPC value');
     }
@@ -82,7 +93,8 @@ export function encode({ value, limit }: { value: unknown; limit: number }): Uin
     if (value === null) throw new Error('Null is not a missing-value marker');
     if (value instanceof Uint8Array) {
       enforceCodecLimit({ constraint: 'byte-array-bytes', limit, observed: value.byteLength });
-      const bytes = ownBytes({ bytes: value }); head({ major: 2, value: bytes.length }); raw({ bytes }); return;
+      check({ condition: value.buffer instanceof ArrayBuffer, code: 'INVALID_ARGUMENT' });
+      head({ major: 2, value: value.length }); raw({ bytes: value }); return;
     }
     if (value instanceof Reference) {
       check({ condition: Number.isInteger(value.id) && value.id > 0 && value.id <= 65535, code: 'INVALID_ARGUMENT' });
@@ -119,11 +131,19 @@ export function encode({ value, limit }: { value: unknown; limit: number }): Uin
       ancestors.delete(value);
     }
   };
-  visit({ value, depth: 0 }); return buffer.slice(0, at);
+  try {
+    visit({ value, depth: 0 });
+    const output = memory?.allocate({ bytes: at }) ?? new Uint8Array(at);
+    output.set(buffer.subarray(0, at)); return output;
+  } finally {
+    memory?.release({ bytes: buffer });
+  }
 }
-export function decode({ bytes }: { bytes: Uint8Array }): WireValue {
+export function decode({ bytes, memory }: { bytes: Uint8Array; memory?: RpcByteOwner }): WireValue {
   check({ condition: bytes.length <= FRAME_BYTES, code: 'RESOURCE_EXHAUSTED' });
-  const input = ownBytes({ bytes }), view = new DataView(input.buffer);
+  check({ condition: bytes.buffer instanceof ArrayBuffer, code: 'INVALID_ARGUMENT' });
+  const input = memory?.allocate({ bytes: bytes.length }) ?? new Uint8Array(bytes.length);
+  input.set(bytes); const view = new DataView(input.buffer);
   let at = 0, nodes = 0;
   const take = ({ count }: { count: number }) => {
     check({ condition: count >= 0 && at + count <= input.length, code: 'PROTOCOL_ERROR' });
@@ -156,8 +176,12 @@ export function decode({ bytes }: { bytes: Uint8Array }): WireValue {
     switch (major) {
     case 0: return size;
     case 1: { const value = -1 - size; check({ condition: Number.isSafeInteger(value), code: 'PROTOCOL_ERROR' }); return value; }
-    case 2: return input.slice(take({ count: size }), at);
-    case 3: { const begin = take({ count: size }); return decoder.decode(input.subarray(begin, at)); }
+    case 2: {
+      const begin = take({ count: size });
+      const output = memory?.allocate({ bytes: size }) ?? new Uint8Array(size);
+      output.set(input.subarray(begin, at)); return output;
+    }
+    case 3: { const begin = take({ count: size }); memory?.charge({ bytes: size * 2 }); return decoder.decode(input.subarray(begin, at)); }
     case 4: {
       check({ condition: size <= 4096 && size <= input.length - at, code: 'PROTOCOL_ERROR' });
       return Array.from({ length: size }, () => visit({ depth: depth + 1 }));
@@ -187,7 +211,11 @@ export function decode({ bytes }: { bytes: Uint8Array }): WireValue {
     default: throw new Error('Invalid CBOR major');
     }
   };
-  const value = visit({ depth: 0 }); check({ condition: at === input.length, code: 'PROTOCOL_ERROR' }); return value;
+  try {
+    const value = visit({ depth: 0 }); check({ condition: at === input.length, code: 'PROTOCOL_ERROR' }); return value;
+  } finally {
+    memory?.release({ bytes: input });
+  }
 }
 
 function streamMode({ mode }: { mode: 'bytes' | 'items' }): number {

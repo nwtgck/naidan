@@ -1,5 +1,5 @@
 import { imageInferenceLocationToDomain, imageInferenceLocationToDto, remoteImageModelEditorPreferenceToDomain, remoteImageModelEditorPreferenceToDto } from './image-generation-editor';
-import { toNaidanRpcConnectionId } from '@/01-models/ids';
+import { toNaidanRpcRegistrationId } from '@/01-models/ids';
 import { browserImageModelSelectionToDomain, browserImageModelSelectionToDto } from './browser-image-model-selection';
 import { llamaCppBrowserSettingsToDomain, llamaCppBrowserSettingsToDto } from './llama-cpp-browser-settings';
 /**
@@ -871,11 +871,12 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
     if (endpoint !== undefined) {
       switch (endpoint.type) {
       case 'naidan_rpc': {
-        const { type, connectionId, ...rest } = endpoint;
+        const { type, registrationId, ...rest } = endpoint;
         rest satisfies Record<PropertyKey, never>;
+        if (registrationId !== undefined && !/^[A-Za-z0-9_-]{8,128}$/.test(registrationId)) return { type: 'unsupported_experimental_endpoint', persistedType: type };
         return exactObject<Extract<Endpoint, { type: 'naidan_rpc' }>>()({
           type,
-          connectionId: connectionId === undefined ? undefined : toNaidanRpcConnectionId({ raw: connectionId }),
+          registrationId: registrationId === undefined ? undefined : toNaidanRpcRegistrationId({ raw: registrationId }),
         });
       }
       case 'browser_provided_lm': {
@@ -913,11 +914,11 @@ export const endpointToDomain = ({ dto }: { dto: EndpointDto }): Endpoint => {
 export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto => {
   switch (endpoint.type) {
   case 'naidan_rpc': {
-    const { type, connectionId, ...rest } = endpoint;
+    const { type, registrationId, ...rest } = endpoint;
     rest satisfies Record<PropertyKey, never>;
     const payload = exactObject<Extract<NonNullable<ExperimentalEndpointDto['endpoint']>, { type: 'naidan_rpc' }>>()({
       type,
-      connectionId: connectionId === undefined ? undefined : idToRaw({ id: connectionId }),
+      registrationId: registrationId === undefined ? undefined : idToRaw({ id: registrationId }),
     });
     return exactObject<Extract<EndpointDto, { type: 'experimental_type' }>>()({
       type: 'experimental_type',
@@ -2161,7 +2162,9 @@ const browserImageGenerationToDomain = ({ dto }: { dto: BrowserImageGenerationDt
     modelSelection: modelSelection && browserImageModelSelectionToDomain({ dto: modelSelection }),
     preview: mappedPreview,
     inferenceLocation: inferenceLocation && imageInferenceLocationToDomain({ dto: inferenceLocation }),
-    remoteModelEditors: remoteModelEditors?.map(dto => remoteImageModelEditorPreferenceToDomain({ dto })),
+    remoteModelEditors: remoteModelEditors?.flatMap(dto => {
+      const value = remoteImageModelEditorPreferenceToDomain({ dto }); return value === undefined ? [] : [value];
+    }),
     keepPreviews,
     maxPreviews,
     maxResults,
@@ -2297,7 +2300,11 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       sidebarSendMessageReorder: sidebarSendMessageReorder ?? 'disabled',
       globalSearch: globalSearchDomain,
       llamaCppBrowser: llamaCppBrowserSettingsToDomain({ dto: llamaCppBrowser }),
-      browserImageGeneration: browserImageGenerationToDomain({ dto: browserImageGeneration }),
+      // A structurally unreadable saved image block is not an absent location.
+      // Preserve only the non-executable state, never its unknown raw fields.
+      browserImageGeneration: browserImageGeneration === undefined && typeof unreadable?.browserImageGeneration === 'object' && unreadable.browserImageGeneration !== null && Object.hasOwn(unreadable.browserImageGeneration, 'inferenceLocation')
+        ? { inferenceLocation: { kind: 'unavailable' } }
+        : browserImageGenerationToDomain({ dto: browserImageGeneration }),
       unreadable,
       hostModelDirectories: hostModelDirectories?.map(({ id, name, ...unhandledDirectory }) => {
         unhandledDirectory satisfies Record<PropertyKey, never>;

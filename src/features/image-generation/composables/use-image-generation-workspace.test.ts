@@ -36,7 +36,7 @@ import ImageGenerationCurationActions from '@/features/image-generation/componen
 import { createImageGenerationStorageHarness, generationRunFixture } from '@/00-storage/service/image-generation/test-support';
 import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
 import { publishImageGenerationBinaries } from '@/00-storage/service/image-generation-binaries';
-import { idToRaw, toChatId, toImageGenerationId, toImageGenerationSessionId, toNaidanRpcConnectionId, toNaidanRpcPeerId, toBinaryObjectId } from '@/01-models/ids';
+import { idToRaw, toChatId, toImageGenerationId, toImageGenerationSessionId, toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey, toBinaryObjectId } from '@/01-models/ids';
 import ImageGenerationTranslationButton from '@/features/image-generation/components/ImageGenerationTranslationButton.vue';
 import ImageGenerationTranslationSettings from '@/features/image-generation/components/ImageGenerationTranslationSettings.vue';
 import ModelSelector from '@/components/ModelSelector.vue';
@@ -48,7 +48,7 @@ vi.mock('@/features/lm/providerFactory', () => ({ loadLmProvider: translationMoc
 import { useImageInferenceLocation } from './use-image-inference-location';
 import { copyRemoteImageModelEditor } from '@/features/image-generation/remote-image-model-editor';
 const rpcManager = vi.hoisted(() => ({ get: vi.fn() }));
-vi.mock('@/features/naidan-peer-rpc/runtime/feature', () => ({ getRpcManager: rpcManager.get, configureRpcFeature: async () => {}, subscribeRpcState: () => () => {} }));
+vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({ getRpcManager: rpcManager.get, configureRpcFeature: async () => {}, subscribeRpcState: () => () => {} }));
 import { planImageGenerationSeeds } from '@/01-models/image-generation';
 import type { Chat, ChatSummary, StorageType } from '@/01-models/types';
 import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view';
@@ -257,21 +257,21 @@ describe('Image Generation composition and lifetime', () => {
     location.setKind({ value: 'naidan_rpc' }); h.generation.parameters.value.prompt = 'Waiting for a peer';
     const a = (await h.view.newSession({ preserveDraft: true }))!; await h.view.flushDraft();
     const b = (await h.view.newSession({ preserveDraft: false }))!;
-    const connection = { connectionId: toNaidanRpcConnectionId({ raw: 'session-peer' }), peerId: toNaidanRpcPeerId({ raw: 'B'.repeat(43) }) };
+    const registration = { registrationId: toNaidanRpcRegistrationId({ raw: 'session-peer' }), peerPublicKey: toNaidanRpcPeerPublicKey({ raw: 'B'.repeat(43) }) };
     const file = { location: { kind: 'opfs' as const, path: 'models/session.gguf' } };
-    location.restoreLocation({ location: { kind: 'naidan_rpc', connection }, modelEditor: { primary: { slot: 'model', file, family: undefined }, components: [], loras: [{ file, enabled: 'disabled', strength: 0.8 }] } });
+    location.restoreLocation({ location: { kind: 'naidan_rpc', registration }, modelEditor: { primary: { slot: 'model', file, family: undefined }, components: [], loras: [{ file, enabled: 'disabled', strength: 0.8 }] } });
     h.generation.parameters.value.prompt = 'Selected peer'; await h.view.flushDraft();
     // Disabled adapter edits do not change the generated model selection.
     location.changeLora({ index: 0, enabled: 'disabled', strength: 0.3 });
     await vi.waitFor(async () => expect((await persistence.loadImageGenerationDraft({ store: h.view.store.value!, sessionId: b.id }))?.remoteModelEditor?.loras[0]?.strength).toBe(0.3));
     await h.view.selectSession({ sessionId: a.id });
-    expect(location.captureLocation()).toEqual({ kind: 'naidan_rpc', connection: undefined });
+    expect(location.captureLocation()).toEqual({ kind: 'naidan_rpc', registration: undefined });
     expect(location.editor.value.primary).toBeUndefined(); expect(h.generation.parameters.value.prompt).toBe('Waiting for a peer');
     const saved = (await persistence.loadImageGenerationDraft({ store: h.view.store.value!, sessionId: a.id }))!;
-    expect(saved.request.runtime).toBeUndefined(); expect(saved.inferenceLocation).toEqual({ kind: 'naidan_rpc', connection: undefined });
+    expect(saved.request.runtime).toBeUndefined(); expect(saved.inferenceLocation).toEqual({ kind: 'naidan_rpc', registration: undefined });
     await h.view.flushDraft(); h.wrapper.unmount(); await flushPromises();
     const reopened = open({ requestedSessionId: ref(b.id) }); await flushPromises();
-    expect(reopened.generation.inferenceLocation!.captureLocation()).toEqual({ kind: 'naidan_rpc', connection });
+    expect(reopened.generation.inferenceLocation!.captureLocation()).toEqual({ kind: 'naidan_rpc', registration });
     expect(reopened.generation.inferenceLocation!.editor.value.loras).toMatchObject([{ enabled: 'disabled', strength: 0.3 }]);
     expect(reopened.generation.parameters.value.prompt).toBe('Selected peer'); expect(reopened.native).not.toHaveBeenCalled();
   });
@@ -1065,17 +1065,17 @@ describe('read-only translation controls', () => {
     const fixture = await ready();
     const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
     settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, experimental: { ...originalSettings.experimental, naidanRpc: 'disabled' } } });
-    const surface = mount(ImageGenerationTranslationSettings, { props: { workspace: fixture.view, scope: 'workspace' }, global: { stubs: { RpcConnectionSelect: true } } });
+    const surface = mount(ImageGenerationTranslationSettings, { props: { workspace: fixture.view, scope: 'workspace' }, global: { stubs: { RpcRegistrationSelect: true } } });
     try {
       await flushPromises();
       expect(surface.get('[data-testid="translation-endpoint-choice"]').find('option[value="naidan_rpc"]').exists()).toBe(false);
-      await fixture.view.updatePreferences({ change: { type: 'translation', translation: { endpoint: { type: 'naidan_rpc', connectionId: undefined }, modelId: 'remote-translator', lmParameters: undefined } } });
+      await fixture.view.updatePreferences({ change: { type: 'translation', translation: { endpoint: { type: 'naidan_rpc', registrationId: undefined }, modelId: 'remote-translator', lmParameters: undefined } } });
       await flushPromises();
       const select = surface.get('[data-testid="translation-endpoint-choice"]');
       expect(select.element).toHaveProperty('value', 'naidan_rpc');
       expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', true);
       await surface.get('[data-testid="translation-settings-save"]').trigger('click'); await flushPromises();
-      expect(fixture.view.catalog.value?.preferences.translation).toEqual({ endpoint: { type: 'naidan_rpc', connectionId: undefined }, modelId: 'remote-translator', lmParameters: undefined });
+      expect(fixture.view.catalog.value?.preferences.translation).toEqual({ endpoint: { type: 'naidan_rpc', registrationId: undefined }, modelId: 'remote-translator', lmParameters: undefined });
       settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, experimental: { ...originalSettings.experimental, naidanRpc: 'enabled' } } });
       await flushPromises(); expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', false);
       expect(translationMocks.translate).not.toHaveBeenCalled();

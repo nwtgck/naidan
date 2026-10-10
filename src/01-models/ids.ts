@@ -23,8 +23,8 @@ type BrandedId<TName extends string> =
     readonly [idBrand]: TName,
   };
 
-export type NaidanRpcConnectionId = BrandedId<'NaidanRpcConnectionId'>;
-export type NaidanRpcPeerId = BrandedId<'NaidanRpcPeerId'>;
+export type NaidanRpcRegistrationId = BrandedId<'NaidanRpcRegistrationId'>;
+export type NaidanRpcPeerPublicKey = BrandedId<'NaidanRpcPeerPublicKey'>;
 export type NaidanRpcRegistryId = BrandedId<'NaidanRpcRegistryId'>;
 
 export type ChatId = BrandedId<'ChatId'>;
@@ -57,11 +57,11 @@ export type OPFSTmpDirectoryId = BrandedId<'OPFSTmpDirectoryId'>;
 
 export type NaidanId = BrandedId<string>;
 
-export function toNaidanRpcConnectionId({ raw }: { raw: string }): NaidanRpcConnectionId {
-  return raw as unknown as NaidanRpcConnectionId;
+export function toNaidanRpcRegistrationId({ raw }: { raw: string }): NaidanRpcRegistrationId {
+  return raw as unknown as NaidanRpcRegistrationId;
 }
-export function toNaidanRpcPeerId({ raw }: { raw: string }): NaidanRpcPeerId {
-  return raw as unknown as NaidanRpcPeerId;
+export function toNaidanRpcPeerPublicKey({ raw }: { raw: string }): NaidanRpcPeerPublicKey {
+  return raw as unknown as NaidanRpcPeerPublicKey;
 }
 export function toNaidanRpcRegistryId({ raw }: { raw: string }): NaidanRpcRegistryId {
   return raw as unknown as NaidanRpcRegistryId;

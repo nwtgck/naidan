@@ -2,14 +2,14 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { effectScope } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { toBinaryObjectId, toNaidanRpcConnectionId, toNaidanRpcPeerId } from '@/01-models/ids';
+import { toBinaryObjectId, toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
 import { createImageForm } from '@/features/image-generation/form';
 import { useImageInferenceLocation } from '@/features/image-generation/composables/use-image-inference-location';
 import { remoteImageFileKey } from '@/features/image-generation/remote-image-model-editor';
 import ImageRemoteModelConfiguration from './ImageRemoteModelConfiguration.vue';
 import ImageModelPicker from '@/features/stable-diffusion-cpp-browser/components/ImageModelPicker.vue';
 
-vi.mock('@/features/naidan-peer-rpc/runtime/feature', () => ({ subscribeRpcState: () => () => {}, getRpcManager: vi.fn() }));
+vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({ subscribeRpcState: () => () => {}, getRpcManager: vi.fn() }));
 let wrapper: VueWrapper | undefined, scope: ReturnType<typeof effectScope> | undefined;
 
 beforeEach(async () => {
@@ -24,8 +24,8 @@ function harness() {
   scope = effectScope();
   const form = createImageForm({ profile: 'webgpu-wasm32-asyncify' });
   const inferenceLocation = scope.run(() => useImageInferenceLocation({ form, blocked: () => false, identifyInput: () => toBinaryObjectId({ raw: 'input-image' }) }))!;
-  const connectionId = toNaidanRpcConnectionId({ raw: 'connection-one' }), peerId = toNaidanRpcPeerId({ raw: 'B'.repeat(43) });
-  inferenceLocation.restorePreferences({ inferenceLocation: { kind: 'naidan_rpc', connection: { connectionId, peerId } }, remoteModelEditors: [] });
+  const registrationId = toNaidanRpcRegistrationId({ raw: 'connection-one' }), peerPublicKey = toNaidanRpcPeerPublicKey({ raw: 'B'.repeat(43) });
+  inferenceLocation.restorePreferences({ inferenceLocation: { kind: 'naidan_rpc', registration: { registrationId, peerPublicKey } }, remoteModelEditors: [] });
   const main = { location: { kind: 'opfs' as const, path: 'models/main.gguf' } }, vae = { location: { kind: 'opfs' as const, path: 'models/vae.gguf' } }, lora = { location: { kind: 'host' as const, directoryId: 'peer-root', path: 'adapter.gguf' } };
   inferenceLocation.catalog.value = [
     { label: 'main', file: main, roles: ['diffusion'], facts: { family: 'z-image', classes: [] } },

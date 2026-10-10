@@ -33,6 +33,7 @@ export async function loadImageGenerationCatalog({ store }: { store: ImageGenera
 /** Rename/archive tags by stable ID. Definitions are never physically removed. */
 export async function saveImageGenerationCatalog({ store, catalog, expectedRevision }: { store: ImageGenerationStoreAccess, catalog: ImageGenerationCatalog, expectedRevision: number }): Promise<void> {
   const next = ExperimentalImageGenerationCatalogSchemaDto.parse(imageGenerationCatalogToDto({ catalog }));
+  const serialized = JSON.stringify(next);
   await withImageGenerationStore({
     store,
     operation: async ({ directory, catalog: current }) => {
@@ -43,7 +44,7 @@ export async function saveImageGenerationCatalog({ store, catalog, expectedRevis
         if (tag.createdAt !== previous.createdAt) throw new Error('Tag creation time is immutable.');
       }
       assertImageGenerationReplacement({ current, next, expectedRevision });
-      if (JSON.stringify(current) !== JSON.stringify(next)) await writeImageGenerationText({ directory, name: 'catalog.json', text: JSON.stringify(next) });
+      if (JSON.stringify(current) !== serialized) await writeImageGenerationText({ directory, name: 'catalog.json', text: serialized });
     },
   });
 }
@@ -74,6 +75,8 @@ export async function loadImageGenerationSession({ store, sessionId }: { store: 
 }
 export async function saveImageGenerationSession({ store, session, expectedRevision }: { store: ImageGenerationStoreAccess, session: ImageGenerationSession, expectedRevision: number | undefined }): Promise<ImageGenerationSession> {
   const requested = ExperimentalImageGenerationSessionSchemaDto.parse(imageGenerationSessionToDto({ session }));
+  // Validate retained leaves before creating directories or reserving activity.
+  JSON.stringify(requested);
   return withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
@@ -86,6 +89,7 @@ export async function saveImageGenerationSession({ store, session, expectedRevis
       // must repair its index without reserving a newer position.
       const candidate = { ...requested, activityOrder: current?.activityOrder };
       assertImageGenerationReplacement({ current, next: candidate, expectedRevision });
+      await table.preflightWrite({ id: requested.id });
       const next = current && JSON.stringify(current) === JSON.stringify(candidate) ? current
         : { ...candidate, activityOrder: await reserveImageGenerationActivity({ directory, run: undefined }) };
       await table.write({ record: next, assertCurrent: ({ current: latest }) => assertImageGenerationReplacement({ current: latest, next, expectedRevision }), async beforeCommit() {} });
@@ -189,6 +193,7 @@ export async function saveImageGenerationDraft({ store, draft, expectedRevision,
   store: ImageGenerationStoreAccess, draft: ImageGenerationSessionDraft, expectedRevision: number | undefined, writeInputs: () => Promise<void>,
 }): Promise<void> {
   const next = ExperimentalImageGenerationDraftSchemaDto.parse(imageGenerationDraftToDto({ draft }));
+  const serialized = JSON.stringify(next);
   await withImageGenerationStore({
     store,
     operation: async ({ directory }) => {
@@ -199,7 +204,7 @@ export async function saveImageGenerationDraft({ store, draft, expectedRevision,
       assertImageGenerationReplacement({ current, next, expectedRevision });
       await assertImageGenerationBinariesNotDeleted({ directory, ids: [...(next.request.imageInputs.initImage ? [next.request.imageInputs.initImage.binaryObjectId] : []), ...next.request.imageInputs.referenceImages.map(image => image.binaryObjectId)] });
       await writeInputs();
-      await writeImageGenerationText({ directory: session, name: 'draft.json', text: JSON.stringify(next) });
+      await writeImageGenerationText({ directory: session, name: 'draft.json', text: serialized });
     },
   });
 }
@@ -244,6 +249,7 @@ export async function createImageGenerationRun({ store, run, writeInputs }: { st
       const current = await table.load({ id: next.id });
       const candidate = { ...next, acceptedOrder: current?.acceptedOrder };
       assertImageGenerationReplacement({ current, next: candidate, expectedRevision: undefined });
+      await table.preflightWrite({ id: next.id });
       await assertImageGenerationBinariesNotDeleted({ directory, ids: [...(next.request.imageInputs.initImage ? [next.request.imageInputs.initImage.binaryObjectId] : []), ...next.request.imageInputs.referenceImages.map(image => image.binaryObjectId)] });
       await writeInputs();
       const accepted = current ?? { ...candidate, acceptedOrder: await reserveImageGenerationActivity({ directory, run: { sessionId: next.sessionId, runId: next.id } }) };

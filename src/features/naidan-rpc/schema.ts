@@ -1,3 +1,4 @@
+import type { RpcByteOwner } from './byte-budget';
 import { z } from 'zod';
 import { check, VALUE_BYTES, validKey } from '@/features/naidan-rpc/primitives';
 import { encode, decode, Reference } from '@/features/naidan-rpc/codec';
@@ -116,24 +117,72 @@ function properties({ value }: { value: unknown }): Record<string, unknown> {
   }
   return output;
 }
-function finite({ schema, value }: { schema: z.ZodType; value: unknown }): WireValue {
-  // Validate a finite, plain input before executing trusted application refinements.
-  const input = decode({ bytes: encode({ value, limit: VALUE_BYTES }) });
-  check({ condition: references({ value: input }).size === 0, code: 'INVALID_ARGUMENT' });
-  const result: unknown = schema.parse(input);
-  const output = decode({ bytes: encode({ value: result, limit: VALUE_BYTES }) });
-  check({ condition: references({ value: output }).size === 0, code: 'INVALID_ARGUMENT' }); return output;
+/**
+ * On failed result packing, ownership of locally returned streams still needs
+ * retirement. Follow only declared capability paths, without invoking getters
+ * or allocating copies of finite values. This is not a second value validator.
+ */
+export function returnedStreams({ plan, value }: { plan: Plan; value: unknown }): ReadonlySet<ReadableStream<unknown>> {
+  const streams = new Set<ReadableStream<unknown>>(); let nodes = 0;
+  const visit = ({ plan, value, depth }: { plan: Plan; value: unknown; depth: number }): void => {
+    check({ condition: ++nodes <= 4096 && depth <= 24, code: 'RESOURCE_EXHAUSTED' });
+    switch (plan.node.kind) {
+    case 'finite': return;
+    case 'capability':
+      if (plan.node.capability.kind === 'stream' && value instanceof ReadableStream) streams.add(value);
+      return;
+    case 'optional':
+      if (value !== undefined) visit({ plan: plan.node.inner, value, depth: depth + 1 });
+      return;
+    case 'object': {
+      const input = properties({ value });
+      for (const [key, child] of plan.node.fields) visit({ plan: child, value: input[key], depth: depth + 1 });
+      return;
+    }
+    case 'array':
+      check({ condition: Array.isArray(value) && value.length <= 4096, code: 'INVALID_ARGUMENT' });
+      if (!Array.isArray(value)) return;
+      for (let index = 0; index < value.length; index++) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, index);
+        check({ condition: descriptor !== undefined && 'value' in descriptor, code: 'INVALID_ARGUMENT' });
+        visit({ plan: plan.node.item, value: descriptor?.value, depth: depth + 1 });
+      }
+      return;
+    default: { const exhaustive: never = plan.node; throw new Error(String(exhaustive)); }
+    }
+  };
+  visit({ plan, value, depth: 0 }); return streams;
+}
+
+function finite({ schema, value, memory }: { schema: z.ZodType; value: unknown; memory?: RpcByteOwner }): WireValue {
+  // Application refinements run on a closed finite value, not on accessors.
+  const temporary = memory?.fork();
+  try {
+    const encodedInput = encode({ value, limit: VALUE_BYTES, memory: temporary });
+    let input: WireValue;
+    try {
+      input = decode({ bytes: encodedInput, memory: temporary });
+    } finally {
+      temporary?.release({ bytes: encodedInput });
+    }
+    check({ condition: references({ value: input }).size === 0, code: 'INVALID_ARGUMENT' });
+    const result: unknown = schema.parse(input);
+    const output = decode({ bytes: encode({ value: result, limit: VALUE_BYTES, memory: temporary }), memory });
+    check({ condition: references({ value: output }).size === 0, code: 'INVALID_ARGUMENT' }); return output;
+  } finally {
+    temporary?.clear();
+  }
 }
 
 /** Prepare the whole value before taking source locks or running callbacks. */
-export function pack({ plan, value, allocate }: { plan: Plan; value: unknown; allocate: () => number }): Packed {
+export function pack({ plan, value, allocate, memory }: { plan: Plan; value: unknown; allocate: () => number; memory?: RpcByteOwner }): Packed {
   const sources = new Map<number, Source>(), seen = new Set<object>(); let nodes = 0;
   const visit = ({ plan, value, depth }: { plan: Plan; value: unknown; depth: number }): WireValue => {
     check({ condition: ++nodes <= 4096 && depth <= 24, code: 'RESOURCE_EXHAUSTED' });
     const { schema, node } = plan;
     switch (node.kind) {
     case 'optional': return value === undefined ? undefined : visit({ plan: node.inner, value, depth: depth + 1 });
-    case 'finite': return finite({ schema, value });
+    case 'finite': return finite({ schema, value, memory });
     case 'capability': {
       check({ condition: sources.size < 16 && ((typeof value === 'object' && value !== null) || typeof value === 'function'), code: 'INVALID_ARGUMENT' });
       if ((typeof value !== 'object' || value === null) && typeof value !== 'function') throw new Error('Capability expected');
@@ -149,7 +198,7 @@ export function pack({ plan, value, allocate }: { plan: Plan; value: unknown; al
     }
     case 'object': {
       const input = properties({ value }), converted: Record<string, unknown> = {};
-      for (const [key, item] of Object.entries(input)) if (!node.fields.has(key)) converted[key] = finite({ schema: z.unknown(), value: item });
+      for (const [key, item] of Object.entries(input)) if (!node.fields.has(key)) converted[key] = finite({ schema: z.unknown(), value: item, memory });
       for (const [key, child] of node.fields) converted[key] = visit({ plan: child, value: input[key], depth: depth + 1 });
       // Run parent object refinements on validated runtime capabilities, never their wire tags.
       const local: Record<string, unknown> = { ...input };
@@ -173,11 +222,12 @@ export function pack({ plan, value, allocate }: { plan: Plan; value: unknown; al
     default: { const unreachable: never = node; throw new Error(String(unreachable)); }
     }
   };
-  const packed = visit({ plan, value, depth: 0 }); encode({ value: packed, limit: VALUE_BYTES }); return { value: packed, sources };
+  const packed = visit({ plan, value, depth: 0 }); const bytes = encode({ value: packed, limit: VALUE_BYTES, memory }); memory?.release({ bytes }); return { value: packed, sources };
 }
 
 /** Project known fields only; the caller declines all valid but unused references after full validation. */
-export function project({ plan, value, proxy }: {
+export function project({ plan, value, proxy, memory }: {
+  memory?: RpcByteOwner;
   plan: Plan; value: WireValue; proxy: ({ reference, capability }: { reference: Reference; capability: Capability }) => unknown;
 }): Projection {
   const accepted = new Set<number>();
@@ -185,7 +235,7 @@ export function project({ plan, value, proxy }: {
     const { schema, node } = plan;
     switch (node.kind) {
     case 'optional': return value === undefined ? undefined : visit({ plan: node.inner, value });
-    case 'finite': return finite({ schema, value });
+    case 'finite': return finite({ schema, value, memory });
     case 'capability': {
       check({ condition: value instanceof Reference, code: 'INVALID_ARGUMENT' });
       if (!(value instanceof Reference)) throw new Error('Reference expected');

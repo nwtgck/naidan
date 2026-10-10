@@ -1,3 +1,4 @@
+import { naidanRpc__waiting_for_capacity } from '@/strings/messages/naidanRpc__waiting_for_capacity/ko';
 import { LlamaCppMemoryPanel__change_since_latest_load_started } from '@/strings/messages/LlamaCppMemoryPanel__change_since_latest_load_started/ko';
 import { LlamaCppMemoryPanel__active_history } from '@/strings/messages/LlamaCppMemoryPanel__active_history/ko';
 import { LlamaCppMemoryPanel__ended_history } from '@/strings/messages/LlamaCppMemoryPanel__ended_history/ko';
@@ -139,6 +140,7 @@ import { naidanRpc__provide } from '@/strings/messages/naidanRpc__provide/ko';
 import { naidanRpc__saved } from '@/strings/messages/naidanRpc__saved/ko';
 import { naidanRpc__temporary } from '@/strings/messages/naidanRpc__temporary/ko';
 import { naidanRpc__stopping } from '@/strings/messages/naidanRpc__stopping/ko';
+import { naidanRpc__checking_response } from '@/strings/messages/naidanRpc__checking_response/ko';
 import { naidanRpc__connected } from '@/strings/messages/naidanRpc__connected/ko';
 import { naidanRpc__connecting } from '@/strings/messages/naidanRpc__connecting/ko';
 import { naidanRpc__disconnected } from '@/strings/messages/naidanRpc__disconnected/ko';
@@ -5410,6 +5412,8 @@ export const catalog = {
   naidanRpc__disconnect,
   naidanRpc__disconnected,
   naidanRpc__connecting,
+  naidanRpc__waiting_for_capacity,
+  naidanRpc__checking_response,
   naidanRpc__connected,
   naidanRpc__stopping,
   naidanRpc__temporary,

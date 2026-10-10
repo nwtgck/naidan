@@ -40,7 +40,7 @@ function createSettings({ endpointType }: {
     endpoint: (() => {
       switch (endpointType) {
       case 'naidan_rpc':
-        return { type: endpointType, connectionId: undefined };
+        return { type: endpointType, registrationId: undefined };
       case 'transformers_js':
       case 'llama_cpp_browser':
       case 'browser_provided_lm':
@@ -68,7 +68,7 @@ function createSettings({ endpointType }: {
 }
 
 const globalStubs = {
-  RpcConnectionSelect: true,
+  RpcRegistrationSelect: true,
   ModelSelector: {
     name: 'ModelSelector',
     props: ['modelValue', 'disabled'],
@@ -360,7 +360,7 @@ describe('Naidan RPC endpoint availability', () => {
   it('preserves disabled saved RPC endpoints instead of silently selecting another provider', async () => {
     const settings = createSettings({ endpointType: 'naidan_rpc' });
     if (typeof settings.titleGeneration !== 'object') throw new Error('Expected title settings');
-    settings.titleGeneration.endpoint = { type: 'naidan_rpc', connectionId: undefined };
+    settings.titleGeneration.endpoint = { type: 'naidan_rpc', registrationId: undefined };
     const wrapper = mount(ConnectionTab, { props: { modelValue: settings, availableModels: [], isFetchingModels: false, hasUnsavedChanges: false }, global: { stubs: globalStubs } });
     try {
       await flushPromises();
