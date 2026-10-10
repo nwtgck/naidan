@@ -26,6 +26,7 @@ afterAll(async () => {
 });
 
 const scope = 'https://example.test/naidan/';
+
 function setup() {
   let deployed = a;
   let offline = false;

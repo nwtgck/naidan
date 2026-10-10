@@ -12,6 +12,7 @@ export type AudioPreviewDelivery = {
   requests: AudioPreviewRequests,
   onPreview: ({ result, requestVersion }: AudioPreviewEvent) => void | Promise<void>,
 };
+
 export function createAudioPreviewRequests(): { requests: AudioPreviewRequests, request: () => void } {
   let version = 0;
   const listeners = new Set<() => void>();
@@ -35,5 +36,6 @@ export function createAudioPreviewRequests(): { requests: AudioPreviewRequests, 
     },
   };
 }
+
 export const TEST_ONLY = {
 };

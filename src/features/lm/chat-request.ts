@@ -203,6 +203,7 @@ async function resolveToolText({ content, readBinaryObject, signal }: { content:
   default: { const _ex: never = content; throw new Error(`Unhandled tool content: ${_ex}`); }
   }
 }
+
 async function toolText({ result, readBinaryObject, signal }: { result: ToolExecutionResult, readBinaryObject: BinaryReader, signal: AbortSignal | undefined }): Promise<string> {
   switch (result.status) {
   case 'executing': throw new Error('A tool result is still executing.');

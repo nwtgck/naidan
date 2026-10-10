@@ -2,9 +2,11 @@ import { expect, it } from 'vitest';
 import { inspectDebugImages } from './chat-debug-images';
 import type { AssistantMessageNode } from '@/01-models/types';
 import { toMessageId } from '@/01-models/ids';
+
 function message({ parts }: { parts: AssistantMessageNode['parts'] }): AssistantMessageNode {
   return { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 0, modelId: undefined, lmParameters: undefined, interruption: undefined, parts, replies: { items: [] } };
 }
+
 const block = `\
 \`\`\`naidan_experimental_image
 {"binaryObjectId":"binary","displayWidth":20,"displayHeight":20}

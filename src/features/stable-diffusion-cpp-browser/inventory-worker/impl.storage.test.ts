@@ -10,6 +10,7 @@ vi.mock('@/utils/worker-transport', () => ({ releaseWorkerRemote: vi.fn() }));
 
 const directories = [{ id: 'linked', name: 'Linked models' }];
 let host: MemoryDirectory, opfs: MemoryDirectory;
+
 async function model({ root, path }: { root: MemoryDirectory, path: string[] }): Promise<void> {
   let directory = root;
   for (const name of path) directory = await directory.getDirectoryHandle(name, { create: true });

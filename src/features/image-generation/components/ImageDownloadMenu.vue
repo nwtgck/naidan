@@ -18,6 +18,7 @@ watch(() => [props.preferences.value.format, props.preferences.value.metadata] a
   format.value = nextFormat;
   includeMetadata.value = nextMetadata === 'include';
 });
+
 function changeFormat({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLSelectElement)) return;
   const value = event.target.value;
@@ -25,17 +26,21 @@ function changeFormat({ event }: { event: Event }): void {
   format.value = value;
   props.onPreferencesChange({ preferences: { format: value, metadata: includeMetadata.value ? 'include' : 'omit' } });
 }
+
 function changeMetadata({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLInputElement)) return;
   includeMetadata.value = event.target.checked;
   props.onPreferencesChange({ preferences: { format: format.value, metadata: includeMetadata.value ? 'include' : 'omit' } });
 }
+
 const position = ref({ left: '8px', top: '8px' });
 let disposed = false;
+
 function close({ restoreFocus }: { restoreFocus: boolean }): void {
   open.value = false;
   if (restoreFocus && props.active) toggle.value?.focus();
 }
+
 async function show(): Promise<void> {
   if (disposed || !props.active || props.disabled) return;
   const rect = anchor.value?.getBoundingClientRect();
@@ -44,6 +49,7 @@ async function show(): Promise<void> {
   await nextTick();
   if (open.value) panel.value?.focus();
 }
+
 async function download(): Promise<void> {
   if (busy.value || props.disabled) return;
   busy.value = true;
@@ -66,9 +72,11 @@ async function download(): Promise<void> {
     busy.value = false;
   }
 }
+
 function outside({ event }: { event: Event }): void {
   if (event.target instanceof Node && !anchor.value?.contains(event.target) && !panel.value?.contains(event.target)) close({ restoreFocus: false });
 }
+
 function keydown({ event }: { event: KeyboardEvent }): void {
   if (event.key === 'Escape') {
     event.preventDefault();
@@ -83,13 +91,16 @@ function keydown({ event }: { event: KeyboardEvent }): void {
     event.preventDefault(); first?.focus();
   }
 }
+
 const viewportChanged: EventListener = event => {
   if (event.target instanceof Node && panel.value?.contains(event.target)) return;
   close({ restoreFocus: false });
 };
+
 const onPointer: EventListener = event => {
   outside({ event });
 };
+
 watch(() => props.active && !props.disabled, available => {
   if (!available) close({ restoreFocus: false });
 });

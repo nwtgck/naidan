@@ -61,9 +61,11 @@ function makeChat(): Chat {
   const first: MessageNode = { id: toMessageId({ raw: 'first' }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text: 'original', completeness: 'complete' }], replies: { items: [second] } };
   return { id: toChatId({ raw: 'chat' }), title: 'chat', createdAt: 1, updatedAt: 1, debugEnabled: false, root: { items: [first] }, currentLeafId: tail.id };
 }
+
 async function* chunks({ values }: { values: string[] }) {
   yield* values;
 }
+
 function generate({ result }: { result: ChatGenerationResult }): AsyncIterable<ChatGenerationItem> {
   return (async function* () {
     yield { type: 'reasoning', partId: 'r', index: 0, chunks: chunks({ values: ['private summary reasoning'] }), completeness: Promise.resolve('complete' as const) };

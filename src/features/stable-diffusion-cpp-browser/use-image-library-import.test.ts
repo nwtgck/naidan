@@ -9,6 +9,7 @@ vi.mock('./logic/repository-input', () => ({
   imageDirectoriesFromDrop: async () => [{ name: 'first', files: [] }, { name: 'second', files: [] }],
   imageDirectoryFromFiles: vi.fn(),
 }));
+
 function importedRepository(): LocalImageRepository {
   const file = ggufFixture({ name: 'z-image.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file;
   return { id: 'user/imported', name: 'imported', files: [{ path: file.name, file }] };

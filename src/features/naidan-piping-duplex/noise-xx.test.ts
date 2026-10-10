@@ -50,6 +50,7 @@ const vector = {
 function fromHex({ text }: { text: string }): Uint8Array<ArrayBuffer> {
   return new Uint8Array(Buffer.from(text, 'hex'));
 }
+
 async function testIdentity({ secret }: { secret: string }): Promise<NaidanPipingIdentity> {
   const der = Buffer.concat([Buffer.from('302e020100300506032b656e04220420', 'hex'), Buffer.from(secret, 'hex')]);
   const key = createPrivateKey({ key: der, format: 'der', type: 'pkcs8' });
@@ -59,6 +60,7 @@ async function testIdentity({ secret }: { secret: string }): Promise<NaidanPipin
     publicKey: new Uint8Array(publicDer.subarray(-32)),
   };
 }
+
 async function pair() {
   const identities = await promiseAllKeyed({
     identityA: testIdentity({ secret: vector.init_static }),
@@ -85,6 +87,7 @@ async function pair() {
   });
   return states;
 }
+
 async function handshake({ a, b }: { a: NoiseXX; b: NoiseXX }): Promise<void> {
   for (let index = 0; index < 3; index++) {
     const sender = index % 2 ? b : a, receiver = index % 2 ? a : b;

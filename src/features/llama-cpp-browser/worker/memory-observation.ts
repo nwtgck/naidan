@@ -49,5 +49,6 @@ export function observeMeasurementMemory({ worker, now }: { worker: Pick<Worker,
     },
   };
 }
+
 export const TEST_ONLY = {
 };

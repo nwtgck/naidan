@@ -1,4 +1,5 @@
 import { OPFS_MODELS_DIR } from '@/constants';
+
 export async function readReplayMetadataLocal({ storageRoot, modelId, revision, path }: {
   storageRoot: FileSystemDirectoryHandle,
   modelId: string,

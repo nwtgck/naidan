@@ -11,6 +11,7 @@ const legacy = ({ role }: { role: 'user' | 'assistant' | 'system' | 'tool' }) =>
   ...(role === 'tool' ? { results: [] } : { content: '' }),
   replies: { items: [] },
 });
+
 const roundTrip = ({ node }: { node: MessageNode }) => messageNodeToDomain({
   dto: MessageNodeSchemaDto.parse(JSON.parse(JSON.stringify(messageNodeToDto({ domain: node })))),
 });

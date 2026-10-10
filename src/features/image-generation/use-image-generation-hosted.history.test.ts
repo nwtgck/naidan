@@ -114,6 +114,7 @@ let wrapper: VueWrapper | undefined;
 let editor: VueWrapper | undefined;
 let resultsPanel: VueWrapper | undefined;
 let active: ImageGenerationView | undefined;
+
 function open(): ImageGenerationView {
   wrapper = mount(defineComponent({
     setup() {
@@ -124,6 +125,7 @@ function open(): ImageGenerationView {
   active.parameters.value = parametersFixture();
   return active;
 }
+
 function result() {
   return { png: new Blob(['final'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture', uniformOutput: false };
 }
@@ -1295,6 +1297,7 @@ function rpcBinding() {
   });
   return { stop, generateImage, unexpected, client: { generateImage, generateChat: unexpected, listImageModels: unexpected, listChatModels: unexpected } };
 }
+
 async function remoteView() {
   const { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } = await import('@/01-models/ids');
   const binding = rpcBinding();

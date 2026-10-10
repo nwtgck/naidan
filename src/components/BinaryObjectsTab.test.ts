@@ -70,6 +70,7 @@ class MockImage {
   src: string = '';
   width: number = 100;
   height: number = 100;
+
   constructor() {
     setTimeout(() => this.onload(), 0);
   }
@@ -85,6 +86,7 @@ class MockIntersectionObserver {
   });
   unobserve = vi.fn();
   disconnect = vi.fn();
+
   constructor(callback: IntersectionObserverCallback) {
     this.callback = callback;
     observerInstances.push(this);

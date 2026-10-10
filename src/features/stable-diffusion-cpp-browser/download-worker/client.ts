@@ -52,5 +52,6 @@ export async function downloadImageRecipeInWorker({ files, signal, onProgress, d
     bridge.dispose(); worker.terminate();
   }
 }
+
 export const TEST_ONLY = {
 };

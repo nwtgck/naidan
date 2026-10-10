@@ -20,5 +20,6 @@ export function compareImageGenerationImages({ left, right }: { left: ImageGener
   const a = fields({ image: left }), b = fields({ image: right });
   return Object.keys(a).map(key => ({ key, left: JSON.stringify(a[key]) ?? '', right: JSON.stringify(b[key]) ?? '', same: JSON.stringify(a[key]) === JSON.stringify(b[key]) }));
 }
+
 export const TEST_ONLY = {
 };

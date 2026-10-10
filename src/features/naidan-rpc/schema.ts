@@ -20,18 +20,22 @@ export type ReceiveValue<S extends z.ZodType> = Local<z.output<S>, 'receive'>;
 export type Capability = { kind: 'stream'; mode: 'bytes' | 'items'; item: z.ZodType } |
   { kind: 'callback'; input: z.ZodType; result: z.ZodType };
 const capabilities = new WeakMap<z.ZodType, Capability>();
+
 function stream<S extends z.ZodType<Finite>>({ item }: { item: S }) {
   const schema = z.custom<ReadableStream<z.output<S>>>(value => value instanceof ReadableStream);
   capabilities.set(schema, { kind: 'stream', mode: 'items', item }); return schema;
 }
+
 function byteStream() {
   const schema = z.custom<ReadableStream<Uint8Array>>(value => value instanceof ReadableStream);
   capabilities.set(schema, { kind: 'stream', mode: 'bytes', item: z.instanceof(Uint8Array) }); return schema;
 }
+
 function callback<I extends z.ZodType<Finite>, R extends z.ZodType<Finite>>({ input, result }: { input: I; result: R }) {
   const schema = z.custom<CallbackToken<I, R>>(value => typeof value === 'function');
   capabilities.set(schema, { kind: 'callback', input, result }); return schema;
 }
+
 export const rpc = Object.freeze({ stream, byteStream, callback });
 export type Plan = { schema: z.ZodType; node: { kind: 'object'; fields: ReadonlyMap<string, Plan> } |
   { kind: 'array'; item: Plan } | { kind: 'optional'; inner: Plan } |
@@ -92,6 +96,7 @@ export function compile({ schema, capabilitiesAllowed, callbacksAllowed }: {
 export type Source = { capability: Capability; value: unknown };
 export type Packed = { value: WireValue; sources: ReadonlyMap<number, Source> };
 export type Projection = { value: unknown; accepted: ReadonlySet<number> };
+
 export function references({ value }: { value: WireValue }): Map<number, Reference> {
   const refs = new Map<number, Reference>();
   const visit = ({ value }: { value: WireValue }): void => {
@@ -106,6 +111,7 @@ export function references({ value }: { value: WireValue }): Map<number, Referen
   };
   visit({ value }); return refs;
 }
+
 function properties({ value }: { value: unknown }): Record<string, unknown> {
   check({ condition: value !== null && typeof value === 'object' && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null), code: 'INVALID_ARGUMENT' });
   if (value === null || typeof value !== 'object') throw new Error('Object expected');
@@ -117,6 +123,7 @@ function properties({ value }: { value: unknown }): Record<string, unknown> {
   }
   return output;
 }
+
 /**
  * On failed result packing, ownership of locally returned streams still needs
  * retirement. Follow only declared capability paths, without invoking getters
@@ -272,6 +279,7 @@ export function capabilityMode({ capability }: { capability: Capability }): Refe
   default: { const unreachable: never = capability; throw new Error(String(unreachable)); }
   }
 }
+
 export function isStream(capability: Capability): capability is Extract<Capability, { kind: 'stream' }> {
   switch (capability.kind) {
   case 'stream': return true;

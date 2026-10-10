@@ -17,6 +17,7 @@ let truncateOnClose = false;
 let failMarker = false;
 let failClose = false;
 let committed: string[] = [];
+
 function makeWriter({ file, name }: { file: StoredFile, name: string }) {
   const parts: Uint8Array[] = [];
   return {
@@ -38,6 +39,7 @@ function makeWriter({ file, name }: { file: StoredFile, name: string }) {
     },
   };
 }
+
 function makeDirectory(): StoredDirectory {
   const children = new Map<string, StoredFile | StoredDirectory>();
   return {
@@ -79,10 +81,12 @@ function makeDirectory(): StoredDirectory {
     },
   };
 }
+
 function fixture({ name }: { name: string }): File {
   const bytes = new Uint8Array(256); bytes.set([71, 71, 85, 70, 3, 0, 0, 0]);
   return new NodeFile([bytes], name) as unknown as File;
 }
+
 let root: StoredDirectory;
 
 beforeEach(() => {
@@ -98,14 +102,17 @@ afterEach(() => {
 async function userFolder(): Promise<StoredDirectory> {
   return (await root.getDirectoryHandle("models", { create: true })).getDirectoryHandle("user", { create: true });
 }
+
 async function modelFolder({ name }: { name: string }): Promise<StoredDirectory> {
   return (await userFolder()).getDirectoryHandle(`${name.slice(0, -5)}-GGUF`, { create: true });
 }
+
 async function putModelFile({ name }: { name: string }): Promise<StoredDirectory> {
   const folder = await modelFolder({ name });
   (await folder.getFileHandle(name, { create: true })).content = new Uint8Array(await fixture({ name }).arrayBuffer());
   return folder;
 }
+
 async function selectedFile({ name }: { name: string }): Promise<FileSystemFileHandle> {
   const directory = await storedModelDirectory({ name });
   const file = directory.files.find(file => file.path === directory.modelPath);

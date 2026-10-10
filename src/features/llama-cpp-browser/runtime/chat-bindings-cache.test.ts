@@ -29,6 +29,7 @@ function fixture() {
   }
   class Parser {
     reasoning_format = 0; parse_tool_calls = false; parser: unknown; delete = deleteParser;
+
     constructor(_params: Params) {}
   }
   class Arena {
@@ -39,9 +40,11 @@ function fixture() {
     constructor(_model: bigint, _chatTemplate: string, _bos: string, _eos: string) {
       templateConstructed();
     }
+
     delete() {
       deletedTemplates();
     }
+
     apply = apply;
   }
   const fakeNative = {

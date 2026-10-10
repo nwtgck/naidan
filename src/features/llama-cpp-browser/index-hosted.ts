@@ -17,6 +17,7 @@ let client: LlamaCppWorkerClient | undefined;
 type WorkerRetirement = { outcome: Promise<void>, completed: Promise<void> };
 const retiringWorkers = new WeakMap<LlamaCppWorkerClient, WorkerRetirement>();
 let workerRetirement = Promise.resolve();
+
 function retireWorker({ worker }: { worker: LlamaCppWorkerClient }): WorkerRetirement {
   const existing = retiringWorkers.get(worker);
   if (existing) return existing;
@@ -38,6 +39,7 @@ function retireWorker({ worker }: { worker: LlamaCppWorkerClient }): WorkerRetir
   }
   return retirement;
 }
+
 // A native cache belongs to the last model operation, not to the UI that once
 // created the Worker. Probing capabilities does not transfer model ownership.
 type ReadOnlyOwner = { worker: LlamaCppWorkerClient | undefined };
@@ -47,6 +49,7 @@ let profileOwner: LlamaCppWorkerClient | undefined;
 let profileProbe: Promise<ProfileCapabilities> | undefined;
 let profileEpoch = 0;
 const profileListeners = new Set<({ state }: { state: ProfileState }) => void>();
+
 function publishProfiles({ next }: { next: ProfileState }): void {
   profileState = next;
   for (const listener of profileListeners) {
@@ -55,10 +58,12 @@ function publishProfiles({ next }: { next: ProfileState }): void {
     } catch { /* Observers cannot interrupt capability detection. */ }
   }
 }
+
 function invalidateProfiles(): void {
   cacheOwner = undefined;
   profileEpoch++; profileProbe = undefined; profileOwner = undefined; publishProfiles({ next: { status: 'idle' } });
 }
+
 async function ensureProfiles({ worker, signal }: { worker: LlamaCppWorkerClient, signal: AbortSignal | undefined }): Promise<ProfileCapabilities> {
   if (profileOwner === worker && worker.canReuse() && profileState.status === 'ready') return profileState.capabilities;
   publishProfiles({ next: { status: 'checking' } });
@@ -70,6 +75,7 @@ async function ensureProfiles({ worker, signal }: { worker: LlamaCppWorkerClient
   profileOwner = worker; publishProfiles({ next: { status: 'ready', capabilities } });
   return capabilities;
 }
+
 async function resolveGenerationOptions({ worker, options, signal }: { worker: LlamaCppWorkerClient, options: RuntimeOptions, signal: AbortSignal | undefined }) {
   const capabilities = await ensureProfiles({ worker, signal });
   const profile = resolveProfilePreference({ preference: options.profile, capabilities });
@@ -79,6 +85,7 @@ async function resolveGenerationOptions({ worker, options, signal }: { worker: L
   if (client !== worker || !worker.canReuse()) throw new LlamaCppBrowserError({ code: 'worker-failed' });
   return { ...options, profile };
 }
+
 async function observeProbe({ pending, signal }: { pending: Promise<ProfileCapabilities>, signal: AbortSignal | undefined }): Promise<ProfileCapabilities> {
   if (!signal) return pending;
   if (signal.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
@@ -92,6 +99,7 @@ async function observeProbe({ pending, signal }: { pending: Promise<ProfileCapab
     signal.removeEventListener('abort', abort);
   }
 }
+
 let activeController: AbortController | undefined;
 let queue: Promise<void> = Promise.resolve();
 let laneReservations = 0;
@@ -100,6 +108,7 @@ let laneReservations = 0;
 let readOnlyReservations = 0;
 const listeners = new Set<({ state }: { state: EngineState }) => void>();
 const modelListeners = new Set<() => void>();
+
 function publish({ next }: { next: EngineState }): void {
   state = next;
   for (const listener of listeners) {
@@ -110,9 +119,11 @@ function publish({ next }: { next: EngineState }): void {
     }
   }
 }
+
 function progress({ progress }: { progress: Progress }): void {
   publish({ next: { status: 'working', progress } });
 }
+
 async function run<T>({ signal, operation, kind, owner }: {
   owner: ReadOnlyOwner | undefined,
   kind: 'operation' | 'probe' | 'read-only' | 'measurement',
@@ -245,6 +256,7 @@ async function run<T>({ signal, operation, kind, owner }: {
     releaseLane();
   }
 }
+
 export const llamaCppBrowserService: LlamaCppBrowserService = {
   async prepareModel({ model, signal, onProgress }) {
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
@@ -590,6 +602,7 @@ export const llamaCppBrowserService: LlamaCppBrowserService = {
     activeController?.abort(); if (client) void retireWorker({ worker: client }); client = undefined; invalidateProfiles(); publish({ next: { status: 'idle' } });
   },
 };
+
 /** Uses the existing native lane, but deliberately skips the writable-storage
  * capability probe. Model lookup inside generate is read-only; this entry point
  * never imports/downloads weights, changes settings or writes chat history. */

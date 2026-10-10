@@ -8,10 +8,12 @@ import { ChatSchemaDto, ChatContentSchemaDto, type ChatDto, type MigrationChunkD
 import { IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent: vi.fn() }) }));
+
 const config = ({ mode }: { mode: 'replace' | 'append' }): ImportConfig => ({
   data: { mode },
   settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
 });
+
 const settings: Settings = {
   endpoint: { type: 'ollama', url: 'http://localhost:11434' },
   storageType: 'local',
@@ -23,6 +25,7 @@ const settings: Settings = {
   systemPrompt: undefined,
   lmParameters: undefined,
 };
+
 const chat = ({ root }: { root: unknown }): ChatDto => ChatSchemaDto.parse({
   id: 'chat',
   title: 'Parts',
@@ -33,10 +36,13 @@ const chat = ({ root }: { root: unknown }): ChatDto => ChatSchemaDto.parse({
   titleGeneration: 'inherit',
   root,
 });
+
 const marker = ({ id }: { id: string }) => `\`\`\`${IMAGE_BLOCK_LANG}\n{ "binaryObjectId": "${id}", "displayWidth": 32, "displayHeight": 32, "unknown": { "binaryObjectId": "do-not-change" } }\n\`\`\``;
+
 function binary({ id }: { id: string }): Extract<MigrationChunkDto, { type: 'binary_object' }> {
   return { type: 'binary_object', id, name: `${id}.bin`, mimeType: 'application/octet-stream', size: 4, createdAt: 1, blob: new Blob(['body']) };
 }
+
 function fixture() {
   const received: MigrationChunkDto[] = [];
   const storage = {
@@ -54,6 +60,7 @@ function fixture() {
   } satisfies IImportExportStorage;
   return { storage, received, service: new ImportExportService({ storage }) };
 }
+
 async function archive({ content }: { content: ChatDto }): Promise<JSZip> {
   const zip = new JSZip();
   zip.file('export-manifest.json', '{}');
@@ -61,11 +68,13 @@ async function archive({ content }: { content: ChatDto }): Promise<JSZip> {
   zip.file('chat-contents/chat.json', JSON.stringify({ root: content.root, currentLeafId: content.currentLeafId }));
   return zip;
 }
+
 function addBinary({ zip, id }: { zip: JSZip; id: string }): void {
   const dir = `binary-objects/${id.slice(-2)}`;
   zip.file(`${dir}/${id}.bin`, 'body');
   zip.file(`${dir}/index.json`, JSON.stringify({ objects: { [id]: { id, mimeType: 'application/octet-stream', size: 4, createdAt: 1, name: id } } }));
 }
+
 async function readExport({ stream }: { stream: ReadableStream<Uint8Array> }): Promise<JSZip> {
   const chunks: Uint8Array<ArrayBuffer>[] = [];
   const reader = stream.getReader();
@@ -78,11 +87,13 @@ async function readExport({ stream }: { stream: ReadableStream<Uint8Array> }): P
   }
   return JSZip.loadAsync(new Blob(chunks));
 }
+
 async function exportedContent({ zip }: { zip: JSZip }) {
   const name = Object.keys(zip.files).find(name => name.endsWith('chat-contents/chat.json'));
   if (!name) throw new Error('Missing exported chat.');
   return ChatContentSchemaDto.parse(JSON.parse(await zip.file(name)!.async('string')));
 }
+
 function dump({ storage, content, binaries }: { storage: ReturnType<typeof fixture>['storage']; content: ChatDto; binaries: string[] }): void {
   storage.dumpWithoutLock.mockResolvedValue({
     structure: { settings, hierarchy: { items: [] }, chatMetas: [], chatGroups: [] },
@@ -91,6 +102,7 @@ function dump({ storage, content, binaries }: { storage: ReturnType<typeof fixtu
     })(),
   });
 }
+
 function modernAssistant({ parts }: { parts: unknown[] }) {
   return {
     id: 'a',

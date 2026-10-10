@@ -21,22 +21,26 @@ export interface NaidanPipingHandshakeChannel {
         signal: AbortSignal;
     }): Promise<Uint8Array>;
 }
+
 async function digest({ bytes }: {
     bytes: Uint8Array;
 }): Promise<Uint8Array<ArrayBuffer>> {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(bytes)));
 }
+
 async function rootKey({ bytes }: {
     bytes: Uint8Array;
 }): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', new Uint8Array(bytes), 'HKDF', false, ['deriveBits', 'deriveKey']);
 }
+
 export class NaidanPipingKeyDomain {
   private readonly recordOwners = new Set<string>();
   private internalRoot: CryptoKey;
   private internalContext: Uint8Array<ArrayBuffer>;
   private internalDomain: Uint8Array;
   private internalLive: () => void;
+
   constructor({ root, context, domain, live }: {
         root: CryptoKey;
         context: Uint8Array;
@@ -48,6 +52,7 @@ export class NaidanPipingKeyDomain {
     this.internalDomain = domain;
     this.internalLive = live;
   }
+
   /** Ownership is never released: reconstructing a codec must not reset its nonce or replay watermark. */
   claimRecordOwner({ direction, usage, context }: {
         direction: NaidanPipingDirection; usage: 'encrypt' | 'decrypt'; context: Uint8Array;
@@ -62,7 +67,9 @@ export class NaidanPipingKeyDomain {
     requireValue({ condition: !this.recordOwners.has(scope), message: 'Record ownership already consumed' });
     this.recordOwners.add(scope);
   }
+
   private batchRouteKey: Promise<CryptoKey> | undefined;
+
   async batchRoute({ direction, number }: { direction: NaidanPipingDirection; number: bigint }): Promise<string> {
     this.internalLive();
     requireValue({ condition: (direction === 1 || direction === 2) && number >= 0n && number < (1n << 48n), message: 'Data route scope' });
@@ -80,9 +87,11 @@ export class NaidanPipingKeyDomain {
     this.internalLive();
     return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
   }
+
   assertActive(): void {
     this.internalLive();
   }
+
   async aead({ direction, epoch, usage }: {
         direction: NaidanPipingDirection;
         epoch: bigint;
@@ -96,6 +105,7 @@ export class NaidanPipingKeyDomain {
     this.internalLive();
     return key;
   }
+
   async route({ direction }: {
         direction: NaidanPipingDirection;
     }): Promise<string> {
@@ -118,6 +128,7 @@ export class NaidanPipingKeyContext {
   private internalId: Uint8Array;
   private internalPeer: Uint8Array;
   private internalDomains = new Set<string>();
+
   constructor({ role, root, id, peer, proof }: {
         role: NaidanPipingRole;
         root: CryptoKey;
@@ -131,16 +142,20 @@ export class NaidanPipingKeyContext {
     this.internalId = id.slice();
     this.internalPeer = peer.slice();
   }
+
   get contextId(): Uint8Array {
     return this.internalId.slice();
   }
+
   get peerIdentity(): Uint8Array {
     return this.internalPeer.slice();
   }
+
   private internalCheckLive(): void {
     if (!this.internalRoot)
       throw new Error('Key context disposed');
   }
+
   createDomain({ label, context }: {
         label: string;
         context: Uint8Array;
@@ -156,6 +171,7 @@ export class NaidanPipingKeyContext {
       throw new Error('Key context disposed');
     return new NaidanPipingKeyDomain({ root: this.internalRoot, context: this.internalId.slice(), domain, live: () => this.internalCheckLive() });
   }
+
   dispose(): void {
     this.internalRoot = undefined;
   }
@@ -168,10 +184,12 @@ export type PinnedContactStatus = {
     peerHeldContext: Uint8Array | undefined; peerPublicHandshakeData: Uint8Array; signal: AbortSignal;
   }): Promise<void>;
 };
+
 function contactStatus({ binding, heldContext, publicData }: { binding: Uint8Array; heldContext: Uint8Array | undefined; publicData: Uint8Array }): Uint8Array {
   const size = new Uint8Array(2); new DataView(size.buffer).setUint16(0, publicData.length);
   return joinBytes({ parts: [new Uint8Array([8, 1]), binding, new Uint8Array([heldContext ? 1 : 0]), ...(heldContext ? [heldContext] : []), size, publicData] });
 }
+
 function readContactStatus({ bytes, binding }: { bytes: Uint8Array; binding: Uint8Array }): { peerHeldContext: Uint8Array | undefined; peerPublicHandshakeData: Uint8Array } {
   requireValue({ condition: bytes.length >= 37 && bytes.length <= 325 && bytes[0] === 8 && bytes[1] === 1 && equalBytes({ left: bytes.subarray(2, 34), right: binding }) && (bytes[34] === 0 || bytes[34] === 1), message: 'Invalid pinned contact status' });
   const offset = bytes[34] === 1 ? 67 : 35;
@@ -180,7 +198,9 @@ function readContactStatus({ bytes, binding }: { bytes: Uint8Array; binding: Uin
   requireValue({ condition: size <= 256 && bytes.length === offset + 2 + size, message: 'Invalid pinned contact advertisement' });
   return { peerHeldContext: bytes[34] === 1 ? bytes.slice(35, 67) : undefined, peerPublicHandshakeData: bytes.slice(offset + 2) };
 }
+
 export type EstablishedPipingKeys = { keys: NaidanPipingKeyContext; peerHandshakeData: Uint8Array };
+
 export async function establishVerifiedNaidanPipingKeys({ role, identity, expectedPeer, verifyPeer, binding, channel, signal: parent, responseTimeoutMs, onResponseFailure, handshakeData = new Uint8Array(), contact }: {
     role: NaidanPipingRole;
     identity: NaidanPipingIdentity;

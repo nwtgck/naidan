@@ -28,6 +28,7 @@ vi.mock('@huggingface/transformers', () => ({
   },
   InterruptableStoppingCriteria: class {
     reset() {}
+
     interrupt() {}
   },
   StoppingCriteriaList: class extends Array {},

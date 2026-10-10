@@ -18,6 +18,7 @@ export function chatRequest(): Parameters<LmProvider['chat']>[0] {
     signal: undefined,
   };
 }
+
 export async function deliverNativeResult({ result, onEvent }: { result: GenerationResult, onEvent: GenerationCallback }): Promise<GenerationResult> {
   if (result.reasoningContent) await onEvent({ event: { type: 'reasoning', text: result.reasoningContent } });
   if (result.content) await onEvent({ event: { type: 'text', text: result.content } });
@@ -31,9 +32,11 @@ export async function deliverNativeResult({ result, onEvent }: { result: Generat
   }
   return result;
 }
+
 export function finalText({ text }: { text: string }): GenerationResult {
   return { content: text, reasoningContent: '', toolCalls: [], finishReason: 'stop' };
 }
+
 export function createChatFixture({ provider, request, tools, controller, onToolEvent, approvalContext }: {
   provider: LmProvider, request: Parameters<LmProvider['chat']>[0], tools: readonly Tool[], controller: AbortController,
   onToolEvent: Parameters<typeof generateChatTurn>[0]['onToolEvent'],
@@ -84,5 +87,6 @@ export function createChatFixture({ provider, request, tools, controller, onTool
   });
   return { run, nodes };
 }
+
 export const TEST_ONLY = {
 };

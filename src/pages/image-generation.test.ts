@@ -77,6 +77,7 @@ async function open({ path }: { path: string }): Promise<Router> {
   wrapper = mount(surface, { global: { plugins: [router], stubs: { SidebarDebugControls: true } } });
   await vi.dynamicImportSettled(); await flushPromises(); return router;
 }
+
 async function historyStep({ router, delta }: { router: Router, delta: number }): Promise<void> {
   await new Promise<void>(resolve => {
     const stop = router.afterEach(() => {

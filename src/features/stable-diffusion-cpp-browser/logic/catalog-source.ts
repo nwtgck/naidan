@@ -18,6 +18,7 @@ const treeSchema = z.array(z.discriminatedUnion('type', [
     lfs: z.object({ oid: z.string().regex(/^[a-f0-9]{64}$/), size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) }).optional(),
   }),
 ])).max(10_000);
+
 /** The caller must have a user download action; NEVER call on mount/focus/expand. */
 export async function imageFileIdentity({ file, signal, fetch }: { file: ImageDownloadSource, signal: AbortSignal, fetch: CatalogFetch }): Promise<ImageFileIdentity> {
   const source = imageDownloadSourceSchema.parse(file);
@@ -78,5 +79,6 @@ export async function imageFileIdentity({ file, signal, fetch }: { file: ImageDo
   }
   throw new Error(`Catalog file is unavailable at the pinned revision: ${source.repository}/${source.path}`);
 }
+
 export const TEST_ONLY = {
 };

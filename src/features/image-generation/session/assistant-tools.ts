@@ -22,6 +22,7 @@ const writeSchema = z.object({
   field: z.enum(['prompt', 'negativePrompt']),
   value: z.string().max(4000),
 }).strict();
+
 function failed({ message }: { message: string }): ToolExecutionOutcome {
   return { status: 'error', code: 'execution_failed', message };
 }
@@ -95,5 +96,6 @@ export function createImageGenerationAssistantTools({ chatId, bindingSignal, rea
   };
   return [read, write];
 }
+
 export const TEST_ONLY = {
 };

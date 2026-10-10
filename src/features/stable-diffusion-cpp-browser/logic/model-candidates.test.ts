@@ -3,6 +3,7 @@ import { expect, it } from 'vitest';
 import { scanImageRepositories, componentRequirements, defaultCompanion, componentMatch } from './model-candidates';
 import { ggufFixture, safetensorsFixture, zImageTensors, qwenImageTensors, fluxVaeTensors, qwenVaeTensors, qwenTextTensors, tensor, sdVaeTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
 import type { LocalImageRepository } from './repository-store';
+
 function repository({ id, file }: { id: string, file: File }): LocalImageRepository {
   return { id, name: id, files: [{ path: file.name, file }] };
 }

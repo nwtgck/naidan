@@ -78,6 +78,7 @@ export async function createReplayCommit({ context, repository, kind, sourceObje
   });
   return { objectId: created.objectId, subject };
 }
+
 export type GitReplayStepResult = {
     type: 'committed';
     objectId: string;
@@ -91,6 +92,7 @@ export type GitReplayStepResult = {
     type: 'checkout-conflict';
     conflicts: GitCheckoutConflict[];
 };
+
 export async function applyReplayStep({ context, repository, kind, sourceObjectId, reflogPrefix, mainlineParentNumber }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
@@ -167,6 +169,7 @@ export async function applyReplayStep({ context, repository, kind, sourceObjectI
     autoMergedPaths: replay.autoMergedPaths,
   };
 }
+
 async function printReplayCommit({ context, objectId, subject }: {
     context: WeshCommandContext;
     objectId: string;
@@ -178,6 +181,7 @@ async function printReplayCommit({ context, objectId, subject }: {
     text: `[${branchNameFromHead({ head: updatedHead }) ?? 'detached HEAD'} ${objectId.slice(0, 7)}] ${subject}\n`,
   });
 }
+
 async function applyReplayObject({ context, repository, kind, sourceObjectId, mainlineParentNumber }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
@@ -254,6 +258,7 @@ async function applyReplayObject({ context, repository, kind, sourceObjectId, ma
   }
   }
 }
+
 export async function executeSequencerSteps({ context, repository, kind }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
@@ -282,6 +287,7 @@ export async function executeSequencerSteps({ context, repository, kind }: {
     await advanceSequencer({ files: context.files, repository });
   }
 }
+
 async function continueReplay({ context, kind }: {
     context: WeshCommandContext;
     kind: GitReplayKind;
@@ -332,6 +338,7 @@ async function continueReplay({ context, kind }: {
   await advanceSequencer({ files: context.files, repository });
   return executeSequencerSteps({ context, repository, kind });
 }
+
 async function restoreReplayHead({ context, repository, objectId }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
@@ -359,6 +366,7 @@ async function restoreReplayHead({ context, repository, objectId }: {
     },
   });
 }
+
 async function abortReplay({ context, kind }: {
     context: WeshCommandContext;
     kind: GitReplayKind;
@@ -401,6 +409,7 @@ async function abortReplay({ context, kind }: {
     await clearSequencerState({ files: context.files, repository });
   return { exitCode: 0 };
 }
+
 async function skipReplay({ context, kind }: {
     context: WeshCommandContext;
     kind: GitReplayKind;
@@ -434,6 +443,7 @@ async function skipReplay({ context, kind }: {
   await advanceSequencer({ files: context.files, repository });
   return executeSequencerSteps({ context, repository, kind });
 }
+
 export type GitReplayAction = 'continue' | 'abort' | 'skip' | 'start';
 
 export interface GitReplayRequest {

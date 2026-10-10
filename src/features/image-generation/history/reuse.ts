@@ -23,12 +23,15 @@ const draftParametersSchema = parametersSchema.extend({
   vaeTileSize: z.number().finite(),
   conditioningCacheSize: z.number().finite(),
 });
+
 export function prepareImageHistoryReuse({ record, findFile, getImage }: ReuseOptions) {
   return prepareImageRequestReuse({ record, findFile, getImage, purpose: { type: 'history' } });
 }
+
 export function prepareImageDraftReuse({ loraStates, ...options }: ReuseOptions & { loraStates: { enabled: boolean, strength: number }[] }) {
   return prepareImageRequestReuse({ ...options, purpose: { type: 'draft', loraStates } });
 }
+
 /** Resolve an entire edit before applying it; no network access or form mutation.
  * A draft need not yet be a valid generation request (e.g. an empty prompt). */
 async function prepareImageRequestReuse({ record, findFile, getImage, purpose }: ReuseOptions & { purpose: ReusePurpose }) {

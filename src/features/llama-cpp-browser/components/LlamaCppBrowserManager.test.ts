@@ -50,9 +50,11 @@ vi.mock('../runtime/model-store', () => ({ prepareModelRemoval: vi.fn() }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: notifications.confirm }) }));
 const storedModel: LocalModel = { id: 'user/local-GGUF', name: 'local.gguf', size: 16384, importedAt: 1 };
 const wrappers: VueWrapper[] = [];
+
 function render(): VueWrapper {
   const wrapper = mount(LlamaCppBrowserManager); wrappers.push(wrapper); return wrapper;
 }
+
 // Entry callbacks are asynchronous even though drag data must be captured during
 // dispatch. Plain files-only drop mocks miss both that gap and focus/list races.
 function deferredFileDrop({ file }: { file: File }) {
@@ -83,6 +85,7 @@ function deferredFileDrop({ file }: { file: File }) {
     },
   };
 }
+
 function dispatchDrop({ wrapper, transfer }: { wrapper: VueWrapper, transfer: DataTransfer }): Event {
   const event = new Event('drop', { bubbles: true, cancelable: true });
   Object.defineProperty(event, 'dataTransfer', { value: transfer });

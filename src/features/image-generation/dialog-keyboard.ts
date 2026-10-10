@@ -21,5 +21,6 @@ export function trapImageDialogFocus({ root, event }: { root: HTMLElement | unde
     event.preventDefault(); first.focus();
   }
 }
+
 export const TEST_ONLY = {
 };

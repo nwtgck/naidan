@@ -81,9 +81,11 @@ async function ready(): Promise<VueWrapper> {
   await nextTick(); await wrapper.get('[data-testid="audio-text"]').setValue('Hello');
   return wrapper;
 }
+
 async function submit({ view }: { view: VueWrapper }): Promise<void> {
   await view.get('form').trigger('submit'); await flushPromises();
 }
+
 function notify({ state }: { state: EngineState }): void {
   service.subscribe.mock.calls[0]?.[0].listener({ state });
 }

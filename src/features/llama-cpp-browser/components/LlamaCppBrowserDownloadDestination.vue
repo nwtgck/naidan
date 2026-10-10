@@ -19,9 +19,11 @@ const missingApis = computed(() => [
 const { supported, entries, busy, destination } = props.view;
 const unavailableReason = computed(() => !supported.value ? lazyStrings.LlamaCppBrowserDownloadDestination__linked_folders_unavailable({ apis: missingApis.value.join(', ') }) : undefined);
 const destinationKind = computed(() => props.view.destinationKind?.value ?? (destination.value === 'opfs' ? 'opfs' : 'host'));
+
 function hostChoiceValue({ id }: { id: string }): string {
   return `host:${id}`;
 }
+
 const selectedValue = computed(() => {
   const kind = destinationKind.value;
   switch (kind) {
@@ -63,6 +65,7 @@ function selectDestination({ event }: { event: Event }): void {
   const entry = entries.value.find(entry => hostChoiceValue({ id: entry.id }) === value);
   if (entry) props.view.selectDestination({ id: entry.id, kind: 'host' });
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 

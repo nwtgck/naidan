@@ -8,6 +8,7 @@ import type { LmProvider } from '@/01-models/lm';
 function message(): AssistantMessageNode {
   return { id: toMessageId({ raw: 'a' }), role: 'assistant', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [], interruption: undefined, replies: { items: [] } };
 }
+
 async function collect({ items, controller }: { items: ReturnType<LmProvider['chat']>, controller: AbortController }) {
   const node = message();
   const result = await consumeChatGeneration({ onToolCallDraftsChange: undefined, node, items, abortController: controller, onChange: () => {} });

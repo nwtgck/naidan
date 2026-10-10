@@ -25,6 +25,7 @@ afterEach(() => {
 function screen() {
   view = mount(AudioReferenceInput, { props: { disabled: false, invalid: false } }); return view;
 }
+
 async function add({ wrapper, files }: { wrapper: VueWrapper, files: File[] }) {
   const input = wrapper.get<HTMLInputElement>('[data-testid="audio-reference"]'); Object.defineProperty(input.element, 'files', { configurable: true, value: files }); await input.trigger('change');
 }

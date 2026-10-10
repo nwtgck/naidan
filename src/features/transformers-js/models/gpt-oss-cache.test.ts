@@ -29,6 +29,7 @@ afterAll(() => {
 function inputs({ ids }: { ids: bigint[] }) {
   return { input_ids: new runtime.Tensor('int64', ids, [1, ids.length]), attention_mask: new runtime.Tensor('int64', ids.map(() => 1n), [1, ids.length]) };
 }
+
 function fixture() {
   const id = toToolCallId({ raw: 'actually-emitted-tool-id' });
   const messages: InferenceMessage[] = [{ role: 'user', content: 'Original owned request' }];

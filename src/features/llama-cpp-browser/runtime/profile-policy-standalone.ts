@@ -1,8 +1,10 @@
 import { LlamaCppBrowserError, runtimeOptionsSchema, type RuntimeOptions } from '@/features/llama-cpp-browser/types';
 export const selectableProfiles: readonly RuntimeOptions['profile'][] = ['auto', 'webgpu-wasm64-jspi', 'webgpu-wasm32-jspi'] as const;
+
 export function defaultRuntimeOptions(): RuntimeOptions {
   return { profile: 'auto' };
 }
+
 export function parseRuntimeOptions({ options }: { options: RuntimeOptions }): RuntimeOptions {
   const accepted = runtimeOptionsSchema.parse(options);
   switch (accepted.profile) {
@@ -18,5 +20,6 @@ export function parseRuntimeOptions({ options }: { options: RuntimeOptions }): R
   }
   }
 }
+
 export const TEST_ONLY = {
 };

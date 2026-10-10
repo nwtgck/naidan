@@ -4,6 +4,7 @@ export class RpcOwnerBusyError extends Error {
     super('Naidan RPC is managed by another tab'); this.name = 'RpcOwnerBusyError';
   }
 }
+
 /** The lock belongs to the manager, not a Settings component. Never steal an
  * existing owner: a frozen tab may still own native work and relay readers. */
 export function acquireRpcOwner({ signal }: { signal: AbortSignal }): Promise<RpcOwnerLease> {
@@ -28,5 +29,6 @@ export function acquireRpcOwner({ signal }: { signal: AbortSignal }): Promise<Rp
     void pending.catch(reject);
   });
 }
+
 export const TEST_ONLY = {
 };

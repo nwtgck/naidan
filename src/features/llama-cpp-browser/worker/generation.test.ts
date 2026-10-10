@@ -85,12 +85,14 @@ afterAll(async () => {
 function request({ messages }: { messages: WorkerGenerateInput['messages'] }): WorkerGenerateInput {
   return { model: 'private-local-name.gguf', messages, temperature: 0, topP: 0.95, maxTokens: 5, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: integrationProfile }, assetBaseURL: 'https://example.invalid/runtime/' };
 }
+
 async function sequencePosition(): Promise<number> {
   const core = host.core; const context = sessionTesting.residentContext();
   if (!core || context === undefined) throw new Error('Expected a resident native context');
   const memory = await core.api.llama_get_memory(context);
   return core.api.llama_memory_seq_pos_max(memory, 0);
 }
+
 async function readNativeLogits(): Promise<number[]> {
   const core = host.core; const context = sessionTesting.residentContext();
   if (!core || context === undefined) throw new Error('Expected a resident native context');

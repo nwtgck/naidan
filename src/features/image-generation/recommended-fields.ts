@@ -19,13 +19,16 @@ export function imageRecommendedHint({ recommendation, field }: { recommendation
     range,
   };
 }
+
 export function differsFromImageRecommendation({ current, hint }: { current: unknown, hint: ImageRecommendedHint }): boolean {
   if (hint.range && typeof current === 'number' && Number.isFinite(current)) return current < hint.range.minimum || current > hint.range.maximum;
   return current !== hint.value;
 }
+
 export function applyImageRecommendedField({ parameters, recommendation, field }: { parameters: Parameters, recommendation: ImageGenerationRecommendation, field: ImageRecommendedField }): Parameters {
   // Explicitly update one field; a tile size action never enables tiling, etc.
   return { ...parameters, [field]: recommendation.parameters[field] };
 }
+
 export const TEST_ONLY = {
 };

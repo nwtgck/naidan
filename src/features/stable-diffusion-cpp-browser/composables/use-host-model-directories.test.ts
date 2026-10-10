@@ -16,6 +16,7 @@ let update: ReturnType<typeof vi.fn<ReturnType<typeof useSettings>['updateExperi
 const handles = new Map<string, HostModelDirectoryHandle>();
 const picker = vi.fn();
 const failed = vi.fn(), changed = vi.fn(), stopDownload = vi.fn();
+
 function handle({ name }: { name: string }): HostModelDirectoryHandle {
   const result = {
     kind: 'directory',

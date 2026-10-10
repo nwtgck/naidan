@@ -244,6 +244,7 @@ describe('StorageSynchronizer', () => {
       (global as any).BroadcastChannel = class {
         postMessage = vi.fn();
         close = vi.fn();
+
         set onmessage(handler: any) {
           capturedHandler = handler;
         }

@@ -33,6 +33,7 @@ function add({ event }: { event: Event }): void {
   if (invalidFiles.value) return;
   emit('update:modelValue', [...props.modelValue, ...files.map(file => ({ file, strength: 1, enabled: true }))]);
 }
+
 function change({ index, event, field }: { index: number, event: Event, field: 'enabled' | 'strength' }): void {
   if (props.disabled || !(event.target instanceof HTMLInputElement)) return;
   const input = event.target;
@@ -45,6 +46,7 @@ function change({ index, event, field }: { index: number, event: Event, field: '
     }
   }));
 }
+
 function remove({ index }: { index: number }): void {
   if (props.disabled) return;
   invalidFiles.value = false;

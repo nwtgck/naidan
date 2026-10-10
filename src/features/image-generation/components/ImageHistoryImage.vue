@@ -21,10 +21,12 @@ onMounted(() => {
   });
   if (element.value) observer.observe(element.value);
 });
+
 function release(): void {
   if (url.value) URL.revokeObjectURL(url.value);
   url.value = undefined;
 }
+
 watch(() => [props.binaryObjectId, props.getImage, visible.value, imageRevision.value] as const, async ([binaryObjectId, , visible]) => {
   const current = ++revision;
   release();

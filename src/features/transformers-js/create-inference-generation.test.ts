@@ -9,6 +9,7 @@ import { consumeChatGeneration } from '@/logic/consume-chat-generation';
 
 const done: InferenceGenerationEvent = { type: 'result', result: { type: 'finished', next: 'user' } };
 const interrupted: InferenceGenerationEvent = { type: 'result', result: { type: 'interrupted', reason: 'aborted' } };
+
 function fresh(): AssistantMessageNode {
   return {
     id: toMessageId({ raw: 'new' }),
@@ -21,6 +22,7 @@ function fresh(): AssistantMessageNode {
     replies: { items: [] },
   };
 }
+
 async function run({ events }: { events: InferenceGenerationEvent[] }) {
   const node = fresh(); const controller = new AbortController();
   const result = await consumeChatGeneration({

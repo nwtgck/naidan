@@ -38,6 +38,7 @@ function message({ blob }: { blob: Blob | undefined }): UserMessageNode {
 let observed: Element[];
 let intersect: (({ element }: { element: Element }) => void) | undefined;
 const wrappers: ReturnType<typeof mount>[] = [];
+
 async function createShelf({ messages }: { messages: UserMessageNode[] }) {
   const wrapper = mount(ChatMediaShelf, { props: { chatId: toChatId({ raw: 'chat' }), messages }, global: { stubs: { ImageDownloadButton: true } } });
   wrappers.push(wrapper); await flushPromises(); return wrapper;
@@ -54,9 +55,11 @@ beforeEach(async () => {
     constructor(callback: (entries: { isIntersecting: boolean; target: Element }[]) => void) {
       intersect = ({ element }) => callback([{ isIntersecting: true, target: element }]);
     }
+
     observe(element: Element) {
       observed.push(element);
     }
+
     disconnect() {}
   });
 });

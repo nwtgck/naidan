@@ -29,9 +29,11 @@ export class HandshakeResponses {
   private timerIdentity: object | undefined;
   private disposed = false;
   private cleanupFailure: { error: unknown } | undefined;
+
   get retirementFailure(): Readonly<{ error: unknown }> | undefined {
     return this.cleanupFailure;
   }
+
   private readonly clearOnAbort = () => this.clear();
 
   constructor({ parent, milliseconds, clock, onFailure }: {
@@ -44,15 +46,18 @@ export class HandshakeResponses {
     this.signal.addEventListener('abort', this.clearOnAbort, { once: true });
     if (this.signal.aborted) this.clear();
   }
+
   private sample(): { monotonic: number; wall: number } {
     const monotonic = this.clock.monotonic(), wall = this.clock.wall();
     if (!Number.isFinite(monotonic) || !Number.isFinite(wall)) throw new Error('Invalid response clock sample');
     return { monotonic, wall };
   }
+
   private remaining({ window }: { window: ResponseWindow }): number {
     const now = this.sample();
     return Math.min(window.monotonicDeadline - now.monotonic, window.wallDeadline - now.wall);
   }
+
   private clear(): void {
     this.current = undefined; this.timerIdentity = undefined;
     const cancel = this.cancelTimer; this.cancelTimer = undefined;
@@ -62,6 +67,7 @@ export class HandshakeResponses {
       this.cleanupFailure ??= { error };
     }
   }
+
   fail({ error }: { error: unknown }): void {
     if (this.signal.aborted || this.disposed) return;
     this.stop.abort(error);
@@ -71,6 +77,7 @@ export class HandshakeResponses {
       this.cleanupFailure ??= { error: failure };
     }
   }
+
   private schedule({ window, milliseconds }: { window: ResponseWindow; milliseconds: number }): void {
     const identity = {}; this.timerIdentity = identity;
     this.cancelTimer = this.clock.schedule({
@@ -80,6 +87,7 @@ export class HandshakeResponses {
       },
     });
   }
+
   private wake({ window }: { window: ResponseWindow }): void {
     if (this.disposed || this.signal.aborted || this.current !== window) return;
     try {
@@ -90,6 +98,7 @@ export class HandshakeResponses {
       this.fail({ error });
     }
   }
+
   arm({ stage }: { stage: HandshakeResponseStage }): ResponseWindow {
     this.signal.throwIfAborted();
     if (this.disposed || this.current !== undefined) throw new Error('Response window already active or retired');
@@ -120,11 +129,13 @@ export class HandshakeResponses {
     this.signal.throwIfAborted();
     return true;
   }
+
   /** Call only after the expected response's complete crypto/schema validation. */
   accept({ window }: { window: ResponseWindow }): boolean {
     if (!this.check({ window })) return false;
     this.clear(); return true;
   }
+
   /** Successful disposal clears timers/listeners without aborting a live parent. */
   dispose(): void {
     this.disposed = true; this.clear(); this.signal.removeEventListener('abort', this.clearOnAbort);

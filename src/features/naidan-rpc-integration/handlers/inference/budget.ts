@@ -32,6 +32,7 @@ export function createInferenceBudget({ capacity }: { capacity: number }) {
     },
   };
 }
+
 export type InferenceBudget = ReturnType<typeof createInferenceBudget>;
 export const TEST_ONLY = {
 };

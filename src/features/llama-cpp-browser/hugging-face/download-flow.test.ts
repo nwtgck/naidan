@@ -26,6 +26,7 @@ vi.mock('@/utils/worker-transport', async importOriginal => {
   };
 });
 const selection: DownloadSelection = { repository: 'owner/repo', revision: 'a'.repeat(40), files: [{ path: 'model.gguf', size: 128 }] };
+
 function response({ status, offset, bytes }: { status: number, offset: number, bytes: Uint8Array<ArrayBuffer>[] }): Awaited<ReturnType<typeof privacyFetchStream>> {
   return {
     status,

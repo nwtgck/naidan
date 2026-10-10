@@ -53,6 +53,7 @@ beforeEach(() => {
   }));
   vi.stubGlobal('Worker', class {
     terminate = vi.fn();
+
     constructor() {
       mocks.workers.push(this);
     }

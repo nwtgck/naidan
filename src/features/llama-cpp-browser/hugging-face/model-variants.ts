@@ -13,9 +13,11 @@ export function variantLabel({ repository, path }: { repository: string, path: s
   }
   return [...parts, stem].join('/');
 }
+
 export function isProjector({ path }: { path: string }): boolean {
   return (path.split('/').at(-1) ?? '').toLowerCase().includes('mmproj');
 }
+
 export function modelGroups<T extends { path: string }>({ files }: { files: T[] }): { models: T[][], projectors: T[] } {
   const projectors: T[] = []; const groups = new Map<string, T[]>();
   for (const file of files) {
@@ -29,5 +31,6 @@ export function modelGroups<T extends { path: string }>({ files }: { files: T[] 
   const ordered = ({ group }: { group: T[] }): T[] => group.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   return { models: [...groups.values()].map(group => ordered({ group })), projectors: ordered({ group: projectors }) };
 }
+
 export const TEST_ONLY = {
 };

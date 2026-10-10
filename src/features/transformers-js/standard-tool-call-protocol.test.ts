@@ -149,6 +149,7 @@ The documentation says <|tool_call_start|>[other_tool(value='x')]<|tool_call_end
 
 const open = '<|tool_call_start|>';
 const close = '<|tool_call_end|>';
+
 function contentTokenizer({ mode, ids, specialIds }: {
   mode: 'omitted' | 'native-pythonic' | 'native-json' | 'dropped' | 'escaped' | 'duplicated';
   ids: readonly number[][]; specialIds: number[];

@@ -8,21 +8,27 @@ import { createChatMessageSnapshot } from '@/01-models/chat-message';
 function fresh(): AssistantMessageNode {
   return { id: toMessageId({ raw: 'new' }), role: 'assistant', createdAt: 4, parts: [], modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
 }
+
 async function* strings({ chunks }: { chunks: string[] }): AsyncGenerator<string, void, void> {
   yield* chunks;
 }
+
 async function* sequence({ items }: { items: ChatGenerationItem[] }): AsyncGenerator<ChatGenerationItem, void, void> {
   yield* items;
 }
+
 function part({ id, index, type, text, completeness }: { id: string, index: number, type: 'text' | 'reasoning', text: string[], completeness: 'complete' | 'partial' }): Extract<ChatGenerationItem, { type: 'text' | 'reasoning' }> {
   return { type, partId: id, index, chunks: strings({ chunks: text }), completeness: Promise.resolve(completeness) };
 }
+
 function completed(): Extract<ChatGenerationItem, { type: 'result' }> {
   return { type: 'result', result: { type: 'finished', next: 'user' } };
 }
+
 function call(): Extract<ChatGenerationItem, { type: 'tool_call' }> {
   return { type: 'tool_call', partId: 'call', index: 3, toolCall: { id: toToolCallId({ raw: 'call' }), type: 'function', function: { name: 'f', arguments: ' {"x":1} ' } } };
 }
+
 function consume({ node, items, onChange, abortController }: { node: AssistantMessageNode, items: AsyncIterable<ChatGenerationItem>, onChange: () => void | Promise<void>, abortController: AbortController }) {
   return consumeChatGeneration({ onToolCallDraftsChange: undefined, node, items, onChange, abortController });
 }

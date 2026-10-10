@@ -64,6 +64,7 @@ export function supportsMemory64(): boolean {
     return false;
   }
 }
+
 export async function checkJspi(): Promise<void> {
   if (typeof WebAssembly === 'undefined') throw new Error('WebAssembly');
   const wasm: object = WebAssembly;
@@ -81,6 +82,7 @@ export async function checkJspi(): Promise<void> {
   const run = probe.instance.exports.run;
   if (typeof run !== 'function' || await integration.promising(run)() !== 7) throw new Error('JSPI suspension');
 }
+
 export async function gpuUnavailableReason(): Promise<Extract<ProfileUnavailableReason, 'webgpu' | 'shader-f16'> | undefined> {
   if (typeof navigator === 'undefined' || !navigator.gpu) return 'webgpu';
   try {
@@ -91,5 +93,6 @@ export async function gpuUnavailableReason(): Promise<Extract<ProfileUnavailable
     return 'webgpu';
   }
 }
+
 export const TEST_ONLY = {
 };

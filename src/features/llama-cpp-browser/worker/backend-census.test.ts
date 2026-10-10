@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { backendCensusSchema } from '@/features/llama-cpp-browser/performance/backend-census-schema';
 import { createBackendCensus } from './backend-census';
+
 function fixture() {
   let callback: (tensor: number | bigint, ask: number, data: number | bigint) => number = () => -1;
   const read = vi.fn(() => ({ op: 'GGML_OP_MUL_MAT', description: 'MUL_MAT', compute: true, type: 'GGML_TYPE_F32', shape: [8, 1, 1, 1], inputs: [], name: 'result', buffer: 'CPU', storage: 'host' as const, webgpuSupport: 'unsupported' as const, metadataOnly: false }));

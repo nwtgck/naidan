@@ -40,6 +40,7 @@ const capabilities = computed(() => {
 });
 const selectedProfile = computed(() => resolveProfilePreference({ preference: options.value.profile, capabilities: capabilities.value }));
 const runtimeReady = computed(() => capabilities.value?.profiles.some(entry => entry.profile === selectedProfile.value && entry.status === 'available') === true);
+
 function failureReason({ entry }: { entry: ProfileCapabilities['profiles'][number] | undefined }): ProfileUnavailableReason | undefined {
   if (!entry) return undefined;
   switch (entry.status) {
@@ -48,12 +49,15 @@ function failureReason({ entry }: { entry: ProfileCapabilities['profiles'][numbe
   default: { const exhaustive: never = entry; throw new Error(`Unhandled profile availability: ${exhaustive}`); }
   }
 }
+
 const selectedFailure = computed(() => failureReason({ entry: capabilities.value?.profiles.find(entry => entry.profile === selectedProfile.value) }));
 watch(runtimeReady, ready => emit('runtimeReady', ready), { immediate: true });
+
 function profileDisabled({ profile }: { profile: typeof options.value.profile }): boolean {
   const resolved = resolveProfilePreference({ preference: profile, capabilities: capabilities.value });
   return !capabilities.value?.profiles.some(entry => entry.profile === resolved && entry.status === 'available');
 }
+
 const profileChoices = computed(() => {
   const labels = {
     ...profileLabels,
@@ -71,6 +75,7 @@ const profileChoices = computed(() => {
 });
 let profileController: AbortController | undefined;
 let unsubscribeProfiles: (() => void) | undefined;
+
 async function probeProfiles(): Promise<void> {
   profileController?.abort();
   const controller = new AbortController(); profileController = controller;
@@ -80,6 +85,7 @@ async function probeProfiles(): Promise<void> {
     if (!disposed && !controller.signal.aborted) profileState.value = { status: 'error', code: errorCode({ error }) };
   }
 }
+
 function applyOptions(): void {
   const parsed = runtimeOptionsSchema.safeParse(options.value);
   if (parsed.success && !profileDisabled({ profile: parsed.data.profile })) llamaCppBrowserService.setOptions({ options: parsed.data });
@@ -88,6 +94,7 @@ function applyOptions(): void {
 function releaseRuntime(): void {
   if (!props.releaseDisabled) llamaCppBrowserService.release();
 }
+
 onMounted(() => {
   unsubscribeProfiles = llamaCppBrowserService.subscribeProfiles({
     listener: ({ state: next }) => {

@@ -13,9 +13,11 @@ function harness({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   vi.stubGlobal('OffscreenCanvas', class {
     width: number;
     height: number;
+
     constructor(width: number, height: number) {
       this.width = width; this.height = height; canvases.push(this);
     }
+
     getContext() {
       return context;
     }
@@ -45,6 +47,7 @@ function harness({ pointerBytes }: { pointerBytes: 4 | 8 }) {
     },
   };
 }
+
 const file = new File(['encoded image bytes'], 'source.png', { type: 'image/png' });
 
 afterEach(() => vi.unstubAllGlobals());

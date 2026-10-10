@@ -30,6 +30,7 @@ function createClientFixture() {
 async function publishFinished({ onEvent }: { onEvent: InferenceGenerationCallback }): Promise<void> {
   await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
 }
+
 async function publishCompletedCall({ onEvent, toolCall }: { onEvent: InferenceGenerationCallback, toolCall: ToolCall }): Promise<void> {
   await onEvent({ event: { type: 'tool_start', index: 0 } });
   await onEvent({ event: { type: 'tool_call', index: 0, toolCall } });
@@ -58,6 +59,7 @@ const owners: Array<ReturnType<typeof createTransformersJsService>> = [];
 const forbiddenFetch = vi.fn<typeof fetch>(async () => {
   throw new Error('Inference ownership tests forbid network access');
 });
+
 function createOwner({ createWorkerClient }: { createWorkerClient: () => TransformersJsWorkerClient }) {
   const owner = createTransformersJsService({ createWorkerClient });
   owners.push(owner);

@@ -10,6 +10,7 @@ const quantization = preferredQuantizationHint({ suggestion: modelSuggestions.fi
 const revision = 'a'.repeat(40);
 const main = 'Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf';
 const projector = 'mmproj-Muse-Glimmer-30B-Q4_K_M.gguf';
+
 function catalog({ paths }: { paths: string[] }) {
   return { repository: quantization.repository, revision, ...groupModelFiles({ files: paths.map(path => ({ path, size: 128 })) }) };
 }

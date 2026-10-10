@@ -65,6 +65,7 @@ function fixture({ pointerBytes }: { pointerBytes: 4 | 8 }) {
   } as unknown as Core;
   return { core, api, allocated, tokenPointer, observedParts };
 }
+
 const blob = new Blob(['image'], { type: 'image/png' });
 
 describe('native multimodal orchestration', () => {

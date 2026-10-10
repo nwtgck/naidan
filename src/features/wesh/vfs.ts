@@ -758,6 +758,7 @@ class FifoHandle implements WeshFileHandle {
   }
 
   async truncate(): Promise<void> {}
+
   async ioctl(): Promise<{ ret: number }> {
     return { ret: 0 };
   }
@@ -767,15 +768,20 @@ class DevNullHandle implements WeshFileHandle {
   async read(): Promise<WeshIOResult> {
     return { bytesRead: 0 };
   }
+
   async write({ length, buffer, offset }: { length?: number, buffer: Uint8Array, offset?: number }): Promise<WeshWriteResult> {
     const len = length ?? (buffer.length - (offset ?? 0));
     return { bytesWritten: len };
   }
+
   async close() {}
+
   async stat(): Promise<WeshStat> {
     return { size: 0, mode: 0o666, type: 'chardev', mtime: 0, ino: 0, uid: 0, gid: 0 };
   }
+
   async truncate() {}
+
   async ioctl() {
     return { ret: 0 };
   }
@@ -788,15 +794,20 @@ class DevZeroHandle implements WeshFileHandle {
     buffer.fill(0, offset, offset + length);
     return { bytesRead: length };
   }
+
   async write({ length, buffer, offset }: { length?: number, buffer: Uint8Array, offset?: number }): Promise<WeshWriteResult> {
     const len = length ?? (buffer.length - (offset ?? 0));
     return { bytesWritten: len };
   }
+
   async close() {}
+
   async stat(): Promise<WeshStat> {
     return { size: 0, mode: 0o666, type: 'chardev', mtime: 0, ino: 0, uid: 0, gid: 0 };
   }
+
   async truncate() {}
+
   async ioctl() {
     return { ret: 0 };
   }
@@ -1965,6 +1976,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
     await parent.handle.removeEntry(name);
   }
+
   async rmdir({ path }: { path: string }): Promise<void> {
     const normalized = this.normalizePath({ path: path });
     if (this.findVirtualMount({ path: normalized }) !== undefined) {

@@ -6,6 +6,7 @@ import type { ConnectionLease, ConnectionReplacement, MaintenanceFailure } from 
 async function flush(): Promise<void> {
   for (let turn = 0; turn < 12; turn++) await Promise.resolve();
 }
+
 function fixture({ permits = new ConnectionOpenPermits({ capacity: 4, maximumWaiting: 32 }) }: { permits?: ConnectionOpenPermits } = {}) {
   let now = 0;
   const timers: { milliseconds: number; callback(): void; cancelled: boolean }[] = [];
@@ -42,6 +43,7 @@ function fixture({ permits = new ConnectionOpenPermits({ capacity: 4, maximumWai
     },
   };
 }
+
 function connection({ value, held = false }: { value: number; held?: boolean }) {
   const ended = Promise.withResolvers<{ error: unknown }>(), stopped = Promise.withResolvers<void>(), closed = Promise.withResolvers<void>();
   if (!held) closed.resolve();

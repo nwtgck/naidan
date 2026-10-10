@@ -29,6 +29,7 @@ function selectedFile({ candidate }: { candidate: ModelCandidate }): PeerImageFi
     expected: { size: file.size, lastModified: file.lastModified },
   };
 }
+
 function matches({ candidate, file }: { candidate: ModelCandidate, file: PeerImageFile }): boolean {
   const { location, expected } = file;
   const own = selectedFile({ candidate });
@@ -42,6 +43,7 @@ function matches({ candidate, file }: { candidate: ModelCandidate, file: PeerIma
   if (present && expected && (own.expected?.size !== expected.size || own.expected.lastModified !== expected.lastModified)) throw new Error('The selected model changed since it was listed');
   return present;
 }
+
 function modelFile({ candidate, slot }: { candidate: ModelCandidate, slot: ModelSlot }): Request['models'][number] {
   if (candidate.issue || !candidate.roles.includes(slot)) throw new Error('The model cannot serve the requested role');
   const main = candidate.files.find(file => file.path === candidate.path);
@@ -53,6 +55,7 @@ function modelFile({ candidate, slot }: { candidate: ModelCandidate, slot: Model
     companions: candidate.files.filter(file => file.path !== candidate.path).map(({ file, path }) => ({ file, path })).sort((left, right) => left.path.localeCompare(right.path)),
   };
 }
+
 /** Existing files and explicit per-call selections only. Download, import,
  * model deletion, provider preference changes and provider history writes are
  * intentionally absent, not unfinished remote-management TODOs. */
@@ -317,6 +320,7 @@ export function createReadOnlyResources({ directories }: { directories(): readon
     },
   };
 }
+
 export const TEST_ONLY = {
   matches,
   modelFile,

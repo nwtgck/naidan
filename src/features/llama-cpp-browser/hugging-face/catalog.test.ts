@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { discoverRepository, groupModelFiles, parseRepository } from './catalog';
 import { privacyFetchStream } from '@/features/privacy-fetch';
 vi.mock('@/features/privacy-fetch', () => ({ privacyFetchStream: vi.fn() }));
+
 function jsonResponse({ value, headers }: { value: unknown, headers: Headers }): Awaited<ReturnType<typeof privacyFetchStream>> {
   return {
     body: new ReadableStream<Uint8Array<ArrayBuffer>>({

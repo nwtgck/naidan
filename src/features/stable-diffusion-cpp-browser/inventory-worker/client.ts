@@ -5,6 +5,7 @@ import { inspectionProgressSchema, type InspectionReport, type InventoryWorker }
 
 // This is an inactivity bound, not a maximum duration for a large model library.
 export const INSPECTION_STALL_MS = 60_000;
+
 export async function inspectImageInventory({ signal, onProgress, repositories, hostDirectories, repositoryIds }: {
   signal: AbortSignal, onProgress: InspectionReport, repositories?: LocalImageRepository[], hostDirectories?: HostImageDirectory[], repositoryIds?: string[],
 }): Promise<ModelInventory> {
@@ -47,5 +48,6 @@ export async function inspectImageInventory({ signal, onProgress, repositories, 
     worker.terminate();
   }
 }
+
 export const TEST_ONLY = {
 };

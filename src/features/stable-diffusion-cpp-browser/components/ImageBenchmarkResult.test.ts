@@ -37,6 +37,7 @@ function runFixture({ image }: { image: BenchmarkRun['record']['image']['status'
     png: image === 'retained' ? new Blob(['PNG'], { type: 'image/png' }) : undefined,
   };
 }
+
 async function toggle({ open }: { open: boolean }): Promise<void> {
   const details = wrapper!.get<HTMLDetailsElement>('[data-testid="benchmark-result-details"]');
   details.element.open = open;

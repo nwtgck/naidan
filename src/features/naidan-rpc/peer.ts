@@ -34,6 +34,7 @@ export class NaidanRpcPeer {
   private failure: { error: unknown } | undefined;
   private protocolError: NaidanRpcProtocolError | undefined;
   private retirementFailure: { error: unknown } | undefined;
+
   constructor({ transport, exports, limits, signal, callBudget, byteBudget }: {
     byteBudget?: NaidanRpcByteBudget;
     callBudget?: NaidanRpcCallBudget;
@@ -109,6 +110,7 @@ export class NaidanRpcPeer {
     })();
     void this.closed.catch(() => {});
   }
+
   /** Until adoption succeeds, the peer still owns disposal of this duplex.
    * Cleanup failures poison retirement; they are not ordinary call failures.
    * Do not release the manager's transport lease on an unconfirmed abort. */
@@ -124,6 +126,7 @@ export class NaidanRpcPeer {
       this.retirementFailure ??= { error: error instanceof RpcRetirementError ? error.cause : error }; this.dispose();
     }
   }
+
   private lookup({ contract, method }: { contract: string; method: string }): PreparedMethod {
     const exposure = this.methods.get(contract);
     const result = exposure?.methods.get(method);
@@ -131,11 +134,13 @@ export class NaidanRpcPeer {
     if (!exposure?.allowed.has(method) || (this.incomingAdmission === 'suspended' && !this.allowedWhileSuspended.get(contract)?.has(method))) throw new NaidanRpcError({ code: 'METHOD_NOT_ALLOWED' });
     return result;
   }
+
   /** Pause new inbound calls while local policy is being revalidated. Already
    * admitted calls retain their lifetime; actual revocations use setAllowedMethods. */
   setIncomingAdmission({ status }: { status: 'open' | 'suspended' }): void {
     this.stop.signal.throwIfAborted(); this.incomingAdmission = status;
   }
+
   /** A narrowly registered status method may remain callable during policy
    * checks. This never grants authority or bypasses revocation and teardown. */
   allowIncomingWhileSuspended<C extends Contract>({ contract, allowedMethods }: {
@@ -146,6 +151,7 @@ export class NaidanRpcPeer {
     check({ condition: exposure?.contract === contract, code: 'INVALID_ARGUMENT' });
     this.allowedWhileSuspended.set(contract.name, checkAllowedMethods({ contract, allowedMethods }));
   }
+
   /** Local authority only. Updating grants never calls, reconnects or replays. */
   setAllowedMethods<C extends Contract>({ contract, allowedMethods }: {
     contract: C; allowedMethods: readonly NaidanRpcMethodName<NoInfer<C>>[];
@@ -159,6 +165,7 @@ export class NaidanRpcPeer {
     exposure.allowed = next;
     for (const call of this.calls) call.revokeMethods({ contract: contract.name, removed });
   }
+
   private adopt({ duplex, role, timeoutMs, release, memory = this.byteBudget.owner() }: { memory?: RpcByteOwner; duplex: NaidanRpcDuplex; role: 'caller' | 'callee'; timeoutMs: number | undefined; release(): void }): RpcConversation {
     this.activityRevision++;
     const call = new RpcConversation({
@@ -192,6 +199,7 @@ export class NaidanRpcPeer {
       this.retirementFailure ??= { error }; this.dispose(); this.calls.delete(call);
     }); return call;
   }
+
   client<C extends Contract>({ contract }: { contract: C }): NaidanRpcClient<C> {
     const methods: Record<string, unknown> = {};
     for (const [method, definition] of Object.entries(contract.methods)) {
@@ -203,6 +211,7 @@ export class NaidanRpcPeer {
     // The closed contract was checked before generating these local stubs.
     return Object.freeze(methods) as NaidanRpcClient<C>;
   }
+
   private invoke({ contract, method, prepared, input, on, signal, timeoutMs }: {
     contract: string; method: string; prepared: PreparedMethod; input: unknown; on: Readonly<Record<string, Observer | undefined>>;
     signal: AbortSignal | undefined; timeoutMs: number | undefined;
@@ -288,6 +297,7 @@ export class NaidanRpcPeer {
       },
     };
   }
+
   /** Fences old dispatch and joins transport ownership only. Calls remain in
    * this peer's full retirement and shared call budget until native work ends. */
   retireNetwork(): Promise<void> {
@@ -304,6 +314,7 @@ export class NaidanRpcPeer {
     })();
     void this.networkRetirement.catch(() => {}); return this.networkRetirement;
   }
+
   /** Abort is a protocol state, not proof that native work has stopped. The
    * connection owner awaits this barrier before releasing shared ownership. */
   async retire(): Promise<void> {
@@ -320,15 +331,18 @@ export class NaidanRpcPeer {
     }
     if (this.retirementFailure) throw this.retirementFailure.error;
   }
+
   /** A stable idle generation excludes opens, unread streams and native work
    * until their actual retirement, including a call that began and ended
    * between two observations. This never proves network reachability. */
   idleRevision(): number | undefined {
     return !this.stop.signal.aborted && this.calls.size === 0 && this.opening === 0 && this.pendingInvocations.size === 0 ? this.activityRevision : undefined;
   }
+
   private recordRetirementFailure({ error }: { error: unknown }): void {
     this.retirementFailure ??= { error }; this.dispose();
   }
+
   /** Stops owned calls and the exclusive iterator, not the borrowed transport's entire session. */
   dispose(): void {
     if (this.stop.signal.aborted) return;

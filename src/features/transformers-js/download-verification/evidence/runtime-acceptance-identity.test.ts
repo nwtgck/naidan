@@ -5,6 +5,7 @@ import { downloadRuntimeAcceptanceIdentity } from './runtime-acceptance-identity
 
 const revision = 'a'.repeat(40);
 const paths = ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'];
+
 function receipt({ cacheRevision, option }: { cacheRevision: string; option: string | undefined }) {
   return productionLoadReceiptSchema.parse({
     format: 'production-offline-load-receipt-v1',

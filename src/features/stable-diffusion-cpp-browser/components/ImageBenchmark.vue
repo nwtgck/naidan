@@ -24,12 +24,15 @@ const weightOptions = computed(() => [
   { value: 'hybrid', label: lazyStrings.stableDiffusionCppBrowser__weight_residency_hybrid() },
   { value: 'disk', label: lazyStrings.stableDiffusionCppBrowser__weight_residency_disk() },
 ]);
+
 function checked({ event }: { event: Event }): boolean {
   return event.target instanceof HTMLInputElement && event.target.checked;
 }
+
 function time({ value }: { value: unknown }): string {
   return typeof value === 'number' && Number.isFinite(value) ? `${(value / 1000).toFixed(2)} s` : '—';
 }
+
 function status({ record }: { record: BenchmarkRunRecord }): string | undefined {
   switch (record.status) {
   case 'queued': return lazyStrings.imageBenchmark__queued();
@@ -41,6 +44,7 @@ function status({ record }: { record: BenchmarkRunRecord }): string | undefined 
   default: { const exhaustive: never = record.status; throw new Error(String(exhaustive)); }
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

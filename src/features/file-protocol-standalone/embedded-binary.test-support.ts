@@ -13,6 +13,7 @@ export function installBrotliDecoderForTest(): 'native' | 'node-zlib-bridge' {
     vi.stubGlobal('DecompressionStream', class {
       readonly readable: ReadableStream<Uint8Array>;
       readonly writable: WritableStream<BufferSource>;
+
       // eslint-disable-next-line local-rules-named-args/require-named-args -- Native Compression Streams constructor contract.
       constructor(format: string) {
         if (format !== 'brotli') throw new TypeError('Test bridge only accepts Brotli');
@@ -24,5 +25,6 @@ export function installBrotliDecoderForTest(): 'native' | 'node-zlib-bridge' {
     return 'node-zlib-bridge';
   }
 }
+
 export const TEST_ONLY = {
 };

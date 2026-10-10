@@ -17,6 +17,7 @@ afterEach(() => {
 function route() {
   return { cleanModelId: 'synthetic/model', autoClass: 'AutoModelForCausalLM', processor: 'tokenizer', candidate: { device: 'wasm', dtype: 'q4' } };
 }
+
 function ready() {
   return {
     status: 'ready',

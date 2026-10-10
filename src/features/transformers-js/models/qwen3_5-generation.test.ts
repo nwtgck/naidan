@@ -32,6 +32,7 @@ const body = `\
   value${'  '}
 </parameter>
 </function>`;
+
 function setup({ prompt, declarations }: { prompt: string, declarations: WorkerToolDefinition[] | undefined }) {
   const events: InferenceGenerationEvent[] = [];
   const codec = createQwen3_5Generation({
@@ -43,9 +44,11 @@ function setup({ prompt, declarations }: { prompt: string, declarations: WorkerT
   });
   return { codec, events };
 }
+
 function content({ events, index }: { events: InferenceGenerationEvent[], index: number }): string {
   return events.flatMap(e => e.type === 'text_delta' && e.index === index ? [e.text] : []).join('');
 }
+
 function completeCall({ codec, content }: { codec: ReturnType<typeof createQwen3_5Generation>, content: string }): void {
   codec.control({ token: '<tool_call>' }); codec.text({ text: content }); codec.control({ token: '</tool_call>' });
 }

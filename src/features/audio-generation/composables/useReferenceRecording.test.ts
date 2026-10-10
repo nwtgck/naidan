@@ -9,19 +9,23 @@ class Recorder extends EventTarget {
   static instances: Recorder[] = [];
   static isTypeSupported = vi.fn((type: string) => type === 'audio/webm;codecs=opus');
   state: RecordingState = 'inactive'; mimeType = 'audio/webm;codecs=opus';
+
   // Emulates the browser constructor contract.
   constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
     super(); Recorder.instances.push(this); if (options?.mimeType) this.mimeType = options.mimeType;
   }
+
   start = vi.fn(() => {
     this.state = 'recording';
   });
   stop = vi.fn(() => {
     this.state = 'inactive';
   });
+
   data({ blob }: { blob: Blob }): void {
     this.dispatchEvent(Object.assign(new Event('dataavailable'), { data: blob }));
   }
+
   complete(): void {
     this.dispatchEvent(new Event('stop'));
   }
@@ -45,6 +49,7 @@ afterEach(() => {
 function recorder() {
   return scope.run(() => useReferenceRecording({ accept }))!;
 }
+
 async function flush() {
   await Promise.resolve(); await Promise.resolve();
 }

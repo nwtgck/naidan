@@ -9,6 +9,7 @@ import type { ImageGenerationModelFile } from '@/01-models/image-generation-hist
 function locateFile({ file }: { file: File }): ImageGenerationModelFile {
   return { type: 'opfs', name: file.name, path: `models/user/example/${file.name}`, size: file.size, lastModified: file.lastModified };
 }
+
 function source() {
   const request = requestFixture();
   request.parameters = { ...request.parameters, prompt: '癒しの猫', seed: '-1' };
@@ -20,6 +21,7 @@ function source() {
   request.loras = [{ file: ggufFile(), path: 'disabled.gguf', strength: 0 }, { file: ggufFile(), path: 'enabled.gguf', strength: 0.8 }];
   return request;
 }
+
 function completed() {
   const request = source();
   const snapshot = snapshotImageGeneration({ request, sourceCommit: 'a'.repeat(40), locateFile, createdAt: 1 });

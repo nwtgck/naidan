@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createProgressQueue } from './progress-queue';
 
 type NumericProgress = Parameters<ReturnType<typeof createProgressQueue>['send']>[0]['progress'];
+
 function deferred() {
   let resolve: () => void = () => {};
   let reject: (error: Error) => void = () => {};
@@ -10,6 +11,7 @@ function deferred() {
   });
   return { promise, resolve, reject };
 }
+
 function update({ phase, completed }: { phase: NumericProgress['phase'], completed: number }): NumericProgress {
   return { phase, completed, total: 10000 };
 }

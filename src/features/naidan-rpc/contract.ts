@@ -5,6 +5,7 @@ import type { Finite, Plan, ReceiveValue, SendValue } from '@/features/naidan-rp
 
 export type Notifications = Readonly<Record<string, z.ZodType<Finite>>>;
 export type Procedure = { readonly input: z.ZodType; readonly result: z.ZodType; readonly notifications: Notifications };
+
 export function procedure<I extends z.ZodType, R extends z.ZodType, const N extends Notifications>({ input, result, notifications }: {
   input: I; result: R; notifications: N;
 }) {
@@ -17,12 +18,15 @@ export function procedure<I extends z.ZodType, R extends z.ZodType, const N exte
   }
   return Object.freeze({ input, result, notifications: Object.freeze({ ...notifications }) });
 }
+
 export type Contract = { readonly name: string; readonly methods: Readonly<Record<string, Procedure>> };
+
 export function contract<const M extends Readonly<Record<string, Procedure>>>({ name, methods }: { name: string; methods: M }) {
   check({ condition: validName({ name }) && Object.keys(methods).length <= 64, code: 'INVALID_ARGUMENT' });
   for (const method of Object.keys(methods)) check({ condition: validName({ name: method }), code: 'INVALID_ARGUMENT' });
   return Object.freeze({ name, methods: Object.freeze({ ...methods }) });
 }
+
 export type Notify<N extends Notifications> = keyof N extends never ? Record<PropertyKey, never> : {
   readonly [K in keyof N]: ({ value }: { value: SendValue<N[K]> }) => void;
 };
@@ -52,10 +56,12 @@ export type NaidanRpcExposure = {
   readonly methods: ReadonlyMap<string, PreparedMethod>;
   readonly allowedMethods: ReadonlySet<string>;
 };
+
 /** Names are derived from the same closed contract used by both endpoints. */
 export function methodNames<C extends Contract>({ contract }: { contract: C }): readonly NaidanRpcMethodName<C>[] {
   return Object.freeze(Object.keys(contract.methods)) as readonly NaidanRpcMethodName<C>[];
 }
+
 export function checkAllowedMethods<C extends Contract>({ contract, allowedMethods }: {
   contract: C; allowedMethods: readonly NaidanRpcMethodName<NoInfer<C>>[];
 }): ReadonlySet<string> {
@@ -67,6 +73,7 @@ export function checkAllowedMethods<C extends Contract>({ contract, allowedMetho
   }
   return names;
 }
+
 export function prepareMethod({ method, handler }: { method: Procedure; handler: Handler | undefined }): PreparedMethod {
   const { input, result, notifications, ...rest } = method; rest satisfies Record<PropertyKey, never>;
   return {
@@ -77,6 +84,7 @@ export function prepareMethod({ method, handler }: { method: Procedure; handler:
     handler,
   };
 }
+
 export function expose<C extends Contract>({ contract, implementation, allowedMethods }: {
   contract: C; implementation: NaidanRpcImplementation<NoInfer<C>>;
   allowedMethods: readonly NaidanRpcMethodName<NoInfer<C>>[];

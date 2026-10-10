@@ -11,6 +11,7 @@ export function imageFromDataUrl({ url }: { url: string }): Blob {
     throw new LlamaCppBrowserError({ code: 'unsupported-input' });
   }
 }
+
 export async function decodeImage({ blob }: { blob: Blob }): Promise<{ width: number, height: number, rgb: Uint8Array }> {
   if (!blob.type.startsWith('image/') || typeof createImageBitmap !== 'function' || typeof OffscreenCanvas !== 'function') throw new LlamaCppBrowserError({ code: 'unsupported-input' });
   const bitmap = await createImageBitmap(blob);
@@ -34,5 +35,6 @@ export async function decodeImage({ blob }: { blob: Blob }): Promise<{ width: nu
     bitmap.close();
   }
 }
+
 export const TEST_ONLY = {
 };

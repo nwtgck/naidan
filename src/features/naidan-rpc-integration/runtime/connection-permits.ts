@@ -5,6 +5,7 @@ import type { ConnectionInitiation } from '@/features/naidan-rpc';
  * survive connection establishment; failed retirement deliberately retains them. */
 export class RpcConnectionPermits {
   private readonly origins = new Map<string, ConnectionOpenPermits>();
+
   acquire({ origin, signal, mode }: { origin: string; signal: AbortSignal; mode: ConnectionInitiation }): ReturnType<ConnectionOpenPermits['acquire']> {
     const key = new URL(origin).origin;
     let permits = this.origins.get(key);

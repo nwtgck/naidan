@@ -86,11 +86,13 @@ type Invocation = z.infer<typeof invocationSchema>;
 function hash({ bytes }: { bytes: Uint8Array }): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
+
 function exact({ label, actual, expected }: { label: string; actual: unknown; expected: unknown }) {
   if (!isDeepStrictEqual(actual, expected)) throw new Error(`Captured Full causal mismatch: ${label}`);
 }
 
 const controlKeys = new Set(['past_key_values', 'max_new_tokens', 'temperature', 'top_p', 'do_sample', 'streamer', 'stopping_criteria', 'return_dict_in_generate']);
+
 function verifyInvocationEvidence({ invocation }: { invocation: Invocation }) {
   const keys = invocation.settings.kwargs.keys.values;
   for (const names of [keys, invocation.inputs.map(input => input.name), invocation.preInputs.map(input => input.name)]) {
@@ -258,6 +260,7 @@ function replayCapturedInvocation({ invocation, options, runtime, modelConfig, p
 function jsonProjection({ value }: { value: unknown }) {
   return JSON.parse(JSON.stringify(value, (_key, child: unknown) => child === undefined ? null : child)) as unknown;
 }
+
 function providerEvents({ events }: { events: readonly ProductionProviderTraceEvent[] }) {
   const ids = new Map<string, string>();
   return events.map(event => {

@@ -8,10 +8,12 @@ import { commitImageGenerationAsset, createImageGenerationRun, listImageGenerati
 
 const rootPath = '/naidan-storage/experimental/image-generation';
 const favorite: ImageGenerationTagReference = { type: 'system', key: 'favorite' };
+
 // The input here is typed test data; runtime queries use the Worker's schema.
 async function queryImageGenerationAssets({ store, sessionId, query }: { store: ImageGenerationStoreAccess, sessionId: ImageGenerationSessionId, query: ImageGenerationAssetQuery }) {
   return selectImageGenerationAssets({ snapshot: await readImageGenerationSessionIndex({ store, sessionId }), query });
 }
+
 const query: ImageGenerationAssetQuery = { visibility: 'active', text: '', tags: [], match: 'all', runId: undefined, cursor: undefined, limit: 20 };
 let h: ReturnType<typeof createImageGenerationStorageHarness>;
 
@@ -24,6 +26,7 @@ async function createStore(): Promise<{ store: ImageGenerationStoreAccess, catal
   if (!catalog) throw new Error('Missing fixture catalog.');
   return { catalog, store: { storageType: 'opfs', storeId: catalog.id } };
 }
+
 async function start({ count }: { count: number }) {
   const { store, catalog } = await createStore();
   const session = await saveImageGenerationSession({ store, session: generationSessionFixture({ id: 'session-aB' }), expectedRevision: undefined });
@@ -34,12 +37,14 @@ async function start({ count }: { count: number }) {
   await updateImageGenerationRunExecution({ store, sessionId: session.id, runId: run.id, execution: { type: 'running', startedAt: 3 }, expectedRevision: 0 });
   return { store, catalog, session, run: accepted };
 }
+
 async function published() {
   const context = await start({ count: 1 });
   const asset = generationAssetFixture({ id: 'asset-eF', run: context.run, index: 0 });
   await commitImageGenerationAsset({ store: context.store, asset, writeImages: async () => {} });
   return { ...context, asset };
 }
+
 function sessionPath({ id }: { id: ImageGenerationSessionId }): string {
   const raw = idToRaw({ id });
   return `${rootPath}/sessions/${raw.slice(-2).toLowerCase()}/${raw}`;

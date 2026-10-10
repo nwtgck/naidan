@@ -10,6 +10,7 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 watch(() => props.text, () => {
   epoch++; state.value = 'idle'; clearTimeout(timer);
 }, { flush: 'sync' });
+
 async function copy(): Promise<void> {
   const text = props.text;
   if (!text || state.value === 'copying') return;
@@ -29,6 +30,7 @@ async function copy(): Promise<void> {
     if (!disposed && token === epoch) state.value = 'failed';
   }
 }
+
 onScopeDispose(() => {
   disposed = true; epoch++; clearTimeout(timer);
 });

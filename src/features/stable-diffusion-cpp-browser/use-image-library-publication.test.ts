@@ -39,6 +39,7 @@ function harness() {
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection() {}, dependencies: undefined }))!;
   return { blocked, scope, library };
 }
+
 async function inventory(): Promise<ModelInventory> {
   const file = ggufFixture({ name: 'z-image.gguf', tensors: zImageTensors, metadata: {}, extraBytes: 0 }).file;
   return scanImageRepositories({

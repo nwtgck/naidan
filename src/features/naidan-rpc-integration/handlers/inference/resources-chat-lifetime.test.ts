@@ -23,9 +23,11 @@ vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => ({ initial
 let create: typeof import('./resources-hosted')['createReadOnlyResources'];
 let service: LlamaCppBrowserService;
 const result: Awaited<ReturnType<LlamaCppWorkerClient['generate']>> = { content: 'answer', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
+
 function input(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
   return { model: 'local.gguf', messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, maxTokens: 8, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
 }
+
 function args() {
   return { input: input(), signal: new AbortController().signal, onEvent: () => {}, onProgress: () => {} };
 }

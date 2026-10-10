@@ -7,5 +7,6 @@ export function createImageGenerationQueryClient(): ImageGenerationQueryClient {
   const session = createLazyImageQuerySession<ImageGenerationQueryWorker>({ createWorker: createStandaloneWorker, createRemote: ({ worker }) => wrapWorkerRemote<ImageGenerationQueryWorker>({ endpoint: worker }) });
   return { query: ({ store, sessionId, query }) => session.invoke({ run: async ({ remote }) => generationQueryResultSchema.parse(await remote.query({ request: generationQueryToWire({ value: { store, sessionId, query } }) })) }), dispose: session.dispose };
 }
+
 export const TEST_ONLY = {
 };

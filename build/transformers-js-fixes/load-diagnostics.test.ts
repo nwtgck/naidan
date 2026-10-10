@@ -5,6 +5,7 @@ import { applyTransformersJsFixes } from './transform';
 
 const original = readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8');
 const transformed = applyTransformersJsFixes({ code: original, version: '4.2.0' }).code;
+
 function reader({ observer, allocator }: { observer: unknown; allocator: typeof Uint8Array }) {
   const from = transformed.indexOf('function naidanCreateModelLoadObserver(');
   const to = transformed.indexOf('\nfunction isBlobURL(', from);

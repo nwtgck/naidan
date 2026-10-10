@@ -24,10 +24,13 @@ function observation({ items, controller }: { items: AsyncIterable<ChatGeneratio
   });
   return { node, result, drafts, onChange };
 }
+
 function source({ generate, controller }: { generate: LlamaCppBrowserService['generate'], controller: AbortController }) {
   return createLlamaCppGeneration({ request: { ...chatRequest(), signal: controller.signal }, generate });
 }
+
 const call = { id: 'call1', type: 'function' as const, function: { name: 'lookup', arguments: ' {"x": "\\u3042"} ' } };
+
 const called = (): GenerationResult => ({ ...finalText({ text: '' }), toolCalls: [call] });
 
 describe('native llama.cpp events into common parts', () => {

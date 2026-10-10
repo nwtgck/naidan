@@ -9,6 +9,7 @@ export type RecoveredImageEntry = {
   files: HistoryBinaryFile[],
   retry: (() => Promise<void>) | undefined,
 };
+
 /** Recovery ownership outlives a mounted workspace. Reserve before inference so
  * an uncertain terminal result cannot force silent eviction of unsaved pixels. */
 export function createImageRecoveryStore({ capacity }: { capacity: number }) {
@@ -61,6 +62,7 @@ export function createImageRecoveryStore({ capacity }: { capacity: number }) {
     },
   };
 }
+
 export const imageRecoveryStore = createImageRecoveryStore({ capacity: 128 * 1024 * 1024 });
 export const TEST_ONLY = {
 };

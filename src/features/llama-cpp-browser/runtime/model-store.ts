@@ -16,19 +16,23 @@ const mutationLockName = "naidan-llama-cpp-browser-model-mutation";
 function isMissing({ error }: { error: unknown }): boolean {
   return error instanceof DOMException && (error.name === "NotFoundError" || error.name === "TypeMismatchError");
 }
+
 function userModelName({ id }: { id: string }): string {
   const parts = id.split('/');
   if (parts.length !== 2 || parts[0] !== 'user' || !allowedModelDirectory({ name: parts[1]! })) throw new LlamaCppBrowserError({ code: 'missing-model' });
   return parts[1]!;
 }
+
 export async function withModelStoreLock<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
   if (!navigator.locks) throw new LlamaCppBrowserError({ code: "unavailable" });
   return navigator.locks.request(lockName, operation);
 }
+
 export async function withModelMutationLock<T>({ operation }: { operation: () => Promise<T> }): Promise<T> {
   if (!navigator.locks) throw new LlamaCppBrowserError({ code: 'unavailable' });
   return navigator.locks.request(mutationLockName, operation);
 }
+
 export async function listStoredModels(): Promise<LocalModel[]> {
   const root = await existingUserModelDirectory(); const result: LocalModel[] = [];
   for await (const [name, folder] of root?.entries() ?? []) {
@@ -43,6 +47,7 @@ export async function listStoredModels(): Promise<LocalModel[]> {
   result.push(...await listHuggingFaceModels());
   return result.sort((a, b) => a.name.localeCompare(b.name));
 }
+
 export async function importStoredModel({ file, onProgress, signal }: { file: File, signal: AbortSignal | undefined, onProgress: ({ progress }: { progress: Progress }) => void }): Promise<LocalModel> {
   if (!/^.+\.gguf$/i.test(file.name) || !validSegment({ name: file.name })) throw new LlamaCppBrowserError({ code: 'invalid-gguf' });
   const started = performance.now();
@@ -51,6 +56,7 @@ export async function importStoredModel({ file, onProgress, signal }: { file: Fi
   logDiagnostic({ diagnostic: { event: 'import-complete', bytes: model.size, elapsedMs: performance.now() - started } });
   return model;
 }
+
 function includeSharedProjector({ choice }: { choice: 'include' | 'keep' | undefined }): boolean {
   switch (choice) {
   case 'include': case undefined: return true;
@@ -58,6 +64,7 @@ function includeSharedProjector({ choice }: { choice: 'include' | 'keep' | undef
   default: { const exhaustive: never = choice; throw new Error(String(exhaustive)); }
   }
 }
+
 async function removalTarget({ id, sharedProjector }: { id: string, sharedProjector: 'include' | 'keep' | undefined }): Promise<{ parent: FileSystemDirectoryHandle, name: string, folder: FileSystemDirectoryHandle, selectedPaths: string[] | undefined, projectors: string[], affectedVariants: number }> {
   let parent: FileSystemDirectoryHandle; let name: string; let selectedPaths: string[] | undefined; let projectors: string[] = []; let affectedVariants = 0;
   if (id.startsWith('hf.co/') || id.startsWith('host/')) {
@@ -103,6 +110,7 @@ async function removalTarget({ id, sharedProjector }: { id: string, sharedProjec
   if (includeSharedProjector({ choice: sharedProjector })) selectedPaths?.push(...projectors);
   return { parent, name, folder: await parent.getDirectoryHandle(name), selectedPaths, projectors, affectedVariants };
 }
+
 async function withRemovalRepositoryLock<T>({ id, operation }: { id: string, operation: () => Promise<T> }): Promise<T> {
   if (id.startsWith('host/')) {
     const { destination, repository } = parseHostModelReference({ name: id });
@@ -110,7 +118,9 @@ async function withRemovalRepositoryLock<T>({ id, operation }: { id: string, ope
   }
   return id.startsWith('hf.co/') ? withRepositoryLock({ repository: parseModelReference({ name: id }).repository, operation }) : operation();
 }
+
 export type ModelRemovalRequest = { plan: DeletionPlan, sharedPlan: DeletionPlan | undefined, affectedVariants: number };
+
 export async function prepareModelRemoval({ id }: { id: string }): Promise<ModelRemovalRequest> {
   return withModelMutationLock({
     operation: () => withRemovalRepositoryLock({
@@ -126,9 +136,11 @@ export async function prepareModelRemoval({ id }: { id: string }): Promise<Model
     }),
   });
 }
+
 export async function planStoredModelRemoval({ id }: { id: string }): Promise<DeletionPlan> {
   const request = await prepareModelRemoval({ id }); return request.sharedPlan ?? request.plan;
 }
+
 export async function removeStoredModel({ plan }: { plan: DeletionPlan }): Promise<DeletionResult> {
   plan = deletionPlanSchema.parse(plan);
   return withRemovalRepositoryLock({
@@ -150,6 +162,7 @@ export async function removeStoredModel({ plan }: { plan: DeletionPlan }): Promi
     },
   });
 }
+
 export async function storedModelDirectory({ name }: { name: string }): Promise<ModelDirectory> {
   if (name.startsWith('host/')) return resolveHostModel({ name });
   if (name.startsWith('hf.co/')) return resolveRepositoryModel({ name });

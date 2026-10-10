@@ -8,6 +8,7 @@ export type ImageGenerationNavigation = {
   openGeneration: () => void,
 };
 const active = shallowRef<ImageGenerationNavigation>();
+
 export function useImageGenerationWorkspaceNavigation() {
   return {
     active,
@@ -19,6 +20,7 @@ export function useImageGenerationWorkspaceNavigation() {
     }) || {}),
   };
 }
+
 export function registerImageGenerationNavigation({ navigation }: { navigation: ImageGenerationNavigation }): () => void {
   if (active.value) throw new Error('An Image Generation navigation owner is already mounted.');
   active.value = navigation;
@@ -26,5 +28,6 @@ export function registerImageGenerationNavigation({ navigation }: { navigation: 
     if (active.value === navigation) active.value = undefined;
   };
 }
+
 export const TEST_ONLY = {
 };

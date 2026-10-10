@@ -10,6 +10,7 @@ import { createProductionProviderPartsTrace } from './production-provider-trace'
 const limits = { maximumEvents: 100, maximumCharacters: 10000 };
 const done: ChatGenerationItem = { type: 'result', result: { type: 'finished', next: 'user' } };
 const limited: ChatGenerationItem = { type: 'result', result: { type: 'interrupted', reason: 'limit' } };
+
 function text({ type, partId, index, chunks, completeness }: {
   type: 'text' | 'reasoning'; partId: string; index: number; chunks: string[]; completeness: 'complete' | 'partial';
 }): ChatGenerationItem {
@@ -23,6 +24,7 @@ function text({ type, partId, index, chunks, completeness }: {
     completeness: Promise.resolve(completeness),
   };
 }
+
 function fixture({ chat }: { chat: LmProvider['chat'] }) {
   let owned = false;
   const calls = vi.fn<LmProvider['chat']>(args => {
@@ -47,9 +49,11 @@ function fixture({ chat }: { chat: LmProvider['chat'] }) {
   };
   return { provider, calls, operation };
 }
+
 function trace() {
   return createProductionProviderPartsTrace({ requestId: 'capture-first-turn', limits });
 }
+
 function message({ parts }: { parts: AssistantMessageNode['parts'] }): AssistantMessageNode {
   return {
     id: toMessageId({ raw: 'observed' }),

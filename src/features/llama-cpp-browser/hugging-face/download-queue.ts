@@ -18,6 +18,7 @@ export type DownloadJob = {
   progress: DownloadProgress | undefined,
   error: DownloadJobError | undefined,
 };
+
 export function jobIsBusy({ job }: { job: DownloadJob | undefined }): boolean {
   const status = job?.status;
   switch (status) {
@@ -157,7 +158,9 @@ export function downloadJobKey({ key, destination }: { key: string, destination?
   const suffix = `:destination:${target}`;
   return target === 'opfs' || key.endsWith(suffix) ? key : `${key}${suffix}`;
 }
+
 let queue: ReturnType<typeof createDownloadQueue> | undefined;
+
 export function getDownloadQueue(): ReturnType<typeof createDownloadQueue> {
   queue ??= createDownloadQueue({
     download: async ({ selection, signal, onProgress, destination, expectedRoot }) => {
@@ -174,6 +177,7 @@ export function getDownloadQueue(): ReturnType<typeof createDownloadQueue> {
   });
   return queue;
 }
+
 export const TEST_ONLY = {
   reset: () => {
     queue = undefined;

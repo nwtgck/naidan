@@ -134,6 +134,7 @@ export function receivePrivacyStream({ port, signal, onFinish }: {
 export function servePrivacyStream({ port, request }: { port: MessagePort, request: PrivacyFetchRequest }): void {
   servePrivacyStreamWithFetcher({ port, fetchResponse: ({ signal }) => fetchPrivacyStream({ request: { ...request, signal } }) });
 }
+
 /** Reuse the same backpressure/transfer negotiation for an already authorized
  * fetch source. Hosted callers must inject privacyFetchStream, not raw fetch. */
 export function servePrivacyStreamWithFetcher({ port, fetchResponse }: {

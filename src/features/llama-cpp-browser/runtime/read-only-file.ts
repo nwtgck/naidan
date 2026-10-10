@@ -2,6 +2,7 @@ import type { Core } from './core';
 
 type Stream = { flags: number, position: number };
 type Node = { id: number, mode: number, name: string, contents?: Record<string, Node>, node_ops: object, stream_ops: object };
+
 /** Adapt an OPFS reader to the generated Emscripten filesystem without copying the file. */
 export function mountReadOnlyFile({ core, path, source, maxChunkBytes }: {
   core: Core, path: string, source: { size: number, read: ({ destination, offset }: { destination: Uint8Array, offset: number }) => number }, maxChunkBytes: number,
@@ -96,5 +97,6 @@ export function mountReadOnlyFile({ core, path, source, maxChunkBytes }: {
     },
   };
 }
+
 export const TEST_ONLY = {
 };

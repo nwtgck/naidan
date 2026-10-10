@@ -7,6 +7,7 @@ type Queued = {
   reject: ReturnType<typeof Promise.withResolvers<Response>>['reject'];
   removeAbort(): void;
 };
+
 /** Test-only FIFO pool: headers do not release a socket. The response body
  * must finish or cancel before another operation can use its slot. */
 export function createPipingFetchPool({ capacity, request }: {
@@ -91,5 +92,6 @@ export function createPipingFetchPool({ capacity, request }: {
     },
   };
 }
+
 export const TEST_ONLY = {
 };

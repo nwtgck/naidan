@@ -51,15 +51,19 @@ class RetirementWorker extends EventTarget {
       return { content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
     },
   };
+
   constructor() {
     super(); harness.workers.push(this); harness.events.push(`create:${this.id}`);
   }
 }
 let service: LlamaCppBrowserService;
+
 function input() {
   return { model: 'local.gguf', messages: [{ role: 'user' as const, content: 'hello' }], temperature: 0, topP: 1, maxTokens: 3, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
 }
+
 const snapshots: MemoryDiagnostics[] = [];
+
 function measure({ signal, warm = false }: { signal?: AbortSignal, warm?: boolean } = {}) {
   return service.runPerformanceOperation({
     options: { profile: 'webgpu-wasm64-jspi' },

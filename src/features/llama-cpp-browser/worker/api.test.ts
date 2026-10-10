@@ -17,7 +17,9 @@ import type { WorkerGenerateCall } from "./types";
 import type { generate } from "./generation";
 
 const result = { content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' } as const;
+
 const completed = () => ({ ...result, toolCalls: [] });
+
 const calls = vi.hoisted(() => ({ prepare: vi.fn<typeof prepareSession>(), audio: vi.fn<typeof generateAudio>(), probe: vi.fn(), generate: vi.fn<typeof generate>(), release: vi.fn(), releaseSession: vi.fn(), remove: vi.fn(), list: vi.fn(), import: vi.fn(), importDirectory: vi.fn() }));
 vi.mock("@/features/llama-cpp-browser/runtime/detect-profile", () => ({ probeRuntimeProfiles: calls.probe }));
 vi.mock("../runtime/model-directory", () => ({ importModelDirectory: calls.importDirectory }));
@@ -30,6 +32,7 @@ vi.mock("../runtime/model-store", () => ({
   removeStoredModel: calls.remove,
   listStoredModels: calls.list,
 }));
+
 function request({ generationId }: { generationId: number }): WorkerGenerateCall {
   return {
     generationId,
@@ -45,6 +48,7 @@ function request({ generationId }: { generationId: number }): WorkerGenerateCall
     stop: [],
   };
 }
+
 function deferred() {
   let resolve: () => void = () => {};
   const promise = new Promise<void>(done => {

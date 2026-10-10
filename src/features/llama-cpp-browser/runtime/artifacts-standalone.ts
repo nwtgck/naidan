@@ -11,6 +11,7 @@ function embeddedProfile({ profile, baseURL }: { profile: LlamaCppProfile, baseU
   default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
   }
 }
+
 export async function loadWasmBinary({ profile, assetBaseURL, signal }: { profile: LlamaCppProfile, assetBaseURL: string | undefined, signal: AbortSignal | undefined }): Promise<Uint8Array> {
   signal?.throwIfAborted();
   const embedded = embeddedProfile({ profile, baseURL: assetBaseURL });
@@ -27,6 +28,7 @@ export async function loadWasmBinary({ profile, assetBaseURL, signal }: { profil
   signal?.throwIfAborted();
   return bytes;
 }
+
 /** Share the existing standalone module graph, without invoking the factory,
  * decoding another profile, or acquiring any external runtime assets. */
 export async function preloadCoreModule({ profile, baseURL }: { profile: LlamaCppProfile, baseURL: URL | string | undefined }): Promise<void> {
@@ -57,5 +59,6 @@ export async function loadCoreModule({ profile, baseURL, moduleOptions }: {
   default: { const exhaustive: never = embedded; throw new Error(`Unhandled profile: ${exhaustive}`); }
   }
 }
+
 export const TEST_ONLY = {
 };

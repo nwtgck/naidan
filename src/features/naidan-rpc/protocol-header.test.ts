@@ -12,6 +12,7 @@ afterEach(() => vi.restoreAllMocks());
 function vector({ versionBytes }: { versionBytes: readonly number[] }): Uint8Array {
   return Uint8Array.from([0, 110, 97, 105, 100, 97, 110, 114, 112, ...versionBytes]);
 }
+
 function inspect({ bytes }: { bytes: Uint8Array }) {
   return inspectProtocolHeader({ bytes });
 }

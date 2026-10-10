@@ -91,5 +91,6 @@ function createFixtureGguf({ chatTemplate, weights }: { chatTemplate: string, we
   const header = join({ parts: [new TextEncoder().encode('GGUF'), u32({ value: 3 }), u64({ value: shapes.length }), u64({ value: metadata.length }), ...metadata, ...descriptors] });
   return join({ parts: [header, new Uint8Array((32 - header.length % 32) % 32), ...payload] });
 }
+
 export const TEST_ONLY = {
 };

@@ -588,6 +588,7 @@ export function createProductionProviderCaptureEvidence({ capture, runId, modelI
 }
 
 type DecodeField = ({ value }: { value: unknown }) => unknown;
+
 // This mapper is used only on JSON.parse output, never on callback objects.
 // Preserve unknown keys and missing keys so the shared strict schema rejects
 // them; mapping must not silently sanitize or materialize absent evidence.
@@ -597,6 +598,7 @@ function decodeFields({ value, fields }: { value: unknown; fields: Record<string
   for (const [key, decode] of Object.entries(fields)) if (Object.hasOwn(source, key)) result[key] = decode({ value: source[key] });
   return result;
 }
+
 function decodeMaybeUndefined({ value }: { value: unknown }): unknown {
   if (value !== null && typeof value === 'object' && Object.hasOwn(value, 'captureValue')) {
     undefinedEncodingSchema.parse(value);
@@ -604,10 +606,12 @@ function decodeMaybeUndefined({ value }: { value: unknown }): unknown {
   }
   return value;
 }
+
 function decodeRequiredUndefined({ value }: { value: unknown }): undefined {
   undefinedEncodingSchema.parse(value);
   return undefined;
 }
+
 function decodeTrace({ value }: { value: unknown }): unknown {
   return decodeFields({
     value,
@@ -620,6 +624,7 @@ function decodeTrace({ value }: { value: unknown }): unknown {
     },
   });
 }
+
 function decodeInput({ value }: { value: unknown }): unknown {
   const input = decodeMaybeUndefined({ value });
   return input === undefined ? undefined : decodeFields({

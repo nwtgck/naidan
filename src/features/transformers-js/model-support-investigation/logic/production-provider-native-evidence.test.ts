@@ -49,6 +49,7 @@ function providerFixture(): ProductionProviderCaptureSnapshot {
     capabilities: { providerCallbacks: 'bounded-projection', nativeInvocations: 'not-collected-by-this-owner', tools: 'not-selected', images: 'not-selected' },
   };
 }
+
 function nativeFixture(): Native {
   return {
     schemaVersion: 1,
@@ -69,6 +70,7 @@ function nativeFixture(): Native {
     unobserved: ['native-stop-cause', 'native-forward-input', 'kv-bytes'],
   };
 }
+
 function collectionFixture({ capture }: { capture: Native }): ProductionProviderNativeCollectionSnapshot {
   return {
     format: 'production-provider-native-collection-v1',

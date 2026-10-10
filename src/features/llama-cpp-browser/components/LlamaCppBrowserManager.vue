@@ -24,20 +24,24 @@ import type { ModelPreset } from '@/features/llama-cpp-browser/model-preset';
 // disable model management in onboarding or other callers without this prop.
 const props = defineProps<{ suspended?: boolean, suggestions?: 'chat' | 'none', modelPreset?: ModelPreset, defaultModel?: DefaultModelContext, applyDefaultModel?: ApplyDefaultModel }>();
 const repositoryManager = ref<InstanceType<typeof LlamaCppBrowserHuggingFaceManager>>();
+
 async function inspectRepository({ input }: { input: string }): Promise<void> {
   if (unavailable.value || active.value || importing.value || refreshing.value) return;
   await repositoryManager.value?.inspectRepository({ input });
 }
+
 defineSlots<{ catalog({ disabled, inspect }: { disabled: boolean, inspect: typeof inspectRepository }): unknown }>();
 const emit = defineEmits<{ modelsChanged: [models: LocalModel[]], modelSelected: [name: string], runtimeReady: [ready: boolean] }>();
 const state = shallowRef<EngineState>(llamaCppBrowserService.getState());
 const models = ref<LocalModel[]>([]);
 const { settings } = useSettings();
+
 function modelSourceLabel({ model }: { model: LocalModel }): string | undefined {
   const source = model.source;
   if (!source) return lazyStrings.LlamaCppBrowserDownloadDestination__browser_storage();
   return hostModelDirectoryLabel({ id: source.directoryId, name: source.directoryName, entries: (settings.value.experimental?.hostModelDirectories ?? []).map(({ id, name }) => ({ id: idToRaw({ id }), name })) });
 }
+
 const nameFilter = ref('');
 const filteredModels = computed(() => {
   const query = nameFilter.value.trim().toLocaleLowerCase();
@@ -47,6 +51,7 @@ const defaultSelection = shallowRef<LocalModel>();
 const queue = getDownloadQueue();
 const queuedDownloadBusy = computed(() => queue.jobs.value.some(job => jobIsBusy({ job })));
 const defaultActionDisabled = computed(() => !props.defaultModel || !props.applyDefaultModel);
+
 const applyConfirmedDefault: ApplyDefaultModel = async ({ model, previous }) => {
   // Revalidate locally after confirmation: another tab may have removed it.
   // This check must not contact Hugging Face or initialize the model runtime.
@@ -54,6 +59,7 @@ const applyConfirmedDefault: ApplyDefaultModel = async ({ model, previous }) => 
   if (listError.value || !models.value.some(entry => entry.id === model.id) || !props.applyDefaultModel) throw new Error('Local model unavailable');
   return props.applyDefaultModel({ model, previous });
 };
+
 const localError = ref<ErrorCode>();
 const removalChanged = ref(false);
 const listError = ref<ErrorCode>();
@@ -99,7 +105,9 @@ function refresh(): Promise<void> {
   });
   return refreshPromise;
 }
+
 let modelSelectionVersion = 0;
+
 async function selectReadyModel({ model }: { model: LocalModel }): Promise<void> {
   const version = ++modelSelectionVersion;
   await refresh();
@@ -107,6 +115,7 @@ async function selectReadyModel({ model }: { model: LocalModel }): Promise<void>
   const available = models.value.find(entry => entry.id === model.id);
   if (available) emit('modelSelected', available.name);
 }
+
 async function remove({ id }: { id: string }): Promise<void> {
   if (disposed || unavailable.value || active.value || importing.value || downloading.value || queuedDownloadBusy.value || refreshing.value) return;
   const controller = new AbortController(); active.value = controller; localError.value = undefined; removalChanged.value = false;
@@ -120,11 +129,13 @@ async function remove({ id }: { id: string }): Promise<void> {
     active.value = undefined;
   }
 }
+
 function formatSize({ bytes }: { bytes: number }): string {
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KiB`;
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
   return `${(bytes / 1024 ** 3).toFixed(2)} GiB`;
 }
+
 watch(() => props.suspended, suspended => {
   if (suspended) {
     modelSelectionVersion++;
@@ -137,9 +148,11 @@ watch(() => props.suspended, suspended => {
 watch(queue.changed, () => {
   void refresh();
 });
+
 function refreshOnFocus(): void {
   void refresh();
 }
+
 onMounted(() => {
   window.addEventListener('focus', refreshOnFocus);
   unsubscribe = llamaCppBrowserService.subscribe({

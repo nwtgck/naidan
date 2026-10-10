@@ -26,6 +26,7 @@ const coreId = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-br
 const binaryId = '\0virtual:file-protocol-standalone/binary/llama-cpp-browser';
 const core32Id = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm32-jspi/browser/core.mjs');
 const binary32Id = '\0virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi';
+
 function closure({ entry, chunks, dynamic }: { entry: Rollup.OutputChunk, chunks: Rollup.OutputChunk[], dynamic: boolean }): Set<string> {
   const found = new Set<string>();
   function visit({ fileName }: { fileName: string }): void {

@@ -9,11 +9,14 @@ import { prepareInferenceRequest } from './message-projection';
 const messageId = toMessageId({ raw: 'm' });
 const callId = toToolCallId({ raw: 'call-1' });
 const binaryId = toBinaryObjectId({ raw: 'binary-1' });
+
 const makeText = ({ text }: { text: string }) => ({ type: 'text' as const, text, completeness: 'complete' as const });
+
 const makeCall = ({ argumentsText }: { argumentsText: string }) => ({
   type: 'tool_call' as const,
   toolCall: { id: callId, type: 'function' as const, function: { name: 'calculator', arguments: argumentsText } },
 });
+
 function image({ state }: { state: { status: 'memory', blob: Blob } | { status: 'persisted' | 'missing' } }): Extract<Extract<ChatMessage, { role: 'user' }>['parts'][number], { type: 'attachment' }> {
   return {
     type: 'attachment',
@@ -28,6 +31,7 @@ function image({ state }: { state: { status: 'memory', blob: Blob } | { status: 
     },
   };
 }
+
 function prepare({ messages, readBinaryObject, signal }: {
   messages: readonly ChatMessage[],
   readBinaryObject: Parameters<LmProvider['chat']>[0]['readBinaryObject'],

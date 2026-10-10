@@ -83,6 +83,7 @@ watch([() => props.show, mode, () => props.chat, () => selectedNode.value?.id], 
 onUnmounted(() => {
   previewRequest += 1;
 });
+
 async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
   const request = ++previewRequest;
   const allImageIds = new Set<BinaryObjectId>();

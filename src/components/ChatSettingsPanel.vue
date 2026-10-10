@@ -207,6 +207,7 @@ function scopedTitleGenerationFromDraft({
 }): ScopedTitleGeneration {
   return draft.titleGeneration ?? 'inherit';
 }
+
 function titleGenerationModeFromValue({
   titleGeneration,
 }: {
@@ -704,6 +705,7 @@ async function removeLocalTitleHeader({ index }: { index: number }): Promise<voi
   }
   await saveChangesFromUi();
 }
+
 const titleModelOptions = computed(() => {
   return localTitleEndpointUsesSameScope.value
     ? sortedAvailableModels.value
@@ -1087,6 +1089,7 @@ function setLocalTitleModelId({
     },
   });
 }
+
 const isPromptApiSupported = computed(() => getPromptApiLanguageModel() !== undefined);
 
 const localEndpointUrl = computed({
@@ -1434,6 +1437,7 @@ function clearBrowserProvidedLmModelOverrides(): void {
     setLocalTitleGeneration({ titleGeneration: { endpoint: 'same_scope', model: 'same_scope' } });
   }
 }
+
 function resetSameScopeTitleModelWhenEndpointNamespaceChanges({
   previousEndpoint,
   nextEndpoint,

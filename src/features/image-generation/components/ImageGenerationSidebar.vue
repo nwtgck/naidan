@@ -17,6 +17,7 @@ const { showPrompt } = usePrompt();
 const router = useRouter(), route = useRoute();
 const { showConfirm } = useConfirm();
 const isGeneration = computed(() => route.path.replace(/\/+$/, '') === '/image-generation' || route.path.startsWith('/image-generation/session/'));
+
 async function remove({ session }: { session: ImageGenerationSession }): Promise<void> {
   const view = props.navigation.view, storeId = view?.store.value?.storeId;
   if (!view || !storeId || view.busy.value) return;
@@ -25,16 +26,20 @@ async function remove({ session }: { session: ImageGenerationSession }): Promise
   const selected = view.selectedSessionId.value === session.id;
   if (await view.deleteSession({ sessionId: session.id }) && selected) props.navigation.openGeneration();
 }
+
 async function rename({ session }: { session: ImageGenerationSession }): Promise<void> {
   const title = await showPrompt({ title: await ensureStrings.imageGeneration__rename_session(), defaultValue: session.title });
   if (typeof title === 'string') await props.navigation.view?.renameSession({ sessionId: session.id, title });
 }
+
 async function select({ session }: { session: ImageGenerationSession }): Promise<void> {
   await props.navigation.view?.selectSession({ sessionId: session.id }); props.navigation.openGeneration();
 }
+
 async function create(): Promise<void> {
   await props.navigation.view?.newSession({ preserveDraft: false }); props.navigation.openGeneration();
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

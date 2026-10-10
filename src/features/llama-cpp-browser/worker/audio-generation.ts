@@ -9,6 +9,7 @@ import { readAudioField, readAudioScalar } from './audio-memory';
 import type { WorkerAudioInput } from './types';
 
 type AudioCapabilities = { pipeline: AudioGenerationResult['pipeline'], reference: 'optional' | 'required', language: 'selectable' | 'weights', sampling: 'token' | 'continuous' };
+
 export function audioCapabilities({ core, nativeType }: { core: Core, nativeType: number }): AudioCapabilities {
   if (nativeType === core.constant({ name: 'MTMD_GEN_AUDIO_TYPE_QWEN3TTS' })) return { pipeline: 'qwen3-tts', reference: 'optional', language: 'selectable', sampling: 'token' };
   if (nativeType === core.constant({ name: 'MTMD_GEN_AUDIO_TYPE_POCKETTTS' })) return { pipeline: 'pocket-tts', reference: 'required', language: 'weights', sampling: 'continuous' };
@@ -19,6 +20,7 @@ type NativeAudioPreview = {
   requestedVersion: () => number,
   onPreview: ({ result, requestVersion }: AudioPreviewEvent) => Promise<void>,
 };
+
 /** Reviewed public-helper call timing for the pinned b29c606e upstream.
  * Qwen automatically flushes 72-code-frame blocks. get_output() at that boundary
  * only serializes accumulated PCM: an arbitrary tail flush would advance decoder
@@ -257,5 +259,6 @@ async function createAudioSampler({ core, temperature, topK, topP, seed }: {
     core.free({ pointer: options });
   }
 }
+
 export const TEST_ONLY = {
 };

@@ -57,12 +57,14 @@ vi.mock('@/features/llama-cpp-browser', () => ({
 const target: ModelLaunchTarget = { modelId: 'hf.co/owner/Model:Model-Q4_K_M.gguf', mainFilePath: 'Model-Q4_K_M.gguf', selection: { repository: 'owner/Model', revision: 'a'.repeat(40), files: [{ path: 'Model-Q4_K_M.gguf', size: 256 }] } };
 const scopes: ReturnType<typeof effectScope>[] = [];
 const wrappers: ReturnType<typeof mount>[] = [];
+
 function start() {
   const scope = effectScope(); scopes.push(scope);
   const state = scope.run(() => useMissingLlamaCppBrowserModel({ chat: computed(() => current.value), resolved: computed(() => resolved.value), enabled: computed(() => enabled.value) }));
   if (state === undefined) throw new Error('Missing hook');
   return { state, scope };
 }
+
 async function checkNow(): Promise<void> {
   await flushPromises();
   for (let round = 0; tasks.length > 0 && round < 5; round++) {

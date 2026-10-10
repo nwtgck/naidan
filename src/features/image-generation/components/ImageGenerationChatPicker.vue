@@ -17,10 +17,12 @@ const { createChatWithoutSelecting } = useChatLifecycle();
 const search = ref(''), creating = ref(false), failure = ref('');
 const expanded = ref(new Set<ChatGroupId>());
 const needle = computed(() => search.value.trim().normalize('NFC').toLocaleLowerCase());
+
 function matches({ title }: { title: string | null }): boolean {
   const label = title || lazyStrings.SHARED__new_chat();
   return label !== undefined && label.normalize('NFC').toLocaleLowerCase().includes(needle.value);
 }
+
 const choices = computed(() => sidebarItems.value.flatMap<SidebarItem>(item => {
   switch (item.type) {
   case 'chat': return matches({ title: item.chat.title }) ? [item] : [];
@@ -37,10 +39,12 @@ watch([() => props.selected, sidebarItems], () => {
     if (item.type === 'chat_group' && item.chatGroup.items.some(child => child.chat.id === props.selected)) expanded.value.add(item.chatGroup.id);
   }
 }, { immediate: true });
+
 function toggle({ groupId }: { groupId: ChatGroupId }): void {
   if (expanded.value.has(groupId)) expanded.value.delete(groupId);
   else expanded.value.add(groupId);
 }
+
 async function create({ groupId }: { groupId: ChatGroupId | undefined }): Promise<void> {
   if (creating.value || props.disabled) return;
   creating.value = true; failure.value = '';
@@ -53,6 +57,7 @@ async function create({ groupId }: { groupId: ChatGroupId | undefined }): Promis
     creating.value = false;
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

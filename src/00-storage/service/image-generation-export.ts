@@ -92,5 +92,6 @@ export async function collectImageGenerationSessionMetadata({ store, sessionId }
     },
   });
 }
+
 export const TEST_ONLY = {
 };

@@ -72,6 +72,7 @@ describe('ImageEditor', () => {
       src: string = '';
       naturalWidth: number = 100;
       naturalHeight: number = 100;
+
       constructor() {
         setTimeout(() => this.onload(), 0);
       }

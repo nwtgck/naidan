@@ -6,5 +6,6 @@ export function validatePng({ bytes, width, height }: { bytes: Uint8Array; width
   if (view.getUint32(8) !== 13 || view.getUint32(12) !== 0x49484452 || view.getUint32(16) !== width || view.getUint32(20) !== height ||
     width < 128 || height < 128 || width > 2048 || height > 2048) throw new Error('Remote PNG dimensions do not match the request');
 }
+
 export const TEST_ONLY = {
 };

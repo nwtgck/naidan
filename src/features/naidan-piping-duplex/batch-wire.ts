@@ -33,12 +33,15 @@ export function validateReceiveLimits({ limits }: { limits: ReceiveLimits }): Re
   }
   return { ...limits };
 }
+
 function streamId({ id }: { id: number }): void {
   requireValue({ condition: Number.isInteger(id) && id >= 0 && id <= MAX_STREAM_ID, message: 'Invalid stream identifier' });
 }
+
 function counter({ value }: { value: bigint }): void {
   requireValue({ condition: typeof value === 'bigint' && value >= 0n && value <= MAX_OFFSET, message: 'Flow counter out of range' });
 }
+
 function resetCode({ reason }: { reason: ResetReason }): number {
   switch (reason) {
   case 'cancelled': return 0;
@@ -47,6 +50,7 @@ function resetCode({ reason }: { reason: ResetReason }): number {
   default: { const exhaustive: never = reason; throw new Error(String(exhaustive)); }
   }
 }
+
 function resetReason({ code }: { code: number }): ResetReason {
   switch (code) {
   case 0: return 'cancelled';
@@ -172,6 +176,7 @@ export function batchHeader({ count }: { count: number }): Uint8Array<ArrayBuffe
   const header = new Uint8Array(BATCH_HEADER_BYTES); header.set(encodeProtocolHeader()); header[13] = 0x20;
   new DataView(header.buffer).setUint16(14, count); return header;
 }
+
 export function inspectBatchHeader({ header }: { header: Uint8Array }): number {
   requireValue({ condition: header.length === BATCH_HEADER_BYTES && inspectProtocolHeader({ bytes: header, maxBytes: BATCH_HEADER_BYTES }).kind === 'supported' && header[13] === 0x20, message: 'Invalid batch header' });
   const count = new DataView(header.buffer, header.byteOffset, header.byteLength).getUint16(14);

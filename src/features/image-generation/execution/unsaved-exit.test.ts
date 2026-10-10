@@ -20,6 +20,7 @@ function publication() {
   });
   return { plan, sessionId, snapshot, output };
 }
+
 function allowsReload(): boolean {
   const event = new Event('beforeunload', { cancelable: true });
   window.dispatchEvent(event);

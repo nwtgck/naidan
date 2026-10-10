@@ -156,6 +156,7 @@ export class StorageService {
       this.rpcRegistryListeners.delete(listener); unsubscribe();
     };
   }
+
   private emitRpcRegistryChange(): void {
     for (const listener of this.rpcRegistryListeners) {
       try {
@@ -430,6 +431,7 @@ export class StorageService {
       }),
     });
   }
+
   async updateNaidanRpcRegistry({ access, updater }: {
     access: NaidanRpcRegistryAccess,
     updater({ registrations }: { registrations: readonly NaidanRpcRegistration[] }): Promise<readonly NaidanRpcRegistration[]>,

@@ -6,6 +6,7 @@ import { remoteImageEditorReady, remoteImageFileKey, remoteImageModelChoices, re
 function file({ path }: { path: string }) {
   return { location: { kind: 'opfs' as const, path } };
 }
+
 function editor(): RemoteImageModelEditor {
   return { primary: { slot: 'diffusion', file: file({ path: 'models/z-image.gguf' }), family: 'z-image' }, components: [], loras: [] };
 }

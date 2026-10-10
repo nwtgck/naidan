@@ -7,6 +7,7 @@ import { toMessageId, toToolCallId } from './ids';
 function node(): AssistantMessageNode {
   return { id: toMessageId({ raw: 'new' }), role: 'assistant', createdAt: 17, modelId: undefined, lmParameters: undefined, parts: [], interruption: undefined, replies: { items: [] } };
 }
+
 function call({ id }: { id: string }): ToolCall {
   return { id: toToolCallId({ raw: id }), type: 'function', function: { name: 'calculator', arguments: ' { "expression": "17 * 23" } ' } };
 }

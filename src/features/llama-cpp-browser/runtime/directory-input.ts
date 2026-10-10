@@ -12,6 +12,7 @@ export function directoryFromFiles({ files }: { files: File[] }): ModelDirectory
     }),
   };
 }
+
 export async function droppedModels({ transfer }: { transfer: DataTransfer }): Promise<{ directories: ModelDirectoryInput[], files: File[] }> {
   // Capture entries synchronously: the drag data store is protected after dispatch.
   const entries = Array.from(transfer.items ?? []).filter(item => item.kind === 'file').map(item => item.webkitGetAsEntry?.());
@@ -56,5 +57,6 @@ export async function droppedModels({ transfer }: { transfer: DataTransfer }): P
   }
   return { directories, files };
 }
+
 export const TEST_ONLY = {
 };

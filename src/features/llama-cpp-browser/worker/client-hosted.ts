@@ -25,5 +25,6 @@ export function createLlamaCppWorkerClient(): LlamaCppWorkerClient {
     getAssetBaseURL: () => new URL(`${import.meta.env.BASE_URL}llama-cpp-browser-runtime/profiles/`, document.baseURI).href,
   });
 }
+
 export const TEST_ONLY = {
 };

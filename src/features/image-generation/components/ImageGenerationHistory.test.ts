@@ -303,7 +303,9 @@ it('loads history thumbnails only while visible and releases their URL when they
     constructor(callback: IntersectionObserverCallback) {
       visibility = callback;
     }
+
     observe() {}
+
     disconnect = disconnect;
   });
   const getImage = vi.fn(async () => new Blob(['PNG']));
@@ -323,7 +325,9 @@ it('reserves detail image dimensions while loading and after releasing an offscr
     constructor(callback: IntersectionObserverCallback) {
       visibility = callback;
     }
+
     observe() {}
+
     disconnect() {}
   });
   const getImage = vi.fn(async () => new Blob(['PNG']));

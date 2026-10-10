@@ -263,6 +263,7 @@ function removeValidationVariable({
   }
   counts.set(name, count - 1);
 }
+
 interface JqCompileTimeConstant {
   readonly value: JsonValue,
 }

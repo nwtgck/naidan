@@ -35,5 +35,6 @@ export function createDownloadSizeClient() {
     dispose,
   };
 }
+
 export const TEST_ONLY = {
 };

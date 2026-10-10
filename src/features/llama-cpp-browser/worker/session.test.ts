@@ -15,9 +15,11 @@ vi.mock('../runtime/detect-profile', () => ({ resolveRuntimeProfile: async () =>
 vi.mock('../runtime/model-store', () => ({ storedModelDirectory: async () => host.directory }));
 vi.mock('../runtime/read-only-file', () => ({ mountReadOnlyFile: () => ({ remove: () => {} }) }));
 vi.mock('./projector', () => ({ loadProjector: host.load, loadProjectorForBackend: host.loadAudio }));
+
 function request({ debug }: { debug: 'off' | 'on' }): WorkerGenerateInput {
   return { debug, model: 'Model', messages: [{ role: 'user', content: 'hello' }], temperature: 0, topP: 1, maxTokens: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [], options: { profile: 'cpu-wasm32' }, assetBaseURL: 'https://example.invalid/' };
 }
+
 const releases: ReturnType<typeof vi.fn>[] = [];
 
 beforeEach(() => {

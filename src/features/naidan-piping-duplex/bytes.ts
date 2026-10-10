@@ -1,4 +1,5 @@
 export const MAX_OFFSET = (1n << 48n) - 1n;
+
 export function requireValue({ condition, message }: {
     condition: unknown;
     message: string;
@@ -6,6 +7,7 @@ export function requireValue({ condition, message }: {
   if (!condition)
     throw new Error(message);
 }
+
 export function ownBytes({ bytes, maxBytes }: {
     bytes: Uint8Array;
     maxBytes: number;
@@ -17,6 +19,7 @@ export function ownBytes({ bytes, maxBytes }: {
   requireValue({ condition: bytes.byteLength <= maxBytes, message: 'Input exceeds byte limit' });
   return new Uint8Array(bytes);
 }
+
 export function joinBytes({ parts }: {
     parts: readonly Uint8Array[];
 }): Uint8Array<ArrayBuffer> {
@@ -28,12 +31,14 @@ export function joinBytes({ parts }: {
   }
   return result;
 }
+
 export function ascii({ text }: {
     text: string;
 }): Uint8Array<ArrayBuffer> {
   requireValue({ condition: /^[\x20-\x7e]*$/.test(text), message: 'ASCII required' });
   return new TextEncoder().encode(text);
 }
+
 export function u64({ value }: {
     value: bigint;
 }): Uint8Array<ArrayBuffer> {
@@ -41,6 +46,7 @@ export function u64({ value }: {
   new DataView(result.buffer).setBigUint64(0, value, false);
   return result;
 }
+
 export function fields({ parts }: {
     parts: readonly Uint8Array[];
 }): Uint8Array<ArrayBuffer> {
@@ -56,6 +62,7 @@ export function fields({ parts }: {
   }
   return result;
 }
+
 export function equalBytes({ left, right }: {
     left: Uint8Array;
     right: Uint8Array;
@@ -63,16 +70,20 @@ export function equalBytes({ left, right }: {
   // Used only for public identities / framing. Secret MACs use SubtleCrypto.verify.
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
+
 export class Pulse {
   private internalRevision = 0;
   private internalListeners = new Set<() => void>();
+
   get revision(): number {
     return this.internalRevision;
   }
+
   fire(): void {
     this.internalRevision++; for (const wake of [...this.internalListeners])
       wake();
   }
+
   wait({ revision, signal }: {
         revision: number;
         signal: AbortSignal | undefined;

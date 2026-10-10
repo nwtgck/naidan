@@ -6,6 +6,7 @@ import { repositoryFileSchema, repositorySchema, repositoryUrlPath, revisionSche
 
 export type ModelCandidate = { label: string, files: RepositoryFile[], size: number };
 export type RepositoryCatalog = { repository: string, revision: string, models: ModelCandidate[], projectors: RepositoryFile[] };
+
 export function parseRepository({ input }: { input: string }): { repository: string, requestedVariant: string | undefined } {
   let value = input.trim();
   if (value.startsWith('hf.co/')) value = `https://${value}`;
@@ -20,6 +21,7 @@ export function parseRepository({ input }: { input: string }): { repository: str
   const requestedVariant = separator < 0 ? undefined : z.string().min(1).regex(/^[^\p{Cc}]+$/u).parse(value.slice(separator + 1));
   return { repository, requestedVariant };
 }
+
 export function groupModelFiles({ files }: { files: RepositoryFile[] }): Pick<RepositoryCatalog, 'models' | 'projectors'> {
   const { models: groups, projectors } = modelGroups({ files });
   const models: ModelCandidate[] = [];
@@ -35,6 +37,7 @@ export function groupModelFiles({ files }: { files: RepositoryFile[] }): Pick<Re
   }
   return { models: models.sort((a, b) => a.label.localeCompare(b.label)), projectors: projectors.sort((a, b) => a.path.localeCompare(b.path)) };
 }
+
 async function fetchJson({ url, signal }: { url: string, signal: AbortSignal }): Promise<{ value: unknown, headers: Headers }> {
   const response = await privacyFetchStream({ request: { url, signal } });
   if (response.status !== 200) {
@@ -57,10 +60,12 @@ async function fetchJson({ url, signal }: { url: string, signal: AbortSignal }):
     reader.releaseLock();
   }
 }
+
 const treeSchema = z.array(z.discriminatedUnion('type', [
   z.object({ type: z.literal('file'), path: z.string(), size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) }),
   z.object({ type: z.literal('directory'), path: z.string() }),
 ]));
+
 // Privacy boundary: callers must have an explicit user preview/download request.
 // The llama-cpp-browser-model query is an explicit request to inspect that model.
 // Mount, focus, details expansion and bundled-catalog filters are NOT permission.
@@ -92,5 +97,6 @@ export async function discoverRepository({ input, signal }: { input: string, sig
   if (new Set(files.map(file => file.path)).size !== files.length) throw new Error('Duplicate Hugging Face file');
   return { repository, revision, ...groupModelFiles({ files }) };
 }
+
 export const TEST_ONLY = {
 };

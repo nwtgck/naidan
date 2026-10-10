@@ -15,6 +15,7 @@ afterEach(() => {
 });
 
 const recipe = imageModelRecipes[0]!;
+
 function repository({ file, user }: { file: ImageRecipeFile, user: boolean }): LocalImageRepository {
   const name = file.path.split('/').at(-1)!;
   const blob = file.role === 'vae'
@@ -28,6 +29,7 @@ function repository({ file, user }: { file: ImageRecipeFile, user: boolean }): L
   const id = user ? `user/${file.repository.split('/')[1]}` : `huggingface.co/${file.repository}/resolve/main`;
   return { id, name: id, files: [{ path: file.path, file: blob }] };
 }
+
 function harness({ download, initial }: { download: ImageRecipeDownloader | undefined, initial: LocalImageRepository[] }) {
   let entries = initial; const blocked = ref(false);
   const downloader = vi.fn(download ?? (async () => undefined));

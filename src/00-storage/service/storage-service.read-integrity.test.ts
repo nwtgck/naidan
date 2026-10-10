@@ -17,6 +17,7 @@ vi.mock('./synchronizer', () => ({
       locks(lockKey);
       return fn();
     }
+
     notify = notify;
   },
 }));

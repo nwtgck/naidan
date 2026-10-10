@@ -31,5 +31,6 @@ export async function resolveRecoveryDownload({ modelId, signal }: { modelId: st
   if (target.modelId !== modelId) throw new Error('Download model identity changed');
   return target;
 }
+
 export const TEST_ONLY = {
 };

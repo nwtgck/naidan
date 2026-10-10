@@ -752,5 +752,6 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
     // The owning worker or a model/profile/file change releases the resident cache.
   }
 }
+
 export const TEST_ONLY = {
 };

@@ -9,16 +9,19 @@ const props = defineProps<{ view: ImageGenerationWorkspaceView, items: ImageGene
 const { showConfirm } = useConfirm();
 const selectedTagId = ref<ImageGenerationTagId>();
 const tagsOpen = ref(false);
+
 function chooseTag({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLSelectElement)) return;
   const raw = event.target.value;
   selectedTagId.value = props.view.userTags.value.find(tag => idToRaw({ id: tag.id }) === raw)?.id;
 }
+
 async function tagImages({ assignment }: { assignment: 'add' | 'remove' }): Promise<void> {
   const tagId = selectedTagId.value;
   if (!tagId || !props.view.userTags.value.some(tag => tag.id === tagId)) return;
   await props.view.curate({ items: props.items, action: { type: 'tag', tag: { type: 'user', tagId }, assignment } });
 }
+
 async function remove(): Promise<void> {
   const items = [...props.items], storeId = props.view.store.value?.storeId, sessionId = props.view.selectedSessionId.value;
   if (!items.length || !storeId || props.view.mutation.value) return;
@@ -26,6 +29,7 @@ async function remove(): Promise<void> {
   if (props.view.store.value?.storeId !== storeId || props.view.selectedSessionId.value !== sessionId) return;
   await props.view.curate({ items, action: { type: 'delete' } });
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

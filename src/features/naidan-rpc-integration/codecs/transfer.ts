@@ -34,6 +34,7 @@ export async function collectBytes({ readable, limit, signal }: { readable: Read
     reader.releaseLock();
   }
 }
+
 export function bytesSource({ bytes }: { bytes: Uint8Array }): ReadableStream<Uint8Array> {
   let at = 0;
   return new ReadableStream({
@@ -45,6 +46,7 @@ export function bytesSource({ bytes }: { bytes: Uint8Array }): ReadableStream<Ui
     },
   }, { highWaterMark: 0 });
 }
+
 /** Starts computation on demand, preserves backpressure, and joins native cleanup on cancel. */
 export function computationSource<T>({ signal, run }: { signal: AbortSignal; run: ({ emit, signal }: { emit: ({ value }: { value: T }) => Promise<void>; signal: AbortSignal }) => Promise<void> }): ReadableStream<T> {
   const controller = new AbortController();
@@ -83,6 +85,7 @@ export function computationSource<T>({ signal, run }: { signal: AbortSignal; run
     },
   }, { highWaterMark: 0 });
 }
+
 /** Byte limits alone do not bound recursive JSON-schema work: deeply nested
  * tool parameters fit in a tiny transcript. Check shape iteratively before
  * trusted schema parsing (and before outbound JSON serialization). These are
@@ -100,6 +103,7 @@ export function assertDocumentBounds({ value }: { value: unknown }): void {
     }
   }
 }
+
 export function encodeDocument({ value, limit }: { value: unknown; limit: number }): Uint8Array<ArrayBuffer> {
   if (!Number.isSafeInteger(limit) || limit < 0) throw new Error('Invalid document limit');
   assertDocumentBounds({ value });
@@ -107,9 +111,11 @@ export function encodeDocument({ value, limit }: { value: unknown; limit: number
   if (text === undefined) throw new Error('Inference document requires a JSON value');
   const bytes = new TextEncoder().encode(text); if (bytes.length > limit) throw new Error('Inference document exceeds its limit'); return bytes;
 }
+
 export function decodeDocument({ bytes }: { bytes: Uint8Array }): unknown {
   const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   assertDocumentBounds({ value }); return value;
 }
+
 export const TEST_ONLY = {
 };

@@ -151,5 +151,6 @@ export async function prepareLlamaCppRequest({ messages, model, parameters, tool
     stop: snapshot.parameters?.stop ?? [],
   };
 }
+
 export const TEST_ONLY = {
 };

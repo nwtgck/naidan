@@ -4,6 +4,7 @@ import { probeRuntimeProfiles, resolveRuntimeProfile, TEST_ONLY } from './detect
 import { installBrotliDecoderForTest } from '@/features/file-protocol-standalone/embedded-binary.test-support';
 
 const actualWasm = WebAssembly;
+
 function platform() {
   let bytes = new Uint8Array();
   const close = vi.fn();
@@ -30,6 +31,7 @@ function platform() {
   };
   return { nav, wasm, root, file, close, read, sync, write, abort, writableClose };
 }
+
 let environment: ReturnType<typeof platform>;
 
 beforeEach(() => {

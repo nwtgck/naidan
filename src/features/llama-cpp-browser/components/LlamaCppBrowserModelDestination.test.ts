@@ -63,6 +63,7 @@ const wrappers: VueWrapper[] = [];
 const suggestion = modelSuggestions.find(entry => entry.id === 'lfm-2-5-230m')!;
 const quantization = preferredQuantizationHint({ suggestion });
 const catalog = { repository: quantization.repository, revision: 'a'.repeat(40), ...groupModelFiles({ files: [{ path: `model-${quantization.preferredQuantization}.gguf`, size: 128 }] }) };
+
 function renderRow({ authorize }: { authorize: ({ destination }: { destination: ModelDestination }) => Promise<AuthorizedModelDestination> }) {
   const wrapper = mount(LlamaCppBrowserModelSuggestion, { props: { suggestion, models: [], disabled: false, defaultModel: undefined, defaultActionDisabled: false, destination: { kind: 'host', directoryId: 'root-a' }, authorizeDestination: authorize } });
   wrappers.push(wrapper); return wrapper;

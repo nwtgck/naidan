@@ -11,22 +11,26 @@ const choices: ImageModelChoice[] = [
 ];
 let view: VueWrapper | undefined;
 let host: HTMLElement | undefined;
+
 function create({ props }: { props: Partial<InstanceType<typeof ImageModelPicker>['$props']> }) {
   host = document.createElement('div'); document.body.append(host);
   view = mount(ImageModelPicker, { attachTo: host, props: { label: 'VAE', modelValue: 'matching', choices, required: false, disabled: false, active: true, ...props } });
   return view;
 }
+
 function popup() {
   const element = document.querySelector('[data-testid="image-model-picker-popup"]');
   if (!(element instanceof HTMLElement)) throw new Error('Picker popup is missing');
   return new DOMWrapper(element);
 }
+
 function activeOption({ input }: { input: Element }): HTMLElement {
   const id = input.getAttribute('aria-activedescendant');
   const option = id ? document.getElementById(id) : undefined;
   if (!option) throw new Error('Active option is missing');
   return option;
 }
+
 async function open({ wrapper }: { wrapper: VueWrapper }) {
   await wrapper.get('[data-testid="image-model-picker-trigger"]').trigger('click'); await nextTick();
   return popup();

@@ -28,6 +28,7 @@ export interface GitStatusEntry {
     unmergedEntries: readonly GitIndexEntry[] | undefined;
     renameSourcePath: string | undefined;
 }
+
 function regularFileModeFromIndex({ entry }: {
     entry: GitIndexEntry | undefined;
 }): 0o100644 | 0o100755 | undefined {
@@ -41,6 +42,7 @@ function regularFileModeFromIndex({ entry }: {
     return undefined;
   }
 }
+
 async function readHeadTreeMap({ context, repository, headObjectId }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
@@ -61,6 +63,7 @@ async function readHeadTreeMap({ context, repository, headObjectId }: {
   for (const entry of entries) byPath.set(entry.path, { objectId: entry.objectId, mode: entry.mode });
   return byPath;
 }
+
 export async function collectStatus({ context }: {
     context: WeshCommandContext;
 }): Promise<{

@@ -11,6 +11,7 @@ const pngBytes = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQ
 const png = new Blob([pngBytes], { type: 'image/png' });
 // These byte fixtures exercise container structure, not an image decoder.
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0x4a, 0x46, 0xff, 0xdb, 0, 4, 7, 8, 0xff, 0xda, 0, 2, 5, 0xff, 0, 6, 0xff, 0xd9]);
+
 function webpFixture({ chunks }: { chunks: { name: string, payload: number[] }[] }): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(12 + chunks.reduce((total, chunk) => total + 8 + chunk.payload.length + chunk.payload.length % 2, 0));
   bytes.set(new TextEncoder().encode('RIFF')); bytes.set(new TextEncoder().encode('WEBP'), 8);
@@ -22,8 +23,10 @@ function webpFixture({ chunks }: { chunks: { name: string, payload: number[] }[]
   }
   return bytes;
 }
+
 const vp8 = [0, 0, 0, 0x9d, 1, 0x2a, 16, 0, 12, 0];
 const webp = webpFixture({ chunks: [{ name: 'VP8 ', payload: vp8 }] });
+
 function parseWebp({ bytes }: { bytes: Uint8Array<ArrayBuffer> }) {
   const chunks: { name: string, payload: Uint8Array<ArrayBuffer> }[] = [];
   const view = new DataView(bytes.buffer);
@@ -36,6 +39,7 @@ function parseWebp({ bytes }: { bytes: Uint8Array<ArrayBuffer> }) {
   }
   return chunks;
 }
+
 function decodePacket({ packet }: { packet: Uint8Array }): unknown {
   const dom = new JSDOM();
   try {
@@ -48,6 +52,7 @@ function decodePacket({ packet }: { packet: Uint8Array }): unknown {
     dom.window.close();
   }
 }
+
 function request() {
   return snapshotImageGeneration({
     request: requestFixture(),
@@ -56,6 +61,7 @@ function request() {
     locateFile: ({ file }) => ({ type: 'file', name: file.name, size: file.size, lastModified: file.lastModified }),
   }).request;
 }
+
 function encoder({ output }: { output: Blob | null }) {
   const bitmap = { width: 16, height: 12, close: vi.fn() };
   const canvas = {

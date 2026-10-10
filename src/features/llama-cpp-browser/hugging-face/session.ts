@@ -14,12 +14,16 @@ function createSession() {
     multimodal: ref<'off' | 'on'>('off'),
   };
 }
+
 const sessionKey: InjectionKey<ReturnType<typeof createSession>> = Symbol('llama-cpp-browser-hugging-face-session');
+
 export function provideHuggingFaceSession(): void {
   provide(sessionKey, createSession());
 }
+
 export function useHuggingFaceSession(): ReturnType<typeof createSession> {
   return inject(sessionKey, undefined) ?? createSession();
 }
+
 export const TEST_ONLY = {
 };

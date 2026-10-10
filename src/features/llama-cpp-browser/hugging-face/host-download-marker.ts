@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { modelFileMarker, optionalModelFile, readModelMarkerJson, writeModelMarkerJson } from '@/logic/model-file-publication';
 import { repositoryFileSchema, repositorySchema, revisionSchema, type DownloadSelection } from './types';
 const markerSchema = z.object({ version: z.literal(1), kind: z.literal('naidan-llama-download'), repository: repositorySchema, revision: revisionSchema, file: repositoryFileSchema }).strict();
+
 export async function hostDownloadMarker({ folder, selection, index, action }: {
   folder: FileSystemDirectoryHandle, selection: DownloadSelection, index: number, action: 'create' | 'remove' | 'check',
 }): Promise<void> {
@@ -30,8 +31,10 @@ export async function hostDownloadMarker({ folder, selection, index, action }: {
   default: { const exhaustive: never = action; throw new Error(String(exhaustive)); }
   }
 }
+
 export function hostDownloadMarkerPath({ path }: { path: string }): string {
   const parts = path.split('/'); const name = parts.pop()!; return [...parts, modelFileMarker({ name, state: 'pending' })].join('/');
 }
+
 export const TEST_ONLY = {
 };

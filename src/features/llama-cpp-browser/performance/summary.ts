@@ -12,12 +12,14 @@ export function trialRates({ trial }: { trial: PerformanceTrial }) {
       ? metrics.prefillDecodedTokens * 1000 / prefillMs : undefined,
   };
 }
+
 function median({ values }: { values: number[] }): number | undefined {
   if (!values.length) return undefined;
   const sorted = values.toSorted((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1]! + sorted[middle]!) / 2;
 }
+
 /** Partition by effective context/batch, finish reason and actual work. Never
  * average an allocation fallback or a shortened answer into another condition. */
 export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapshot }) {
@@ -57,6 +59,7 @@ export function summarizePerformance({ snapshot }: { snapshot: PerformanceSnapsh
     }),
   }));
 }
+
 /** A successful request can reload changed local files or retry allocation.
  * Preserve its measurements, but do not treat it as an unchanged warm sample.
  * The recorder has no dropped count: reaching its cap cannot certify coverage. */
@@ -69,6 +72,7 @@ function warmPreparationEvidence({ trial, position }: { trial: PerformanceTrial,
   if (events?.some(event => event.event === 'context-retry')) reasons.push(`${position}-context-retried`);
   return { reasons, uncertainties };
 }
+
 /** An exploratory comparison, never a causal or significance claim. Preserve
  * both attempts and explain every rejected comparison instead of filtering by
  * which direction a result moved. */
@@ -111,5 +115,6 @@ export function performanceFindings({ snapshot }: { snapshot: PerformanceSnapsho
     };
   });
 }
+
 export const TEST_ONLY = {
 };

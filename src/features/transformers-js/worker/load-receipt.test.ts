@@ -3,6 +3,7 @@ import { productionLoadReceiptSchema } from '@/features/transformers-js/runtime/
 import { createProductionLoadReceiptSlot } from './load-receipt';
 
 const owner = { runId: 'run-one', workerEpoch: 1 };
+
 function receipt() {
   return productionLoadReceiptSchema.parse({
     format: 'production-offline-load-receipt-v1',

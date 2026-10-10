@@ -14,10 +14,13 @@ const { downloading, importing, downloadState, downloadRecipeId, downloadLoraId,
 const id = useId(), open = ref(true);
 const choices = reactive<Record<string, ImageRecipeSelection>>({});
 const detailsOpen = reactive<Record<string, boolean>>({});
+
 function selection({ recipeId }: { recipeId: string }): ImageRecipeSelection {
   return choices[recipeId] ?? {};
 }
+
 const queuedDownloads = computed(() => props.view.downloadQueue.value.filter(job => job.state !== 'downloading'));
+
 function queueStatus({ state }: { state: ImageDownloadQueueEntry['state'] }): string | undefined {
   switch (state) {
   case 'queued': return lazyStrings.ImageModelCatalog__queued();
@@ -28,6 +31,7 @@ function queueStatus({ state }: { state: ImageDownloadQueueEntry['state'] }): st
   default: { const exhaustive: never = state; throw new Error(String(exhaustive)); }
   }
 }
+
 const cards = computed(() => imageModelRecipes.map(recipe => {
   const selections = selection({ recipeId: recipe.id });
   const files = selectedRecipeFiles({ recipe, selections });
@@ -46,6 +50,7 @@ const downloadDestinationUnavailable = computed(() => {
   // An explicit download can request read/write permission for a known handle.
   return !directories.supported.value || !entry || ['missing', 'error', 'unsupported'].includes(entry.access);
 });
+
 function roleLabel({ role }: { role: ImageRecipeFile['role'] }): string | undefined {
   switch (role) {
   case 'model': return lazyStrings.stableDiffusionCppBrowser__model_file();
@@ -55,9 +60,11 @@ function roleLabel({ role }: { role: ImageRecipeFile['role'] }): string | undefi
   default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
   }
 }
+
 function optionLabel({ file }: { file: ImageRecipeFile }): string {
   return /(?:[-_.])(Q\d[A-Z0-9_]*|BF16|FP16|F16)(?=\.|$)/i.exec(file.path)?.[1]?.toUpperCase() ?? 'safetensors';
 }
+
 function change({ recipeId, role, event }: { recipeId: string, role: ImageRecipeFile['role'], event: Event }): void {
   if (props.downloadDisabled || !(event.target instanceof HTMLSelectElement)) return;
   const value = event.target.value;
@@ -67,23 +74,28 @@ function change({ recipeId, role, event }: { recipeId: string, role: ImageRecipe
     choices[recipeId] = { ...previous, [role]: value };
   }
 }
+
 async function download({ recipeId }: { recipeId: string }): Promise<void> {
   if (!props.downloadDisabled && !importing.value && !downloadDestinationUnavailable.value) await props.view.downloadRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
 }
+
 async function downloadLora({ id }: { id: string }): Promise<void> {
   if (!props.downloadDisabled && !importing.value && !downloadDestinationUnavailable.value) await props.view.downloadLora({ id });
 }
+
 function select({ recipeId }: { recipeId: string }): void {
   if (props.disabled || importing.value || scanState.value === 'scanning') return;
   props.view.chooseRecipe({ recipeId, selections: { ...selection({ recipeId }) } });
   if (props.view.ready.value) emit('selected');
 }
+
 function loraHelp({ usage }: { usage: ImageCatalogLora['usage'] }): string | undefined {
   switch (usage) {
   case 'style-reference': return lazyStrings.ImageModelCatalog__reference_style_lora_help();
   default: { const exhaustive: never = usage; throw new Error(String(exhaustive)); }
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { choices } }) || {}) });
 </script>
 <template>

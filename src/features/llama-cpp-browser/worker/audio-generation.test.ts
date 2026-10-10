@@ -8,9 +8,11 @@ import type { WorkerAudioInput } from './types';
 
 const session = vi.hoisted(() => ({ prepare: vi.fn(), release: vi.fn(async () => {}) }));
 vi.mock('./session', () => ({ prepareAudioSession: session.prepare, releaseSession: session.release }));
+
 function request(): WorkerAudioInput {
   return { ...defaultAudioParameters(), model: 'user/voice', text: 'こんにちは', options: { profile: 'cpu-wasm32' }, debug: 'off' };
 }
+
 function reference(): Blob {
   const blob = new Blob(['RIFF']);
   // jsdom's Blob does not implement arrayBuffer; make the input capability explicit.

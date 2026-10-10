@@ -32,6 +32,7 @@ const methodGroups = computed(() => [
 ]);
 const current = computed(() => views.value.find(view => view.registration.id === selected.value));
 let mounted = true;
+
 const sync = () => {
   if (!mounted || !manager.value) return;
   views.value = manager.value.list();
@@ -49,10 +50,12 @@ const sync = () => {
     }
   }
 };
+
 const unsubscribe = subscribeRpcState({ listener: sync });
 onScopeDispose(() => {
   mounted = false; unsubscribe(); pending.abort(); verification.value?.decide({ approved: false });
 });
+
 async function action({ run }: { run(): Promise<void> }): Promise<void> {
   if (busy.value) return;
   busy.value = true; failure.value = '';
@@ -64,6 +67,7 @@ async function action({ run }: { run(): Promise<void> }): Promise<void> {
     busy.value = false; sync();
   }
 }
+
 async function reload(): Promise<void> {
   manager.value = await getRpcManager(); await manager.value.reload(); sync();
   // Refreshing the registry must preserve an in-progress pairing form.
@@ -71,9 +75,11 @@ async function reload(): Promise<void> {
   if (selected.value) choose({ id: selected.value });
   else newConnection();
 }
+
 onMounted(() => {
   void action({ run: reload });
 });
+
 function choose({ id }: { id: NaidanRpcRegistrationId }): void {
   selected.value = id; adding.value = false;
   const view = views.value.find(view => view.registration.id === id);
@@ -82,12 +88,15 @@ function choose({ id }: { id: NaidanRpcRegistrationId }): void {
   headers.value = view.registration.transport.headers.map(({ name, value }) => ({ name, value }));
   methods.value = [...view.access.effective];
 }
+
 function newConnection(): void {
   adding.value = true; code.value = ''; server.value = ''; headers.value = []; label.value = '';
 }
+
 function settings(): NaidanRpcTransportSettings {
   return { type: 'naidan_piping_duplex', serverUrl: server.value, headers: headers.value.map(({ name, value }) => ({ name, value })) };
 }
+
 const verifyPeer: NaidanPipingPeerVerifier = ({ comparison, signal }) => new Promise(resolve => {
   let done = false;
   const finish = ({ approved }: { approved: boolean }) => {
@@ -103,35 +112,44 @@ const verifyPeer: NaidanPipingPeerVerifier = ({ comparison, signal }) => new Pro
   const text = Array.from(comparison, byte => byte.toString(16).padStart(2, '0')).join('').match(/.{1,8}/g)?.join(' ') ?? '';
   verification.value = { text, decide: finish };
 });
+
 async function pair(): Promise<void> {
   if (!manager.value) return;
   const id = await manager.value.pair({ settings: settings(), code: code.value, verifyPeer, signal: pending.signal });
   code.value = ''; sync(); choose({ id });
 }
+
 function toggleMethod({ name, enabled }: { name: NaidanPeerControlledMethodName, enabled: boolean }): void {
   methods.value = enabled ? [...new Set([...methods.value, name])] : methods.value.filter(value => value !== name);
 }
+
 function methodGroupState({ names }: { names: readonly NaidanPeerControlledMethodName[] }): 'off' | 'partial' | 'on' {
   const count = names.filter(name => methods.value.includes(name)).length;
   return count === 0 ? 'off' : count === names.length ? 'on' : 'partial';
 }
+
 function toggleMethodGroup({ names, enabled }: { names: readonly NaidanPeerControlledMethodName[], enabled: boolean }): void {
   methods.value = enabled ? [...new Set([...methods.value, ...names])] : methods.value.filter(name => !names.includes(name));
 }
+
 async function applyMethods(): Promise<void> {
   if (current.value) await manager.value?.updateInboundAllowedMethods({ id: current.value.registration.id, inboundAllowedMethods: methods.value });
 }
+
 async function remember(): Promise<void> {
   if (current.value) await manager.value?.remember({ id: current.value.registration.id, label: label.value });
 }
+
 async function connect(): Promise<void> {
   if (current.value) await manager.value?.connect({ id: current.value.registration.id });
 }
+
 async function disconnect(): Promise<void> {
   if (!current.value) return;
   const disconnectCurrent = manager.value?.prepareDisconnect({ id: current.value.registration.id });
   if (await showConfirm({ title: await ensureStrings.naidanRpc__disconnect_confirm() })) await disconnectCurrent?.();
 }
+
 async function disconnectSafely(): Promise<void> {
   // A connect/save command may be pending. Stopping must remain available and
   // must not be blocked by the ordinary form's busy guard.
@@ -143,17 +161,21 @@ async function disconnectSafely(): Promise<void> {
     sync();
   }
 }
+
 async function forget(): Promise<void> {
   if (!current.value) return;
   const id = current.value.registration.id;
   if (await showConfirm({ title: await ensureStrings.naidanRpc__forget_confirm() })) await manager.value?.forget({ id });
 }
+
 async function saveRegistration(): Promise<void> {
   if (current.value) await manager.value?.edit({ id: current.value.registration.id, label: label.value, transport: settings() });
 }
+
 async function rename(): Promise<void> {
   if (current.value) await manager.value?.rename({ id: current.value.registration.id, label: label.value });
 }
+
 async function toggleConnectOnStartup({ event }: { event: Event }): Promise<void> {
   const input = event.target as HTMLInputElement;
   const connectOnStartup = input.checked ? 'enabled' : 'disabled';
@@ -166,6 +188,7 @@ async function toggleConnectOnStartup({ event }: { event: Event }): Promise<void
     },
   });
 }
+
 function phaseLabel({ phase, health }: { phase: RpcConnectionPhase; health: RpcRegistrationView['health'] }): string | undefined {
   switch (phase) {
   case 'disconnected': return lazyStrings.naidanRpc__disconnected();
@@ -182,6 +205,7 @@ function phaseLabel({ phase, health }: { phase: RpcConnectionPhase; health: RpcR
   default: { const exhaustive: never = phase; throw new Error(String(exhaustive)); }
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

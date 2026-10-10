@@ -19,13 +19,16 @@ const oldName = computed(() => {
   const model = props.models.find(entry => isDefaultLocalModel({ model: entry, current: props.current }));
   return model ? localModelDisplayName({ model }) : name ?? lazyStrings.llamaCppBrowserDownloads__not_set();
 });
+
 function close(): void {
   if (!saving.value) emit('close');
 }
+
 function restoreFocus(): void {
   if (previousFocus?.isConnected) previousFocus.focus();
   previousFocus = undefined;
 }
+
 watch(() => props.model, async model => {
   failure.value = undefined;
   if (!model) {
@@ -38,6 +41,7 @@ watch(() => props.model, async model => {
 onUnmounted(() => {
   disposed = true; restoreFocus();
 });
+
 function keydown({ event }: { event: KeyboardEvent }): void {
   if (event.key === 'Escape') {
     event.stopPropagation(); close(); return;
@@ -54,6 +58,7 @@ function keydown({ event }: { event: KeyboardEvent }): void {
     event.preventDefault(); first.focus();
   }
 }
+
 async function confirm(): Promise<void> {
   if (saving.value || !props.model || !props.current || !props.apply) return;
   const model = props.model;
@@ -73,6 +78,7 @@ async function confirm(): Promise<void> {
     saving.value = false;
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

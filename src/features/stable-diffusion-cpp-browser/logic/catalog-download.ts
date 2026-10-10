@@ -9,11 +9,13 @@ type Report = ({ progress }: { progress: CatalogDownloadProgress }) => void;
 export type ImageDownloadDestination = { kind: 'opfs' } | { kind: 'host', directoryId: string };
 export type ImageRecipeDownloadRequest = { files: readonly ImageDownloadSource[], signal: AbortSignal, onProgress: Report, destination?: ImageDownloadDestination };
 export type ImageRecipeDownloader = ({ files, signal, onProgress }: ImageRecipeDownloadRequest) => Promise<void>;
+
 function notify({ report, progress }: { report: Report, progress: CatalogDownloadProgress }): void {
   try {
     report({ progress });
   } catch { /* Presentation cannot control storage. */ }
 }
+
 /** Explicit acquisition only. Metadata discovery, transfer, verification and
  * publication run in a Worker. A completed file survives failures in later
  * components; pending files can only be resumed by another explicit action.
@@ -91,5 +93,6 @@ export async function downloadImageRecipe({ files, signal, onProgress, fetch, de
     });
   }
 }
+
 export const TEST_ONLY = {
 };

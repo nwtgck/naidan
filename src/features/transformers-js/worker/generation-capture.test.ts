@@ -41,6 +41,7 @@ const run = { runId: 'synthetic-run', workerEpoch: 1 };
 const limits = { maxCalls: 4, maxInvocationsPerCall: 2, maxEvents: 20, maxTextBytes: 100, maxTensorBytes: 128, maxTotalTensorBytes: 256, maxTokensPerStreamEvent: 4096, maxTotalStreamTokens: 16384, maxTotalStreamTokenBytes: 262144 };
 const context = { ...run, requestId: 'synthetic-request', generationCallId: 1 };
 const unobservedLoad = { status: 'not-observed', reason: 'no-completed-load' } as const;
+
 function fixture({ overrides }: { overrides: Partial<typeof limits> }) {
   const capture = createGenerationCapture({ run, limits: { ...limits, ...overrides }, tensorClass: runtime.Tensor });
   const call = capture.beginCall({ context, loadIdentity: unobservedLoad });
@@ -49,12 +50,14 @@ function fixture({ overrides }: { overrides: Partial<typeof limits> }) {
   if (!invocation) throw new Error('Expected a recording invocation');
   return { capture, call, invocation };
 }
+
 function take({ capture }: { capture: ReturnType<typeof createGenerationCapture> }) {
   const result = capture.take({ run });
   expect(result.status).toBe('captured');
   if (result.status !== 'captured') throw new Error('Expected captured result');
   return result.capture;
 }
+
 const setting: GenerationInvocationObservation = Object.freeze({
   requested: Object.freeze({ maxCompletionTokens: Object.freeze({ status: 'value', value: 16 }), temperature: Object.freeze({ status: 'undefined' }), topP: Object.freeze({ status: 'omitted' }) }),
   budget: Object.freeze({ maxNewTokens: 3, source: 'explicit', contextLimit: 5, promptTokenCount: 2, pastTokenCount: 0, usedContextTokenCount: 2 }),

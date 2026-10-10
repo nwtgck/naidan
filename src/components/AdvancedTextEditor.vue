@@ -95,6 +95,7 @@ const stats = computed(() => {
     lineCount: lineCount,
   };
 });
+
 // --- Line Height Measurement ---
 function calculateLineHeights() {
   if (!textareaRef.value) {
@@ -177,6 +178,7 @@ watch([content, wrapMode], () => {
   }
   }
 });
+
 // --- History Management ---
 function recordHistory({ newContent }: { newContent: string }) {
   if (newContent === history.value[historyIndex.value]) return;

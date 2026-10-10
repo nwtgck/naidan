@@ -8,6 +8,7 @@ import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 vi.mock('@/00-storage/service', () => ({ storageService: { getFile: vi.fn() } }));
 const wrappers: ReturnType<typeof mount>[] = [];
+
 function pendingBlob() {
   let resolve!: (value: Blob | null) => void;
   const promise = new Promise<Blob | null>(r => {
@@ -15,11 +16,14 @@ function pendingBlob() {
   });
   return { promise, resolve };
 }
+
 function object({ id, name }: { id: string; name: string }): BinaryObjectPreviewItem {
   return { id: toBinaryObjectId({ raw: id }), name, mimeType: 'image/png', size: 3, createdAt: 0, memoryBlob: undefined };
 }
+
 const a = object({ id: 'a', name: 'a.png' });
 const b = object({ id: 'b', name: 'b.png' });
+
 function modal({ objects }: { objects: BinaryObjectPreviewItem[] }) {
   const wrapper = mount(BinaryObjectPreviewModal, { props: { objects, initialId: a.id }, global: { stubs: { Teleport: true } } });
   wrappers.push(wrapper);

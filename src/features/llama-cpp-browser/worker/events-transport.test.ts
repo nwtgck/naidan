@@ -28,6 +28,7 @@ function connect() {
   exposeWorkerRemote<LlamaCppWorkerApi>({ api: createWorkerApi(), endpoint: link.port1 });
   return wrapWorkerRemote<LlamaCppWorkerApi>({ endpoint: link.port2 });
 }
+
 function request(): WorkerGenerateCall {
   return { generationId: 1, model: 'fixture.gguf', options: { profile: 'cpu-wasm32' }, assetBaseURL: 'https://example.invalid/profiles/', messages: [{ role: 'user', content: 'hi' }], temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
 }

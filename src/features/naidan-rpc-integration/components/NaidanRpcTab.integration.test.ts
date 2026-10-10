@@ -125,6 +125,7 @@ async function peer({ identity, other, startup, connectOnStartup }: { identity: 
   if (startup === 'run') await manager.startAutomaticConnections();
   return { manager, id, open, storage };
 }
+
 async function setup({ localRole }: { localRole?: 'initiator' | 'responder' } = {}) {
   let a = await createNaidanPipingIdentity(), b = await createNaidanPipingIdentity();
   if (localRole) {

@@ -125,5 +125,6 @@ export function useImageSessionPresentation({ generation, selectedKey }: { gener
   }
   return { ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}), view, begin, finish, clear, ownerKey, startedAt: computed(() => snapshot.value?.startedAt), otherRunning: computed(() => generation.busy.value && !belongs.value) };
 }
+
 export const TEST_ONLY = {
 };

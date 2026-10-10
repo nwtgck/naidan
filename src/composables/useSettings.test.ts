@@ -87,6 +87,7 @@ vi.mock('../utils/opfs-detection', () => ({
 vi.mock('../features/lm/openai', () => ({
   OpenAIProvider: class {
     constructor() {}
+
     listModels = mockListModels;
   },
 }));
@@ -94,6 +95,7 @@ vi.mock('../features/lm/openai', () => ({
 vi.mock('../features/lm/ollama', () => ({
   OllamaProvider: class {
     constructor() {}
+
     listModels = mockListModels;
   },
 }));

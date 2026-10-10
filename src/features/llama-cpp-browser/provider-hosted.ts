@@ -5,9 +5,11 @@ import type { LlamaCppBrowserService } from './service-contract';
 
 class HostedLlamaCppBrowserProvider implements LmProvider {
   private readonly service: Pick<LlamaCppBrowserService, 'listModels' | 'generate' | 'runGenerationOperation'>;
+
   constructor({ service }: { service: Pick<LlamaCppBrowserService, 'listModels' | 'generate' | 'runGenerationOperation'> }) {
     this.service = service;
   }
+
   async listModels({ signal }: { signal: AbortSignal | undefined }): Promise<string[]> {
     return (await this.service.listModels({ signal })).map(model => model.name);
   }
@@ -53,6 +55,7 @@ class HostedLlamaCppBrowserProvider implements LmProvider {
     });
   }
 }
+
 export function createLlamaCppProvider({ service }: { service: Pick<LlamaCppBrowserService, 'listModels' | 'generate' | 'runGenerationOperation'> }): LmProvider {
   return new HostedLlamaCppBrowserProvider({ service });
 }

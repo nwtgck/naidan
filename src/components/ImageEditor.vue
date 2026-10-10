@@ -217,6 +217,7 @@ function onPanning({ event }: { event: MouseEvent }) {
   };
   lastMousePos.value = { x: event.clientX, y: event.clientY };
 }
+
 const handlePanMouseMove: EventListener = (event) => {
   onPanning({ event: event as MouseEvent });
 };
@@ -681,6 +682,7 @@ function onMouseMove({ event }: { event: MouseEvent }) {
   }
   selection.value.rect = { x, y, w, h };
 }
+
 const handleSelectionMouseMove: EventListener = (event) => {
   onMouseMove({ event: event as MouseEvent });
 };

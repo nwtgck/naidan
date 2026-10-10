@@ -31,5 +31,6 @@ export function createBenchmarkForm() {
   }
   return { common, preview, protocol, strategy, includePrompts, includeInputImages, notes, selected, overrides, componentSelections, loras, imageInputs, state, exporting, error, feedback, runs, plan, current, progress, setCommon };
 }
+
 export const TEST_ONLY = {
 };

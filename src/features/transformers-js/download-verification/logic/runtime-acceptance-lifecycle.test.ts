@@ -21,6 +21,7 @@ vi.mock('@/features/transformers-js/download-verification/candidate-acceptance-w
 afterEach(() => vi.clearAllMocks());
 
 const REVISION = 'a'.repeat(40);
+
 function input(): DownloadVerificationEvidenceInput {
   return {
     schemaVersion: 1,
@@ -46,6 +47,7 @@ function input(): DownloadVerificationEvidenceInput {
     cacheInspectionError: undefined,
   };
 }
+
 function inventory(): DownloadVerificationCachedRevisionInventory {
   return {
     modelId: 'fixture/lifecycle',

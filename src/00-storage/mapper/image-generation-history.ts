@@ -74,6 +74,7 @@ export function imageGenerationRuntimeToDomain({ runtime }: { runtime: Experimen
   default: { const exhaustive: never = runtime; throw new Error(String(exhaustive)); }
   }
 }
+
 export function imageGenerationRuntimeToDto({ runtime }: { runtime: ImageGenerationRecord['request']['runtime'] }): ExperimentalImageGenerationDto['request']['runtime'] {
   const dto = ExperimentalImageGenerationRuntimeSchemaDto.parse(runtime);
   switch (dto.profile) {
@@ -83,13 +84,16 @@ export function imageGenerationRuntimeToDto({ runtime }: { runtime: ImageGenerat
   }
   return dto;
 }
+
 function validateRemoteRuntime({ runtime }: { runtime: { registrationId: string; peerPublicKey: string } }): void {
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(runtime.registrationId) || !/^[A-Za-z0-9_-]{43}$/.test(runtime.peerPublicKey)) throw new Error('Invalid RPC execution provenance');
 }
+
 export function imageGenerationRequestToDomain({ request }: { request: ExperimentalImageGenerationDto['request'] }): ImageGenerationRecord['request'] {
   const { runtime, ...body } = request;
   return exactObject<ImageGenerationRecord['request']>()({ ...imageGenerationRequestBodyToDomain({ request: body }), runtime: imageGenerationRuntimeToDomain({ runtime }) });
 }
+
 export function imageGenerationRequestToDto({ request }: { request: ImageGenerationRecord['request'] }): ExperimentalImageGenerationDto['request'] {
   const { runtime, ...body } = request;
   return exactObject<ExperimentalImageGenerationDto['request']>()({ ...imageGenerationRequestBodyToDto({ request: body }), runtime: imageGenerationRuntimeToDto({ runtime }) });

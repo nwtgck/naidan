@@ -8,6 +8,7 @@ function stream({ chunks }: { chunks: readonly Uint8Array[] }): ReadableStream<U
     },
   });
 }
+
 async function read({ source, maxLineLength }: { source: ReadableStream<Uint8Array>, maxLineLength: number }): Promise<string[]> {
   const lines = [];
   for await (const line of readStreamLines({ stream: source, signal: new AbortController().signal, maxLineLength })) lines.push(line);

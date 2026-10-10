@@ -18,6 +18,7 @@ const { openFileExplorer } = useFileExplorerModal();
 const { isDebugOpen, toggleDebug } = useLayout();
 const isMenuOpen = ref(false);
 const selectedTab = ref<'events' | 'llama'>('events');
+
 function navigateTabs({ event }: { event: KeyboardEvent }): void {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
@@ -31,6 +32,7 @@ function navigateTabs({ event }: { event: KeyboardEvent }): void {
   const target = event.currentTarget;
   if (target instanceof HTMLElement) target.querySelector<HTMLButtonElement>(`[data-tab="${selectedTab.value}"]`)?.focus();
 }
+
 const menuRef = ref<HTMLElement | null>(null);
 
 async function triggerTestError(): Promise<void> {

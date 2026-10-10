@@ -1,4 +1,5 @@
 import type { ImageClient } from './types';
+
 export function createImageClient(): ImageClient {
   return {
     async generate() {
@@ -13,5 +14,6 @@ export function createImageClient(): ImageClient {
     dispose() {},
   };
 }
+
 export const TEST_ONLY = {
 };

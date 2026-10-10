@@ -35,6 +35,7 @@ vi.mock('virtual:stable-diffusion-cpp-browser/config', async () => {
 });
 
 let wrapper: VueWrapper<InstanceType<typeof ImageGenerationLab>> | undefined;
+
 function readyInventory() {
   return scanImageRepositories({
     repositories: selectedRecipeFiles({ recipe: imageModelRecipes[0]!, selections: {} }).map(source => {

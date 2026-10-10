@@ -335,6 +335,7 @@ const reasonDescriptions = {
 
 export type Diagnostic = z.infer<typeof diagnosticSchema>;
 const listeners = new Set<{ listener: ({ diagnostic }: { diagnostic: Diagnostic }) => void | Promise<void>, debug: 'off' | 'on', pending: Set<Promise<void>> }>();
+
 /** A worker request owns the detail preference, independently of resident runtime callbacks. */
 export function subscribeDiagnostics({ listener, debug }: { listener: ({ diagnostic }: { diagnostic: Diagnostic }) => void | Promise<void>, debug: 'off' | 'on' }): () => void {
   const subscription = { listener, debug, pending: new Set<Promise<void>>() };
@@ -348,6 +349,7 @@ export function subscribeDiagnostics({ listener, debug }: { listener: ({ diagnos
 export function logDiagnostic({ diagnostic }: { diagnostic: Diagnostic }): void {
   publishDiagnostic({ diagnostic, writeToConsole: true });
 }
+
 function publishDiagnostic({ diagnostic, writeToConsole }: { diagnostic: Diagnostic, writeToConsole: boolean }): void {
   const safe = diagnosticSchema.safeParse(diagnostic);
   if (!safe.success) return;
@@ -384,15 +386,18 @@ function publishDiagnostic({ diagnostic, writeToConsole }: { diagnostic: Diagnos
   default: { const exhaustive: never = safe.data.event; throw new Error(`Unknown diagnostic event: ${exhaustive}`); }
   }
 }
+
 /** Synchronous native callbacks cannot await host replies; the owning request drains them. */
 export function logNativeCheckpoint({ diagnostic }: { diagnostic: Diagnostic }): void {
   publishDiagnostic({ diagnostic, writeToConsole: Array.from(listeners.values()).some(({ debug }) => debug === 'on') });
 }
+
 /** Await host acknowledgements before entering a native call that may never return. */
 export async function logOperation({ diagnostic }: { diagnostic: Diagnostic }): Promise<void> {
   logNativeCheckpoint({ diagnostic });
   await Promise.all(Array.from(listeners.values()).flatMap(({ pending }) => Array.from(pending)));
 }
+
 /** Extract numbers only from the fixed WebGPU dispatch-limit diagnostic format. */
 export function dispatchLimitDetails({ message }: { message: unknown }): { dispatchAxis: 'x' | 'y' | 'z', dispatchCount: number, dispatchLimit: number } | undefined {
   if (typeof message !== 'string') return undefined;
@@ -403,6 +408,7 @@ export function dispatchLimitDetails({ message }: { message: unknown }): { dispa
   if (!Number.isSafeInteger(dispatchCount) || !Number.isSafeInteger(dispatchLimit) || dispatchLimit < 1 || dispatchCount <= dispatchLimit) return undefined;
   return { dispatchAxis, dispatchCount, dispatchLimit };
 }
+
 /** Match known technical failures without forwarding the native message itself. */
 export function knownNativeFailure({ message }: { message: unknown }): z.infer<typeof failureKindSchema> | undefined {
   if (typeof message !== 'string') return undefined;
@@ -413,6 +419,7 @@ export function knownNativeFailure({ message }: { message: unknown }): z.infer<t
   if (/\b(?:WebGPU|GPUValidationError)\b.*(?:validation|invalid)|\bvalidation\b.*\b(?:WebGPU|GPUCommandEncoder|GPUComputePassEncoder)\b/i.test(message)) return 'webgpu-validation';
   return undefined;
 }
+
 export function classifyFailure({ error }: { error: unknown }): z.infer<typeof failureKindSchema> {
   const known = knownNativeFailure({ message: error instanceof Error ? error.message : error });
   if (known) return known;
@@ -426,10 +433,12 @@ export function classifyFailure({ error }: { error: unknown }): z.infer<typeof f
   if (error instanceof Error) return 'javascript-error';
   return 'unknown-exception';
 }
+
 /** Classify locally without serializing exception values, messages or stacks. */
 export function logFailure({ stage, error }: { stage: DiagnosticStage, error: unknown }): void {
   logDiagnostic({ diagnostic: { event: 'failed', stage, failureKind: classifyFailure({ error }), code: errorCode({ error }) } });
 }
+
 /** Upstream mtmd-helper emits these exact lines with a fixed image/audio label. */
 function nativeMediaDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
   if (typeof message !== 'string' || message.length > 256) return undefined;
@@ -457,6 +466,7 @@ function nativeMediaDiagnostic({ message }: { message: unknown }): Diagnostic | 
     ...(decoding ? { batchTokens: number } : { elapsedMs: number }),
   };
 }
+
 /** Fixed numeric context, graph and buffer formats from upstream llama.cpp. */
 function nativeInfoDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
   if (typeof message !== 'string' || message.length > 256) return undefined;
@@ -481,6 +491,7 @@ function nativeInfoDiagnostic({ message }: { message: unknown }): Diagnostic | u
   if (!Number.isFinite(nativeValue) || nativeValue > Number.MAX_SAFE_INTEGER) return undefined;
   return { event: 'native-info', nativeMetric: buffer[1] ? 'compute_buffer_mib' : 'model_buffer_mib', nativeValue, nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).parse(buffer[1] ?? buffer[2]) };
 }
+
 /** Actual per-backend allocation, rounded by upstream to hundredths of MiB.
  * Each record belongs to one allocation attempt; retries must not be summed or
  * interpreted as current residency. Never retain backend/device names from logs.
@@ -500,6 +511,7 @@ function nativeStateAllocationDiagnostic({ message }: { message: unknown }): Dia
     nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).parse(buffer[1] ?? buffer[2]),
   };
 }
+
 /** Image internals expose dimensions and counts, never tensors or input text. */
 function nativeImageDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
   if (typeof message !== 'string' || message.length > 256) return undefined;
@@ -518,6 +530,7 @@ function nativeImageDiagnostic({ message }: { message: unknown }): Diagnostic | 
   if (preproc) return { event: 'native-info', stage: 'image-tokenize', nativeOperation: 'preprocess-image', nativeEntries: Number(preproc[1]), nativeGridX: Number(preproc[2]), nativeGridY: Number(preproc[3]), nativeOverview: preproc[4] === '1' };
   return undefined;
 }
+
 /**
  * Fixed projector diagnostics; accepting arbitrary stderr would leak file or tensor names.
  * lcb_clip records are emitted by lcore's local mtmd overlay, not stock llama.cpp.
@@ -592,6 +605,7 @@ function nativeProjectorDiagnostic({ message }: { message: unknown }): Diagnosti
     nativeBackend: z.enum(['CPU', 'CPU_Mapped', 'WebGPU']).parse(buffer[1]),
   };
 }
+
 /** Keep structured progress/metrics and known failures; never forward raw stderr. */
 export function logNativeDiagnostic({ message }: { message: unknown }): void {
   if (typeof message === 'string' && message.length <= 256) {
@@ -618,5 +632,6 @@ export function logNativeDiagnostic({ message }: { message: unknown }): void {
   const failureKind = knownNativeFailure({ message });
   if (failureKind) logDiagnostic({ diagnostic: { event: 'native-error', failureKind, ...dispatchLimitDetails({ message }) } });
 }
+
 export const TEST_ONLY = {
 };

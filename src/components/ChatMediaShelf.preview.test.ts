@@ -28,9 +28,11 @@ const wrappers: ReturnType<typeof mount>[] = [];
 const chatId = toChatId({ raw: 'media-chat' });
 let downloads: { url: string; name: string; blob: Blob }[];
 let urls: Map<string, Blob>;
+
 function png() {
   return new Blob([Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a14sAAAAASUVORK5CYII='), character => character.charCodeAt(0))], { type: 'image/png' });
 }
+
 function message({ blob }: { blob: Blob | undefined }): UserMessageNode {
   const base = {
     id: toAttachmentId({ raw: 'a' }),
@@ -53,6 +55,7 @@ function message({ blob }: { blob: Blob | undefined }): UserMessageNode {
     replies: { items: [] },
   };
 }
+
 function mountOwner({ messages, showMessage }: { messages: UserMessageNode[]; showMessage: boolean }) {
   const nodes = ref(messages);
   let preview!: ReturnType<typeof useImagePreview>;
@@ -74,6 +77,7 @@ function mountOwner({ messages, showMessage }: { messages: UserMessageNode[]; sh
   const wrapper = mount(Owner, { global: { stubs: { Teleport: true } } }); wrappers.push(wrapper);
   return { wrapper, nodes, preview };
 }
+
 async function readBytes({ blob }: { blob: Blob }): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

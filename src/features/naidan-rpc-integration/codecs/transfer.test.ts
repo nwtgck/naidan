@@ -10,6 +10,7 @@ afterEach(() => vi.restoreAllMocks());
 function signal(): AbortSignal {
   return new AbortController().signal;
 }
+
 function request(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {
   return {
     model: 'local-model',

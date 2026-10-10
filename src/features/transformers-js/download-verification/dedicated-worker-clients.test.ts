@@ -21,6 +21,7 @@ class MockWorker extends EventTarget {
   private active = true;
   readonly startup = createProductionRuntimeStartupFixture({ emitFromWorker: ({ message }) => this.dispatchEvent(new MessageEvent('message', { data: message })) });
   readonly postMessage = vi.fn((message: unknown) => this.startup.acceptHostMessage({ message }));
+
   constructor(url: URL) {
     super();
     MockWorker.latest = this;

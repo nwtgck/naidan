@@ -182,5 +182,6 @@ export function useImageBenchmark({ generation }: { generation: ImageGenerationV
     }) || {}),
   };
 }
+
 export const TEST_ONLY = {
 };

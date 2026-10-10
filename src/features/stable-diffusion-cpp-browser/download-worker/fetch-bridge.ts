@@ -4,6 +4,7 @@ import { servePrivacyStreamWithFetcher } from '@/features/privacy-fetch/stream-p
 import { workerTransfer } from '@/utils/worker-transport';
 import type { ImageDownloadFetch } from './fetch-types';
 const requestSchema = z.object({ url: z.string().url().max(8192), headers: z.array(z.tuple([z.string(), z.string()])).max(8).optional() }).strict();
+
 /** The window owns the sandboxed privacy broker. Workers only receive an
  * authorized byte stream via the existing transfer/backpressure transport.
  * Never import the DOM broker client into a download Worker. */
@@ -33,5 +34,6 @@ export function createImageDownloadFetchBridge({ signal }: { signal: AbortSignal
   }
   return { open, dispose };
 }
+
 export const TEST_ONLY = {
 };

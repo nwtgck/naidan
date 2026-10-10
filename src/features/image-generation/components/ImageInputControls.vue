@@ -64,12 +64,14 @@ onBeforeUnmount(() => {
   for (const preview of previews.value.values()) if (preview.url) URL.revokeObjectURL(preview.url);
   previews.value.clear();
 });
+
 function failed({ preview }: { preview: Preview }): void {
   // Ignore late decode events from thumbnails replaced or removed meanwhile.
   if (previews.value.get(preview.file)?.url !== preview.url) return;
   const next = new Map(previews.value);
   next.set(preview.file, { ...preview, failed: true }); previews.value = next;
 }
+
 function accept({ role, files, replaceIndex }: { role: Role, files: File[], replaceIndex: number | undefined }): void {
   if (props.disabled || !files.length) return;
   if (files.some(file => file.size === 0 || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type))) {
@@ -91,15 +93,18 @@ function accept({ role, files, replaceIndex }: { role: Role, files: File[], repl
   default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
   }
 }
+
 function choose({ role, event, replaceIndex }: { role: Role, event: Event, replaceIndex: number | undefined }): void {
   if (!(event.target instanceof HTMLInputElement)) return;
   const files = Array.from(event.target.files ?? []); event.target.value = '';
   accept({ role, files, replaceIndex });
 }
+
 function drop({ role, event }: { role: Role, event: DragEvent }): void {
   dragging.value = undefined;
   accept({ role, files: Array.from(event.dataTransfer?.files ?? []), replaceIndex: undefined });
 }
+
 function paste({ role, event }: { role: Role, event: ClipboardEvent }): void {
   if (props.disabled || !props.active || !open.value || event.defaultPrevented) return;
   // Do not turn a paste meant for a strength field or an editor into an import.
@@ -110,6 +115,7 @@ function paste({ role, event }: { role: Role, event: ClipboardEvent }): void {
   clipboardEpoch++; clipboardBusy.value = undefined; clipboardMessage.value = undefined;
   accept({ role, files, replaceIndex: undefined });
 }
+
 async function pasteFromClipboard({ role, event }: { role: Role, event: MouseEvent }): Promise<void> {
   if (props.disabled || !props.active || !open.value || clipboardBusy.value) return;
   // Keep native paste usable after a failed/unavailable clipboard.read call.
@@ -133,14 +139,17 @@ async function pasteFromClipboard({ role, event }: { role: Role, event: MouseEve
     if (token === clipboardEpoch) clipboardBusy.value = undefined;
   }
 }
+
 function dragLeave({ event }: { event: DragEvent }): void {
   if (event.currentTarget instanceof Node && event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
   dragging.value = undefined;
 }
+
 function strength({ event }: { event: Event }): void {
   if (props.disabled || !(event.target instanceof HTMLInputElement)) return;
   emit('update:modelValue', { ...props.modelValue, strength: event.target.valueAsNumber });
 }
+
 function remove({ role, index }: { role: Role, index: number }): void {
   if (props.disabled) return;
   invalid.value = undefined;
@@ -156,6 +165,7 @@ function remove({ role, index }: { role: Role, index: number }): void {
   default: { const exhaustive: never = role; throw new Error(String(exhaustive)); }
   }
 }
+
 function move({ index, offset }: { index: number, offset: number }): void {
   if (props.disabled) return;
   const references = [...props.modelValue.referenceImages], target = index + offset, file = references[index];
@@ -163,9 +173,11 @@ function move({ index, offset }: { index: number, offset: number }): void {
   references.splice(index, 1); references.splice(target, 0, file);
   emit('update:modelValue', { ...props.modelValue, referenceImages: references });
 }
+
 function enlarge({ role, index }: { role: Role, index: number }): void {
   if (props.active) viewerIndex.value = index + (role === 'reference' && props.modelValue.initImage ? 1 : 0);
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

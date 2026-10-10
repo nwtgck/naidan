@@ -9,6 +9,7 @@ export type MethodAccessState = {
   revision: number;
   persistence: 'temporary' | 'saved' | 'saving' | 'failed';
 };
+
 /** Per-connection inbound authority. Persisted names are concrete methods,
  * never a group or wildcard. The save callback must compare expectedRevision.
  * A stale save may advance the storage revision but cannot grant live access. */
@@ -117,5 +118,6 @@ export function createMethodAccess({ initial, stored, revision, persist, apply, 
     },
   };
 }
+
 export const TEST_ONLY = {
 };

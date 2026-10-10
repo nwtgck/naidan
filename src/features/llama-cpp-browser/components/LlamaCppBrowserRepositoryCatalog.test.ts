@@ -37,6 +37,7 @@ const families = [
   { name: 'Qwen3-TTS-12Hz-0.6B-Base', projector: 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-Q8_0.gguf' },
   { name: 'Qwen3-TTS-12Hz-1.7B-Base', projector: 'mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf' },
 ] as const;
+
 function render(): VueWrapper {
   wrapper = mount(LlamaCppBrowserManager, {
     props: { suggestions: 'none' },

@@ -8,31 +8,39 @@ import type { ParameterChange } from '@/features/stable-diffusion-cpp-browser/be
 const props = defineProps<{ values: Parameters, overrides: Partial<Parameters> | undefined }>();
 const emit = defineEmits<{ change: [change: ParameterChange], inherit: [key: keyof Parameters] }>();
 const id = useId();
+
 function text({ event }: { event: Event }): string {
   return event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLTextAreaElement ? event.target.value : '';
 }
+
 function numeric({ event }: { event: Event }): number {
   const value = text({ event }); return value.trim() ? Number(value) : NaN;
 }
+
 function checked({ event }: { event: Event }): boolean {
   return event.target instanceof HTMLInputElement && event.target.checked;
 }
+
 function resolution({ edge }: { edge: number }): void {
   // A preset deliberately overrides both dimensions for a model, even when its
   // size was inherited. Other shared settings continue to be inherited.
   emit('change', { key: 'width', value: edge });
   emit('change', { key: 'height', value: edge });
 }
+
 function sampler({ event }: { event: Event }): void {
   const value = samplerOptions.find(option => option === text({ event })); if (value !== undefined) emit('change', { key: 'sampler', value });
 }
+
 function scheduler({ event }: { event: Event }): void {
   const value = schedulerOptions.find(option => option === text({ event })); if (value !== undefined) emit('change', { key: 'scheduler', value });
 }
+
 function bf16WeightType({ event }: { event: Event }): void {
   const value = text({ event });
   if (value === 'f32' || value === 'f16') emit('change', { key: 'bf16WeightType', value });
 }
+
 function setOverride({ key, event }: { key: keyof Parameters, event: Event }): void {
   if (!checked({ event })) emit('inherit', key);
   else {
@@ -59,6 +67,7 @@ function setOverride({ key, event }: { key: keyof Parameters, event: Event }): v
     }
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

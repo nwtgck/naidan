@@ -11,6 +11,7 @@ export function parseAuthorForLog({ author }: {
     return { identity: author, timestamp: 0, timezone: '+0000' };
   return { identity: match[1]!, timestamp: Number.parseInt(match[2]!, 10), timezone: match[3]! };
 }
+
 export function formatLogDate({ timestamp, timezone }: {
     timestamp: number;
     timezone: string;

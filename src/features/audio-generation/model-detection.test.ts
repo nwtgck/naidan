@@ -66,6 +66,7 @@ describe('audio candidate metadata', () => {
 });
 
 const detected: AudioModelDetection = { status: 'detected', pipeline: 'qwen3-tts', reference: 'optional' };
+
 function model({ id, size }: { id: string, size: number }): LocalModel {
   return { id, size, name: id, importedAt: 1 };
 }

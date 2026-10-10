@@ -13,6 +13,7 @@ import { TEST_ONLY as RUNTIME_TEST_ONLY } from './runtime';
 function message({ role, content }: { role: 'user' | 'assistant' | 'system', content: string }): ChatMessage {
   return { id: toMessageId({ raw: `${role}-history` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] };
 }
+
 function userImage({ withText }: { withText: boolean }): ChatMessage {
   return {
     id: toMessageId({ raw: 'image-user' }),
@@ -23,6 +24,7 @@ function userImage({ withText }: { withText: boolean }): ChatMessage {
     ],
   };
 }
+
 async function generate({ provider, messages, model, parameters, tools }: {
   provider: PromptApiProvider,
   messages: ChatMessage[],

@@ -65,6 +65,7 @@ const mockChat = vi.fn<LmProvider['chat']>().mockImplementation(({ model, signal
 vi.mock('../features/lm/openai', () => {
   class MockOpenAI {
     constructor() {}
+
     chat = mockChat;
     listModels = vi.fn().mockResolvedValue(['gpt-3.5-turbo', 'gpt-4']);
   }

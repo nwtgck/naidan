@@ -120,5 +120,6 @@ export function createImageDiagnosticBuffer() {
     },
   };
 }
+
 export const TEST_ONLY = {
 };

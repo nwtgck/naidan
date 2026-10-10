@@ -52,6 +52,7 @@ const index = computed({
   },
 });
 const actionDisabled = computed(() => !props.view.details.value || props.view.inspectLoading.value || !props.view.editorReady.value || props.view.editor.formDisabled.value);
+
 async function reuse({ kind }: { kind: 'settings' | 'prompt' | 'initial' | 'reference' }): Promise<void> {
   if (actionDisabled.value) return;
   const id = current.value?.id;
@@ -72,6 +73,7 @@ async function reuse({ kind }: { kind: 'settings' | 'prompt' | 'initial' | 'refe
     if (current.value?.id === id) feedback.value = error instanceof Error ? error.message : String(error);
   }
 }
+
 async function download({ format, includeMetadata }: { format: ImageDownloadFormat, includeMetadata: boolean }): Promise<ImageDownloadResult> {
   const selected = props.view.details.value;
   if (!selected) return { status: 'cancelled' };
@@ -98,6 +100,7 @@ async function download({ format, includeMetadata }: { format: ImageDownloadForm
     return { status: 'failed', message: error instanceof Error ? error.message : String(error) };
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: { queue, index } }) || {}) });
 </script>
 <template>

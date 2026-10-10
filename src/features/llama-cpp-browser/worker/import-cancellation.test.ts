@@ -22,11 +22,13 @@ vi.mock('./generation', () => ({ generate: vi.fn() }));
 class TestWorker extends EventTarget {
   static instances: TestWorker[] = [];
   terminate = vi.fn();
+
   constructor() {
     super(); TestWorker.instances.push(this);
   }
 }
 let root: ReturnType<typeof memoryDirectory>;
+
 function modelFile({ name }: { name: string }): File {
   // Preserve jsdom's File identity for the real wire schemas, while supplying
   // the Blob streaming methods that jsdom does not implement.
@@ -38,6 +40,7 @@ function modelFile({ name }: { name: string }): File {
   });
   return file;
 }
+
 async function userFolder() {
   return (await root.getDirectoryHandle('models', { create: true })).getDirectoryHandle('user', { create: true });
 }

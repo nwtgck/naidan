@@ -7,5 +7,6 @@ export function createImageHistoryClient(): ImageHistoryClient {
   const session = createLazyImageQuerySession<ImageHistoryWorker>({ createWorker: createStandaloneWorker, createRemote: ({ worker }) => wrapWorkerRemote<ImageHistoryWorker>({ endpoint: worker }) });
   return { query: ({ query }) => session.invoke({ run: async ({ remote }) => historyPageSchema.parse(await remote.query({ request: { storageType: 'opfs', query } })) }), dispose: session.dispose };
 }
+
 export const TEST_ONLY = {
 };

@@ -14,5 +14,6 @@ export function createAudioCooperator({ signal }: { signal: AbortSignal | undefi
     if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   };
 }
+
 export const TEST_ONLY = {
 };

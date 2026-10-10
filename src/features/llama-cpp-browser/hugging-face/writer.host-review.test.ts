@@ -38,13 +38,16 @@ afterEach(() => {
 async function folder(): Promise<MemoryDirectory> {
   return (await root.getDirectoryHandle('owner')).getDirectoryHandle('repo');
 }
+
 async function payload(): Promise<MemoryFile> {
   return (await (await folder()).getDirectoryHandle('nested')).getFileHandle('model.gguf');
 }
+
 async function imageFiles(): Promise<string[]> {
   const repositories = await listHostImageRepositories({ directories: [{ id: destination.directoryId, name: root.name }], signal: undefined });
   return repositories.flatMap(repository => repository.files.map(file => file.path));
 }
+
 async function completeFile({ writer, index, start }: { writer: ReturnType<typeof createDownloadWriter>, index: number, start: number }): Promise<void> {
   await writer.open({ fileIndex: index, start });
   await writer.append({ bytes: ggufBytes().slice(start) });

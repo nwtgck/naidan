@@ -7,10 +7,13 @@ import { toBinaryObjectId, toChatId } from '@/01-models/ids';
 // --- Improved Mocks for OPFS ---
 class MockFileSystemFileHandle {
   kind = 'file' as const;
+
   constructor(public name: string, private blob: Blob = new Blob()) {}
+
   async getFile() {
     return this.blob;
   }
+
   createWritable() {
     return Promise.resolve({
       write: async (data: any) => {
@@ -26,7 +29,9 @@ class MockFileSystemFileHandle {
 class MockFileSystemDirectoryHandle {
   kind = 'directory' as const;
   entries = new Map<string, MockFileSystemDirectoryHandle | MockFileSystemFileHandle>();
+
   constructor(public name: string) {}
+
   async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<MockFileSystemDirectoryHandle> {
     if (!this.entries.has(name)) {
       if (options?.create) this.entries.set(name, new MockFileSystemDirectoryHandle(name));
@@ -38,6 +43,7 @@ class MockFileSystemDirectoryHandle {
     if (entry instanceof MockFileSystemFileHandle) throw new Error('Not a directory');
     return entry as MockFileSystemDirectoryHandle;
   }
+
   async getFileHandle(name: string, options?: { create?: boolean }): Promise<MockFileSystemFileHandle> {
     if (!this.entries.has(name)) {
       if (options?.create) this.entries.set(name, new MockFileSystemFileHandle(name));
@@ -49,12 +55,15 @@ class MockFileSystemDirectoryHandle {
     if (entry instanceof MockFileSystemDirectoryHandle) throw new Error('Not a file');
     return entry as MockFileSystemFileHandle;
   }
+
   async removeEntry(name: string, _options?: { recursive?: boolean }) {
     this.entries.delete(name);
   }
+
   async *values() {
     for (const entry of this.entries.values()) yield entry;
   }
+
   async *keys() {
     for (const key of this.entries.keys()) yield key;
   }

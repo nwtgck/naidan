@@ -17,6 +17,7 @@ function assistant({ parts }: { parts: AssistantMessageNode['parts'] }): Assista
     replies: { items: [] },
   };
 }
+
 function find({ messages, query }: { messages: MessageNode[]; query: string }) {
   return searchChatTree({ root: { items: messages }, query, chatId: toChatId({ raw: 'chat' }) });
 }

@@ -21,6 +21,7 @@ export const sharedProjectorConflictMessage = 'Shared projector differs from the
 export const existingModelConflictMessage = 'Existing model differs from the pinned source';
 export class DownloadConflictError extends Error {
   readonly reason: DownloadConflict;
+
   constructor({ reason }: { reason: DownloadConflict }) {
     super('Model download conflicts with existing data'); this.name = 'DownloadConflictError'; this.reason = reason;
   }
@@ -28,11 +29,14 @@ export class DownloadConflictError extends Error {
 export const progressSchema = z.object({ phase: z.enum(['transferring', 'verifying']), currentFileIndex: z.number().int().nonnegative().optional(), processed: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), completed: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), total: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }).strict();
 export type DownloadProgress = z.infer<typeof progressSchema>;
 export const pendingName = '.llama-cpp-import-pending';
+
 export function modelName({ repository }: { repository: string }): string {
   return `hf.co/${repositorySchema.parse(repository)}`;
 }
+
 export function repositoryUrlPath({ repository }: { repository: string }): string {
   return repositorySchema.parse(repository).split('/').map(encodeURIComponent).join('/');
 }
+
 export const TEST_ONLY = {
 };

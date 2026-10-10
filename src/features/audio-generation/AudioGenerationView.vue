@@ -66,10 +66,12 @@ const modelLabels = computed(() => Object.fromEntries(visibleModels.value.map(en
   }
   return [entry.id, label];
 })));
+
 function chooseModel({ value }: { value: string | undefined }): void {
   if (blocked.value || value === undefined || !selectableModelIds.value.includes(value)) return;
   model.value = value; selectionChanged();
 }
+
 async function restartRuntime(): Promise<void> {
   if (blocked.value || disposed) return;
   const controller = new AbortController(); recovery.value = controller;
@@ -84,6 +86,7 @@ async function restartRuntime(): Promise<void> {
     if (!disposed && recovery.value === controller) recovery.value = undefined;
   }
 }
+
 const languages = computed(() => audioLanguageOptions({ locale: currentLocale.value }));
 const progressLabel = computed(() => {
   if (preparingReference.value && !stopping.value) return lazyStrings.audioGeneration__preparing_references();
@@ -123,9 +126,11 @@ const errorMessage = computed(() => {
   default: { const exhaustive: never = code; throw new Error(String(exhaustive)); }
   }
 });
+
 function fieldError({ field }: { field: string }): string | undefined {
   return invalidFields.value.includes(field) ? audioFieldValidationMessage({ field }) : undefined;
 }
+
 function revealInvalidField({ field }: { field: string }): void {
   // Open collapsed ancestors before focus. Native form validation cannot focus a
   // hidden number input and otherwise reports only "not focusable" in the console.
@@ -141,6 +146,7 @@ function revealInvalidField({ field }: { field: string }): void {
   focusTarget?.focus({ preventScroll: true });
   element.scrollIntoView?.({ block: 'nearest' });
 }
+
 async function generate(): Promise<void> {
   if (!canGenerate.value) return;
   failure.value = undefined; invalidFields.value = []; stopped.value = false;
@@ -193,18 +199,22 @@ async function generate(): Promise<void> {
     }
   }
 }
+
 function capturePreview(): void {
   if (!canFinish.value || previewPending.value || !previews.value) return;
   previewPending.value = true; previews.value.request();
 }
+
 function finishAudio(): void {
   if (!canFinish.value) return;
   finishing.value = true; previewPending.value = false; completionController.value?.abort();
 }
+
 function stop(): void {
   if (!controller.value) return;
   stopping.value = true; controller.value.abort();
 }
+
 onMounted(() => {
   unsubscribe = llamaCppBrowserService.subscribe({
     listener: ({ state: next }) => {

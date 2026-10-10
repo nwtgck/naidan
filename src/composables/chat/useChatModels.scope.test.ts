@@ -15,6 +15,7 @@ vi.mock('./global/chat-core-singletons', async () => {
 const chatA = toChatId({ raw: 'chat-aa' }), chatB = toChatId({ raw: 'chat-bb' });
 const scopes: ReturnType<typeof effectScope>[] = [];
 const wrappers: VueWrapper[] = [];
+
 function open({ chatId }: { chatId: typeof chatA }) {
   const scope = effectScope(); scopes.push(scope);
   const current = ref(chatId);

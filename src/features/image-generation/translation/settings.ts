@@ -29,12 +29,14 @@ export function resolveImagePromptTranslation({ session, workspace, global }: {
     modelSource: session?.modelId !== undefined ? 'session' : workspace?.modelId !== undefined ? 'workspace' : 'global',
   };
 }
+
 export function cloneImagePromptTranslationOverride({ value }: { value: ImageGenerationTranslationOverride | undefined }): ImageGenerationTranslationOverride | undefined {
   if (value === undefined) return undefined;
   const { endpoint, modelId, lmParameters, ...unhandled } = value;
   unhandled satisfies Record<PropertyKey, never>;
   return { endpoint: endpoint === undefined ? undefined : cloneEndpoint({ endpoint }), modelId, lmParameters: cloneLmParameters({ lmParameters }) };
 }
+
 export const imagePromptTranslationLanguages: readonly { locale: UiLocale, name: string, instructionName: string }[] = [
   { locale: 'en', name: 'English', instructionName: 'English' },
   { locale: 'ja', name: '日本語', instructionName: 'Japanese' },
@@ -63,5 +65,6 @@ export function imagePromptTranslationEndpointLabel({ endpoint }: { endpoint: En
   default: { const exhaustive: never = endpoint; throw new Error(String(exhaustive)); }
   }
 }
+
 export const TEST_ONLY = {
 };

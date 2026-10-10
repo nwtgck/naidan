@@ -12,5 +12,6 @@ export function audioResult(): AudioGenerationResult {
   view.setInt16(44, -1000, true); view.setInt16(46, 1000, true);
   return { wav, samples, sampleRate, frames: 2, finishReason: 'stop', pipeline: 'qwen3-tts' };
 }
+
 export const TEST_ONLY = {
 };

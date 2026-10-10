@@ -20,6 +20,7 @@ afterEach(() => {
 function input(): AudioGenerationInput {
   return { ...defaultAudioParameters(), model: 'user/model', text: 'Original text', language: 'ja', reference: new Blob(['reference']), options: { profile: 'auto' }, debug: 'off' };
 }
+
 function setup() {
   const scope = effectScope(); scopes.push(scope);
   return { scope, ...scope.run(useAudioHistory)! };

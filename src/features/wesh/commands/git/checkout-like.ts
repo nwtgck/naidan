@@ -19,6 +19,7 @@ export interface CheckoutLikeArguments {
     targetExpression: string;
     missingBranchBehavior: 'resolve-revision' | 'reject';
 }
+
 async function readHeadIndex({ context, repository }: {
     context: WeshCommandContext;
     repository: Awaited<ReturnType<typeof discoverRepository>>;
@@ -29,6 +30,7 @@ async function readHeadIndex({ context, repository }: {
   const commit = await readCommit({ files: context.files, repository, objectId: head.objectId });
   return readTreeIntoIndex({ files: context.files, repository, treeObjectId: commit.treeObjectId });
 }
+
 export async function printCheckoutConflicts({ context, conflicts }: {
     context: WeshCommandContext;
     conflicts: readonly {
@@ -59,6 +61,7 @@ export async function printCheckoutConflicts({ context, conflicts }: {
   }
   await context.text().error({ text: 'Aborting\n' });
 }
+
 async function printPreservedCheckoutChanges({ context }: {
     context: WeshCommandContext;
 }): Promise<void> {
@@ -110,6 +113,7 @@ async function printPreservedCheckoutChanges({ context }: {
     }
   }
 }
+
 export async function executeCheckoutLike({ context, parsed }: {
     context: WeshCommandContext;
     parsed: CheckoutLikeArguments;

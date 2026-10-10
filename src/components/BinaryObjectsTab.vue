@@ -285,6 +285,7 @@ const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
 
 // Debounced memory cleanup
 let cleanupTimeout: number | null = null;
+
 const performThumbnailCleanup = () => {
   if (thumbnailCount.value <= 300) return;
 

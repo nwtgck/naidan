@@ -19,6 +19,7 @@ export type NaidanRpcRegistration = {
   connectOnStartup: 'disabled' | 'enabled',
   revision: number,
 };
+
 export function normalizeNaidanRpcTransport({ transport }: { transport: NaidanRpcTransportSettings }): NaidanRpcTransportSettings {
   const { type, serverUrl, headers, ...rest } = transport;
   rest satisfies Record<PropertyKey, never>;
@@ -34,10 +35,12 @@ export function normalizeNaidanRpcTransport({ transport }: { transport: NaidanRp
   }
   return { type, serverUrl: url.origin, headers: restrictedFetchHeadersSchema.parse(headers) };
 }
+
 export function normalizeNaidanRpcLabel({ label }: { label: string }): string {
   const normalized = label.trim();
   if (!normalized || normalized.length > 100) throw new Error('Invalid RPC registration label');
   return normalized;
 }
+
 export const TEST_ONLY = {
 };

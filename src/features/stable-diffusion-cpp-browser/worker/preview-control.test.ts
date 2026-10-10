@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { createNativePreviewControl } from './preview-control';
 import { defaultPreviewSettings, type PreviewControl } from '@/features/stable-diffusion-cpp-browser/types';
 import type { Core } from './core-types';
+
 function fixture() {
   const set = vi.fn(async (..._args: unknown[]): Promise<void> => undefined), raw = vi.fn();
   const core = { api: { sd_set_preview_callback: set }, module: { _sdc_sd_set_preview_callback: raw }, constant: (name: string) => ({ PREVIEW_PROJ: 1, PREVIEW_VAE: 3 })[name as 'PREVIEW_PROJ' | 'PREVIEW_VAE'] } as unknown as Core;

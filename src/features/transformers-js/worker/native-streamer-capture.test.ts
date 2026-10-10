@@ -43,9 +43,11 @@ function syntheticStreamer() {
     put(...args: unknown[]) {
       calls.push({ receiver: this, args }); return returned;
     }
+
     end(...args: unknown[]) {
       calls.push({ receiver: this, args }); return returned;
     }
+
     on_finalized_text(...args: unknown[]) {
       calls.push({ receiver: this, args }); return returned;
     }

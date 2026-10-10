@@ -105,6 +105,7 @@ let lifetime: ObservationLifetime = { kind: 'idle' };
 // Never reject abandoned parallel Transformers.js branches just to unwind them.
 // The one-shot worker's physical termination releases these pending operations.
 const inactiveFetch = new Promise<Response>(() => undefined);
+
 const interceptedFetch: typeof fetch = async (input, init) => {
   switch (lifetime.kind) {
   case 'idle':
@@ -130,6 +131,7 @@ const interceptedFetch: typeof fetch = async (input, init) => {
     cache: 'no-store',
   });
 };
+
 // Dynamic lookups and previously captured references share the same terminal gate.
 // Never restore network authority between RPC settlement and host termination.
 self.fetch = interceptedFetch;

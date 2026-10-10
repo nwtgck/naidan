@@ -281,6 +281,7 @@ const toolTemplateProvenanceSummary = computed(() => {
   }
   }
 });
+
 function toolParserSummaryArguments({ observation }: {
   observation: Extract<ModelSupportInvestigationLoadAttempt["toolProtocolProbe"], { status: "observed" }>["parserObservation"],
 }): {
@@ -423,6 +424,7 @@ const productionLaneRouteSummary = computed(() => {
     modelType: route.modelType,
   });
 });
+
 function formatActiveProductionLoadAttempt({
   attempt,
 }: {
@@ -685,6 +687,7 @@ const cacheSummary = computed(() => {
     zeroByteFileCount: cache.zeroByteFileCount,
   });
 });
+
 function initialInvestigationSteps(): ModelSupportInvestigationStep[] {
   return [
     { id: "runtime-assets", status: "not-run", detail: undefined },

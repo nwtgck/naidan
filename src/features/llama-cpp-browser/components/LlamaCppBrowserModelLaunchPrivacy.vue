@@ -6,11 +6,13 @@ import { lazyStrings } from '@/strings';
 const details = ref<HTMLDetailsElement>();
 const summary = ref<HTMLElement>();
 const explanationId = useId();
+
 function closeExplanation(): void {
   if (!details.value?.open) return;
   details.value.open = false;
   summary.value?.focus();
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 

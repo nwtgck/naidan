@@ -155,6 +155,7 @@ const handleDownload = async ({ item, withMetadata }: { item: MediaItem, withMet
 };
 
 const copiedPromptId = ref<MessageId | null>(null);
+
 const copyPrompt = async ({ prompt, messageId }: { prompt: string, messageId: MessageId }) => {
   try {
     await navigator.clipboard.writeText(prompt);

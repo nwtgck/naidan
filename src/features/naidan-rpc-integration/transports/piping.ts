@@ -19,12 +19,14 @@ function terminalRelayFailure({ error }: { error: unknown }): boolean {
   default: { const exhaustive: never = error.kind; throw new Error(String(exhaustive)); }
   }
 }
+
 /** A failed connection may be retried; its RPC calls are never replayed. */
 export class RpcTransportInterruptedError extends Error {
   constructor({ cause }: { cause: unknown }) {
     super('RPC transport interrupted', { cause }); this.name = 'RpcTransportInterruptedError';
   }
 }
+
 /** A cancelled caller still owns failed cleanup. Only successful retirement
  * permits cancellation or a transport error to determine the retry policy. */
 function connectionAttemptFailure({ error, signal }: { error: unknown; signal: AbortSignal }): unknown {
@@ -33,12 +35,15 @@ function connectionAttemptFailure({ error, signal }: { error: unknown; signal: A
   if (terminalRelayFailure({ error })) return error;
   return new RpcTransportInterruptedError({ cause: error });
 }
+
 const authenticatedProtocolFailures = new WeakSet<NaidanRpcProtocolError>();
+
 /** Only errors produced at this adapter's authenticated boundary get this label. */
 export function describePipingRpcProtocolFailure({ error }: { error: unknown }): string | undefined {
   const original = error instanceof PipingRetirementError ? error.logicalError : error;
   return original instanceof NaidanRpcProtocolError && authenticatedProtocolFailures.has(original) ? original.message : undefined;
 }
+
 async function acceptRpcConnection({ connection, signal }: { connection: NaidanPipingDuplexSession; signal: AbortSignal }): Promise<NaidanPipingDuplexSession> {
   try {
     signal.throwIfAborted();
@@ -235,5 +240,6 @@ export async function openPipingRpc({ settings, identity, peerKey, code, verifyP
     throw error;
   }
 }
+
 export const TEST_ONLY = {
 };

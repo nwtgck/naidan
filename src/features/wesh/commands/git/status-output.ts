@@ -37,6 +37,7 @@ function visibleStatusEntries({ entries }: {
       || left.index - right.index,
   }).map(({ entry }) => entry);
 }
+
 function createStatusPathProjection({ context, repository }: {
   context: WeshCommandContext,
   repository: GitRepository,
@@ -60,6 +61,7 @@ export function statusPathFromCwd({ context, repository, path }: {
 }): string {
   return createStatusPathProjection({ context, repository })({ path });
 }
+
 export function renderShortStatus({ context, repository, entries, quoteNonAscii }: {
     context: WeshCommandContext;
     repository: GitRepository;
@@ -78,6 +80,7 @@ export function renderShortStatus({ context, repository, entries, quoteNonAscii 
     return `${entry.indexStatus}${entry.worktreeStatus} ${path}\n`;
   }).join('');
 }
+
 export function renderPorcelainV1({ entries, nul, quoteNonAscii }: {
     entries: readonly GitStatusEntry[];
     nul: boolean;
@@ -100,16 +103,19 @@ export function renderPorcelainV1({ entries, nul, quoteNonAscii }: {
     return `${prefix} ${path}${separator}`;
   }).join('');
 }
+
 function porcelainMode({ mode }: {
     mode: number | undefined;
 }): string {
   return mode === undefined ? '000000' : mode.toString(8).padStart(6, '0');
 }
+
 function porcelainObjectId({ objectId }: {
     objectId: string | undefined;
 }): string {
   return objectId ?? '0000000000000000000000000000000000000000';
 }
+
 function porcelainIndexStatus({ status }: {
     status: GitStatusEntry['indexStatus'];
 }): string {
@@ -127,6 +133,7 @@ function porcelainIndexStatus({ status }: {
   }
   }
 }
+
 function porcelainWorktreeStatus({ status }: {
     status: GitStatusEntry['worktreeStatus'];
 }): string {
@@ -144,6 +151,7 @@ function porcelainWorktreeStatus({ status }: {
   }
   }
 }
+
 export function renderPorcelainV2({ context, repository, entries, nul, quoteNonAscii }: {
     context: WeshCommandContext;
     repository: GitRepository;
@@ -174,12 +182,14 @@ export function renderPorcelainV2({ context, repository, entries, nul, quoteNonA
     return `1 ${porcelainIndexStatus({ status: entry.indexStatus })}${porcelainWorktreeStatus({ status: entry.worktreeStatus })} N... ${porcelainMode({ mode: entry.headMode })} ${porcelainMode({ mode: entry.indexMode })} ${porcelainMode({ mode: entry.worktreeMode })} ${porcelainObjectId({ objectId: entry.headObjectId })} ${porcelainObjectId({ objectId: entry.indexObjectId })} ${path}${separator}`;
   }).join('');
 }
+
 function longStatusPath({ path, quoteNonAscii }: {
     path: string;
     quoteNonAscii: boolean;
 }): string {
   return quoteGitPath({ path, quoteNonAscii, quoteSpaces: false });
 }
+
 function stagedLongStatusLabel({ status }: {
     status: GitStatusEntry['indexStatus'];
 }): string {
@@ -195,6 +205,7 @@ function stagedLongStatusLabel({ status }: {
   }
   }
 }
+
 function unstagedLongStatusLabel({ status }: {
     status: GitStatusEntry['worktreeStatus'];
 }): string {
@@ -210,6 +221,7 @@ function unstagedLongStatusLabel({ status }: {
   }
   }
 }
+
 function unmergedLongStatusLabel({ entry }: {
     entry: GitStatusEntry;
 }): string {
@@ -233,6 +245,7 @@ function unmergedLongStatusLabel({ entry }: {
     return 'added by them:   ';
   throw new Error(`invalid unmerged index stages for ${entry.path}`);
 }
+
 export async function printLongStatus({ context, status }: {
     context: WeshCommandContext;
     status: GitStatus;
@@ -362,6 +375,7 @@ Untracked files:
     await text.print({ text: '\n' });
   }
 }
+
 export function formatPorcelainV1Branch({ status }: {
     status: GitStatus;
 }): string {

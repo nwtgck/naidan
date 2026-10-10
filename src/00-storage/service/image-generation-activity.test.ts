@@ -24,15 +24,18 @@ async function setup() {
   const b = await service.saveImageGenerationSession({ store, session: generationSessionFixture({ id: 'session-bb' }), expectedRevision: undefined });
   return { store, a, b };
 }
+
 async function accept({ store, session, id, time }: { store: service.ImageGenerationStoreAccess, session: ImageGenerationSession, id: string, time: number }) {
   const run = { ...generationRunFixture({ id, sessionId: session.id, count: 1, seed: '42' }), createdAt: time };
   const writeInputs = vi.fn(async () => {});
   await service.createImageGenerationRun({ store, run, writeInputs });
   return { run, writeInputs };
 }
+
 async function journal() {
   return ExperimentalImageGenerationActivityJournalSchemaDto.parse(JSON.parse((await fs.file({ path: `${root}/session-activity.json` })).text));
 }
+
 async function order({ store }: { store: service.ImageGenerationStoreAccess }) {
   return (await service.listImageGenerationSessions({ store })).items.map(item => idToRaw({ id: item.id }));
 }

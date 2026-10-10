@@ -7,6 +7,7 @@ import { MAX_BENCHMARK_IMAGE_BYTES } from './types';
 import type { BenchmarkPlan, BenchmarkSnapshot, BenchmarkRun } from './types';
 
 export type BenchmarkRunner = ReturnType<typeof createBenchmarkRunner>;
+
 /** One queue, one physical worker at a time. No retry, model download, precision
  * downgrade or cold run disguised as warm after a failure. */
 export function createBenchmarkRunner({ createClient, now, date, observeVisibility, publish }: {
@@ -191,5 +192,6 @@ export function createBenchmarkRunner({ createClient, now, date, observeVisibili
     },
   };
 }
+
 export const TEST_ONLY = {
 };

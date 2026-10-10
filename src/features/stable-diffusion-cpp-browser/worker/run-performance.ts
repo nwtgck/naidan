@@ -3,7 +3,9 @@ import type { Request } from '@/features/stable-diffusion-cpp-browser/types';
 import type { MeasurementPoint, MeasurementOutcome } from './gpu-performance';
 export type PerformancePhase = 'runtime' | 'model-header' | 'model-load' | 'prepare' | 'conditioning' | 'sampling' | 'decoding' | 'encoding' | 'cleanup';
 export type NativePerformanceSignal = { kind: 'conditioning' } | { kind: 'sampling-progress', step: number, steps: number };
+
 const emptyPhases = () => ({ runtime: 0, 'model-header': 0, 'model-load': 0, prepare: 0, conditioning: 0, sampling: 0, decoding: 0, encoding: 0, cleanup: 0 });
+
 const emptyPlacement = () => ({
   allocationReports: 0,
   invalidReports: 0,
@@ -296,5 +298,6 @@ export function createRunPerformance({ enabled, request, emit, checkpoint, now =
     },
   };
 }
+
 export const TEST_ONLY = {
 };

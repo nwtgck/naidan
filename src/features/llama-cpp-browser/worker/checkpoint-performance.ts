@@ -39,5 +39,6 @@ export function createCheckpointPerformance({ now }: { now: () => number }) {
     },
   };
 }
+
 export const TEST_ONLY = {
 };

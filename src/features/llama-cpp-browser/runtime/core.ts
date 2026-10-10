@@ -33,11 +33,13 @@ type NativeScalar = number | bigint;
 // Positional calls are confined to the generated native ABI, not application APIs.
 // eslint-disable-next-line local-rules-named-args/require-named-args -- Generated C ABI functions have positional scalar arguments.
 type NativeCall = (...args: NativeScalar[]) => NativeScalar | void | Promise<NativeScalar | void>;
+
 function index({ value }: { value: NativeScalar }): number {
   const result = Number(value);
   if (!Number.isSafeInteger(result) || result < 0) throw new RangeError('Unsafe memory index');
   return result;
 }
+
 export function attachCore({ module, callMode }: { module: CoreModule, callMode: 'direct' | 'asyncify' | 'jspi' }) {
   function native({ name }: { name: string }): NativeCall {
     const value: unknown = Reflect.get(module, name);
@@ -336,7 +338,9 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
     },
   };
 }
+
 export type Core = ReturnType<typeof attachCore> & { chat: NativeChat };
+
 export async function createCore({ profile, baseURL, moduleOptions }: {
   profile: LlamaCppProfile, baseURL: URL | string | undefined, moduleOptions: CoreModuleOptions,
 }): Promise<Core> {
@@ -375,5 +379,6 @@ export async function createCore({ profile, baseURL, moduleOptions }: {
   default: { const exhaustive: never = profile; throw new Error(`Unhandled profile: ${exhaustive}`); }
   }
 }
+
 export const TEST_ONLY = {
 };

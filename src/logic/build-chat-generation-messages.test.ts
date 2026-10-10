@@ -7,6 +7,7 @@ import { buildChatGenerationMessages } from './build-chat-generation-messages';
 function user({ id, text, replies }: { id: string, text: string, replies: MessageNode[] }): UserMessageNode {
   return { id: toMessageId({ raw: id }), role: 'user', createdAt: 1, modelId: undefined, lmParameters: undefined, parts: [{ type: 'text', text, completeness: 'complete' }], replies: { items: replies } };
 }
+
 function assistant({ id, replies }: { id: string, replies: MessageNode[] }): AssistantMessageNode {
   return { id: toMessageId({ raw: id }), role: 'assistant', createdAt: 2, modelId: undefined, lmParameters: undefined, interruption: undefined, parts: [], replies: { items: replies } };
 }

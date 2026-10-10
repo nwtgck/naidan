@@ -279,6 +279,7 @@ describe('complete Full collection through Session and actual Worker transports'
       });
       vi.stubGlobal('Worker', class extends ProviderReplayTestWorker {
         readonly kind: WorkerKind;
+
         constructor(url: string | URL, options: WorkerOptions | undefined) {
           const pathname = new NodeUrl(String(url)).pathname;
           const kind = pathname.endsWith('/model-support-investigation/worker/entry.ts') ? 'planning'

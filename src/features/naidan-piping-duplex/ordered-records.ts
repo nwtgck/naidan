@@ -34,6 +34,7 @@ export class OrderedRecords {
   private readonly domain: NaidanPipingKeyDomain;
   private readonly direction: NaidanPipingDirection;
   private readonly usage: 'encrypt' | 'decrypt';
+
   constructor({ domain, context, direction, usage }: {
     domain: NaidanPipingKeyDomain; context: Uint8Array; direction: NaidanPipingDirection; usage: 'encrypt' | 'decrypt';
   }) {
@@ -42,12 +43,15 @@ export class OrderedRecords {
     domain.claimRecordOwner({ direction, usage, context: this.context });
     this.domain = domain; this.direction = direction; this.usage = usage;
   }
+
   dispose(): void {
     this.disposed = true; this.key = undefined; this.context.fill(0);
   }
+
   private live({ signal }: { signal: AbortSignal }): void {
     signal.throwIfAborted(); requireValue({ condition: !this.disposed, message: 'Record codec disposed' }); this.domain.assertActive();
   }
+
   private start({ usage, signal }: { usage: 'encrypt' | 'decrypt'; signal: AbortSignal }): void {
     this.live({ signal });
     requireValue({ condition: !this.busy && this.usage === usage, message: 'Record codec already owned or wrong direction' });
@@ -56,12 +60,14 @@ export class OrderedRecords {
     }
     this.busy = true;
   }
+
   async nextRoute({ signal }: { signal: AbortSignal }): Promise<string> {
     this.live({ signal });
     if (this.batch > MAX_OFFSET) throw new RecordExhaustedError();
     const route = await this.domain.batchRoute({ direction: this.direction, number: this.batch });
     this.live({ signal }); return route;
   }
+
   private async crypt({ bytes, header, batch, record, index, length, signal }: {
     bytes: Uint8Array<ArrayBuffer>; header: Uint8Array; batch: bigint; record: bigint; index: number; length: number; signal: AbortSignal;
   }): Promise<Uint8Array<ArrayBuffer>> {
@@ -80,6 +86,7 @@ export class OrderedRecords {
       result.fill(0); throw error;
     }
   }
+
   async seal({ plaintexts, signal }: { plaintexts: readonly Uint8Array[]; signal: AbortSignal }): Promise<Uint8Array<ArrayBuffer>> {
     this.start({ usage: 'encrypt', signal });
     const snapshots: Uint8Array<ArrayBuffer>[] = [];
@@ -111,6 +118,7 @@ export class OrderedRecords {
       for (const snapshot of snapshots) snapshot.fill(0); this.busy = false;
     }
   }
+
   async receive({ body, signal, onRecord }: {
     body: BoundedBody; signal: AbortSignal; onRecord({ plaintext, first }: { plaintext: Uint8Array; first: boolean }): Promise<void>;
   }): Promise<void> {

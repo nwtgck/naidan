@@ -174,6 +174,7 @@ export function useMissingLlamaCppBrowserModel({ chat, resolved, enabled }: {
     ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
   };
 }
+
 export type MissingLlamaCppBrowserModelUi = ReturnType<typeof useMissingLlamaCppBrowserModel>;
 export const TEST_ONLY = {
 };

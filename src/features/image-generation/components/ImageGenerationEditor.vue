@@ -48,26 +48,32 @@ const weightResidencyOptions = computed(() => [
   { value: 'disk' as const, label: lazyStrings.stableDiffusionCppBrowser__weight_residency_disk() },
 ]);
 const resolutions = [{ width: 256, height: 256 }, { width: 512, height: 512 }, { width: 768, height: 768 }, { width: 1024, height: 1024 }, { width: 768, height: 1024 }, { width: 1024, height: 768 }];
+
 function setResolution({ width, height }: { width: number, height: number }): void {
   if (draftDisabled.value) return;
   parameters.value.width = width;
   parameters.value.height = height;
 }
+
 const resolutionKey = computed(() => resolutions.some(size => size.width === parameters.value.width && size.height === parameters.value.height) ? `${parameters.value.width}x${parameters.value.height}` : 'custom');
+
 function chooseResolution({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLSelectElement)) return;
   const value = event.target.value;
   const size = resolutions.find(size => `${size.width}x${size.height}` === value);
   if (size) setResolution(size);
 }
+
 function changeSeed({ event }: { event: Event }): void {
   if (draftDisabled.value || !(event.target instanceof HTMLInputElement)) return;
   parameters.value.seed = event.target.value;
   seedMode.value = 'fixed';
 }
+
 function swapResolution(): void {
   setResolution({ width: parameters.value.height, height: parameters.value.width });
 }
+
 const resolutionInvalid = computed(() => ![parameters.value.width, parameters.value.height].every(value => Number.isInteger(value) && value >= 128 && value <= 2048 && value % 64 === 0));
 const componentSummary = computed(() => {
   const location = props.view.inferenceLocation;
@@ -75,16 +81,19 @@ const componentSummary = computed(() => {
   return [location ? (remote.value ? location.label.value || 'Naidan RPC' : lazyStrings.ImageInferenceLocation__this_device()) : undefined,
     ...components.map(component => component.choices.find(choice => choice.id === component.selected)?.label)].filter(Boolean).join(' · ');
 });
+
 function changeRetention({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLInputElement)) return;
   if (props.view.setRetainModel) props.view.setRetainModel({ retain: event.target.checked });
   else retainModel.value = event.target.checked;
 }
+
 function applyRecommendedField({ field, recommendationId, context }: { field: ImageRecommendedField, recommendationId: ImageGenerationRecommendation['id'], context: string | undefined }): void {
   const current = props.view.recommendation.value;
   if (props.view.draftDisabled.value || !current || current.id !== recommendationId || context !== props.context) return;
   parameters.value = applyImageRecommendedField({ parameters: parameters.value, recommendation: current, field });
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

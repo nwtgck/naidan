@@ -9,6 +9,7 @@ type MemoryDirectory = {
   removeEntry: FileSystemDirectoryHandle['removeEntry'],
   entries: () => AsyncGenerator<[string, MemoryDirectory | ReturnType<typeof memoryFile>]>,
 };
+
 export function memoryDirectory({ name }: { name: string }): MemoryDirectory {
   const children = new Map<string, ReturnType<typeof memoryDirectory> | ReturnType<typeof memoryFile>>();
   return {
@@ -44,6 +45,7 @@ export function memoryDirectory({ name }: { name: string }): MemoryDirectory {
     },
   };
 }
+
 function memoryFile({ name }: { name: string }) {
   let bytes = new Uint8Array(); let opened = false;
   return {
@@ -95,8 +97,10 @@ function memoryFile({ name }: { name: string }) {
     },
   };
 }
+
 export function ggufBytes(): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(128); bytes.set([71, 71, 85, 70, 3, 0, 0, 0]); return bytes;
 }
+
 export const TEST_ONLY = {
 };

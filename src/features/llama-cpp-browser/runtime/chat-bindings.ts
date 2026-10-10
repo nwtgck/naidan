@@ -200,6 +200,7 @@ export function bindNativeChat<
     },
   };
 }
+
 export type NativeChat = ReturnType<typeof bindNativeChat>;
 export const TEST_ONLY = {
 };

@@ -5,6 +5,7 @@ import type { ExperimentalNaidanRpcRegistryDto } from '@/00-storage/00-dto/exper
 
 const registry = { version: 1, id: 'registry-example', registrations: [] } satisfies ExperimentalNaidanRpcRegistryDto;
 const filename = 'naidan-rpc-connections.json';
+
 /** A writable buffers changes until close, as an OPFS replacement does. */
 function opfsFixture() {
   const failures: { directoryLookup: Error | undefined, lookup: Error | undefined, read: Error | undefined, write: Error | undefined, close: Error | undefined } = {
@@ -20,16 +21,20 @@ function opfsFixture() {
     readonly directories = new Map<string, MockDirectory>();
     readonly path: string;
     private state: 'available' | 'removed' = 'available';
+
     constructor({ path }: { path: string }) {
       this.path = path;
     }
+
     private checkAvailable(): void {
       if (this.state === 'removed') throw new DOMException('Removed directory', 'NotFoundError');
     }
+
     private markRemoved(): void {
       this.state = 'removed';
       for (const directory of this.directories.values()) directory.markRemoved();
     }
+
     getDirectoryHandle = vi.fn(async (name: string, options?: FileSystemGetDirectoryOptions): Promise<MockDirectory> => {
       this.checkAvailable();
       if (this.path === 'naidan-storage' && failures.directoryLookup) throw failures.directoryLookup;
@@ -82,6 +87,7 @@ function opfsFixture() {
       directory.markRemoved();
       this.directories.delete(name);
     });
+
     async *keys() {
       this.checkAvailable();
       yield* this.files.keys();

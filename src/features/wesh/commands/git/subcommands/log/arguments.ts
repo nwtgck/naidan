@@ -53,6 +53,7 @@ function parseLogDateBoundary({ value }: {
     throw new Error(`invalid date format: ${value}`);
   return Math.floor(milliseconds / 1000);
 }
+
 export function parseLogArguments({ args }: { args: readonly string[] }): GitLogArguments {
   let format: string | undefined;
   let oneline = false;

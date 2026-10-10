@@ -87,6 +87,7 @@ function createChat(): { chat: Chat, assistant: AssistantMessageNode } {
   state.current.value = chat;
   return { chat, assistant: node };
 }
+
 const run = ({ chat, assistant }: { chat: Chat, assistant: AssistantMessageNode }) => generateResponseForAssistant({ chat, assistantId: assistant.id, lmParameters: undefined, onReady: undefined });
 
 describe('chat generation flow with message parts', () => {

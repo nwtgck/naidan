@@ -22,9 +22,11 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
 function page({ label }: { label: string }): ImageGenerationHistoryPage {
   return { total: 1, warnings: [], warningCount: 0, items: [{ id: toImageGenerationId({ raw: label }), prompt: label, modelName: 'model', createdAt: 1, binaryObjectId: toBinaryObjectId({ raw: 'image-id' }), width: 256, height: 256, previewCount: 0 }] };
 }
+
 function record({ label }: { label: string }): ImageGenerationRecord {
   const form = createImageForm({ profile: 'webgpu-wasm64-jspi' });
   return {
@@ -42,6 +44,7 @@ function record({ label }: { label: string }): ImageGenerationRecord {
     previews: [],
   };
 }
+
 let storageType: StorageType;
 let listener: ChangeListener | undefined;
 

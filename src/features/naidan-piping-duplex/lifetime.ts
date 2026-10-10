@@ -10,6 +10,7 @@ export type HandshakeResponseStage = 'noise-2' | 'noise-3' | 'status' | 'seed' |
 /** Local response policy outcome, never a received reason or proof of peer death. */
 export class HandshakeResponseUnconfirmedError extends Error {
   readonly stage: HandshakeResponseStage;
+
   constructor({ stage }: { stage: HandshakeResponseStage }) {
     super(`Handshake response unconfirmed: ${stage}`);
     this.name = 'HandshakeResponseUnconfirmedError'; this.stage = stage;
@@ -42,6 +43,7 @@ export class AuthenticatedProtocolError extends Error {
 /** Separate from a logical connection failure: ownership could not be retired. */
 export class PipingRetirementError extends Error {
   readonly logicalError: unknown;
+
   constructor({ cause, logicalError }: { cause: unknown; logicalError: unknown }) {
     super('Piping resource retirement failed', { cause });
     this.name = 'PipingRetirementError';
@@ -54,9 +56,11 @@ export class ConnectionLifetime {
   private readonly completion = Promise.withResolvers<NaidanPipingConnectionEnd>();
   private outcome: NaidanPipingConnectionEnd | undefined;
   readonly ended = this.completion.promise;
+
   get end(): NaidanPipingConnectionEnd | undefined {
     return this.outcome;
   }
+
   commit({ kind, error }: { kind: NaidanPipingConnectionEndKind; error: unknown }): NaidanPipingConnectionEnd {
     if (this.outcome !== undefined) return this.outcome;
     this.outcome = Object.freeze({ kind, error: error instanceof Error ? error : new Error('Piping connection ended', { cause: error }) });

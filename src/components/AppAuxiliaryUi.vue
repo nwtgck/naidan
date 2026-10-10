@@ -54,6 +54,7 @@ const llamaPerformanceLoading = ref(false);
 const llamaPerformanceLoadError = ref('');
 let llamaPerformanceLoadEpoch = 0;
 let llamaPerformanceOpener: HTMLElement | undefined;
+
 async function openLlamaCppPerformance({ defaultModel }: { defaultModel: string | undefined }): Promise<void> {
   if (llamaPerformanceLoading.value) return;
   const epoch = ++llamaPerformanceLoadEpoch;
@@ -72,11 +73,13 @@ async function openLlamaCppPerformance({ defaultModel }: { defaultModel: string 
     if (epoch === llamaPerformanceLoadEpoch) llamaPerformanceLoading.value = false;
   }
 }
+
 function closeLlamaCppPerformance(): void {
   llamaPerformanceVisible.value = false;
   const opener = llamaPerformanceOpener; llamaPerformanceOpener = undefined;
   void nextTick(() => opener?.focus());
 }
+
 watch(isSettingsOpen, open => {
   if (!open) {
     llamaPerformanceVisible.value = false; llamaPerformanceLoadEpoch++; llamaPerformanceLoading.value = false;

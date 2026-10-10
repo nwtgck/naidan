@@ -68,6 +68,7 @@ type Listener = Parameters<typeof storageService.subscribeToChanges>[0]['listene
 let provider: MemoryStorageProvider;
 let listener: Listener | undefined;
 const views: { wrapper: VueWrapper, view: ImageGenerationWorkspaceView }[] = [];
+
 async function publish({ store, publication, files }: Publication): Promise<void> {
   const referenced = publication.type === 'asset'
     ? [publication.asset.result.binaryObjectId, ...publication.asset.previews.map(preview => preview.binaryObjectId)]
@@ -196,6 +197,7 @@ function open({ requestedSessionId }: { requestedSessionId: Readonly<Ref<ImageGe
   views.push({ wrapper, view });
   return { generation, view, native, restored, wrapper };
 }
+
 async function ready() {
   const value = open(); await flushPromises(); return value;
 }

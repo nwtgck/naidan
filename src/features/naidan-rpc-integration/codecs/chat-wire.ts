@@ -10,6 +10,7 @@ export const EVENT_LIMIT = 8 * 1024 * 1024;
 export const OUTPUT_LIMIT = 32 * 1024 * 1024;
 export type Transcript = z.infer<typeof transcriptSchema>;
 export type ImageUpload = { mimeType: 'image/png' | 'image/jpeg' | 'image/webp'; byteLength: number; data: ReadableStream<Uint8Array> };
+
 export function prepareTranscript({ input }: { input: Parameters<LlamaCppBrowserService['generate']>[0]['input'] }): {
   transcript: ReadableStream<Uint8Array>; images: ImageUpload[];
 } {
@@ -52,6 +53,7 @@ export function prepareTranscript({ input }: { input: Parameters<LlamaCppBrowser
   const value = transcriptSchema.parse(document);
   return { transcript: bytesSource({ bytes: encodeDocument({ value, limit: TRANSCRIPT_LIMIT }) }), images };
 }
+
 export async function receiveTranscript({ transcript, images, model, signal }: {
   transcript: ReadableStream<Uint8Array>; images: readonly ImageUpload[]; model: string; signal: AbortSignal;
 }): Promise<Parameters<LlamaCppBrowserService['generate']>[0]['input']> {
@@ -109,6 +111,7 @@ export function eventBytes({ event }: { event: z.infer<typeof eventSchema> }): U
   const body = encodeDocument({ value: eventSchema.parse(event), limit: EVENT_LIMIT });
   const bytes = new Uint8Array(body.length + 4); new DataView(bytes.buffer).setUint32(0, body.length, false); bytes.set(body, 4); return bytes;
 }
+
 export async function receiveEvents({ readable, onEvent, signal }: {
   readable: ReadableStream<Uint8Array>; onEvent: Parameters<LlamaCppBrowserService['generate']>[0]['onEvent']; signal: AbortSignal;
 }): Promise<GenerationResult> {
@@ -167,5 +170,6 @@ export async function receiveEvents({ readable, onEvent, signal }: {
     reader.releaseLock();
   }
 }
+
 export const TEST_ONLY = {
 };

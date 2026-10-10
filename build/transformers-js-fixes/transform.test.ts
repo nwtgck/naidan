@@ -133,6 +133,7 @@ it('rejects output validation failure before any transform hook or warm cache ca
 });
 
 interface SessionResult { buffer_or_path: Uint8Array; session_options: { externalData?: Array<{ path: string; data: Uint8Array }> } }
+
 function sessionFixture({ core, external }: {
   core: () => Promise<Uint8Array>; external: () => Promise<Uint8Array>;
 }) {

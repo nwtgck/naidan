@@ -6,13 +6,16 @@ import type { Frame, ReceiveLimits } from '@/features/naidan-piping-duplex/batch
 import type { Transmission } from '@/features/naidan-piping-duplex/stream-mux';
 
 const limits = { streams: 32, streamWindow: 1114112, connectionWindow: 4194304 };
+
 function pair({ window = limits }: { window?: ReceiveLimits } = {}) {
   const a = new StreamMux({ role: 'initiator', limits: window }), b = new StreamMux({ role: 'responder', limits: window });
   a.setPeerLimits({ limits: window }); b.setPeerLimits({ limits: window }); a.activate(); b.activate(); return { a, b };
 }
+
 function frames({ transmission }: { transmission: Transmission }): Frame[] {
   return transmission.plaintexts.flatMap(bytes => decodeFrames({ bytes }));
 }
+
 function deliver({ from, to, complete = true }: { from: StreamMux; to: StreamMux; complete?: boolean }): Transmission | undefined {
   const transmission = from.prepare({});
   if (transmission) {
@@ -21,6 +24,7 @@ function deliver({ from, to, complete = true }: { from: StreamMux; to: StreamMux
   }
   return transmission;
 }
+
 async function streams({ a, b }: { a: StreamMux; b: StreamMux }) {
   const left = a.openStream({ signal: undefined }); deliver({ from: a, to: b });
   const incoming = b.incomingStreams[Symbol.asyncIterator](); const right = incoming.next();

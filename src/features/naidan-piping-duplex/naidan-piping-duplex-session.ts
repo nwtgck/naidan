@@ -54,6 +54,7 @@ export class NaidanPipingDuplexSession {
     });
     void this.closed.catch(() => {});
   }
+
   private static async connectInternal({ piping, identity, signal, publicHandshakeData, handshakeData, code, role, verifyPeer }: ConnectionInput & {
     code: string; role: NaidanPipingRole | undefined; verifyPeer: NaidanPipingPeerVerifier;
   }): Promise<NaidanPipingDuplexSession> {
@@ -95,6 +96,7 @@ export class NaidanPipingDuplexSession {
       publicData.fill(0); privateData.fill(0);
     }
   }
+
   /** One bounded authentication candidate. Its signal must belong to the
    * connection intent, not to the DATA session that it may replace. */
   static async preparePinnedContact({ piping, identity, expectedPeer, purpose = 'naidan-piping-duplex/v1', signal, publicHandshakeData, handshakeData, heldContext }: ConnectionInput & {
@@ -160,6 +162,7 @@ export class NaidanPipingDuplexSession {
       },
     };
   }
+
   static async connectPinned({ ...input }: ConnectionInput & { expectedPeer: Uint8Array; purpose?: string }): Promise<NaidanPipingDuplexSession> {
     const prepared = await this.preparePinnedContact({ ...input, heldContext: undefined });
     switch (prepared.kind) {
@@ -168,41 +171,53 @@ export class NaidanPipingDuplexSession {
     default: { const exhaustive: never = prepared; throw new Error(String(exhaustive)); }
     }
   }
+
   static pair({ code, role, verifyPeer, ...input }: ConnectionInput & {
     code: string; role?: NaidanPipingRole; verifyPeer: NaidanPipingPeerVerifier;
   }): Promise<NaidanPipingDuplexSession> {
     return this.connectInternal({ ...input, code, role, verifyPeer });
   }
+
   get peerPublicHandshakeData(): Uint8Array {
     requireValue({ condition: !this.retired, message: 'Connection retired' }); return this.publicData.slice();
   }
+
   get peerHandshakeData(): Uint8Array {
     requireValue({ condition: !this.retired, message: 'Connection retired' }); return this.privateData.slice();
   }
+
   get contextId(): Uint8Array {
     return this.connection.contextId;
   }
+
   get peerIdentity(): Uint8Array {
     return this.connection.peerIdentity;
   }
+
   get health(): ConnectionHealth {
     return this.connection.health;
   }
+
   subscribeHealth({ listener }: { listener({ health }: { health: ConnectionHealth }): void }): () => void {
     return this.connection.subscribeHealth({ listener });
   }
+
   get incomingStreams(): AsyncIterable<MultiplexedStream> {
     return this.connection.incomingStreams;
   }
+
   openStream({ signal }: { signal: AbortSignal | undefined }): Promise<MultiplexedStream> {
     return this.connection.openStream({ signal });
   }
+
   drain({ signal }: { signal: AbortSignal | undefined }): Promise<void> {
     return this.connection.drain({ signal });
   }
+
   close({ noticeTimeoutMs, signal }: { noticeTimeoutMs?: number; signal: AbortSignal | undefined }): Promise<{ notification: 'acknowledged' | 'unconfirmed' }> {
     return this.connection.close({ noticeTimeoutMs, signal });
   }
+
   abort({ reason }: { reason: string }): void {
     this.connection.abort({ reason });
   }

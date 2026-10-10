@@ -9,6 +9,7 @@ import ImageGenerationProgress from './ImageGenerationProgress.vue';
 const props = defineProps<{ workspace: ImageGenerationWorkspaceView, generation: ImageGenerationView, active: boolean, compact: boolean }>();
 const display = computed(() => props.workspace.sessionPresentation.view);
 const mode = computed(() => props.workspace.monitorPresentation.value);
+
 function togglePresentation(): void {
   const current = mode.value;
   switch (current) {
@@ -17,6 +18,7 @@ function togglePresentation(): void {
   default: { const exhaustive: never = current; throw new Error(String(exhaustive)); }
   }
 }
+
 const destination = computed(() => {
   const run = props.workspace.runState.value?.run;
   return run && (props.workspace.sessions.value.find(session => session.id === run.sessionId)?.title ?? idToRaw({ id: run.sessionId }));

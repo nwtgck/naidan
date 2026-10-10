@@ -21,6 +21,7 @@ function repositories(): LocalImageRepository[] {
   ];
   return files.map((file, i) => ({ id: `user/${i}`, name: `repo ${i}`, files: [{ path: `original/${file.name}`, file }] }));
 }
+
 function harness({ entries, scan }: { entries: LocalImageRepository[], scan: typeof scanImageRepositories | undefined }) {
   let blocked = false;
   let current = entries;

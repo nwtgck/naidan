@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 
 const probeIdSchema = z.uuid();
+
 function probeName({ probeId }: { probeId: string }): string {
   return `.naidan-llama-shared-probe-${probeIdSchema.parse(probeId)}`;
 }
@@ -69,5 +70,6 @@ export async function verifySharedStorage({ verify, signal }: {
     if (created && root) await root.removeEntry(name);
   }
 }
+
 export const TEST_ONLY = {
 };

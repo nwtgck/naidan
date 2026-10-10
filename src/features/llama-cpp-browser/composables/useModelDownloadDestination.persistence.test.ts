@@ -36,6 +36,7 @@ const base: Settings = {
     ],
   },
 };
+
 function simulatedLocks() {
   const lanes = new Map<string, Promise<void>>();
   return {
@@ -52,6 +53,7 @@ function simulatedLocks() {
     },
   };
 }
+
 function create() {
   let state: ReturnType<typeof useModelDownloadDestination> | undefined;
   const wrapper = mount(defineComponent({
@@ -62,9 +64,11 @@ function create() {
   }));
   wrappers.push(wrapper); return { state: state!, wrapper };
 }
+
 function unmountAll(): void {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
 }
+
 async function reloadSettings(): Promise<void> {
   useSettings().TEST_ONLY.__testOnlyReset();
   await storageService.init({ type: 'local' });

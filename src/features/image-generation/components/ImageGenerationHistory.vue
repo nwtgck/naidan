@@ -62,6 +62,7 @@ watch(selected, () => {
   imageDeleteHelpOpen.value = false;
   imageDeleteError.value = '';
 });
+
 async function copySelectedPrompt(): Promise<void> {
   const prompt = selected.value?.request.parameters.prompt;
   if (prompt === undefined) return;
@@ -81,14 +82,18 @@ async function copySelectedPrompt(): Promise<void> {
     if (revision === promptCopyRevision) promptCopyError.value = message;
   }
 }
+
 const search = ref(''), deleting = ref(false);
 const searchInputId = useId();
+
 function searchChanged(): void {
   props.view.setQuery({ text: search.value });
 }
+
 function dateLabel({ timestamp }: { timestamp: number }): string {
   return new Date(timestamp).toLocaleString();
 }
+
 async function removeSelected(): Promise<void> {
   if (!selected.value || deleting.value || deletingImage.value || detailLoading.value || props.recordDeleteDisabled || !props.active || !available.value) return;
   const id = selected.value.id;
@@ -102,6 +107,7 @@ async function removeSelected(): Promise<void> {
     deleting.value = false;
   }
 }
+
 async function removeSelectedImage(): Promise<void> {
   const record = selected.value;
   if (!record || deletingImage.value || deleting.value || detailLoading.value || props.disabled || !props.active || !available.value) return;
@@ -122,6 +128,7 @@ async function removeSelectedImage(): Promise<void> {
     deletingImage.value = false;
   }
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

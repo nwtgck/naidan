@@ -62,5 +62,6 @@ export async function decodeEmbeddedBrotli({ base64, byteLength, sha256 }: { bas
   if (actual !== sha256) throw new Error('Embedded binary integrity mismatch');
   return result;
 }
+
 export const TEST_ONLY = {
 };

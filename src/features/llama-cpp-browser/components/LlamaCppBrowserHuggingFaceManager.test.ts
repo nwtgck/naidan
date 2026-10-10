@@ -21,6 +21,7 @@ vi.mock('../runtime/model-store', () => ({ prepareModelRemoval: vi.fn() }));
 const plan = { id: 'hf.co/owner/repo', files: [{ path: 'model-Q4_K_M.gguf', size: 48, lastModified: 1 }] };
 const selection = { repository: 'owner/repo', revision: 'a'.repeat(40), files: [{ path: 'model-Q4_K_M.gguf', size: 128 }] };
 const wrappers: VueWrapper[] = [];
+
 function render(): VueWrapper {
   const wrapper = mount(LlamaCppBrowserHuggingFaceManager, { props: { disabled: false } }); wrappers.push(wrapper); return wrapper;
 }

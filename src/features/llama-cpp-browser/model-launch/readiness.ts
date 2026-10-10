@@ -11,6 +11,7 @@ export function applicableModelLaunchTarget({ chat, endpoint, modelId }: {
   const launch = chat === undefined ? undefined : storageService.getModelLaunch({ chatId: chat.id });
   return launch?.phase === 'active' && endpoint?.type === 'llama_cpp_browser' && modelId === launch.target.modelId ? launch.target : undefined;
 }
+
 export async function isModelLaunchTargetReady({ target }: { target: ModelLaunchTarget }): Promise<boolean> {
   const model = await installedSelection({ selection: target.selection });
   return model?.id === target.modelId;

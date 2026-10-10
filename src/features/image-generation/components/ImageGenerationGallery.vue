@@ -21,6 +21,7 @@ const groupedRuns = computed(() => {
   for (const tile of view.tiles.value) grouped.get(tile.runId)?.images.push(tile);
   return [...grouped.values()].sort((a, b) => b.run.createdAt - a.run.createdAt || String(a.run.id).localeCompare(String(b.run.id))).filter(group => group.images.length || !text.value && !onlyFavorite.value && !view.filterTagId.value && view.visibility.value !== 'archived' && !view.runsWithAssets.value.includes(group.run.id) && group.run.execution.type !== 'completed');
 });
+
 function statusLabel({ execution }: { execution: ImageGenerationRunExecution }): string | undefined {
   switch (execution.type) {
   case 'queued': return lazyStrings.imageGeneration__queued();
@@ -32,6 +33,7 @@ function statusLabel({ execution }: { execution: ImageGenerationRunExecution }):
   default: { const exhaustive: never = execution; throw new Error(String(exhaustive)); }
   }
 }
+
 async function editTag({ tagId }: { tagId: ImageGenerationTagId | undefined }): Promise<void> {
   const storeId = view.store.value?.storeId;
   if (!storeId) return;
@@ -42,20 +44,24 @@ async function editTag({ tagId }: { tagId: ImageGenerationTagId | undefined }): 
   });
   if (typeof label === 'string' && view.store.value?.storeId === storeId) await view.editTag({ tagId, name: label });
 }
+
 function chooseTag({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLSelectElement)) return;
   const value = event.target.value;
   view.filterTagId.value = view.userTags.value.find(tag => idToRaw({ id: tag.id }) === value)?.id;
 }
+
 async function curateRun({ runId, action }: { runId: ImageGenerationRunId, action: 'archive' | 'restore' }): Promise<void> {
   const sessionId = view.selectedSessionId.value, storeId = view.store.value?.storeId;
   const items = await view.runAssets({ runId });
   if (view.selectedSessionId.value === sessionId && view.store.value?.storeId === storeId) await view.curate({ items, action: { type: action } });
 }
+
 async function review(): Promise<void> {
   const tile = view.tiles.value[0];
   if (tile) await view.inspect({ tile });
 }
+
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 <template>

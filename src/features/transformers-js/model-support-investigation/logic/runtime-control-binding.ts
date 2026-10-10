@@ -35,6 +35,7 @@ const bindingEnvelopeSchema = z.object({
 export function validateRuntimeControlBindings({ run }: { run: unknown }): void {
   bindingEnvelopeSchema.parse(run);
 }
+
 export type VerifiedRuntimeControlBytes = { bytes: Uint8Array, sha256: string };
 export type RuntimeControlInput = {
   verifiedWasm: VerifiedRuntimeControlBytes | undefined,

@@ -11,6 +11,7 @@ function framedAck(): Uint8Array {
   const payload = codec.encode({ value: { type: 'ack' }, limit: FRAME_BYTES }), bytes = new Uint8Array(payload.length + 4);
   new DataView(bytes.buffer).setUint32(0, payload.length, false); bytes.set(payload, 4); return bytes;
 }
+
 function joined({ parts }: { parts: Uint8Array[] }): Uint8Array {
   const bytes = new Uint8Array(parts.reduce((size, item) => size + item.length, 0)); let offset = 0;
   for (const part of parts) {

@@ -173,6 +173,7 @@ const { assets: runtimeAssets, runtimeFetch } = configureHostedTransformersRunti
 const interceptedFetch = createHostedTransformersModelFetch({ runtimeFetch });
 self.fetch = interceptedFetch;
 env.fetch = interceptedFetch;
+
 const downloadedModelCacheOnlyFetch: typeof fetch = async input => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   throw new Error(
@@ -2172,6 +2173,7 @@ export async function initializeProductionWorkerRuntime({ requestRuntimeModule, 
   exposeWorkerRemote<ITransformersJsWorker>({ api: transformersJsWorker, endpoint: undefined });
   return { requestId };
 }
+
 export type { ITransformersJsWorker as TransformersJsWorker };
 
 // Export internal state and logic used only for testing here. Do not reference these in production logic.

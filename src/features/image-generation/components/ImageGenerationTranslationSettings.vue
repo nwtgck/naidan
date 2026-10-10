@@ -44,6 +44,7 @@ const effective = computed(() => resolveImagePromptTranslation({
 const endpointLabel = computed(() => imagePromptTranslationEndpointLabel({ endpoint: effective.value.endpoint }));
 const endpointTypes = ['naidan_rpc', 'inherit', 'openai', 'ollama', 'transformers_js', 'llama_cpp_browser', 'browser_provided_lm'] as const;
 const endpointOptions = computed(() => endpointTypes.filter(value => value !== 'naidan_rpc' || rpcEnabled.value));
+
 function endpointChoice({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLSelectElement)) return;
   const raw = event.target.value;
@@ -58,6 +59,7 @@ function endpointChoice({ event }: { event: Event }): void {
   default: { const exhaustive: never = value; throw new Error(String(exhaustive)); }
   }
 }
+
 function profileChoice({ event }: { event: Event }): void {
   if (!(event.target instanceof HTMLSelectElement)) return;
   const raw = event.target.value;
@@ -65,26 +67,32 @@ function profileChoice({ event }: { event: Event }): void {
   if (profile) draft.value = { endpoint: cloneEndpoint({ endpoint: profile.endpoint }), modelId: profile.defaultModelId, lmParameters: cloneLmParameters({ lmParameters: profile.lmParameters }) };
   event.target.value = '';
 }
+
 const httpEndpoint = computed(() => {
   const endpoint = draft.value.endpoint;
   return endpoint?.type === 'openai' || endpoint?.type === 'ollama' ? endpoint : undefined;
 });
+
 function addHeader(): void {
   if (httpEndpoint.value) (httpEndpoint.value.httpHeaders ??= []).push(['', '']);
 }
+
 function changeReasoning({ effort }: { effort: Reasoning['effort'] }): void {
   const parameters = draft.value.lmParameters ?? { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } };
   draft.value.lmParameters = { ...parameters, reasoning: { ...parameters.reasoning, effort } };
 }
+
 function changeModel({ event }: { event: Event }): void {
   if (event.target instanceof HTMLInputElement) draft.value.modelId = event.target.value || undefined;
 }
+
 watch(() => JSON.stringify(draft.value), () => {
   saved.value = false;
 });
 watch(() => JSON.stringify(effective.value.endpoint), () => {
   epoch++; controller?.abort(); loading.value = false; models.value = [];
 }, { flush: 'sync' });
+
 async function fetchModels(): Promise<void> {
   if (saving.value || props.workspace.busy.value) return;
   controller?.abort(); const abort = new AbortController(); controller = abort;
@@ -101,6 +109,7 @@ async function fetchModels(): Promise<void> {
     if (!disposed && token === epoch) loading.value = false;
   }
 }
+
 async function save(): Promise<void> {
   if (saving.value || props.workspace.busy.value) return;
   saving.value = true; failure.value = ''; saved.value = false;
@@ -124,6 +133,7 @@ async function save(): Promise<void> {
     saving.value = false;
   }
 }
+
 onScopeDispose(() => {
   disposed = true; epoch++; controller?.abort();
 });

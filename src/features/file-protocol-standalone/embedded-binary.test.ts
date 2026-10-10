@@ -12,6 +12,7 @@ function payload({ bytes }: { bytes: Uint8Array }) {
     sha256: createHash('sha256').update(bytes).digest('hex'),
   };
 }
+
 const nativeFromBase64 = Object.getOwnPropertyDescriptor(Uint8Array, 'fromBase64');
 
 beforeEach(() => {
@@ -127,6 +128,7 @@ describe('standalone embedded Brotli decoding', () => {
     vi.stubGlobal('DecompressionStream', class {
       readonly readable: ReadableStream<Uint8Array>;
       readonly writable: WritableStream<Uint8Array>;
+
       constructor() {
         const stream = new TransformStream<Uint8Array, Uint8Array>({
           transform(_chunk, controller) {

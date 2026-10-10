@@ -22,5 +22,6 @@ export function defaultAudioLanguage({ locale }: { locale: UiLocale }): Explicit
   const language = locale.split('-')[0];
   return languages.find(entry => entry.value === language)?.value ?? 'en';
 }
+
 export const TEST_ONLY = {
 };

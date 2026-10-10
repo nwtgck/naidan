@@ -3,6 +3,7 @@ import { reactive } from 'vue';
 import { createPendingImageHistory } from './pending-saves';
 import { finishImageGenerationSnapshot, snapshotImageGeneration } from './snapshot';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
+
 function publication() {
   const snapshot = snapshotImageGeneration({
     request: requestFixture(),

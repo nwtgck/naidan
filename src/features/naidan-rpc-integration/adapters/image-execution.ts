@@ -11,6 +11,7 @@ export type PeerImageExecutionSnapshot = {
   target: { type: 'naidan_rpc', registration: RpcClientBinding['registration'] },
   input: PeerImageInput,
 };
+
 function copyInput({ input }: { input: PeerImageInput }): PeerImageInput {
   const { modelSelection, parameters, preview, imageInputs, ...rest } = input;
   rest satisfies Record<PropertyKey, never>;
@@ -27,11 +28,13 @@ function copyInput({ input }: { input: PeerImageInput }): PeerImageInput {
     },
   };
 }
+
 function copySnapshot({ snapshot }: { snapshot: PeerImageExecutionSnapshot }): PeerImageExecutionSnapshot {
   const { target, input, ...rest } = snapshot;
   rest satisfies Record<PropertyKey, never>;
   return { target: { type: target.type, registration: { ...target.registration } }, input: copyInput({ input }) };
 }
+
 function progress({ value }: { value: PeerProgress }): ImageExecutionProgress {
   const { phase, completed, total, ...rest } = value;
   rest satisfies Record<PropertyKey, never>;
@@ -83,5 +86,6 @@ export function preparePeerImageExecution({ binding, input }: {
     },
   });
 }
+
 export const TEST_ONLY = {
 };

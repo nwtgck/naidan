@@ -212,5 +212,6 @@ export function createImageResponse({ signal, seed, width, height, budget, run }
   if (signal.aborted) aborted();
   return { image, events };
 }
+
 export const TEST_ONLY = {
 };

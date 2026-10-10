@@ -35,6 +35,7 @@ afterEach(() => {
 function firstToolCall(): void {
   worker.generate.mockImplementationOnce(async ({ onEvent }) => deliverNativeResult({ result: { content: '', reasoningContent: 'Check the tool.\n', finishReason: 'stop', toolCalls: [{ id: 'c1', type: 'function', function: { name: 'lookup', arguments: '{}' } }] }, onEvent }));
 }
+
 function queuedRequest() {
   return { model: 'local.gguf', messages: [{ role: 'user' as const, content: 'queued' }], temperature: 0, topP: 1, presencePenalty: 0, frequencyPenalty: 0, stop: [] };
 }

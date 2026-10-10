@@ -11,6 +11,7 @@ import { joinBytes } from './bytes';
 import { useOfflineScope } from './test-support';
 
 useOfflineScope();
+
 async function fixture() {
   const relay = new FiniteMemoryRelay(), stop = new AbortController();
   vi.mocked(fetch).mockImplementation(relay.fetch);

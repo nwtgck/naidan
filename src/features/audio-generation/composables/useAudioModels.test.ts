@@ -12,9 +12,11 @@ afterEach(() => {
 
 const detected: AudioModelDetection = { status: 'detected', pipeline: 'qwen3-tts', reference: 'optional' };
 const unverified: AudioModelDetection = { status: 'unverified', reason: 'metadata' };
+
 function entry({ id, size = 100, name = id }: { id: string, size?: number, name?: string }): LocalModel {
   return { id, name, size, importedAt: 1 };
 }
+
 function setup() {
   const inspect = vi.fn<typeof inspectStoredAudioModel>().mockResolvedValue(detected);
   const scope = effectScope(); scopes.push(scope);
