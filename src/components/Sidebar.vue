@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { onMounted, ref, watch, nextTick, computed, toRaw } from 'vue';
 import type { ObjectDirective } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
@@ -40,6 +41,7 @@ import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
 import { ensureStrings, lazyStrings } from '@/strings';
 
 const currentChatState = useCurrentChatState();
+const documentMetadata = useDocumentMetadata();
 const chatLifecycle = useChatLifecycle();
 const chatNavigation = useChatNavigation();
 const chatOrganization = useChatOrganization();
@@ -673,6 +675,7 @@ async function handleDeleteChatGroup({ group }: { group: ChatGroup }) {
 }
 
 async function handleNewChat({ groupId }: { groupId: ChatGroupId | undefined }) {
+  documentMetadata?.finishHomeIntroduction();
   setActiveFocusArea({ area: 'chat' });
   await createNewChat({
     groupId,
@@ -685,6 +688,7 @@ async function handleNewChat({ groupId }: { groupId: ChatGroupId | undefined }) 
 }
 
 async function handleOpenChat({ id }: { id: ChatId }) {
+  documentMetadata?.finishHomeIntroduction();
   await openChat({ id });
   router.push(`/chat/${idToRaw({ id })}`);
 }

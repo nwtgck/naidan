@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 
 export type PrintMode = 'chat' | undefined;
 
@@ -26,6 +27,7 @@ function waitForPrintReady() {
  * It provides a clean API to trigger printing while hiding internal synchronization details.
  */
 export function usePrint() {
+  const documentMetadata = useDocumentMetadata();
   /**
    * Called by the print-specific component when it is fully mounted and ready.
    */
@@ -41,21 +43,18 @@ export function usePrint() {
    * It handles title swapping, rendering synchronization, and cleanup.
    */
   const print = async ({ title, mode }: { title: string | undefined, mode: Exclude<PrintMode, undefined> }) => {
-    const oldTitle = document.title;
-
     try {
       const readyPromise = waitForPrintReady();
       setActivePrintMode({ mode });
 
-      if (title) {
-        document.title = title;
-      }
-
-      await readyPromise;
-      window.print();
+      const run = async () => {
+        await readyPromise;
+        window.print();
+      };
+      if (documentMetadata === undefined) await run();
+      else await documentMetadata.withPrintTitle({ title, run });
     } finally {
       setActivePrintMode({ mode: undefined });
-      document.title = oldTitle;
     }
   };
 

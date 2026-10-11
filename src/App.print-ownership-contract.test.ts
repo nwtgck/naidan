@@ -15,6 +15,11 @@ describe('print ownership boundary', () => {
     expect(appSource).not.toContain('ChatPrintContent');
   });
 
+  it('loads document head management with MainApp instead of the startup-critical App.vue', () => {
+    expect(readSource('src/App.vue')).not.toContain('useDocumentMetadata');
+    expect(readSource('src/MainApp.vue')).toContain('provideDocumentMetadata');
+  });
+
   it('keeps print UI lazy-owned by the post-startup auxiliary UI', () => {
     const auxiliarySource = readSource('src/components/AppAuxiliaryUi.vue');
 

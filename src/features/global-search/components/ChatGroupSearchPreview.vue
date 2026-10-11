@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { ref, watch, computed, nextTick } from 'vue';
 import { FolderIcon, MessageSquareIcon, ChevronRightIcon } from 'lucide-vue-next';
 import type { ChatSummary } from '@/01-models/types';
@@ -20,6 +21,7 @@ const props = defineProps<{
 
 const router = useRouter();
 const { openChat } = useChatNavigation();
+const documentMetadata = useDocumentMetadata();
 const { closeSearch } = useGlobalSearch();
 const { sidebarItems } = useCurrentChatState();
 
@@ -39,6 +41,7 @@ const exposedSelectedChatId = computed(() => selectedChatId.value === null ? nul
 const selectedChat = computed(() => chats.value.find(c => c.id === selectedChatId.value) || null);
 
 async function selectAndNavigate({ chatId }: { chatId: ChatId }) {
+  documentMetadata?.finishHomeIntroduction();
   await openChat({ chatId });
   router.push(`/chat/${idToRaw({ id: chatId })}`);
   closeSearch();

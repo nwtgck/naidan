@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, useId } from 'vue';
+import { usePageDocumentMetadata } from '@/composables/useDocumentMetadata';
+import { modelLaunchMetadata } from '@/features/llama-cpp-browser/model-launch/document-metadata';
 import { Loader2Icon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import WelcomeScreen from '@/components/WelcomeScreen.vue';
@@ -23,6 +25,12 @@ const presentation = computed(() => {
 const statusText = computed(() => modelLaunchEntryState.value.status === 'checking' && modelLaunchEntryState.value.phase === 'opening-chat'
   ? lazyStrings.LlamaCppBrowserModelLaunch__opening_chat()
   : lazyStrings.llamaCppBrowserDownloads__checking_hugging_face());
+usePageDocumentMetadata({
+  source: computed(() => presentation.value === undefined ? undefined : {
+    routePath: '/',
+    metadata: modelLaunchMetadata({ repository: presentation.value.repository, variant: presentation.value.requestedVariant }),
+  }),
+});
 const errorText = computed(() => {
   switch (modelLaunchEntryState.value.status) {
   case 'idle': case 'checking': return undefined;

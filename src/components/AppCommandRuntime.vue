@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { watch } from 'vue';
 import { useModelLaunchCoordinator } from '@/features/llama-cpp-browser/composables/useModelLaunchCoordinator';
+import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { useRoute, useRouter } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
@@ -25,6 +26,7 @@ const settingsStore = useSettings();
 const { appInteraction } = useAppPresentation();
 const { addRecentChat, toggleRecent } = useRecentChats();
 const router = useRouter();
+const documentMetadata = useDocumentMetadata();
 const route = useRoute();
 useModelLaunchCoordinator();
 
@@ -49,6 +51,7 @@ watch(
     () => router.currentRoute.value?.query?.['system-prompt'] || router.currentRoute.value?.query?.sp,
     () => settingsStore.initialized.value,
     () => settingsStore.isOnboardingDismissed.value,
+    () => appInteraction.value,
   ],
   async ([len, path, q, chatGroupId, modelId, systemPromptStr, initialized, dismissed]) => {
     if (
@@ -69,7 +72,9 @@ watch(
       });
       if (!isAppInteractionEnabled({ interaction: appInteraction.value })) return;
       if (currentChatState.currentChat.value) {
-        await router.push(`/chat/${idToRaw({ id: currentChatState.currentChat.value.id })}`);
+        const path = `/chat/${idToRaw({ id: currentChatState.currentChat.value.id })}`;
+        documentMetadata?.continueHomeIntroduction({ routePath: path });
+        await router.push(path);
       }
       return;
     }
@@ -123,6 +128,7 @@ onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (event) => {
 
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === 'o' || event.key === 'O')) {
     event.preventDefault();
+    documentMetadata?.finishHomeIntroduction();
     const { setActiveFocusArea } = useLayout();
     setActiveFocusArea({ area: 'chat' });
     await chatLifecycle.createNewChat({

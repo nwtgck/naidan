@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { lazyStrings } from '@/strings';
-import { ref, onMounted, onUnmounted, computed, watchEffect } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { transformersJsService } from '@/features/transformers-js';
 import { BrainCircuitIcon, AlertTriangleIcon, ShieldCheckIcon } from 'lucide-vue-next';
 
@@ -30,32 +30,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (unsubscribe) unsubscribe();
-});
-
-// Tab Title Progress
-const originalTitle = ref(typeof document !== 'undefined' ? document.title : 'Naidan');
-watchEffect(() => {
-  if (typeof document === 'undefined') return;
-  switch (status.value) {
-  case 'loading': {
-    const title = lazyStrings.TransformersJsLoadingIndicator__loading_model_progress({
-      progress: progress.value,
-    });
-    if (title !== undefined) {
-      document.title = title;
-    }
-    break;
-  }
-  case 'idle':
-  case 'ready':
-  case 'error':
-    document.title = originalTitle.value;
-    break;
-  default: {
-    const _ex: never = status.value;
-    return _ex;
-  }
-  }
 });
 
 const statusText = computed(() => {

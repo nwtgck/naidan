@@ -12,6 +12,9 @@ const appInteraction = ref<
 vi.mock('./composables/useAppPresentation', () => ({
   useAppPresentation: () => ({
     appInteraction,
+    homeIntroduction: ref({ kind: 'inactive' }),
+    continueHomeIntroduction: vi.fn(),
+    finishHomeIntroduction: vi.fn(),
   }),
 }));
 

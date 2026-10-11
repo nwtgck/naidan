@@ -1,10 +1,10 @@
 import { isModelLaunchTargetReady } from '@/features/llama-cpp-browser/model-launch/readiness';
 import type { ChatModelLaunch } from '@/01-models/llama-cpp-browser-model-launch';
 import LlamaCppBrowserModelLaunchCard from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelLaunchCard.vue';
-import { createRouter, createMemoryHistory } from 'vue-router';
+import { createRouter, createMemoryHistory, RouterView, useRoute, type Router } from 'vue-router';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { lazyStrings } from '@/strings';
-import { computed, effectScope, ref, shallowRef } from 'vue';
+import { computed, defineComponent, effectScope, h, ref, shallowRef } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Chat, Settings, MessageNode } from '@/01-models/types';
@@ -16,6 +16,11 @@ import { useModelLaunchChat } from './useModelLaunchChat';
 import { rememberLaunchCatalog, resolveModelLaunchTarget, targetForChoice, TEST_ONLY } from '@/features/llama-cpp-browser/model-launch/target';
 import type { RepositoryCatalog } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import type { ModelLaunchChatRequest } from '@/00-storage/service/model-launch';
+import { provideDocumentMetadata } from '@/composables/useDocumentMetadata';
+import { modelLaunchMetadata } from '@/features/llama-cpp-browser/model-launch/document-metadata';
+import LlamaCppBrowserModelLaunchEntry from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelLaunchEntry.vue';
+import { useModelLaunchCoordinator } from './useModelLaunchCoordinator';
+import { TEST_ONLY as entryTestOnly } from '@/features/llama-cpp-browser/model-launch/entry-state';
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: { type: 'openai', url: '' } });
 let queue: ReturnType<typeof createDownloadQueue>;
 const download = vi.fn();
@@ -31,7 +36,8 @@ let storageVersion = 0;
 let modelListListener: (() => void) | undefined;
 const getState = vi.fn(() => ({ status: 'idle' as const }));
 const currentChat = shallowRef<Chat | null>(null);
-vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings, captureModelLaunchDefaults: capture, initializeModelLaunchDefaults: initialize }) }));
+vi.mock('@/composables/useSettings', () => ({ useSettings: () => ({ settings, initialized: ref(true), captureModelLaunchDefaults: capture, initializeModelLaunchDefaults: initialize }) }));
+vi.mock('@/composables/useAppPresentation', () => ({ useAppPresentation: () => ({ appInteraction: ref('enabled') }), isAppInteractionEnabled: ({ interaction }: { interaction: string }) => interaction === 'enabled' }));
 vi.mock('@/features/llama-cpp-browser', () => ({
   llamaCppBrowserService: {
     prepareModel: (args: unknown) => prepareModel(args),
@@ -99,6 +105,92 @@ beforeEach(async () => {
 });
 
 afterEach(() => scopes.splice(0).forEach(scope => scope.stop()));
+
+function metadataOwner({ router, content }: { router: Router, content: ReturnType<typeof defineComponent> }) {
+  return mount(defineComponent({
+    setup() {
+      provideDocumentMetadata({ router, document, homeIntroduction: ref({ kind: 'inactive' }), continueHomeIntroduction: () => {}, finishHomeIntroduction: () => {} });
+      return () => h(content);
+    },
+  }), { global: { plugins: [router] } });
+}
+
+describe('model guide document metadata', () => {
+  it('retains the model title after the real coordinator removes the query and opens the saved chat without user actions', async () => {
+    entryTestOnly.reset(); document.head.innerHTML = ''; launchEnabled = false; currentChat.value = null;
+    const metadata = Promise.withResolvers<RepositoryCatalog>(); inspect.mockReturnValueOnce(metadata.promise);
+    prepare.mockImplementationOnce(async ({ request }: { request: ModelLaunchChatRequest }): Promise<Chat> => {
+      activeLaunch = { version: 1, input: request.input, target: request.target, requestedVariant: request.requestedVariant, chatGroupId: request.newChatGroupId, phase: 'active' };
+      launchEnabled = true;
+      currentChat.value = { id: request.chatId, groupId: request.newChatGroupId, title: null, root: { items: [] }, debugEnabled: false, createdAt: 1, updatedAt: 1 };
+      return currentChat.value;
+    });
+    const Entry = defineComponent({
+      setup() {
+        const route = useRoute(); return () => h(LlamaCppBrowserModelLaunchEntry, { input: route.query['llama-cpp-browser-model'] });
+      },
+    });
+    const Guide = defineComponent({
+      setup() {
+        const route = useRoute();
+        const state = useModelLaunchChat({ chat: computed(() => currentChat.value), resolved: computed(() => ({ endpoint: { type: 'llama_cpp_browser' as const }, modelId: activeLaunch.target.modelId })) });
+        return () => h(LlamaCppBrowserModelLaunchCard, { state, routePath: route.path });
+      },
+    });
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: Entry }, { path: '/chat/:id', component: Guide }] });
+    await router.push('/?llama-cpp-browser-model=owner/Model-GGUF:Q4_K_M');
+    const Content = defineComponent({
+      setup() {
+        useModelLaunchCoordinator(); return () => h(RouterView);
+      },
+    });
+    const wrapper = metadataOwner({ router, content: Content });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount(); entryTestOnly.reset();
+      },
+    };
+    await flushPromises();
+    expect(document.title).toBe('Run Model-GGUF in your browser | Naidan');
+    expect(wrapper.find('[data-testid="model-launch-entry"]').exists()).toBe(true);
+    metadata.resolve(catalog); await flushPromises();
+    expect(router.currentRoute.value.path).toMatch(/^\/chat\//);
+    expect(router.currentRoute.value.query['llama-cpp-browser-model']).toBeUndefined();
+    expect(wrapper.find('[data-testid="model-launch-download"]').exists()).toBe(true);
+    await flushPromises();
+    expect(document.title).toBe('Run Model-GGUF in your browser | Naidan');
+    expect(document.querySelector('meta[name="description"]')?.getAttribute('content')).toBe(modelLaunchMetadata({ repository: catalog.repository, variant: 'Q4_K_M' }).description);
+    expect(download).not.toHaveBeenCalled(); expect(prepareModel).not.toHaveBeenCalled();
+  });
+
+  it('keeps the guide title through download and returns to Naidan when verification exposes the composer, before warmup completes', async () => {
+    const transfer = Promise.withResolvers<void>();
+    const warmup = Promise.withResolvers<'ready'>(); prepareModel.mockReturnValueOnce(warmup.promise);
+    download.mockImplementationOnce(async () => {
+      await transfer.promise; installed.add(base.target.modelId);
+    });
+    const { state } = mountState();
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/chat/:id', component: { template: '<div />' } }] });
+    await router.push('/chat/launch-chat');
+    const Content = defineComponent({ setup: () => () => h(LlamaCppBrowserModelLaunchCard, { state, routePath: '/chat/launch-chat' }) });
+    const wrapper = metadataOwner({ router, content: Content });
+    using _cleanup = {
+      [Symbol.dispose]() {
+        wrapper.unmount(); warmup.resolve('ready');
+      },
+    };
+    await flushPromises();
+    expect(document.title).toBe('Run Model-GGUF in your browser | Naidan');
+    await wrapper.get('[data-testid="model-launch-download"]').trigger('click'); await flushPromises();
+    expect(state.composerVisibility.value).toBe('hidden');
+    expect(document.title).toBe('Run Model-GGUF in your browser | Naidan');
+    transfer.resolve(); await flushPromises();
+    expect(state.composerVisibility.value).toBe('visible');
+    expect(state.warmup.value).toBe('loading');
+    expect(document.title).toBe('Naidan');
+    expect(document.querySelector('meta[property="og:title"]')?.getAttribute('content')).toBe('Naidan');
+  });
+});
 
 describe('model launch chat workflow', () => {
   it('checks local files but never downloads or fetches metadata on mount', async () => {
@@ -174,7 +266,7 @@ describe('model launch card rendering', () => {
     const { state } = mountState();
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div />' } }] });
     await router.push('/');
-    const wrapper = mount(LlamaCppBrowserModelLaunchCard, { props: { state }, global: { plugins: [router] } });
+    const wrapper = mount(LlamaCppBrowserModelLaunchCard, { props: { state, routePath: '/chat/launch-chat' }, global: { plugins: [router] } });
     await flushPromises(); return { wrapper, state };
   }
 
@@ -242,7 +334,7 @@ describe('automatic local preparation', () => {
 describe('stable file verification and focused setup', () => {
   async function renderCard() {
     const { state } = mountState();
-    const wrapper = mount(LlamaCppBrowserModelLaunchCard, { props: { state } });
+    const wrapper = mount(LlamaCppBrowserModelLaunchCard, { props: { state, routePath: '/chat/launch-chat' } });
     await flushPromises();
     return { wrapper, state };
   }
@@ -427,7 +519,7 @@ describe('model-list notifications after preload', () => {
   it('does not flash a Start button on focus or model-list notifications', async () => {
     installed.add(base.target.modelId);
     const { state } = mountState();
-    const wrapper = mount(LlamaCppBrowserModelLaunchCard, { props: { state } });
+    const wrapper = mount(LlamaCppBrowserModelLaunchCard, { props: { state, routePath: '/chat/launch-chat' } });
     await flushPromises();
     const gate = Promise.withResolvers<boolean>();
     vi.mocked(isModelLaunchTargetReady).mockReturnValue(gate.promise);
@@ -480,7 +572,7 @@ describe('operation-scoped model loading display', () => {
   it('renders measured weights progress and indeterminate initialization without advertising readiness early', async () => {
     const gate = Promise.withResolvers<'ready'>(); prepareModel.mockReturnValueOnce(gate.promise); installed.add(base.target.modelId);
     const { state, scope } = mountState(); await flushPromises();
-    const wrapper = mount(LlamaCppBrowserModelLaunchCard, { props: { state } });
+    const wrapper = mount(LlamaCppBrowserModelLaunchCard, { props: { state, routePath: '/chat/launch-chat' } });
     const callback = prepareModel.mock.calls[0]![0].onProgress;
     callback({ progress: { phase: 'loading', completed: 0.37, total: 1 } }); await flushPromises();
     expect(wrapper.get('[data-testid="model-launch-loading"]').text()).toContain('Loading model');
