@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { XIcon, EyeIcon, SearchIcon } from 'lucide-vue-next';
@@ -19,6 +20,7 @@ const SearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => impor
 const router = useRouter();
 const { isRecentOpen, closeRecent, recentChats } = useRecentChats();
 const { openChat } = useChatNavigation();
+const documentMetadata = useDocumentMetadata();
 const { chatGroups } = useCurrentChatState();
 const { setActiveFocusArea, activeFocusArea } = useLayout();
 const {
@@ -176,6 +178,7 @@ async function selectItem({ index }: { index: number }) {
   const target = filteredRecentChats.value[index];
   if (!target) return;
 
+  documentMetadata?.finishHomeIntroduction();
   await openChat({ chatId: target.id });
   router.push(`/chat/${idToRaw({ id: target.id })}`);
   closeRecent();

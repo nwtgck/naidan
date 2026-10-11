@@ -27,6 +27,7 @@ import { createBoundaryStringsPlugin } from './build/boundary-strings';
 import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core';
 import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
+import { createDocumentMetadataHtmlPlugin } from './build/document-metadata-html';
 import { isPrivacyFetchBrokerChunk } from './build/privacy-fetch-broker-assets';
 import { createPrivacyFetchBrokerDevHeadersPlugin } from './build/privacy-fetch-broker-dev';
 import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './build/dev-server-isolation';
@@ -248,6 +249,7 @@ export default defineConfig(({ mode, command }) => {
       createStableDiffusionCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode }),
       createDevServerIsolationPlugin(),
       ...transformersJsFixes.plugins,
+      createDocumentMetadataHtmlPlugin(),
       createInitialThemeHtmlPlugin(),
       createBoundaryStringsPlugin(),
       VueRouter({

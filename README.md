@@ -9,7 +9,7 @@
 
 ![Naidan standalone](demo-assets/naidan-html.gif)
 
-A privacy-focused LLM interface for local use, designed to run directly from a portable directory.
+A privacy-focused, local-first AI app. Run models on your device, directly in your browser, or connect to OpenAI-compatible APIs and Ollama. It also runs via file://.
 
 <https://naidan.pages.dev>
 
@@ -115,8 +115,9 @@ Run Naidan directly from the web. Your data remains local, stored in your browse
 
 ## Key Features
 
-- **Privacy-First & Fully Local**: Your data never leaves your browser. All conversations are stored locally using OPFS or LocalStorage. Combined with the serverless architecture, it ensures complete data sovereignty.
-- **Broad Compatibility**: Seamlessly connect to **Ollama** or any **OpenAI-compatible API** (such as vLLM, LM Studio, or llama-server) to power your local AI experience.
+- **Privacy-Focused & Local-First**: Keep your conversations and settings in your browser, with OPFS or LocalStorage for persistent storage.
+- **On-Device AI**: Generate text, images, and speech on your device, directly in your browser. No inference server required.
+- **Broad Compatibility**: Connect to **OpenAI-compatible APIs** (such as vLLM, LM Studio, or llama-server) and **Ollama** to use your preferred inference server.
 - **Sandboxed Shell for AI Agents**: Give AI agents access to Unix-like commands, including Git, in a browser-contained environment without executing native processes or accessing arbitrary files on your device.
 - **Branching**: Effortlessly fork or edit any message to create complex, tree-structured conversations without losing context.
 - **Intuitive Organization**: Seamlessly manage your chats using a drag-and-drop sidebar with support for custom groups and reordering.

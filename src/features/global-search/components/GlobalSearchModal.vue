@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { ref, watch, nextTick, computed, onBeforeUnmount, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { SearchIcon, XIcon, Loader2Icon, MessageSquareIcon, CornerDownRightIcon, ClockIcon, GitBranchIcon, FolderIcon, FilterIcon, CheckIcon, EyeIcon } from 'lucide-vue-next';
@@ -26,6 +27,7 @@ const ChatGroupSearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: ()
 const router = useRouter();
 const { isSearchOpen, closeSearch, chatGroupIds, chatId } = useGlobalSearch();
 const { openChat, openChatAtMessage, openChatGroup } = useChatNavigation();
+const documentMetadata = useDocumentMetadata();
 const { chatGroups, currentChat, sidebarItems } = useCurrentChatState();
 const { query, isSearching, isScanningContent, results, search, stopSearch, disposeSearch } = useChatSearch({ sidebarItems });
 const { setActiveFocusArea, activeFocusArea } = useLayout();
@@ -445,6 +447,7 @@ async function selectItem({ index }: { index: number }) {
   const target = results.value[index];
   if (!target) return;
 
+  documentMetadata?.finishHomeIntroduction();
   const type = target.type;
   switch (type) {
   case 'chat': {
