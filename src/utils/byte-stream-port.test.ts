@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, vi } from 'vitest';
 import { BYTE_STREAM_CHUNK_BYTES, receiveByteStream, serveByteStream } from './byte-stream-port';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function connect({ stream, signal }: { stream: ReadableStream<Uint8Array>, signal: AbortSignal | undefined }) {
   const channel = new MessageChannel();
@@ -17,12 +18,13 @@ describe('bounded byte stream ports', () => {
     vi.spyOn(channel.port1, 'postMessage').mockImplementation(() => {
       throw new Error('broken port');
     });
-    try {
-      await expect(received.stream.getReader().read()).rejects.toThrow('broken port');
-      await expect(received.completed).rejects.toThrow('broken port');
-    } finally {
-      channel.port2.close();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        channel.port2.close();
+      },
+    });
+    await expect(received.stream.getReader().read()).rejects.toThrow('broken port');
+    await expect(received.completed).rejects.toThrow('broken port');
   });
 
   it('opens lazily and transfers only one bounded slice per pull without detaching source bytes', async () => {
@@ -118,19 +120,20 @@ describe('bounded byte stream ports', () => {
     const fixture = connect({ signal: undefined, stream });
     const reader = fixture.receiver.stream.getReader();
     const pending = reader.read();
-    try {
-      await vi.waitFor(() => expect(stream.locked).toBe(true));
-      await reader.cancel();
-      await pending;
-      await expect(fixture.sender.completed).rejects.toMatchObject({ name: 'AbortError' });
-      expect(cancel).toHaveBeenCalledOnce();
-      expect(stream.locked).toBe(false);
-    } finally {
-      cleanup.resolve();
-      fixture.sender.abort({ reason: new Error('Test cleanup') });
-      fixture.receiver.abort({ reason: new Error('Test cleanup') });
-      reader.releaseLock();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        cleanup.resolve();
+        fixture.sender.abort({ reason: new Error('Test cleanup') });
+        fixture.receiver.abort({ reason: new Error('Test cleanup') });
+        reader.releaseLock();
+      },
+    });
+    await vi.waitFor(() => expect(stream.locked).toBe(true));
+    await reader.cancel();
+    await pending;
+    await expect(fixture.sender.completed).rejects.toMatchObject({ name: 'AbortError' });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(stream.locked).toBe(false);
   });
 
   it('propagates explicit abort even before the lazy factory is opened', async () => {

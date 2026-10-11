@@ -9,6 +9,7 @@ import {
   createNaidanStandalonePlugin,
   naidanStandaloneWorkerProtocol,
 } from './plugin.js';
+import { createAsyncTestDisposable } from '../../src/utils/resource-cleanup.test-support';
 
 const require = createRequire(import.meta.url);
 
@@ -517,76 +518,77 @@ describe('createNaidanStandalonePlugin', () => {
 
   it('emits the complete static importScripts asset graph with stable output names', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'naidan-importscripts-policy-'));
-    try {
-      await fs.mkdir(path.join(root, 'classic'));
-      await fs.writeFile(
-        path.join(root, 'classic', 'entry.js'),
-        `\
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await fs.rm(root, { recursive: true, force: true });
+      },
+    });
+    await fs.mkdir(path.join(root, 'classic'));
+    await fs.writeFile(
+      path.join(root, 'classic', 'entry.js'),
+      `\
 importScripts('./nested.js');
 self.classicEntry = true;
 `,
-      );
-      await fs.writeFile(path.join(root, 'nested.js'), 'self.nestedClassicAsset = true;');
+    );
+    await fs.writeFile(path.join(root, 'nested.js'), 'self.nestedClassicAsset = true;');
 
-      const diagnostics: Record<string, unknown> = {};
-      const importScriptsPolicy = findPlugin(
-        createNaidanStandalonePlugin({
-          workers: [{
-            name: 'test-worker',
-            entry: path.join(root, 'worker.ts'),
-            virtualId: 'virtual:file-protocol-standalone/worker/test-worker',
-          }],
-          systemRuntimePath: '/tmp/system.min.js',
-          diagnostics,
-          sourceAudit: {
-            mode: 'external',
-            evidence: 'focused test evidence',
-          },
-        }),
-        'naidan-file-protocol-standalone-importscripts-assets',
-      );
-      if (typeof importScriptsPolicy.transform !== 'function') {
-        throw new Error('Expected importScripts transform hook');
-      }
-
-      const emittedAssets: Array<Readonly<{type: string; fileName?: string; source?: unknown}>> = [];
-      let nextReferenceId = 0;
-      await importScriptsPolicy.transform.call({
-        emitFile(asset: Readonly<{type: string; fileName?: string; source?: unknown}>) {
-          emittedAssets.push(asset);
-          nextReferenceId += 1;
-          return `reference-${nextReferenceId}`;
+    const diagnostics: Record<string, unknown> = {};
+    const importScriptsPolicy = findPlugin(
+      createNaidanStandalonePlugin({
+        workers: [{
+          name: 'test-worker',
+          entry: path.join(root, 'worker.ts'),
+          virtualId: 'virtual:file-protocol-standalone/worker/test-worker',
+        }],
+        systemRuntimePath: '/tmp/system.min.js',
+        diagnostics,
+        sourceAudit: {
+          mode: 'external',
+          evidence: 'focused test evidence',
         },
-      } as never, `importScripts('./classic/entry.js');`, path.join(root, 'worker.ts'));
-
-      expect(emittedAssets).toEqual([
-        {
-          type: 'asset',
-          fileName: 'assets/chunks/classic/entry.js',
-          source: `\
-importScripts('./nested.js');
-self.classicEntry = true;
-`,
-        },
-        {
-          type: 'asset',
-          fileName: 'assets/chunks/nested.js',
-          source: 'self.nestedClassicAsset = true;',
-        },
-      ]);
-      expect(diagnostics.classicScriptAssets).toEqual([
-        {
-          sourcePath: path.join(root, 'classic', 'entry.js'),
-          outputFileName: 'assets/chunks/classic/entry.js',
-        },
-        {
-          sourcePath: path.join(root, 'nested.js'),
-          outputFileName: 'assets/chunks/nested.js',
-        },
-      ]);
-    } finally {
-      await fs.rm(root, { recursive: true, force: true });
+      }),
+      'naidan-file-protocol-standalone-importscripts-assets',
+    );
+    if (typeof importScriptsPolicy.transform !== 'function') {
+      throw new Error('Expected importScripts transform hook');
     }
+
+    const emittedAssets: Array<Readonly<{type: string; fileName?: string; source?: unknown}>> = [];
+    let nextReferenceId = 0;
+    await importScriptsPolicy.transform.call({
+      emitFile(asset: Readonly<{type: string; fileName?: string; source?: unknown}>) {
+        emittedAssets.push(asset);
+        nextReferenceId += 1;
+        return `reference-${nextReferenceId}`;
+      },
+    } as never, `importScripts('./classic/entry.js');`, path.join(root, 'worker.ts'));
+
+    expect(emittedAssets).toEqual([
+      {
+        type: 'asset',
+        fileName: 'assets/chunks/classic/entry.js',
+        source: `\
+importScripts('./nested.js');
+self.classicEntry = true;
+`,
+      },
+      {
+        type: 'asset',
+        fileName: 'assets/chunks/nested.js',
+        source: 'self.nestedClassicAsset = true;',
+      },
+    ]);
+    expect(diagnostics.classicScriptAssets).toEqual([
+      {
+        sourcePath: path.join(root, 'classic', 'entry.js'),
+        outputFileName: 'assets/chunks/classic/entry.js',
+      },
+      {
+        sourcePath: path.join(root, 'nested.js'),
+        outputFileName: 'assets/chunks/nested.js',
+      },
+    ]);
   });
 
   it('preserves Raw Worker alias and Reflect.construct classification in final-output diagnostics', async () => {

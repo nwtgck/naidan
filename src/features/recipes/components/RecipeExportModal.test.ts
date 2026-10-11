@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import RecipeExportModal from './RecipeExportModal.vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 describe('RecipeExportModal.vue', () => {
   beforeEach(async () => {

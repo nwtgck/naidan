@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest';
 import { validateModelMounts } from './model-mounts';
 import { createModelFileSource, createModelFileReadCache, MODEL_FILE_CACHE_BYTES, MODEL_FILE_PAGE_BYTES } from './gguf-file';
-import { fixtureReader, ggufFixture, safetensorsFixture, sparseFile, tensor } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
+import { fixtureReader, ggufFixture, safetensorsFixture, sparseFile, tensor } from '@/features/stable-diffusion-cpp-browser/test-utils/weights.test-support';
 
 function jsonFile({ text, name }: { text: string, name: string }): File {
   const header = new TextEncoder().encode(text);

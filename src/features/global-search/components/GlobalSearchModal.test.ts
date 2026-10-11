@@ -1,10 +1,10 @@
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
 import GlobalSearchModal from './GlobalSearchModal.vue';
 import { computed, ref, nextTick } from 'vue';
-import { setupScrollToMock } from '@/utils/test-utils';
+import { setupScrollToMock } from '@/utils/utils.test-support';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 

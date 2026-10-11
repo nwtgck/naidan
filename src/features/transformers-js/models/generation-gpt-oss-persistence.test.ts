@@ -14,6 +14,7 @@ import ownedSequence from '@/features/transformers-js/replay-models/onnx-communi
 import type { ProviderReplayCatalog } from '@/features/transformers-js/replay-models/support/provider-replay-evidence';
 import { createProviderRequestReplayWithOwnedCacheControl } from '@/features/transformers-js/replay-models/support/provider-replay-request';
 import type { OwnedReplayCacheControl } from '@/features/transformers-js/replay-models/support/provider-replay-test-captured-full';
+import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const modelId = 'onnx-community/gpt-oss-20b-ONNX';
 const caseId = 'natural-tool-representative';
@@ -113,103 +114,104 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
     parametersSchema: z.object({ city: z.string() }),
     execute,
   };
-  try {
-    replay.beginNativeRequest({ caseId, parameters });
-    const outcome = await generateChatTurn({
-      onToolCallDraftsChange: undefined,
-      provider: replay.provider,
-      model: modelId,
-      parameters,
-      tools: [tool],
-      readBinaryObject: undefined,
-      debug: undefined,
-      abortController: new AbortController(),
-      approvalContext: undefined,
-      createAssistantMessage: () => {
-        const node: AssistantMessageNode = {
-          id: toMessageId({ raw: `message_${history.length}` }),
-          role: 'assistant',
-          createdAt: history.length,
-          modelId,
-          lmParameters: parameters,
-          interruption: undefined,
-          parts: [],
-          replies: { items: [] },
-        };
-        append({ node });
-        return node;
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      await replay.close();
+    },
+  });
+  replay.beginNativeRequest({ caseId, parameters });
+  const outcome = await generateChatTurn({
+    onToolCallDraftsChange: undefined,
+    provider: replay.provider,
+    model: modelId,
+    parameters,
+    tools: [tool],
+    readBinaryObject: undefined,
+    debug: undefined,
+    abortController: new AbortController(),
+    approvalContext: undefined,
+    createAssistantMessage: () => {
+      const node: AssistantMessageNode = {
+        id: toMessageId({ raw: `message_${history.length}` }),
+        role: 'assistant',
+        createdAt: history.length,
+        modelId,
+        lmParameters: parameters,
+        interruption: undefined,
+        parts: [],
+        replies: { items: [] },
+      };
+      append({ node });
+      return node;
+    },
+    createToolMessage: () => {
+      const node: ToolMessageNode = {
+        id: toMessageId({ raw: `message_${history.length}` }),
+        role: 'tool',
+        createdAt: history.length,
+        modelId: undefined,
+        lmParameters: undefined,
+        parts: [],
+        replies: { items: [] },
+      };
+      append({ node });
+      return node;
+    },
+    buildMessages: ({ excludedMessageId }) => {
+      const before = structuredClone(content);
+      const restored = persistence === 'json-roundtrip'
+        ? roundTripChatContentPersistenceSerialization({ content }).restored
+        : content;
+      expect(restored).toEqual(before);
+      expect(content).toEqual(before);
+      snapshots.push(structuredClone(restored));
+      return buildChatGenerationMessages({ chat: restored, excludedMessageId, systemPromptMessages: [] });
+    },
+    onChange: () => {},
+    onToolEvent: () => {},
+    persistToolContent: async ({ text }) => ({ type: 'text', text }),
+    describeError: ({ error }) => error.message,
+  });
+  expect(outcome).toEqual({ type: 'finished', next: 'user' });
+  replay.endNativeRequest();
+  replay.assertComplete({ requests: 1, nativeCalls: 2 });
+  expect(nativeInputs.map(input => input.reusedCache)).toEqual([false, true]);
+  expect(snapshots).toHaveLength(2);
+  const continuation = buildChatGenerationMessages({
+    chat: snapshots[1]!,
+    excludedMessageId: history[3]!.id,
+    systemPromptMessages: [],
+  });
+  expect(continuation.map(message => message.role)).toEqual(['user', 'assistant', 'tool']);
+  const assistant = continuation[1];
+  const call = assistant?.parts.at(-1);
+  if (assistant?.role !== 'assistant' || call?.type !== 'tool_call') throw new Error('Missing captured tool call');
+  expect(assistant.parts).toEqual([
+    { type: 'reasoning', text: 'We need to call the function lookup_weather with city "Tokyo".', completeness: 'complete' },
+    {
+      type: 'tool_call',
+      toolCall: {
+        id: call.toolCall.id,
+        type: 'function',
+        function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
       },
-      createToolMessage: () => {
-        const node: ToolMessageNode = {
-          id: toMessageId({ raw: `message_${history.length}` }),
-          role: 'tool',
-          createdAt: history.length,
-          modelId: undefined,
-          lmParameters: undefined,
-          parts: [],
-          replies: { items: [] },
-        };
-        append({ node });
-        return node;
-      },
-      buildMessages: ({ excludedMessageId }) => {
-        const before = structuredClone(content);
-        const restored = persistence === 'json-roundtrip'
-          ? roundTripChatContentPersistenceSerialization({ content }).restored
-          : content;
-        expect(restored).toEqual(before);
-        expect(content).toEqual(before);
-        snapshots.push(structuredClone(restored));
-        return buildChatGenerationMessages({ chat: restored, excludedMessageId, systemPromptMessages: [] });
-      },
-      onChange: () => {},
-      onToolEvent: () => {},
-      persistToolContent: async ({ text }) => ({ type: 'text', text }),
-      describeError: ({ error }) => error.message,
-    });
-    expect(outcome).toEqual({ type: 'finished', next: 'user' });
-    replay.endNativeRequest();
-    replay.assertComplete({ requests: 1, nativeCalls: 2 });
-    expect(nativeInputs.map(input => input.reusedCache)).toEqual([false, true]);
-    expect(snapshots).toHaveLength(2);
-    const continuation = buildChatGenerationMessages({
-      chat: snapshots[1]!,
-      excludedMessageId: history[3]!.id,
-      systemPromptMessages: [],
-    });
-    expect(continuation.map(message => message.role)).toEqual(['user', 'assistant', 'tool']);
-    const assistant = continuation[1];
-    const call = assistant?.parts.at(-1);
-    if (assistant?.role !== 'assistant' || call?.type !== 'tool_call') throw new Error('Missing captured tool call');
-    expect(assistant.parts).toEqual([
-      { type: 'reasoning', text: 'We need to call the function lookup_weather with city "Tokyo".', completeness: 'complete' },
-      {
-        type: 'tool_call',
-        toolCall: {
-          id: call.toolCall.id,
-          type: 'function',
-          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-        },
-      },
-    ]);
-    expect(continuation[2]?.parts).toEqual([{
-      type: 'tool_result',
-      result: {
-        toolCallId: call.toolCall.id,
-        status: 'success',
-        content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-      },
-    }]);
-    expect(history[3]?.parts).toEqual([{
-      type: 'text',
-      text: 'Tokyo is clear with a comfortable temperature of about 20\u202f°C.',
-      completeness: 'complete',
-    }]);
-    expect(execute).toHaveBeenCalledExactlyOnceWith({ args: { city: 'Tokyo' }, signal: expect.any(AbortSignal), approvalContext: undefined, onEvent: expect.any(Function) });
-    return nativeInputs;
-  } finally {
-    await replay.close();
-  }
+    },
+  ]);
+  expect(continuation[2]?.parts).toEqual([{
+    type: 'tool_result',
+    result: {
+      toolCallId: call.toolCall.id,
+      status: 'success',
+      content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+    },
+  }]);
+  expect(history[3]?.parts).toEqual([{
+    type: 'text',
+    text: 'Tokyo is clear with a comfortable temperature of about 20\u202f°C.',
+    completeness: 'complete',
+  }]);
+  expect(execute).toHaveBeenCalledExactlyOnceWith({ args: { city: 'Tokyo' }, signal: expect.any(AbortSignal), approvalContext: undefined, onEvent: expect.any(Function) });
+  return nativeInputs;
 }
 
 describe('GPT-OSS persisted parts at the owned native continuation boundary', () => {
@@ -217,13 +219,14 @@ describe('GPT-OSS persisted parts at the owned native continuation boundary', ()
     // The pinned template includes a clock date. Both paths use the recording's
     // date; the persistence helper exercises JSON/DTO mapping, not OPFS I/O.
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
-    try {
-      const live = await runTurn({ persistence: 'live' });
-      const restored = await runTurn({ persistence: 'json-roundtrip' });
-      expect(restored).toEqual(live);
-    } finally {
-      vi.useRealTimers();
-      vi.restoreAllMocks();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+      },
+    });
+    const live = await runTurn({ persistence: 'live' });
+    const restored = await runTurn({ persistence: 'json-roundtrip' });
+    expect(restored).toEqual(live);
   }, 30_000);
 });

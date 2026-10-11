@@ -1,6 +1,7 @@
 import { createCoreWebGpuNavigator } from './webgpu-dispatch';
 import { describe, expect, it, vi } from 'vitest';
 import { beginGpuMeasurement, createGpuRequestObserver, associateGpuRequests, readGpuRequests } from './webgpu-request-diagnostics';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function fixture() {
   const buffers = new WeakSet<object>();
@@ -157,20 +158,21 @@ describe('measurement-only existing queue completion observations', () => {
     const { device, observer, queue } = queueFixture({ promise });
     let now = 10;
     const finish = beginGpuMeasurement({ now: () => now });
-    try {
-      const commands: GPUCommandBuffer[] = [];
-      device.queue.submit(commands);
-      expect(device.queue.onSubmittedWorkDone()).toBe(promise);
-      const old = observer.snapshot()!;
-      expect(old.queue).toMatchObject({ submitCount: 1, completionWaitCount: 1, completionWaitPending: 1 });
-      now = 35; resolve(); await promise;
-      expect(observer.snapshot()!.queue).toMatchObject({ completionWaitResolved: 1, completionWaitPending: 0, completionWaitDurationMs: 25 });
-      expect(old.queue!.completionWaitPending).toBe(1);
-      expect(queue.submit).toHaveBeenCalledExactlyOnceWith(commands);
-      expect(queue.onSubmittedWorkDone).toHaveBeenCalledTimes(1);
-    } finally {
-      finish();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        finish();
+      },
+    });
+    const commands: GPUCommandBuffer[] = [];
+    device.queue.submit(commands);
+    expect(device.queue.onSubmittedWorkDone()).toBe(promise);
+    const old = observer.snapshot()!;
+    expect(old.queue).toMatchObject({ submitCount: 1, completionWaitCount: 1, completionWaitPending: 1 });
+    now = 35; resolve(); await promise;
+    expect(observer.snapshot()!.queue).toMatchObject({ completionWaitResolved: 1, completionWaitPending: 0, completionWaitDurationMs: 25 });
+    expect(old.queue!.completionWaitPending).toBe(1);
+    expect(queue.submit).toHaveBeenCalledExactlyOnceWith(commands);
+    expect(queue.onSubmittedWorkDone).toHaveBeenCalledTimes(1);
   });
 
   it('preserves rejection identity without an unhandled observer promise', async () => {
@@ -178,13 +180,14 @@ describe('measurement-only existing queue completion observations', () => {
     const promise = Promise.reject(error);
     const { device, observer } = queueFixture({ promise });
     const finish = beginGpuMeasurement({ now: () => 10 });
-    try {
-      expect(device.queue.onSubmittedWorkDone()).toBe(promise);
-      await expect(promise).rejects.toBe(error);
-      expect(observer.snapshot()!.queue).toMatchObject({ completionWaitRejected: 1, completionWaitPending: 0 });
-    } finally {
-      finish();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        finish();
+      },
+    });
+    expect(device.queue.onSubmittedWorkDone()).toBe(promise);
+    await expect(promise).rejects.toBe(error);
+    expect(observer.snapshot()!.queue).toMatchObject({ completionWaitRejected: 1, completionWaitPending: 0 });
   });
 
   it('ignores late settlements and stale disposals during the next request', async () => {
@@ -232,18 +235,19 @@ describe('measurement-only existing queue completion observations', () => {
         throw new Error('clock');
       },
     });
-    try {
-      expect(device.queue.onSubmittedWorkDone()).toBe(promise); await promise;
-      expect(observer.snapshot()!.queue).toMatchObject({ completionWaitResolved: 1, completionWaitDurationMs: undefined, longestCompletionWaitDurationMs: undefined });
-      const error = new Error('native');
-      queue.submit.mockImplementation(() => {
-        throw error;
-      });
-      expect(() => device.queue.submit([])).toThrow(error);
-      expect(observer.snapshot()!.queue!.submitCount).toBe(0);
-    } finally {
-      finish();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        finish();
+      },
+    });
+    expect(device.queue.onSubmittedWorkDone()).toBe(promise); await promise;
+    expect(observer.snapshot()!.queue).toMatchObject({ completionWaitResolved: 1, completionWaitDurationMs: undefined, longestCompletionWaitDurationMs: undefined });
+    const error = new Error('native');
+    queue.submit.mockImplementation(() => {
+      throw error;
+    });
+    expect(() => device.queue.submit([])).toThrow(error);
+    expect(observer.snapshot()!.queue!.submitCount).toBe(0);
   });
 });
 
@@ -294,20 +298,21 @@ it('caps outstanding native wait observers across closed request windows without
   expect(then).toHaveBeenCalledTimes(256);
   closeFirst();
   const closeSecond = beginGpuMeasurement({ now: () => 2 });
-  try {
-    expect(device.queue.onSubmittedWorkDone()).toBe(gate.promise);
-    expect(observer.snapshot()!.queue).toMatchObject({ completionWaitCount: 1, completionWaitPending: 0, completionWaitUnobserved: 1 });
-    expect(then).toHaveBeenCalledTimes(256);
-    gate.resolve(); await gate.promise;
-    // Old settlement frees observer slots, but cannot mutate either old snapshot
-    // or the new request's outcomes. It never reports skipped waits as complete.
-    expect(first.queue!.completionWaitPending).toBe(256);
-    expect(observer.snapshot()!.queue).toMatchObject({ completionWaitResolved: 0, completionWaitPending: 0, completionWaitUnobserved: 1 });
-    device.queue.onSubmittedWorkDone(); await gate.promise;
-    expect(observer.snapshot()!.queue).toMatchObject({ completionWaitCount: 2, completionWaitResolved: 1, completionWaitPending: 0, completionWaitUnobserved: 1 });
-  } finally {
-    closeSecond(); then.mockRestore();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      closeSecond(); then.mockRestore();
+    },
+  });
+  expect(device.queue.onSubmittedWorkDone()).toBe(gate.promise);
+  expect(observer.snapshot()!.queue).toMatchObject({ completionWaitCount: 1, completionWaitPending: 0, completionWaitUnobserved: 1 });
+  expect(then).toHaveBeenCalledTimes(256);
+  gate.resolve(); await gate.promise;
+  // Old settlement frees observer slots, but cannot mutate either old snapshot
+  // or the new request's outcomes. It never reports skipped waits as complete.
+  expect(first.queue!.completionWaitPending).toBe(256);
+  expect(observer.snapshot()!.queue).toMatchObject({ completionWaitResolved: 0, completionWaitPending: 0, completionWaitUnobserved: 1 });
+  device.queue.onSubmittedWorkDone(); await gate.promise;
+  expect(observer.snapshot()!.queue).toMatchObject({ completionWaitCount: 2, completionWaitResolved: 1, completionWaitPending: 0, completionWaitUnobserved: 1 });
 });
 
 it('keeps the bounded completion observer budget local to each runtime', () => {
@@ -318,12 +323,13 @@ it('keeps the bounded completion observer budget local to each runtime', () => {
   for (let i = 0; i < 256; i++) first.device.queue.onSubmittedWorkDone();
   closeFirst();
   const closeSecond = beginGpuMeasurement({ now: () => 1 });
-  try {
-    first.device.queue.onSubmittedWorkDone();
-    second.device.queue.onSubmittedWorkDone();
-    expect(first.observer.snapshot()!.queue).toMatchObject({ completionWaitUnobserved: 1, completionWaitPending: 0 });
-    expect(second.observer.snapshot()!.queue).toMatchObject({ completionWaitUnobserved: 0, completionWaitPending: 1 });
-  } finally {
-    closeSecond();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      closeSecond();
+    },
+  });
+  first.device.queue.onSubmittedWorkDone();
+  second.device.queue.onSubmittedWorkDone();
+  expect(first.observer.snapshot()!.queue).toMatchObject({ completionWaitUnobserved: 1, completionWaitPending: 0 });
+  expect(second.observer.snapshot()!.queue).toMatchObject({ completionWaitUnobserved: 0, completionWaitPending: 1 });
 });

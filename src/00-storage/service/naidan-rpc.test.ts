@@ -5,6 +5,7 @@ import { LocalStorageProvider } from './local-storage';
 import { MemoryStorageProvider } from './memory-storage';
 import type { NaidanRpcRegistration, NaidanRpcIdentity } from '@/01-models/naidan-rpc';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 /** Transaction fixture, not a browser IndexedDB implementation. A request may
  * succeed while commit later fails; writes are made visible only on commit. */
@@ -282,15 +283,16 @@ it('notifies registry observers in the writing page without making their errors 
     },
   });
   const unsubscribe = storageService.subscribeNaidanRpcRegistryChanges({ listener: observed });
-  try {
-    storageService.notify({ event: { type: 'settings', timestamp: 0 } }); expect(observed).not.toHaveBeenCalled();
-    const access = await remember({ next: registration }); expect(observed).toHaveBeenCalledOnce();
-    expect((await naidanRpcStorage.list()).registrations).toEqual([registration]);
-    unsubscribe(); await naidanRpcStorage.remove({ access, id: registration.id, expectedRevision: 0 });
-    expect(observed).toHaveBeenCalledOnce();
-  } finally {
-    unsubscribe(); unsubscribeThrower();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      unsubscribe(); unsubscribeThrower();
+    },
+  });
+  storageService.notify({ event: { type: 'settings', timestamp: 0 } }); expect(observed).not.toHaveBeenCalled();
+  const access = await remember({ next: registration }); expect(observed).toHaveBeenCalledOnce();
+  expect((await naidanRpcStorage.list()).registrations).toEqual([registration]);
+  unsubscribe(); await naidanRpcStorage.remove({ access, id: registration.id, expectedRevision: 0 });
+  expect(observed).toHaveBeenCalledOnce();
 });
 
 it.each([

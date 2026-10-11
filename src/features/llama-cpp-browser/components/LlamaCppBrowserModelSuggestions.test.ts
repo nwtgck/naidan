@@ -1,7 +1,7 @@
 import { audioModelCatalog } from '@/features/audio-generation/model-catalog';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { discoverRepository, groupModelFiles } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { downloadRepository } from '@/features/llama-cpp-browser/hugging-face/download';
 import { installedSelection, repositoryDirectories } from '@/features/llama-cpp-browser/hugging-face/storage';

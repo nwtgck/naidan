@@ -9,7 +9,7 @@ import {
   setLocale as setStringLocale,
   type StringBoundaryModule,
 } from '@/strings/runtime';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { ChangeListener } from '@/00-storage/service/synchronizer';
 
 const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64, mockPreloadFakeLmRuntime, mockScheduledIdleTasks } = vi.hoisted(() => ({

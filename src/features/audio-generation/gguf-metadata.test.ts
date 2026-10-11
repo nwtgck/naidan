@@ -1,7 +1,7 @@
 import { Blob as NativeBlob } from 'node:buffer';
 import { describe, expect, it, vi } from 'vitest';
 import { AUDIO_METADATA_SCAN_BYTES, readAudioGgufMetadata, type GgufMetadataFile } from './gguf-metadata';
-import { concatenateGguf, ggufFixture, ggufInteger, ggufString, textMetadata, boolMetadata } from './test-utils/gguf';
+import { concatenateGguf, ggufFixture, ggufInteger, ggufString, textMetadata, boolMetadata } from './test-utils/gguf.test-support';
 
 const architecture = textMetadata({ key: 'general.architecture', value: 'qwen3tts' });
 

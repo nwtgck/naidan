@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toChatId } from '@/01-models/ids';
 import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
 import { useAutoTitleActivity } from './useAutoTitleActivity';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 beforeEach(() => {
   vi.useFakeTimers(); autoTitleScheduler.reset();
@@ -39,12 +40,13 @@ describe('input activity lifetime', () => {
     const finishLateAttachment = activity.hold();
     activity.beginComposition();
     activity.noteActivity();
-    try {
-      await vi.advanceTimersByTimeAsync(100);
-      expect(run).toHaveBeenCalledOnce();
-    } finally {
-      finishLateAttachment(); activity.endComposition();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        finishLateAttachment(); activity.endComposition();
+      },
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(run).toHaveBeenCalledOnce();
   });
 
   it('releases every sustained activity on unmount and tolerates late cleanup', async () => {

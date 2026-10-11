@@ -20,6 +20,7 @@ import { readSystemJsLicenseDependency } from './file-protocol-standalone/system
 import { boundaryModuleId, packModuleId } from './boundary-strings/virtual-modules';
 import { BOUNDARY_STRING_LOCALES } from './boundary-strings/message-catalog';
 import { createZipPackages } from './zip-packages';
+import { createTestDisposable } from '../src/utils/resource-cleanup.test-support';
 
 const repo = process.cwd();
 const coreId = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/browser/core.mjs');
@@ -116,25 +117,29 @@ int unrelated;`;
 
   it.each([false, 'oxc'] as const)('validates and packages the real two-Worker graph with minify=%s in every locale ZIP', async minify => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-llama-package-'));
-    try {
-      const outputDirectory = path.join(root, 'dist');
-      writeFileSync(path.join(root, 'index.html'), '<!doctype html><html><head><meta charset="UTF-8"></head><body><script type="module" src="./main.ts"></script></body></html>');
-      // A seven-message synthetic boundary exercises the real locale packager,
-      // without building the application's complete message catalog.
-      const identity = { boundaryId: '1111111111111111', version: 'aaaaaaaaaaaaaaaa' };
-      const boundaryId = boundaryModuleId(identity);
-      const localeSources = new Map(BOUNDARY_STRING_LOCALES.map(locale => [packModuleId({ ...identity, locale }), `export const message = ${JSON.stringify(locale)};`]));
-      localeSources.set(boundaryId, `export const locales = {${BOUNDARY_STRING_LOCALES.map(locale => `${JSON.stringify(locale)}: () => import(${JSON.stringify(packModuleId({ ...identity, locale }))})`).join(',')}};`);
-      const localeFixture: Plugin = {
-        name: 'llama-mini-locale-fixture',
-        resolveId(id) {
-          return localeSources.has(id) ? `\0${id}` : undefined;
-        },
-        load(id) {
-          return id.startsWith('\0') ? localeSources.get(id.slice(1)) : undefined;
-        },
-      };
-      writeFileSync(path.join(root, 'main.ts'), `\
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        rmSync(root, { recursive: true, force: true });
+      },
+    });
+    const outputDirectory = path.join(root, 'dist');
+    writeFileSync(path.join(root, 'index.html'), '<!doctype html><html><head><meta charset="UTF-8"></head><body><script type="module" src="./main.ts"></script></body></html>');
+    // A seven-message synthetic boundary exercises the real locale packager,
+    // without building the application's complete message catalog.
+    const identity = { boundaryId: '1111111111111111', version: 'aaaaaaaaaaaaaaaa' };
+    const boundaryId = boundaryModuleId(identity);
+    const localeSources = new Map(BOUNDARY_STRING_LOCALES.map(locale => [packModuleId({ ...identity, locale }), `export const message = ${JSON.stringify(locale)};`]));
+    localeSources.set(boundaryId, `export const locales = {${BOUNDARY_STRING_LOCALES.map(locale => `${JSON.stringify(locale)}: () => import(${JSON.stringify(packModuleId({ ...identity, locale }))})`).join(',')}};`);
+    const localeFixture: Plugin = {
+      name: 'llama-mini-locale-fixture',
+      resolveId(id) {
+        return localeSources.has(id) ? `\0${id}` : undefined;
+      },
+      load(id) {
+        return id.startsWith('\0') ? localeSources.get(id.slice(1)) : undefined;
+      },
+    };
+    writeFileSync(path.join(root, 'main.ts'), `\
         import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
         import { downloadRepository } from '@/features/llama-cpp-browser/hugging-face/download';
         import { locales } from '${boundaryId}';
@@ -142,141 +147,138 @@ int unrelated;`;
           loadLicenses: async () => (await import('${NAIDAN_LICENSE_MODULE_ID}')).default,
         });
       `);
-      const resolvePath = (relative: string): string => path.join(repo, relative);
-      const workers = createFileProtocolStandaloneWorkerDefinitions({ resolvePath }).filter(worker => worker.name.startsWith('llama-cpp-browser'));
-      const adapter = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' });
-      const diagnostics: Record<string, unknown> = {};
-      const require = createRequire(import.meta.url);
-      const systemJsLicense = readSystemJsLicenseDependency({ packageJsonPath: require.resolve('systemjs/package.json') });
-      let collectedDependencies: readonly BuildLicenseDependency[] = [];
-      const releaseReportFile = path.join(root, 'release-report.json');
-      const archives: { locale: string | undefined, names: string[], hashes: Map<string, string> }[] = [];
-      const result = await build({
-        configFile: false,
-        root,
-        base: './',
-        logLevel: 'silent',
-        define: { __BUILD_MODE_IS_TEST__: 'false', __BUILD_MODE_IS_STANDALONE__: 'true', __BUILD_MODE_IS_HOSTED__: 'false' },
-        resolve: { alias: [...createStandaloneFacadeAliases({ resolvePath }), { find: '@', replacement: path.join(repo, 'src') }] },
-        plugins: [localeFixture, adapter.corePlugin,
-          ...createLicenseModulePlugins({
-            getAdditionalDependencies: () => [systemJsLicense],
-            onBuildDependenciesCollected({ dependencies }) {
-              collectedDependencies = dependencies;
-            },
-          }),
-          createNaidanStandalonePlugin({
-            workers,
-            embeddedBinaries: adapter.embeddedBinaries,
-            diagnostics,
-            systemRuntimePath: require.resolve('systemjs/dist/system.min.js'),
-            sourceAudit: { mode: 'inline' },
-            releaseValidation: {
-              outputDirectory,
-              getCollectedLicenseDependencies: () => collectedDependencies,
-              requiredExternalLicenseIdentities: [`${systemJsLicense.name}@${systemJsLicense.version}`],
-              debugReportFile: path.join(root, 'debug-report.json'),
-              releaseReportFile,
-            },
-            releasePackaging: {
-              async packageRelease({ variants }) {
-                const archiveDirectory = path.join(root, 'archives');
-                await createZipPackages({
-                  sourceDirectory: outputDirectory,
-                  archiveDirectory,
-                  version: 'fixture',
-                  packages: variants.map(variant => ({
-                    zipFileName: `${variant.id}.zip`,
-                    folderName: 'fixture',
-                    excludedFileNames: new Set(variant.excludedFileNames),
-                    fileOverrides: new Map([['index.html', variant.indexHtml]]),
-                  })),
-                });
-                for (const variant of variants) {
-                  const zip = await JSZip.loadAsync(readFileSync(path.join(archiveDirectory, `${variant.id}.zip`)));
-                  const hashes = new Map<string, string>(); const names: string[] = [];
-                  for (const entry of Object.values(zip.files)) {
-                    if (entry.dir) continue;
-                    const name = entry.name.slice('fixture/'.length); names.push(name);
-                    hashes.set(name, createHash('sha256').update(await entry.async('nodebuffer')).digest('hex'));
-                  }
-                  archives.push({ locale: variant.locale, names, hashes });
+    const resolvePath = (relative: string): string => path.join(repo, relative);
+    const workers = createFileProtocolStandaloneWorkerDefinitions({ resolvePath }).filter(worker => worker.name.startsWith('llama-cpp-browser'));
+    const adapter = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' });
+    const diagnostics: Record<string, unknown> = {};
+    const require = createRequire(import.meta.url);
+    const systemJsLicense = readSystemJsLicenseDependency({ packageJsonPath: require.resolve('systemjs/package.json') });
+    let collectedDependencies: readonly BuildLicenseDependency[] = [];
+    const releaseReportFile = path.join(root, 'release-report.json');
+    const archives: { locale: string | undefined, names: string[], hashes: Map<string, string> }[] = [];
+    const result = await build({
+      configFile: false,
+      root,
+      base: './',
+      logLevel: 'silent',
+      define: { __BUILD_MODE_IS_TEST__: 'false', __BUILD_MODE_IS_STANDALONE__: 'true', __BUILD_MODE_IS_HOSTED__: 'false' },
+      resolve: { alias: [...createStandaloneFacadeAliases({ resolvePath }), { find: '@', replacement: path.join(repo, 'src') }] },
+      plugins: [localeFixture, adapter.corePlugin,
+        ...createLicenseModulePlugins({
+          getAdditionalDependencies: () => [systemJsLicense],
+          onBuildDependenciesCollected({ dependencies }) {
+            collectedDependencies = dependencies;
+          },
+        }),
+        createNaidanStandalonePlugin({
+          workers,
+          embeddedBinaries: adapter.embeddedBinaries,
+          diagnostics,
+          systemRuntimePath: require.resolve('systemjs/dist/system.min.js'),
+          sourceAudit: { mode: 'inline' },
+          releaseValidation: {
+            outputDirectory,
+            getCollectedLicenseDependencies: () => collectedDependencies,
+            requiredExternalLicenseIdentities: [`${systemJsLicense.name}@${systemJsLicense.version}`],
+            debugReportFile: path.join(root, 'debug-report.json'),
+            releaseReportFile,
+          },
+          releasePackaging: {
+            async packageRelease({ variants }) {
+              const archiveDirectory = path.join(root, 'archives');
+              await createZipPackages({
+                sourceDirectory: outputDirectory,
+                archiveDirectory,
+                version: 'fixture',
+                packages: variants.map(variant => ({
+                  zipFileName: `${variant.id}.zip`,
+                  folderName: 'fixture',
+                  excludedFileNames: new Set(variant.excludedFileNames),
+                  fileOverrides: new Map([['index.html', variant.indexHtml]]),
+                })),
+              });
+              for (const variant of variants) {
+                const zip = await JSZip.loadAsync(readFileSync(path.join(archiveDirectory, `${variant.id}.zip`)));
+                const hashes = new Map<string, string>(); const names: string[] = [];
+                for (const entry of Object.values(zip.files)) {
+                  if (entry.dir) continue;
+                  const name = entry.name.slice('fixture/'.length); names.push(name);
+                  hashes.set(name, createHash('sha256').update(await entry.async('nodebuffer')).digest('hex'));
                 }
-              },
+                archives.push({ locale: variant.locale, names, hashes });
+              }
             },
-          })],
-        build: { outDir: outputDirectory, write: true, minify, assetsInlineLimit: 0, modulePreload: false },
-      });
-      if (Array.isArray(result) || !('output' in result)) throw new Error('Unexpected build result');
-      expect(JSON.parse(readFileSync(releaseReportFile, 'utf8'))).toMatchObject({
-        passed: true,
-        failures: [],
-        licenseAudit: { missingBundledPackages: [], incompleteRecords: [], missingExternalLicenseIdentities: [] },
-      });
-      const coreLicense = collectedDependencies.filter(dependency => dependency.name === 'llama-cpp-browser-core');
-      expect(coreLicense).toEqual([{
-        name: 'llama-cpp-browser-core',
-        version: '0.1.0',
-        license: 'MIT',
-        licenseText: readFileSync(path.join(repo, 'node_modules/llama-cpp-browser-core/LICENSE'), 'utf8'),
-      }]);
-      const chunks = result.output.filter((file): file is Rollup.OutputChunk => file.type === 'chunk');
-      const modules = chunks.flatMap(chunk => Object.keys(chunk.modules));
-      expect(modules.filter(id => id.includes('llama-cpp-browser-core/profiles/')).sort()).toEqual([coreId, core32Id].sort());
-      expect(modules.filter(id => id.startsWith('\0virtual:file-protocol-standalone/binary/')).sort()).toEqual([binaryId, binary32Id].sort());
-      expect(modules.some(id => id.includes('client-hosted.ts') || id.endsWith('/runtime/artifacts.ts') || id.endsWith('/hugging-face/writer-client.ts') || id.includes('browser-external'))).toBe(false);
-      expect(modules.some(id => id.endsWith('/embedded-binary.test-support.ts'))).toBe(false);
-      const core = chunks.find(chunk => coreId in chunk.modules);
-      const binary = chunks.find(chunk => binaryId in chunk.modules);
-      const core32 = chunks.find(chunk => core32Id in chunk.modules);
-      const binary32 = chunks.find(chunk => binary32Id in chunk.modules);
-      const licenses = chunks.find(chunk => `\0${NAIDAN_LICENSE_MODULE_ID}` in chunk.modules);
-      if (!core || !binary || !core32 || !binary32 || !licenses) throw new Error('Missing lazy native or license chunks');
-      const { base64, byteLength, sha256 } = z.object({ base64: z.string(), byteLength: z.number().int(), sha256: z.string() }).parse(evaluateDataModule({ source: binary.code }));
-      const wasm = readFileSync(coreId.replace('core.mjs', 'core.wasm'));
-      expect(byteLength).toBe(wasm.byteLength);
-      expect(sha256).toBe(createHash('sha256').update(wasm).digest('hex'));
-      // Keep a size budget on the encoded payload, independent of chunk naming.
-      expect(Buffer.from(base64, 'base64').byteLength).toBeLessThan(1_500_000);
-      expect(evaluateDataModule({ source: licenses.code }).default).toEqual(collectedDependencies);
-      expect(brotliDecompressSync(Buffer.from(base64, 'base64')).equals(readFileSync(coreId.replace('core.mjs', 'core.wasm')))).toBe(true);
-      const data32 = z.object({ base64: z.string(), byteLength: z.number().int(), sha256: z.string() }).parse(evaluateDataModule({ source: binary32.code }));
-      const wasm32 = readFileSync(core32Id.replace('core.mjs', 'core.wasm'));
-      expect(data32.byteLength).toBe(wasm32.byteLength);
-      expect(data32.sha256).toBe(createHash('sha256').update(wasm32).digest('hex'));
-      expect(brotliDecompressSync(Buffer.from(data32.base64, 'base64')).equals(wasm32)).toBe(true);
-      for (const entry of chunks.filter(chunk => chunk.isEntry)) {
-        const initial = closure({ entry, chunks, dynamic: false });
-        expect(initial.has(binary.fileName)).toBe(false); expect(initial.has(core.fileName)).toBe(false);
-        expect(initial.has(binary32.fileName)).toBe(false); expect(initial.has(core32.fileName)).toBe(false);
-        expect(initial.has(licenses.fileName)).toBe(false);
-      }
-      const writer = chunks.find(chunk => chunk.facadeModuleId?.endsWith('/hugging-face/writer-entry.ts'));
-      if (!writer) throw new Error('Missing download Worker');
-      const writerGraph = closure({ entry: writer, chunks, dynamic: true });
-      expect(writerGraph.has(binary.fileName)).toBe(false); expect(writerGraph.has(core.fileName)).toBe(false);
-      expect(writerGraph.has(binary32.fileName)).toBe(false); expect(writerGraph.has(core32.fileName)).toBe(false);
-      expect(archives).toHaveLength(8);
-      expect(archives.map(archive => archive.locale)).toEqual([undefined, ...BOUNDARY_STRING_LOCALES]);
-      for (const archive of archives) {
-        for (const fileName of [core.fileName, binary.fileName, core32.fileName, binary32.fileName, licenses.fileName, 'llama-cpp-browser-native-licenses.txt']) {
-          expect(archive.names.filter(name => name === fileName)).toHaveLength(1);
-          expect(archive.hashes.get(fileName)).toBe(createHash('sha256').update(readFileSync(path.join(outputDirectory, fileName))).digest('hex'));
-        }
-        expect(archive.names).not.toContain('release-report.json');
-        expect(archive.names).not.toContain('debug-report.json');
-        expect(archive.names.some(name => /\.wasm(?:\.(?:gz|br))?$|\/core\.mjs$|llama-cpp-browser-runtime\//.test(name))).toBe(false);
-      }
-      const notices = readFileSync(path.join(outputDirectory, 'llama-cpp-browser-native-licenses.txt'), 'utf8');
-      expect(notices).toContain('Niels Lohmann'); expect(notices).toContain('David Reid');
-      expect(Buffer.byteLength(notices)).toBeLessThan(512 * 1024);
-      expect(diagnostics.embeddedBinaries).toHaveLength(2);
-      expect(diagnostics.embeddedBinaries).toEqual(expect.arrayContaining([
-        expect.objectContaining({ virtualId: binaryId.slice(1), compression: 'brotli', owners: [binary.fileName] }),
-        expect.objectContaining({ virtualId: binary32Id.slice(1), compression: 'brotli', owners: [binary32.fileName] }),
-      ]));
-    } finally {
-      rmSync(root, { recursive: true, force: true });
+          },
+        })],
+      build: { outDir: outputDirectory, write: true, minify, assetsInlineLimit: 0, modulePreload: false },
+    });
+    if (Array.isArray(result) || !('output' in result)) throw new Error('Unexpected build result');
+    expect(JSON.parse(readFileSync(releaseReportFile, 'utf8'))).toMatchObject({
+      passed: true,
+      failures: [],
+      licenseAudit: { missingBundledPackages: [], incompleteRecords: [], missingExternalLicenseIdentities: [] },
+    });
+    const coreLicense = collectedDependencies.filter(dependency => dependency.name === 'llama-cpp-browser-core');
+    expect(coreLicense).toEqual([{
+      name: 'llama-cpp-browser-core',
+      version: '0.1.0',
+      license: 'MIT',
+      licenseText: readFileSync(path.join(repo, 'node_modules/llama-cpp-browser-core/LICENSE'), 'utf8'),
+    }]);
+    const chunks = result.output.filter((file): file is Rollup.OutputChunk => file.type === 'chunk');
+    const modules = chunks.flatMap(chunk => Object.keys(chunk.modules));
+    expect(modules.filter(id => id.includes('llama-cpp-browser-core/profiles/')).sort()).toEqual([coreId, core32Id].sort());
+    expect(modules.filter(id => id.startsWith('\0virtual:file-protocol-standalone/binary/')).sort()).toEqual([binaryId, binary32Id].sort());
+    expect(modules.some(id => id.includes('client-hosted.ts') || id.endsWith('/runtime/artifacts.ts') || id.endsWith('/hugging-face/writer-client.ts') || id.includes('browser-external'))).toBe(false);
+    expect(modules.some(id => id.endsWith('/embedded-binary.test-support.ts'))).toBe(false);
+    const core = chunks.find(chunk => coreId in chunk.modules);
+    const binary = chunks.find(chunk => binaryId in chunk.modules);
+    const core32 = chunks.find(chunk => core32Id in chunk.modules);
+    const binary32 = chunks.find(chunk => binary32Id in chunk.modules);
+    const licenses = chunks.find(chunk => `\0${NAIDAN_LICENSE_MODULE_ID}` in chunk.modules);
+    if (!core || !binary || !core32 || !binary32 || !licenses) throw new Error('Missing lazy native or license chunks');
+    const { base64, byteLength, sha256 } = z.object({ base64: z.string(), byteLength: z.number().int(), sha256: z.string() }).parse(evaluateDataModule({ source: binary.code }));
+    const wasm = readFileSync(coreId.replace('core.mjs', 'core.wasm'));
+    expect(byteLength).toBe(wasm.byteLength);
+    expect(sha256).toBe(createHash('sha256').update(wasm).digest('hex'));
+    // Keep a size budget on the encoded payload, independent of chunk naming.
+    expect(Buffer.from(base64, 'base64').byteLength).toBeLessThan(1_500_000);
+    expect(evaluateDataModule({ source: licenses.code }).default).toEqual(collectedDependencies);
+    expect(brotliDecompressSync(Buffer.from(base64, 'base64')).equals(readFileSync(coreId.replace('core.mjs', 'core.wasm')))).toBe(true);
+    const data32 = z.object({ base64: z.string(), byteLength: z.number().int(), sha256: z.string() }).parse(evaluateDataModule({ source: binary32.code }));
+    const wasm32 = readFileSync(core32Id.replace('core.mjs', 'core.wasm'));
+    expect(data32.byteLength).toBe(wasm32.byteLength);
+    expect(data32.sha256).toBe(createHash('sha256').update(wasm32).digest('hex'));
+    expect(brotliDecompressSync(Buffer.from(data32.base64, 'base64')).equals(wasm32)).toBe(true);
+    for (const entry of chunks.filter(chunk => chunk.isEntry)) {
+      const initial = closure({ entry, chunks, dynamic: false });
+      expect(initial.has(binary.fileName)).toBe(false); expect(initial.has(core.fileName)).toBe(false);
+      expect(initial.has(binary32.fileName)).toBe(false); expect(initial.has(core32.fileName)).toBe(false);
+      expect(initial.has(licenses.fileName)).toBe(false);
     }
+    const writer = chunks.find(chunk => chunk.facadeModuleId?.endsWith('/hugging-face/writer-entry.ts'));
+    if (!writer) throw new Error('Missing download Worker');
+    const writerGraph = closure({ entry: writer, chunks, dynamic: true });
+    expect(writerGraph.has(binary.fileName)).toBe(false); expect(writerGraph.has(core.fileName)).toBe(false);
+    expect(writerGraph.has(binary32.fileName)).toBe(false); expect(writerGraph.has(core32.fileName)).toBe(false);
+    expect(archives).toHaveLength(8);
+    expect(archives.map(archive => archive.locale)).toEqual([undefined, ...BOUNDARY_STRING_LOCALES]);
+    for (const archive of archives) {
+      for (const fileName of [core.fileName, binary.fileName, core32.fileName, binary32.fileName, licenses.fileName, 'llama-cpp-browser-native-licenses.txt']) {
+        expect(archive.names.filter(name => name === fileName)).toHaveLength(1);
+        expect(archive.hashes.get(fileName)).toBe(createHash('sha256').update(readFileSync(path.join(outputDirectory, fileName))).digest('hex'));
+      }
+      expect(archive.names).not.toContain('release-report.json');
+      expect(archive.names).not.toContain('debug-report.json');
+      expect(archive.names.some(name => /\.wasm(?:\.(?:gz|br))?$|\/core\.mjs$|llama-cpp-browser-runtime\//.test(name))).toBe(false);
+    }
+    const notices = readFileSync(path.join(outputDirectory, 'llama-cpp-browser-native-licenses.txt'), 'utf8');
+    expect(notices).toContain('Niels Lohmann'); expect(notices).toContain('David Reid');
+    expect(Buffer.byteLength(notices)).toBeLessThan(512 * 1024);
+    expect(diagnostics.embeddedBinaries).toHaveLength(2);
+    expect(diagnostics.embeddedBinaries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ virtualId: binaryId.slice(1), compression: 'brotli', owners: [binary.fileName] }),
+      expect.objectContaining({ virtualId: binary32Id.slice(1), compression: 'brotli', owners: [binary32.fileName] }),
+    ]));
   }, 120_000);
 });

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { collectStandaloneWorkerBudgetFailures, createStandaloneWorkerMetricsPlan, measureStandaloneWorkerMetricsFromDisk } from './release-build-metrics.js';
+import { createAsyncTestDisposable } from '../../src/utils/resource-cleanup.test-support';
 
 const files = [
   'assets/ui.js',
@@ -83,119 +84,120 @@ describe('createStandaloneWorkerMetricsPlan', () => {
       'file-protocol-standalone/system.min.js': 7,
       'assets/ui.css': 3,
     } as const;
-    try {
-      await Promise.all(Object.entries(sizedFiles).map(async ([fileName, bytes]) => {
-        const absolute = path.join(root, fileName);
-        await fs.mkdir(path.dirname(absolute), { recursive: true });
-        await fs.writeFile(absolute, Buffer.alloc(bytes));
-      }));
-      const plan = createStandaloneWorkerMetricsPlan({
-        files: Object.keys(sizedFiles),
-        chunks: [
-          {
-            fileName: 'assets/ui.js',
-            isEntry: true,
-            imports: ['assets/ui-worker-shared.js'],
-            dynamicImports: [],
-            moduleIds: ['/src/ui.ts'],
-          },
-          {
-            fileName: 'assets/ui-worker-shared.js',
-            imports: [],
-            dynamicImports: [],
-            moduleIds: ['/src/ui-worker-shared.ts'],
-          },
-          {
-            fileName: 'assets/worker-shared.js',
-            imports: [],
-            dynamicImports: [],
-            moduleIds: ['/src/worker-shared.ts'],
-          },
-          {
-            fileName: 'assets/worker-a.js',
-            isEntry: true,
-            imports: ['assets/ui-worker-shared.js', 'assets/worker-shared.js'],
-            dynamicImports: ['assets/worker-subset-lazy.js'],
-            moduleIds: ['/src/worker-a.ts'],
-          },
-          {
-            fileName: 'assets/worker-b.js',
-            isEntry: true,
-            imports: ['assets/ui-worker-shared.js', 'assets/worker-shared.js'],
-            dynamicImports: ['assets/worker-subset-lazy.js'],
-            moduleIds: ['/src/worker-b.ts'],
-          },
-          {
-            fileName: 'assets/worker-subset-lazy.js',
-            imports: [],
-            dynamicImports: [],
-            moduleIds: ['/src/worker-subset-lazy.ts'],
-          },
-        ],
-        uiEntryFileName: 'assets/ui.js',
-        workers: [
-          { name: 'worker-a', entryFileName: 'assets/worker-a.js' },
-          { name: 'worker-b', entryFileName: 'assets/worker-b.js' },
-        ],
-        runtimeFileNames: ['file-protocol-standalone/system.min.js'],
-        initialStyleFileNames: ['assets/ui.css'],
-        bootstrapSourceBytes: 5,
-      });
-      const metrics = await measureStandaloneWorkerMetricsFromDisk({
-        plan,
-        outputDirectory: root,
-      });
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await fs.rm(root, { recursive: true, force: true });
+      },
+    });
+    await Promise.all(Object.entries(sizedFiles).map(async ([fileName, bytes]) => {
+      const absolute = path.join(root, fileName);
+      await fs.mkdir(path.dirname(absolute), { recursive: true });
+      await fs.writeFile(absolute, Buffer.alloc(bytes));
+    }));
+    const plan = createStandaloneWorkerMetricsPlan({
+      files: Object.keys(sizedFiles),
+      chunks: [
+        {
+          fileName: 'assets/ui.js',
+          isEntry: true,
+          imports: ['assets/ui-worker-shared.js'],
+          dynamicImports: [],
+          moduleIds: ['/src/ui.ts'],
+        },
+        {
+          fileName: 'assets/ui-worker-shared.js',
+          imports: [],
+          dynamicImports: [],
+          moduleIds: ['/src/ui-worker-shared.ts'],
+        },
+        {
+          fileName: 'assets/worker-shared.js',
+          imports: [],
+          dynamicImports: [],
+          moduleIds: ['/src/worker-shared.ts'],
+        },
+        {
+          fileName: 'assets/worker-a.js',
+          isEntry: true,
+          imports: ['assets/ui-worker-shared.js', 'assets/worker-shared.js'],
+          dynamicImports: ['assets/worker-subset-lazy.js'],
+          moduleIds: ['/src/worker-a.ts'],
+        },
+        {
+          fileName: 'assets/worker-b.js',
+          isEntry: true,
+          imports: ['assets/ui-worker-shared.js', 'assets/worker-shared.js'],
+          dynamicImports: ['assets/worker-subset-lazy.js'],
+          moduleIds: ['/src/worker-b.ts'],
+        },
+        {
+          fileName: 'assets/worker-subset-lazy.js',
+          imports: [],
+          dynamicImports: [],
+          moduleIds: ['/src/worker-subset-lazy.ts'],
+        },
+      ],
+      uiEntryFileName: 'assets/ui.js',
+      workers: [
+        { name: 'worker-a', entryFileName: 'assets/worker-a.js' },
+        { name: 'worker-b', entryFileName: 'assets/worker-b.js' },
+      ],
+      runtimeFileNames: ['file-protocol-standalone/system.min.js'],
+      initialStyleFileNames: ['assets/ui.css'],
+      bootstrapSourceBytes: 5,
+    });
+    const metrics = await measureStandaloneWorkerMetricsFromDisk({
+      plan,
+      outputDirectory: root,
+    });
 
-      expect(metrics.ui.initialRequestBytes).toBe(40);
-      expect(metrics.workers.map(({ name, staticBytes, reachableBytes }) => ({ name, staticBytes, reachableBytes }))).toEqual([
-        { name: 'worker-a', staticBytes: 102, reachableBytes: 162 },
-        { name: 'worker-b', staticBytes: 112, reachableBytes: 172 },
-      ]);
-      expect(metrics.workerGraph).toMatchObject({
-        staticUnionBytes: 152,
-        reachableUnionBytes: 212,
-        sharedWithUiFiles: ['assets/ui-worker-shared.js', 'file-protocol-standalone/system.min.js'],
-        sharedWithUiBytes: 27,
-        workerOnlyStaticFiles: ['assets/worker-a.js', 'assets/worker-b.js', 'assets/worker-shared.js'],
-        workerOnlyStaticBytes: 120,
-        cumulativeColdStartEvaluationBytes: 214,
+    expect(metrics.ui.initialRequestBytes).toBe(40);
+    expect(metrics.workers.map(({ name, staticBytes, reachableBytes }) => ({ name, staticBytes, reachableBytes }))).toEqual([
+      { name: 'worker-a', staticBytes: 102, reachableBytes: 162 },
+      { name: 'worker-b', staticBytes: 112, reachableBytes: 172 },
+    ]);
+    expect(metrics.workerGraph).toMatchObject({
+      staticUnionBytes: 152,
+      reachableUnionBytes: 212,
+      sharedWithUiFiles: ['assets/ui-worker-shared.js', 'file-protocol-standalone/system.min.js'],
+      sharedWithUiBytes: 27,
+      workerOnlyStaticFiles: ['assets/worker-a.js', 'assets/worker-b.js', 'assets/worker-shared.js'],
+      workerOnlyStaticBytes: 120,
+      cumulativeColdStartEvaluationBytes: 214,
+      maxWorkerStaticBytes: 112,
+    });
+    expect(collectStandaloneWorkerBudgetFailures({
+      metrics,
+      budgets: {
+        maxWorkerStaticUnionBytes: 152,
+        maxCumulativeWorkerColdStartBytes: 214,
         maxWorkerStaticBytes: 112,
-      });
-      expect(collectStandaloneWorkerBudgetFailures({
-        metrics,
-        budgets: {
-          maxWorkerStaticUnionBytes: 152,
-          maxCumulativeWorkerColdStartBytes: 214,
-          maxWorkerStaticBytes: 112,
-          maxWorkerStaticBytesByName: { 'worker-a': 102, 'worker-b': 112 },
+        maxWorkerStaticBytesByName: { 'worker-a': 102, 'worker-b': 112 },
+      },
+    })).toEqual([]);
+    expect(collectStandaloneWorkerBudgetFailures({
+      metrics,
+      budgets: {
+        maxWorkerStaticUnionBytes: 151,
+        maxCumulativeWorkerColdStartBytes: 213,
+        maxWorkerStaticBytes: 111,
+        maxWorkerStaticBytesByName: { 'worker-a': 101 },
+      },
+    })).toEqual([
+      'Worker static union 152 bytes exceeds 151 bytes',
+      'all-Worker cumulative cold-start evaluation 214 bytes exceeds 213 bytes',
+      'largest Worker static closure 112 bytes exceeds 111 bytes',
+      'Worker worker-a static closure 102 bytes exceeds 101 bytes',
+    ]);
+    expect(collectStandaloneWorkerBudgetFailures({
+      metrics: {
+        ...metrics,
+        deduplication: {
+          duplicateModuleOwners: [{ moduleId: '/src/shared.ts', owners: ['assets/a.js', 'assets/b.js'] }],
+          duplicateModuleOwnerCount: 1,
         },
-      })).toEqual([]);
-      expect(collectStandaloneWorkerBudgetFailures({
-        metrics,
-        budgets: {
-          maxWorkerStaticUnionBytes: 151,
-          maxCumulativeWorkerColdStartBytes: 213,
-          maxWorkerStaticBytes: 111,
-          maxWorkerStaticBytesByName: { 'worker-a': 101 },
-        },
-      })).toEqual([
-        'Worker static union 152 bytes exceeds 151 bytes',
-        'all-Worker cumulative cold-start evaluation 214 bytes exceeds 213 bytes',
-        'largest Worker static closure 112 bytes exceeds 111 bytes',
-        'Worker worker-a static closure 102 bytes exceeds 101 bytes',
-      ]);
-      expect(collectStandaloneWorkerBudgetFailures({
-        metrics: {
-          ...metrics,
-          deduplication: {
-            duplicateModuleOwners: [{ moduleId: '/src/shared.ts', owners: ['assets/a.js', 'assets/b.js'] }],
-            duplicateModuleOwnerCount: 1,
-          },
-        },
-      })).toEqual(['duplicate module owners 1 exceeds 0']);
-    } finally {
-      await fs.rm(root, { recursive: true, force: true });
-    }
+      },
+    })).toEqual(['duplicate module owners 1 exceeds 0']);
   });
 
   it('fails closed when distribution files and the chunk graph disagree', () => {

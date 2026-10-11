@@ -13,6 +13,7 @@ import type { AssistantMessageNode, ChatContent, UserMessageNode, ToolMessageNod
 import type { InferenceGenerationEvent } from '@/features/transformers-js/generation-events';
 import type { GenerationStrategy } from '@/features/transformers-js/generation-strategies';
 import type { NativeProtocolStreamer as NativeStreamerType } from '@/features/transformers-js/models/native-protocol-streamer';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 type GenerationStrategyContext = Parameters<GenerationStrategy['generate']>[0];
 
@@ -141,26 +142,27 @@ describe('Gemma native output with the Production streamer and original tokenize
             },
             onFailure: () => {},
           });
-          try {
-            await selectGenerationStrategy({ modelType: 'gemma4', activeModelId: modelId }).generate({
-              model: { config: {}, generate: nativeGenerate } as unknown as GenerationStrategyContext['model'],
-              tokenizer: tokenizer as unknown as GenerationStrategyContext['tokenizer'],
-              messages: [{ role: 'user', content: 'Run the source-derived example.' }],
-              onChunk,
-              onToolCalls,
-              onRawChunk: () => {},
-              params: undefined,
-              tools: [{ type: 'function', function: { name: 'calculator', description: 'Arithmetic', parameters: { type: 'object', properties: { expression: { type: 'string' } } } } }],
-              stoppingCriteria: { reset: () => {}, interrupt: () => {} },
-              runtimeState: state,
-              debugLog: () => {},
-              observationSink: undefined,
-              generationCapture: undefined,
-              onGenerationEvent: ({ event }) => queue.enqueue({ event }),
-            });
-          } finally {
-            await queue.finish();
-          }
+          await using _cleanupResource = createAsyncTestDisposable({
+            dispose: async () => {
+              await queue.finish();
+            },
+          });
+          await selectGenerationStrategy({ modelType: 'gemma4', activeModelId: modelId }).generate({
+            model: { config: {}, generate: nativeGenerate } as unknown as GenerationStrategyContext['model'],
+            tokenizer: tokenizer as unknown as GenerationStrategyContext['tokenizer'],
+            messages: [{ role: 'user', content: 'Run the source-derived example.' }],
+            onChunk,
+            onToolCalls,
+            onRawChunk: () => {},
+            params: undefined,
+            tools: [{ type: 'function', function: { name: 'calculator', description: 'Arithmetic', parameters: { type: 'object', properties: { expression: { type: 'string' } } } } }],
+            stoppingCriteria: { reset: () => {}, interrupt: () => {} },
+            runtimeState: state,
+            debugLog: () => {},
+            observationSink: undefined,
+            generationCapture: undefined,
+            onGenerationEvent: ({ event }) => queue.enqueue({ event }),
+          });
         },
       }),
     });

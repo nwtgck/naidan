@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { contract, procedure } from './contract';
 import { NaidanRpcPeer } from './peer';
 import type { NaidanRpcDuplex, NaidanRpcTransport } from './transport';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const definition = contract({
   name: 'test.retirement',
@@ -211,13 +212,14 @@ it('aborts an outgoing duplex when it cannot acquire the framed stream writers',
     signal: new AbortController().signal,
   });
   const call = peer.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
-  try {
-    await expect(call.result).rejects.toBeInstanceOf(TypeError); await expect(call.closed).rejects.toBeInstanceOf(TypeError);
-    await peer.retire();
-    expect(abort).toHaveBeenCalledOnce(); expect(readable.locked).toBe(false);
-  } finally {
-    locked.releaseLock(); await peer.retire();
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      locked.releaseLock(); await peer.retire();
+    },
+  });
+  await expect(call.result).rejects.toBeInstanceOf(TypeError); await expect(call.closed).rejects.toBeInstanceOf(TypeError);
+  await peer.retire();
+  expect(abort).toHaveBeenCalledOnce(); expect(readable.locked).toBe(false);
 });
 
 it('retains a failed late-duplex abort while still joining the other pending opens', async () => {
@@ -248,18 +250,19 @@ it('retains a failed late-duplex abort while still joining the other pending ope
   const abort = vi.fn(() => {
       throw failure;
     }), otherAbort = vi.fn();
-  try {
-    openings[0]!.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort });
-    await vi.waitFor(() => expect(abort).toHaveBeenCalledOnce());
-    expect(settled).toBe(false);
-    openings[1]!.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort: otherAbort });
-    await expect(retirement).rejects.toBe(failure);
-    expect(otherAbort).toHaveBeenCalledOnce();
-    await expect(peer.retire()).rejects.toBe(failure);
-  } finally {
-    for (const opening of openings) opening.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort: () => {} });
-    await retirement.catch(() => {});
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      for (const opening of openings) opening.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort: () => {} });
+      await retirement.catch(() => {});
+    },
+  });
+  openings[0]!.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort });
+  await vi.waitFor(() => expect(abort).toHaveBeenCalledOnce());
+  expect(settled).toBe(false);
+  openings[1]!.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort: otherAbort });
+  await expect(retirement).rejects.toBe(failure);
+  expect(otherAbort).toHaveBeenCalledOnce();
+  await expect(peer.retire()).rejects.toBe(failure);
 });
 
 it('does not report retirement success if an incoming duplex rejected during shutdown cannot be aborted', async () => {
@@ -329,22 +332,23 @@ it('retains adopted duplex abort failures and waits for framed cleanup before re
   });
   const call = peer.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   void call.result.catch(() => {}); void call.closed.catch(() => {});
-  try {
-    await written.promise; call.cancel({ reason: 'Caller cancelled an adopted call' });
-    await expect(call.result).rejects.toMatchObject({ code: 'CANCELLED' });
-    const retirement = peer.retire(); let settled = false;
-    void retirement.then(() => {
-      settled = true;
-    }, () => {
-      settled = true;
-    });
-    await vi.waitFor(() => expect(writeAbort).toHaveBeenCalledOnce());
-    expect(cancelled).toHaveBeenCalledOnce(); expect(settled).toBe(false);
-    ending.resolve(); await expect(retirement).rejects.toBe(failure);
-    await expect(peer.retire()).rejects.toBe(failure);
-  } finally {
-    ending.resolve(); await peer.retire().catch(() => {});
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      ending.resolve(); await peer.retire().catch(() => {});
+    },
+  });
+  await written.promise; call.cancel({ reason: 'Caller cancelled an adopted call' });
+  await expect(call.result).rejects.toMatchObject({ code: 'CANCELLED' });
+  const retirement = peer.retire(); let settled = false;
+  void retirement.then(() => {
+    settled = true;
+  }, () => {
+    settled = true;
+  });
+  await vi.waitFor(() => expect(writeAbort).toHaveBeenCalledOnce());
+  expect(cancelled).toHaveBeenCalledOnce(); expect(settled).toBe(false);
+  ending.resolve(); await expect(retirement).rejects.toBe(failure);
+  await expect(peer.retire()).rejects.toBe(failure);
 });
 
 it('failed outgoing adoption retains capacity until its owned discard completes', async () => {

@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { computed } from 'vue';
 import ImageModelConfiguration from './ImageModelConfiguration.vue';
 import { mount } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { createDisabledImageLibrary } from '@/features/stable-diffusion-cpp-browser/library-standalone';
 import ImageModelLibrary from './ImageModelLibrary.vue';
 

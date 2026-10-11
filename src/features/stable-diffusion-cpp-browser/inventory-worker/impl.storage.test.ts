@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { hostModelHandles, type HostModelDirectoryHandle } from '@/00-storage/service/host-model-handles';
-import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage';
-import { ggufFixture, zImageTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
+import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
+import { ggufFixture, zImageTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights.test-support';
 import { createInventoryWorker } from './impl';
 
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: vi.fn() } }));

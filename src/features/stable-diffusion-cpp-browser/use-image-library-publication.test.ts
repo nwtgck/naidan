@@ -4,7 +4,7 @@ import { effectScope, ref } from 'vue';
 import { useImageLibrary } from './use-image-library';
 import { imageModelRecipes } from './model-recipes';
 import { scanImageRepositories, type ModelInventory } from './logic/model-candidates';
-import { ggufFixture, zImageTensors } from './test-utils/weights';
+import { ggufFixture, zImageTensors } from './test-utils/weights.test-support';
 
 const mocks = vi.hoisted(() => ({ refresh: vi.fn(), download: vi.fn(), inspect: vi.fn(), change: vi.fn(), stopDownload: vi.fn() }));
 vi.mock('./download-worker/client', () => ({ downloadImageRecipeInWorker: (...args: unknown[]) => mocks.download(...args) }));

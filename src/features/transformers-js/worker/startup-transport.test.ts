@@ -10,6 +10,7 @@ import { createDownloadVerificationCandidateAcceptanceWorkerClient } from '@/fea
 import { RequiredDownloadedResourceCleanupError } from '@/features/transformers-js/runtime/required-downloaded-resource-operation';
 import type { DownloadedModelRevisionSelection } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
 import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const workers: TransportWorker[] = [];
 const clients: Array<{ dispose(): Promise<void> }> = [];
@@ -80,35 +81,36 @@ describe('Production startup through real Comlink transport', () => {
     vi.stubGlobal('Worker', TransportWorker);
     const owner = createTransformersJsService({ createWorkerClient: createTransformersJsWorkerClient });
     const physicalFailure = new Error('Synthetic physical Worker termination failure');
-    try {
-      // A public restart creates the first actual client without needing any
-      // model files. Then exercise its ready session over real Comlink.
-      await owner.service.restart();
-      const worker = currentWorker();
-      const resetCache = vi.fn(async () => undefined);
-      expose({ resetCache }, worker.endpoint);
-      worker.publishReady();
-      await owner.service.resetCache();
-      expect(resetCache).toHaveBeenCalledOnce();
-      worker.terminate.mockImplementation(() => {
-        throw physicalFailure;
-      });
-      const retirement = await owner.service.restart().then(
-        () => ({ status: 'fulfilled' as const }),
-        (error: unknown) => ({ status: 'rejected' as const, error }),
-      );
-      expect({ retirement, workerCount: workers.length }).toEqual({
-        retirement: { status: 'rejected', error: physicalFailure },
-        workerCount: 1,
-      });
-      await expect(owner.service.resetCache()).rejects.toThrow();
-      expect(resetCache).toHaveBeenCalledOnce();
-      expect(worker.terminate).toHaveBeenCalledOnce();
-    } finally {
-      // The fixture owns its MessagePorts even if simulated native termination
-      // fails; afterEach closes them independently of the production owner.
-      await owner.dispose().catch(() => undefined);
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        // The fixture owns its MessagePorts even if simulated native termination
+        // fails; afterEach closes them independently of the production owner.
+        await owner.dispose().catch(() => undefined);
+      },
+    });
+    // A public restart creates the first actual client without needing any
+    // model files. Then exercise its ready session over real Comlink.
+    await owner.service.restart();
+    const worker = currentWorker();
+    const resetCache = vi.fn(async () => undefined);
+    expose({ resetCache }, worker.endpoint);
+    worker.publishReady();
+    await owner.service.resetCache();
+    expect(resetCache).toHaveBeenCalledOnce();
+    worker.terminate.mockImplementation(() => {
+      throw physicalFailure;
+    });
+    const retirement = await owner.service.restart().then(
+      () => ({ status: 'fulfilled' as const }),
+      (error: unknown) => ({ status: 'rejected' as const, error }),
+    );
+    expect({ retirement, workerCount: workers.length }).toEqual({
+      retirement: { status: 'rejected', error: physicalFailure },
+      workerCount: 1,
+    });
+    await expect(owner.service.resetCache()).rejects.toThrow();
+    expect(resetCache).toHaveBeenCalledOnce();
+    expect(worker.terminate).toHaveBeenCalledOnce();
   });
 
   it('terminates ordinary Load after a cleanup failure crosses real Comlink and blocks reuse', async () => {

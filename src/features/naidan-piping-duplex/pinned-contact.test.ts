@@ -8,7 +8,8 @@ import { FiniteTransferEndpoint } from './finite-transfer';
 import { pinnedPeerRoutes } from './peer-routes';
 import { encodeProtocolHeader } from './protocol-header';
 import { joinBytes } from './bytes';
-import { useOfflineScope } from './test-support';
+import { useOfflineScope } from './index.test-support';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 useOfflineScope();
 
@@ -223,13 +224,9 @@ it.each(['monotonic', 'wall'] as const)('checks a prepared contact deadline agai
   const [a, b] = await Promise.all([f.prepare({ index: 0, heldContext: undefined }), f.prepare({ index: 1, heldContext: undefined })]);
   if (a!.kind !== 'candidate' || b!.kind !== 'candidate') throw new Error('Expected candidates');
   const target = clock === 'wall' ? Date : performance;
-  const now = target.now(); const shifted = vi.spyOn(target, 'now').mockReturnValue(now + 1000);
-  try {
-    expect(() => a!.assertAvailable()).toThrow();
-    expect(f.relay.posts.some(post => post.bytes[13] === 0x20)).toBe(false);
-  } finally {
-    shifted.mockRestore();
-  }
+  const now = target.now(); using _shifted = vi.spyOn(target, 'now').mockReturnValue(now + 1000);
+  expect(() => a!.assertAvailable()).toThrow();
+  expect(f.relay.posts.some(post => post.bytes[13] === 0x20)).toBe(false);
 });
 
 it.each(['monotonic', 'wall'] as const)('finishing directly cannot bypass a delayed %s deadline callback', async clock => {
@@ -240,13 +237,14 @@ it.each(['monotonic', 'wall'] as const)('finishing directly cannot bypass a dela
   const sampled = clock === 'monotonic' ? performance.now() : Date.now();
   const spy = clock === 'monotonic' ? vi.spyOn(performance, 'now').mockReturnValue(sampled + 1000) : vi.spyOn(Date, 'now').mockReturnValue(sampled + 1000);
   const postsBefore = f.relay.posts.length;
-  try {
-    await expect(f.finish({ candidate: first })).rejects.toBeDefined();
-    expect(f.relay.posts).toHaveLength(postsBefore);
-    expect(f.relay.posts.some(post => post.bytes[13] === 0x20)).toBe(false);
-    expect(f.relay.occupied).toBe(0);
-    await expect(first.finish()).rejects.toThrow('already consumed');
-  } finally {
-    spy.mockRestore();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      spy.mockRestore();
+    },
+  });
+  await expect(f.finish({ candidate: first })).rejects.toBeDefined();
+  expect(f.relay.posts).toHaveLength(postsBefore);
+  expect(f.relay.posts.some(post => post.bytes[13] === 0x20)).toBe(false);
+  expect(f.relay.occupied).toBe(0);
+  await expect(first.finish()).rejects.toThrow('already consumed');
 });

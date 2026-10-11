@@ -7,6 +7,7 @@ import { toMessageId, toToolCallId } from '@/01-models/ids';
 import type { InferenceGenerationCallback } from '@/features/transformers-js/generation-events';
 import { createProductionProviderCaptureOwner, type ProductionProviderCapturePlan, type ProductionProviderCaptureSnapshot } from './production-provider-capture-owner';
 import { createProductionProviderCaptureEvidence, readProductionProviderCaptureEvidence, PRODUCTION_PROVIDER_CAPTURE_JSON_MAXIMUM_CHARACTERS } from './production-provider-capture-evidence';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const owners: Array<ReturnType<typeof createProductionProviderCaptureOwner>> = [];
 let fs: ReturnType<typeof createMemoryFiles>;
@@ -81,13 +82,14 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  try {
-    await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-    expect(fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-  } finally {
-    vi.restoreAllMocks(); vi.unstubAllGlobals();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      vi.restoreAllMocks(); vi.unstubAllGlobals();
+    },
+  });
+  await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
+  expect(globalThis.fetch).not.toHaveBeenCalled();
+  expect(fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
 });
 
 // Snapshots come from the real owner/service/Provider/trace. Only native Worker

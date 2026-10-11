@@ -4,7 +4,7 @@ import { createChatGenerationStream } from '@/logic/create-chat-generation-strea
 import { getMessageText } from '@/01-models/message-text';
 import { idToRaw, toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 import { storageService } from '@/00-storage/service';
 import { reactive } from 'vue';
 import type { SidebarItem, Hierarchy, AssistantMessageNode } from '@/01-models/types';

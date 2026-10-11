@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import DebugWeshTerminalModal from './DebugWeshTerminalModal.vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 const mocks = vi.hoisted(() => ({
   startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-1' }),

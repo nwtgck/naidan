@@ -3,6 +3,7 @@ import { expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { NaidanRpcPeer, NaidanRpcCallBudget, contract, expose, procedure } from './index';
 import { transportPair } from './test-transport';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 it('joins old network ownership without freeing a canceled native job or allowing a new shared call', async () => {
   const budget = new NaidanRpcCallBudget({ capacity: 1 });
@@ -17,26 +18,27 @@ it('joins old network ownership without freeing a canceled native job or allowin
   const caller = new NaidanRpcPeer({ transport: wire.a, exports: [], limits, signal });
   const next = new NaidanRpcPeer({ transport: nextWire.a, exports: [], limits, signal, callBudget: budget });
   const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal, timeoutMs: undefined });
-  try {
-    await started.promise;
-    await old.retireNetwork();
-    let fullyRetired = false; const retirement = old.retire().then(() => {
-      fullyRetired = true;
-    });
-    await Promise.resolve(); expect(fullyRetired).toBe(false);
-    expect(budget.reserve()).toBeUndefined();
-    const blocked = next.client({ contract: definition }).run({ input: {}, on: {}, signal, timeoutMs: undefined });
-    await expect(blocked.result).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
-    await expect(blocked.closed).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
-    expect(nextWire.stats().total).toBe(0);
-    finish.resolve(); await retirement; expect(fullyRetired).toBe(true);
-    const release = budget.reserve(); expect(release).toBeDefined(); release!(); release!();
-    await expect(call.result).rejects.toBeDefined(); await expect(call.closed).rejects.toBeDefined();
-    expect(handler).toHaveBeenCalledOnce();
-  } finally {
-    finish.resolve(); wire.close(); nextWire.close();
-    await Promise.all([old.retire(), caller.retire(), next.retire()]);
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      finish.resolve(); wire.close(); nextWire.close();
+      await Promise.all([old.retire(), caller.retire(), next.retire()]);
+    },
+  });
+  await started.promise;
+  await old.retireNetwork();
+  let fullyRetired = false; const retirement = old.retire().then(() => {
+    fullyRetired = true;
+  });
+  await Promise.resolve(); expect(fullyRetired).toBe(false);
+  expect(budget.reserve()).toBeUndefined();
+  const blocked = next.client({ contract: definition }).run({ input: {}, on: {}, signal, timeoutMs: undefined });
+  await expect(blocked.result).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
+  await expect(blocked.closed).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
+  expect(nextWire.stats().total).toBe(0);
+  finish.resolve(); await retirement; expect(fullyRetired).toBe(true);
+  const release = budget.reserve(); expect(release).toBeDefined(); release!(); release!();
+  await expect(call.result).rejects.toBeDefined(); await expect(call.closed).rejects.toBeDefined();
+  expect(handler).toHaveBeenCalledOnce();
 });
 
 it('shares a single finite call budget with idempotent release', () => {
@@ -77,17 +79,19 @@ it('retains shared call capacity after late native cleanup failure instead of re
     })],
   });
   const call = caller.client({ contract: definition }).stream({ input: {}, on: {}, signal, timeoutMs: undefined });
+  // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
   let retirement: Promise<void> | undefined;
-  try {
-    const reading = (await call.result).getReader().read(); void reading.catch(() => {});
-    await started.promise; await callee.retireNetwork();
-    retirement = callee.retire(); const rejected = expect(retirement).rejects.toBeDefined();
-    expect(budget.reserve()).toBeUndefined();
-    finish.resolve(); await rejected;
-    expect(budget.reserve()).toBeUndefined();
-    await expect(call.closed).rejects.toBeDefined();
-  } finally {
-    finish.resolve(); wire.close();
-    await Promise.allSettled([caller.retire(), retirement ?? callee.retire()]);
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      finish.resolve(); wire.close();
+      await Promise.allSettled([caller.retire(), retirement ?? callee.retire()]);
+    },
+  });
+  const reading = (await call.result).getReader().read(); void reading.catch(() => {});
+  await started.promise; await callee.retireNetwork();
+  retirement = callee.retire(); const rejected = expect(retirement).rejects.toBeDefined();
+  expect(budget.reserve()).toBeUndefined();
+  finish.resolve(); await rejected;
+  expect(budget.reserve()).toBeUndefined();
+  await expect(call.closed).rejects.toBeDefined();
 });

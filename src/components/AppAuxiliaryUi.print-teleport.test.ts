@@ -4,6 +4,7 @@ import { reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { PrintMode } from '@/composables/usePrint';
 import AppAuxiliaryUi from './AppAuxiliaryUi.vue';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const activePrintMode = ref<PrintMode>(undefined);
 
@@ -108,19 +109,20 @@ describe('AppAuxiliaryUi print teleport integration', () => {
     activePrintMode.value = 'chat';
     const { appHost, wrapper } = await mountAuxiliaryUi();
 
-    try {
-      await vi.waitFor(() => {
-        expect(document.body.querySelector(':scope > .naidan-print-view-layer')).not.toBeNull();
-      });
-      const printLayer = document.body.querySelector<HTMLElement>(':scope > .naidan-print-view-layer');
-      expect(printLayer?.parentElement).toBe(document.body);
-      expect(appHost.contains(printLayer)).toBe(false);
-      expect(printLayer?.querySelector('[data-testid="chat-print-content"]')).not.toBeNull();
-      expect(printLayer?.style.display).toBe('none');
-    } finally {
-      wrapper.unmount();
-      appHost.remove();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        wrapper.unmount();
+        appHost.remove();
+      },
+    });
+    await vi.waitFor(() => {
+      expect(document.body.querySelector(':scope > .naidan-print-view-layer')).not.toBeNull();
+    });
+    const printLayer = document.body.querySelector<HTMLElement>(':scope > .naidan-print-view-layer');
+    expect(printLayer?.parentElement).toBe(document.body);
+    expect(appHost.contains(printLayer)).toBe(false);
+    expect(printLayer?.querySelector('[data-testid="chat-print-content"]')).not.toBeNull();
+    expect(printLayer?.style.display).toBe('none');
   });
 
   it('preserves document-level dark ancestry for the real teleported PrintView', async () => {
@@ -128,35 +130,37 @@ describe('AppAuxiliaryUi print teleport integration', () => {
     activePrintMode.value = 'chat';
     const { appHost, wrapper } = await mountAuxiliaryUi();
 
-    try {
-      await vi.waitFor(() => {
-        expect(document.body.querySelector(':scope > .naidan-print-view-layer')).not.toBeNull();
-      });
-      const printLayer = document.body.querySelector<HTMLElement>(':scope > .naidan-print-view-layer');
-      expect(printLayer?.closest('.dark')).toBe(document.documentElement);
-      expect(document.documentElement.classList.contains('dark')).toBe(true);
-    } finally {
-      wrapper.unmount();
-      appHost.remove();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        wrapper.unmount();
+        appHost.remove();
+      },
+    });
+    await vi.waitFor(() => {
+      expect(document.body.querySelector(':scope > .naidan-print-view-layer')).not.toBeNull();
+    });
+    const printLayer = document.body.querySelector<HTMLElement>(':scope > .naidan-print-view-layer');
+    expect(printLayer?.closest('.dark')).toBe(document.documentElement);
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
   });
 
   it('removes the body-level print layer when print mode returns to inactive', async () => {
     activePrintMode.value = 'chat';
     const { appHost, wrapper } = await mountAuxiliaryUi();
 
-    try {
-      await vi.waitFor(() => {
-        expect(document.body.querySelector(':scope > .naidan-print-view-layer')).not.toBeNull();
-      });
-      activePrintMode.value = undefined;
-      await flushPromises();
-      await vi.waitFor(() => {
-        expect(document.body.querySelector(':scope > .naidan-print-view-layer')).toBeNull();
-      });
-    } finally {
-      wrapper.unmount();
-      appHost.remove();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        wrapper.unmount();
+        appHost.remove();
+      },
+    });
+    await vi.waitFor(() => {
+      expect(document.body.querySelector(':scope > .naidan-print-view-layer')).not.toBeNull();
+    });
+    activePrintMode.value = undefined;
+    await flushPromises();
+    await vi.waitFor(() => {
+      expect(document.body.querySelector(':scope > .naidan-print-view-layer')).toBeNull();
+    });
   });
 });

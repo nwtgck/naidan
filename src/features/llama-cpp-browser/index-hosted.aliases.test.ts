@@ -3,11 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { storageService } from '@/00-storage/service';
 import { toHostModelDirectoryId } from '@/01-models/ids';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
-import { audioResult } from '@/features/audio-generation/test-utils/wav';
+import { audioResult } from '@/features/audio-generation/test-utils/wav.test-support';
 import type { LlamaCppBrowserService } from './service-contract';
 import type { LlamaCppWorkerClient } from './worker/types';
 import { LlamaCppBrowserError, type GenerationResult } from './types';
 import type { ProfileCapabilities } from './runtime/profile-capabilities';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const worker = vi.hoisted(() => ({
   releaseRuntime: vi.fn<LlamaCppWorkerClient['releaseRuntime']>(),
@@ -64,11 +65,12 @@ async function execute({ entry, model }: { entry: Entry, model: string }) {
   });
   case 'read-only': {
     const client = hosted.createReadOnlyLlamaCppClient();
-    try {
-      return await client.generate({ input: input({ model }), onEvent: () => {}, onProgress: () => {}, signal: undefined });
-    } finally {
-      await client.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await client.dispose();
+      },
+    });
+    return await client.generate({ input: input({ model }), onEvent: () => {}, onProgress: () => {}, signal: undefined });
   }
   default: { const exhaustive: never = entry; throw new Error(String(exhaustive)); }
   }

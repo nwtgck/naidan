@@ -4,7 +4,7 @@ import { nextTick } from 'vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
 import { urlImportExportLogic } from '@/features/import-export/url-logic';
 import { useToast } from '@/composables/useToast';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 vi.mock('@/features/import-export/url-logic', () => ({
   urlImportExportLogic: {

@@ -1,9 +1,9 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { imagePendingRuns } from '@/features/image-generation/session/pending-runs';
 import { toImageGenerationId, toImageGenerationStoreId, toImageGenerationSessionId } from '@/01-models/ids';
-import { generationRunFixture } from '@/00-storage/service/image-generation/test-support';
+import { generationRunFixture } from '@/00-storage/service/image-generation/index.test-support';
 import { finishImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
 import ImagePendingRuns from './ImagePendingRuns.vue';
 const mocks = vi.hoisted(() => ({ confirm: vi.fn(), download: vi.fn(), url: vi.fn(), revoke: vi.fn() }));

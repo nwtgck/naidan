@@ -1,6 +1,6 @@
 import type { ChatId, MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
@@ -8,7 +8,7 @@ import { ref, nextTick, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { MessageNode, Chat } from '@/01-models/types';
 
-import { setupScrollToMock } from '@/utils/test-utils';
+import { setupScrollToMock } from '@/utils/utils.test-support';
 import { toChatId } from '@/01-models/ids';
 
 beforeEach(async () => {
@@ -56,7 +56,7 @@ vi.mock('../composables/useLayout', () => ({
   }),
 }));
 
-vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support', () => ({
   useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: mockCurrentChatGroup,

@@ -3,7 +3,7 @@ import { nextTick } from 'vue'; // Imported nextTick from vue
 import { useConfirm } from './useConfirm';
 import { mount } from '@vue/test-utils';
 import { defineComponent } from 'vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 // Mock the global CustomDialog component
 const MockCustomDialog = defineComponent({

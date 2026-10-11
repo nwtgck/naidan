@@ -16,6 +16,7 @@ import { createRpcProtocolAdvertisement, NaidanRpcProtocolError, expose, NaidanR
 import { describePeerMethods, naidanPeerContract } from '@/features/naidan-rpc-integration/contract';
 import { createNaidanPeerImplementation } from '@/features/naidan-rpc-integration/implementation';
 import { RpcOwnerBusyError } from './owner';
+import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const cleanups: (() => Promise<void>)[] = [];
 
@@ -338,27 +339,28 @@ it('provides discovery with no inference grants and reports effective restrictio
     limits: { maxCalls: 4, maxCallTimeoutMs: 1000 },
     signal: new AbortController().signal,
   });
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      other.dispose();
+    },
+  });
+  expect(await manager.getPeerProvidedMethods({ id: record.id, signal: new AbortController().signal })).toEqual({ status: 'ready', methods: describePeerMethods({ names: ['listImageModels', 'generateImage'] }) });
+  vi.mocked(storage.update).mockRejectedValueOnce(new Error('quota'));
+  await expect(manager.updateInboundAllowedMethods({ id: record.id, inboundAllowedMethods: [] })).rejects.toThrow('quota');
+  expect(manager.list()[0]?.access.saved).toEqual(['listChatModels']);
+  const discovery = other.client({ contract: naidanPeerContract }).getProvidedMethods({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
+  expect(await discovery.result).toEqual({ status: 'ready', methods: [] }); await discovery.closed;
+  const checking = Promise.withResolvers<NaidanRpcRegistrySnapshot>(); vi.mocked(storage.list).mockReturnValueOnce(checking.promise);
+  const validated = manager.revalidate();
   try {
+    expect(() => manager.client({ id: record.id })).toThrow('verification');
     expect(await manager.getPeerProvidedMethods({ id: record.id, signal: new AbortController().signal })).toEqual({ status: 'ready', methods: describePeerMethods({ names: ['listImageModels', 'generateImage'] }) });
-    vi.mocked(storage.update).mockRejectedValueOnce(new Error('quota'));
-    await expect(manager.updateInboundAllowedMethods({ id: record.id, inboundAllowedMethods: [] })).rejects.toThrow('quota');
-    expect(manager.list()[0]?.access.saved).toEqual(['listChatModels']);
-    const discovery = other.client({ contract: naidanPeerContract }).getProvidedMethods({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
-    expect(await discovery.result).toEqual({ status: 'ready', methods: [] }); await discovery.closed;
-    const checking = Promise.withResolvers<NaidanRpcRegistrySnapshot>(); vi.mocked(storage.list).mockReturnValueOnce(checking.promise);
-    const validated = manager.revalidate();
-    try {
-      expect(() => manager.client({ id: record.id })).toThrow('verification');
-      expect(await manager.getPeerProvidedMethods({ id: record.id, signal: new AbortController().signal })).toEqual({ status: 'ready', methods: describePeerMethods({ names: ['listImageModels', 'generateImage'] }) });
-    } finally {
-      checking.resolve(snapshot({ registrations: [{ ...record, inboundAllowedMethods: ['listChatModels'] }] })); await validated;
-    }
-    for (const resource of Object.values(resources)) expect(resource).not.toHaveBeenCalled();
-    await manager.disconnect({ id: record.id });
-    await expect(manager.getPeerProvidedMethods({ id: record.id, signal: new AbortController().signal })).rejects.toThrow();
   } finally {
-    other.dispose();
+    checking.resolve(snapshot({ registrations: [{ ...record, inboundAllowedMethods: ['listChatModels'] }] })); await validated;
   }
+  for (const resource of Object.values(resources)) expect(resource).not.toHaveBeenCalled();
+  await manager.disconnect({ id: record.id });
+  await expect(manager.getPeerProvidedMethods({ id: record.id, signal: new AbortController().signal })).rejects.toThrow();
 });
 
 it('failed restriction persistence remains restricted on explicit reconnection', async () => {
@@ -592,22 +594,23 @@ it('suspends inbound admission while checking storage without connecting or scan
   const gate = Promise.withResolvers<NaidanRpcRegistrySnapshot>(); vi.mocked(storage.list).mockReturnValueOnce(gate.promise);
   const checking = manager.revalidate();
   const peer = new NaidanRpcPeer({ transport: links[0]!.b, exports: [], limits: { maxCalls: 4, maxCallTimeoutMs: 1000 }, signal: new AbortController().signal });
-  try {
-    const discovery = peer.client({ contract: naidanPeerContract }).getProvidedMethods({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
-    expect(await discovery.result).toEqual({ status: 'checking', methods: [] }); await discovery.closed;
-    const rejected = peer.client({ contract: naidanPeerContract }).listChatModels({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
-    await expect(rejected.result).rejects.toMatchObject({ code: 'METHOD_NOT_ALLOWED' });
-    await expect(rejected.closed).rejects.toBeDefined(); expect(resources.listChatModels).not.toHaveBeenCalled();
-    gate.resolve(snapshot({ registrations: [current] })); await checking;
-    expect(manager.list()[0]?.phase).toBe('connected');
-    const confirmed = peer.client({ contract: naidanPeerContract }).getProvidedMethods({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
-    expect(await confirmed.result).toEqual({ status: 'ready', methods: describePeerMethods({ names: ['listChatModels'] }) }); await confirmed.closed;
-    const accepted = peer.client({ contract: naidanPeerContract }).listChatModels({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
-    const reader = (await accepted.result).getReader(); expect((await reader.read()).value?.ref).toBe('models/local.gguf');
-    expect((await reader.read()).done).toBe(true); await accepted.closed;
-  } finally {
-    gate.resolve(snapshot({ registrations: [current] })); peer.dispose();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      gate.resolve(snapshot({ registrations: [current] })); peer.dispose();
+    },
+  });
+  const discovery = peer.client({ contract: naidanPeerContract }).getProvidedMethods({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
+  expect(await discovery.result).toEqual({ status: 'checking', methods: [] }); await discovery.closed;
+  const rejected = peer.client({ contract: naidanPeerContract }).listChatModels({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
+  await expect(rejected.result).rejects.toMatchObject({ code: 'METHOD_NOT_ALLOWED' });
+  await expect(rejected.closed).rejects.toBeDefined(); expect(resources.listChatModels).not.toHaveBeenCalled();
+  gate.resolve(snapshot({ registrations: [current] })); await checking;
+  expect(manager.list()[0]?.phase).toBe('connected');
+  const confirmed = peer.client({ contract: naidanPeerContract }).getProvidedMethods({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
+  expect(await confirmed.result).toEqual({ status: 'ready', methods: describePeerMethods({ names: ['listChatModels'] }) }); await confirmed.closed;
+  const accepted = peer.client({ contract: naidanPeerContract }).listChatModels({ input: {}, on: {}, signal: undefined, timeoutMs: 1000 });
+  const reader = (await accepted.result).getReader(); expect((await reader.read()).value?.ref).toBe('models/local.gguf');
+  expect((await reader.read()).done).toBe(true); await accepted.closed;
 });
 
 it('an external expansion disconnects instead of expanding live access or reconnecting', async () => {
@@ -701,17 +704,18 @@ it('a cross-tab stop closes actual manager admission before acknowledging native
       },
     };
   });
-  try {
-    await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
-    const binding = manager.bindClient({ id: record.id }); vi.mocked(dependencies.retireResources).mockReturnValueOnce(retire.promise);
-    otherControl.requestStop(); drain();
-    expect(manager.isEnabled()).toBe(false); expect(binding.signal.aborted).toBe(true);
-    expect(otherControl.status()).toBe('applied'); expect(release).not.toHaveBeenCalled();
-    retire.resolve(); await manager.setEnabled({ enabled: false }); await Promise.resolve(); drain();
-    expect(otherControl.status()).toBe('retired'); expect(release).toHaveBeenCalledOnce();
-  } finally {
-    retire.resolve(); localControl.dispose(); otherControl.dispose();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      retire.resolve(); localControl.dispose(); otherControl.dispose();
+    },
+  });
+  await manager.setEnabled({ enabled: true }); await manager.reload(); await manager.connect({ id: record.id });
+  const binding = manager.bindClient({ id: record.id }); vi.mocked(dependencies.retireResources).mockReturnValueOnce(retire.promise);
+  otherControl.requestStop(); drain();
+  expect(manager.isEnabled()).toBe(false); expect(binding.signal.aborted).toBe(true);
+  expect(otherControl.status()).toBe('applied'); expect(release).not.toHaveBeenCalled();
+  retire.resolve(); await manager.setEnabled({ enabled: false }); await Promise.resolve(); drain();
+  expect(otherControl.status()).toBe('retired'); expect(release).toHaveBeenCalledOnce();
 });
 
 it('a record deleted before connection startup is removed after that startup retires without self-waiting', async () => {
@@ -1387,21 +1391,22 @@ it('reconnects the network while old native work keeps shared ownership until fi
   const oldBinding = manager.bindClient({ id: record.id });
   const other = new NaidanRpcPeer({ transport: links[0]!.b, exports: [], limits: { maxCalls: 4, maxCallTimeoutMs: undefined }, signal: new AbortController().signal });
   const call = other.client({ contract: naidanPeerContract }).listChatModels({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
-  try {
-    const reader = (await call.result).getReader(); const reading = reader.read(); void reading.catch(() => {});
-    await started.promise; await manager.disconnect({ id: record.id });
-    expect(oldBinding.signal.aborted).toBe(true); expect(release).not.toHaveBeenCalled();
-    await manager.connect({ id: record.id });
-    expect(manager.list()[0]?.phase).toBe('connected'); expect(dependencies.open).toHaveBeenCalledTimes(2);
-    let stopped = false; const stopping = manager.setEnabled({ enabled: false }).then(() => {
-      stopped = true;
-    });
-    await Promise.resolve(); expect(stopped).toBe(false); expect(release).not.toHaveBeenCalled();
-    finished.resolve(); await stopping; expect(release).toHaveBeenCalledOnce();
-    await expect(call.closed).rejects.toBeDefined();
-  } finally {
-    finished.resolve(); await manager.setEnabled({ enabled: false }); other.dispose(); await other.retire();
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      finished.resolve(); await manager.setEnabled({ enabled: false }); other.dispose(); await other.retire();
+    },
+  });
+  const reader = (await call.result).getReader(); const reading = reader.read(); void reading.catch(() => {});
+  await started.promise; await manager.disconnect({ id: record.id });
+  expect(oldBinding.signal.aborted).toBe(true); expect(release).not.toHaveBeenCalled();
+  await manager.connect({ id: record.id });
+  expect(manager.list()[0]?.phase).toBe('connected'); expect(dependencies.open).toHaveBeenCalledTimes(2);
+  let stopped = false; const stopping = manager.setEnabled({ enabled: false }).then(() => {
+    stopped = true;
+  });
+  await Promise.resolve(); expect(stopped).toBe(false); expect(release).not.toHaveBeenCalled();
+  finished.resolve(); await stopping; expect(release).toHaveBeenCalledOnce();
+  await expect(call.closed).rejects.toBeDefined();
 });
 
 it('Disconnect retires an authenticated candidate without waiting for a shared storage revalidation', async () => {

@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { inspectImageEngine } from './engine-state';
 import { imageEngineInspectionSchema, imageEngineSnapshotSchema } from '@/features/stable-diffusion-cpp-browser/engine-state';
-import { engineSnapshotFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/engine-state';
+import { engineSnapshotFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/engine-state.test-support';
 
 function harness() {
   let next = 100n;

@@ -5,6 +5,7 @@ import { memoryDirectory, ggufBytes } from '@/features/llama-cpp-browser/hugging
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser/index-hosted';
 import { createWorkerApi } from './api';
 import type { LlamaCppWorkerApi } from './types';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Keep the real service, session client, Worker API and importer connected. Only
 // Worker transport and storage are in-memory: this catches cancellation wiring
@@ -73,21 +74,22 @@ describe('local import cancellation through service and Worker boundaries', () =
       default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
       }
     };
-    try {
-      await expect(copy({ signal: controller.signal })).rejects.toThrow('aborted');
-      expect((await userFolder()).children.size).toBe(0);
-      expect(await llamaCppBrowserService.listModels({ signal: undefined })).toEqual([]);
-      expect(llamaCppBrowserService.getState()).toEqual({ status: 'idle' });
-      expect(imported).not.toHaveBeenCalled();
-      expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
-      await copy({ signal: undefined });
-      expect(await llamaCppBrowserService.listModels({ signal: undefined })).toEqual([
-        { id: 'user/same-GGUF', name: 'user/same-GGUF', size: file.size, importedAt: 123 },
-      ]);
-      expect(imported).toHaveBeenCalledOnce(); expect(TestWorker.instances).toHaveLength(1);
-    } finally {
-      unsubscribe(); unsubscribeModels();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        unsubscribe(); unsubscribeModels();
+      },
+    });
+    await expect(copy({ signal: controller.signal })).rejects.toThrow('aborted');
+    expect((await userFolder()).children.size).toBe(0);
+    expect(await llamaCppBrowserService.listModels({ signal: undefined })).toEqual([]);
+    expect(llamaCppBrowserService.getState()).toEqual({ status: 'idle' });
+    expect(imported).not.toHaveBeenCalled();
+    expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
+    await copy({ signal: undefined });
+    expect(await llamaCppBrowserService.listModels({ signal: undefined })).toEqual([
+      { id: 'user/same-GGUF', name: 'user/same-GGUF', size: file.size, importedAt: 123 },
+    ]);
+    expect(imported).toHaveBeenCalledOnce(); expect(TestWorker.instances).toHaveLength(1);
   });
 
   it('keeps a second import queued until the cancelled copy has finished deleting its destination', async () => {
@@ -102,23 +104,24 @@ describe('local import cancellation through service and Worker boundaries', () =
         if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) controller.abort();
       },
     });
-    try {
-      let settled = false;
-      const first = llamaCppBrowserService.importModel({ file, signal: controller.signal }).finally(() => {
-        settled = true;
-      });
-      const rejected = expect(first).rejects.toThrow('aborted');
-      await entered.promise;
-      const second = llamaCppBrowserService.importModel({ file, signal: undefined });
-      await Promise.resolve();
-      expect(settled).toBe(false); expect(user.children.has('same-GGUF')).toBe(true);
-      expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
-      rollback.resolve(); await rejected; await second;
-      expect(await llamaCppBrowserService.listModels({ signal: undefined })).toHaveLength(1);
-      expect(TestWorker.instances).toHaveLength(1);
-    } finally {
-      rollback.resolve(); unsubscribe();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        rollback.resolve(); unsubscribe();
+      },
+    });
+    let settled = false;
+    const first = llamaCppBrowserService.importModel({ file, signal: controller.signal }).finally(() => {
+      settled = true;
+    });
+    const rejected = expect(first).rejects.toThrow('aborted');
+    await entered.promise;
+    const second = llamaCppBrowserService.importModel({ file, signal: undefined });
+    await Promise.resolve();
+    expect(settled).toBe(false); expect(user.children.has('same-GGUF')).toBe(true);
+    expect(TestWorker.instances[0]?.terminate).not.toHaveBeenCalled();
+    rollback.resolve(); await rejected; await second;
+    expect(await llamaCppBrowserService.listModels({ signal: undefined })).toHaveLength(1);
+    expect(TestWorker.instances).toHaveLength(1);
   });
 
   it('retries an empty single-file placeholder left by the previous forced-termination implementation', async () => {

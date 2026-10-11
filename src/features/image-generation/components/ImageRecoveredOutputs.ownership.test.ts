@@ -1,10 +1,10 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { imagePendingRuns } from '@/features/image-generation/session/pending-runs';
 import { imageRecoveryStore } from '@/features/image-generation/execution/recovery';
 import { toImageGenerationId, toImageGenerationStoreId, toImageGenerationSessionId } from '@/01-models/ids';
-import { generationRunFixture } from '@/00-storage/service/image-generation/test-support';
+import { generationRunFixture } from '@/00-storage/service/image-generation/index.test-support';
 import { recoverImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
 import ImageRecoveredOutputs from './ImageRecoveredOutputs.vue';
 import ImagePendingRuns from './ImagePendingRuns.vue';

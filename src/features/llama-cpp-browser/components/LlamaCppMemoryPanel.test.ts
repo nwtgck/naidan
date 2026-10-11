@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { observeWorkerMemory, TEST_ONLY } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import LlamaCppMemoryPanel from './LlamaCppMemoryPanel.vue';
 

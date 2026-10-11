@@ -1,11 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
-import { performanceEnvironment, performancePlan, performanceReport } from '@/features/llama-cpp-browser/test-utils/performance';
+import { performanceEnvironment, performancePlan, performanceReport } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
 import { performanceArchive } from './archive';
 import { summarizePerformance, performanceFindings, trialRates } from './summary';
 import { runtimeBuildEvidence } from './runtime-evidence';
 import type { PerformanceSnapshot } from './types';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function snapshot(): PerformanceSnapshot {
   const plan = performancePlan();
@@ -53,14 +54,15 @@ describe('portable performance results', () => {
     const source = snapshot();
     source.environment.appSource = { sourceCommit: 'a'.repeat(40), workingTree };
     vi.stubGlobal('__APP_SOURCE__', { sourceCommit: 'b'.repeat(40), workingTree: 'clean' });
-    try {
-      const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
-      const environment = JSON.parse(await zip.file('environment.json')!.async('string'));
-      expect(environment.appVersion).toBe('test');
-      expect(environment.appSource).toEqual(source.environment.appSource);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        vi.unstubAllGlobals();
+      },
+    });
+    const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
+    const environment = JSON.parse(await zip.file('environment.json')!.async('string'));
+    expect(environment.appVersion).toBe('test');
+    expect(environment.appSource).toEqual(source.environment.appSource);
   });
 
   it('exports unavailable app revision explicitly without manufacturing a clean checkout', async () => {

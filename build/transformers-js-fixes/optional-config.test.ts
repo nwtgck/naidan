@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, it, vi } from 'vitest';
 import { applyTransformersJsFixes } from './transform';
+import { createAsyncTestDisposable } from '../../src/utils/resource-cleanup.test-support';
 
 const original = readFileSync('node_modules/@huggingface/transformers/dist/transformers.web.js', 'utf8');
 const { code } = applyTransformersJsFixes({ code: original, version: '4.2.0' });
@@ -54,14 +55,15 @@ it('does not select or create sessions until optional configuration preparation 
   const select = vi.fn(() => ({ model: 'model' }));
   const create = vi.fn(async () => 'session');
   const result = modelFixture({ names: { generation_config: 'generation_config.json' }, read, select, create })();
-  try {
-    expect(read).toHaveBeenCalledOnce();
-    expect(select).not.toHaveBeenCalled();
-    expect(create).not.toHaveBeenCalled();
-  } finally {
-    pending.resolve({});
-    await result;
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      pending.resolve({});
+      await result;
+    },
+  });
+  expect(read).toHaveBeenCalledOnce();
+  expect(select).not.toHaveBeenCalled();
+  expect(create).not.toHaveBeenCalled();
 });
 
 it('retains the optional configuration failure origin and cause without creating a session', async () => {
@@ -147,12 +149,13 @@ it('observes a later optional rejection after the first optional failure', async
   const failure = new Error('First optional failure');
   const observed = result.catch((error: unknown) => error);
   first.reject(failure);
-  try {
-    expect(await observed).toMatchObject({ name: 'TransformersJsOptionalConfigurationError', cause: failure });
-    expect(create).not.toHaveBeenCalled();
-  } finally {
-    second.reject(new Error('Second optional failure'));
-    // Pass the host rejection-reporting turn without suppressing unhandled errors.
-    await new Promise<void>(resolve => setImmediate(resolve));
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      second.reject(new Error('Second optional failure'));
+      // Pass the host rejection-reporting turn without suppressing unhandled errors.
+      await new Promise<void>(resolve => setImmediate(resolve));
+    },
+  });
+  expect(await observed).toMatchObject({ name: 'TransformersJsOptionalConfigurationError', cause: failure });
+  expect(create).not.toHaveBeenCalled();
 });

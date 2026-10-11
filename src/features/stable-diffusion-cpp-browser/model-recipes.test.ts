@@ -5,7 +5,7 @@ import { imageDownloadSourceSchema, imageFileIdentity, imageFileIdentitySchema }
 import type { CatalogFetch } from './download-worker/fetch-types';
 import { validModelPath } from './logic/model-path';
 import { scanImageRepositories } from './logic/model-candidates';
-import { ggufFixture, safetensorsFixture, zImageTensors, qwenImageTensors, fluxVaeTensors, qwenVaeTensors, qwenTextTensors, sdCheckpointTensors, sdVaeTensors, flux2KleinTensors, flux2VaeTensors, animaTensors, wanVaeTensors, krea2Tensors, ernieImageTensors, ministralTextTensors } from './test-utils/weights';
+import { ggufFixture, safetensorsFixture, zImageTensors, qwenImageTensors, fluxVaeTensors, qwenVaeTensors, qwenTextTensors, sdCheckpointTensors, sdVaeTensors, flux2KleinTensors, flux2VaeTensors, animaTensors, wanVaeTensors, krea2Tensors, ernieImageTensors, ministralTextTensors } from './test-utils/weights.test-support';
 
 it('lists revision-pinned component and checkpoint recipes with original inner paths', () => {
   expect(imageModelRecipes.map(recipe => recipe.id)).toEqual(['z-image-turbo', 'qwen-image-2.1', 'qwen-image-2.1-turbo', 'z-image-base', 'sdxl-base-1.0', 'flux2-klein-4b', 'anima-turbo-1.1', 'krea2-turbo', 'ernie-image-turbo']);

@@ -4,6 +4,7 @@ import type { TransformersJsWorkerClient, InferenceMessage, WorkerToolDefinition
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { toToolCallId } from '@/01-models/ids';
 import type { GenerationCaptureRequest } from './generation-capture-protocol';
+import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({
   release: vi.fn(),
@@ -114,25 +115,26 @@ describe('Transformers.js Worker client cleanup', () => {
     const firstTools = vi.fn();
     const second = vi.fn();
     const secondTools = vi.fn();
-    try {
-      await MockWorker.latest.publishReady();
-      const firstCall = client.generateText({ messages: [], onChunk: first, onToolCalls: firstTools, params: undefined, tools: undefined });
-      if (outcome === 'rejected') await expect(firstCall).rejects.toThrow('First generation failed');
-      else await firstCall;
-      await client.generateText({ messages: [], onChunk: second, onToolCalls: secondTools, params: undefined, tools: undefined });
-      expect(first).toHaveBeenCalledExactlyOnceWith({ chunk: 'first' });
-      expect(firstTools).toHaveBeenCalledExactlyOnceWith({ toolCalls: [] });
-      expect(second).toHaveBeenCalledExactlyOnceWith({ chunk: 'second' });
-      expect(secondTools).toHaveBeenCalledExactlyOnceWith({ toolCalls: [] });
-    } finally {
-      await client.dispose();
-      for (const callback of callbacks) {
-        callback.chunk[comlink.releaseProxy]();
-        callback.tools[comlink.releaseProxy]();
-      }
-      channel.port1.close();
-      channel.port2.close();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await client.dispose();
+        for (const callback of callbacks) {
+          callback.chunk[comlink.releaseProxy]();
+          callback.tools[comlink.releaseProxy]();
+        }
+        channel.port1.close();
+        channel.port2.close();
+      },
+    });
+    await MockWorker.latest.publishReady();
+    const firstCall = client.generateText({ messages: [], onChunk: first, onToolCalls: firstTools, params: undefined, tools: undefined });
+    if (outcome === 'rejected') await expect(firstCall).rejects.toThrow('First generation failed');
+    else await firstCall;
+    await client.generateText({ messages: [], onChunk: second, onToolCalls: secondTools, params: undefined, tools: undefined });
+    expect(first).toHaveBeenCalledExactlyOnceWith({ chunk: 'first' });
+    expect(firstTools).toHaveBeenCalledExactlyOnceWith({ toolCalls: [] });
+    expect(second).toHaveBeenCalledExactlyOnceWith({ chunk: 'second' });
+    expect(secondTools).toHaveBeenCalledExactlyOnceWith({ toolCalls: [] });
   });
 
   it('snapshots structured reasoning and native settings before startup and real Comlink serialization', async () => {
@@ -172,20 +174,21 @@ describe('Transformers.js Worker client cleanup', () => {
     reasoning.text = 'edited'; reasoning.completeness = 'partial';
     content[0]!.text = 'edited'; functionCall.arguments = '{"edited":true}';
     params.stop.push('later'); tools[0]!.function.description = 'edited';
-    try {
-      await MockWorker.latest.publishReady();
-      await pending;
-      expect(received).toEqual([{ ...original, owner: 'accepted-owner' }]);
-      expect(received[0]?.messages[0]?.reasoning).not.toBe(reasoning);
-      expect(onChunk).toHaveBeenCalledExactlyOnceWith({ chunk: '<think>literal</think>' });
-      expect(onToolCalls).toHaveBeenCalledExactlyOnceWith({ toolCalls: [] });
-    } finally {
-      await client.dispose();
-      await pending.catch(() => undefined);
-      for (const proxy of proxies) proxy[comlink.releaseProxy]();
-      for (const proxy of toolProxies) proxy[comlink.releaseProxy]();
-      channel.port1.close(); channel.port2.close();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await client.dispose();
+        await pending.catch(() => undefined);
+        for (const proxy of proxies) proxy[comlink.releaseProxy]();
+        for (const proxy of toolProxies) proxy[comlink.releaseProxy]();
+        channel.port1.close(); channel.port2.close();
+      },
+    });
+    await MockWorker.latest.publishReady();
+    await pending;
+    expect(received).toEqual([{ ...original, owner: 'accepted-owner' }]);
+    expect(received[0]?.messages[0]?.reasoning).not.toBe(reasoning);
+    expect(onChunk).toHaveBeenCalledExactlyOnceWith({ chunk: '<think>literal</think>' });
+    expect(onToolCalls).toHaveBeenCalledExactlyOnceWith({ toolCalls: [] });
   });
 
   it('rejects disposal while a real Comlink callback is held and ignores later delivery', async () => {
@@ -208,34 +211,35 @@ describe('Transformers.js Worker client cleanup', () => {
     const { createTransformersJsWorkerClient } = await import('./client-hosted');
     const client = createTransformersJsWorkerClient();
     const received: string[] = [];
-    try {
-      await MockWorker.latest.publishReady();
-      const pending = client.generateText({
-        messages: [],
-        onChunk: async ({ chunk }) => {
-          received.push(chunk);
-          entered.resolve();
-          await release.promise;
-        },
-        onToolCalls: vi.fn(),
-        params: undefined,
-        tools: undefined,
-      });
-      const rejected = expect(pending).rejects.toThrow('Production Worker disposed');
-      await entered.promise;
-      await client.dispose();
-      await rejected;
-      expect(mocks.terminate).toHaveBeenCalledOnce();
-      release.resolve();
-      await finished.promise;
-      expect(received).toEqual(['entered-before-disposal']);
-    } finally {
-      release.resolve();
-      await client.dispose();
-      remoteCallback?.[comlink.releaseProxy]();
-      channel.port1.close();
-      channel.port2.close();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve();
+        await client.dispose();
+        remoteCallback?.[comlink.releaseProxy]();
+        channel.port1.close();
+        channel.port2.close();
+      },
+    });
+    await MockWorker.latest.publishReady();
+    const pending = client.generateText({
+      messages: [],
+      onChunk: async ({ chunk }) => {
+        received.push(chunk);
+        entered.resolve();
+        await release.promise;
+      },
+      onToolCalls: vi.fn(),
+      params: undefined,
+      tools: undefined,
+    });
+    const rejected = expect(pending).rejects.toThrow('Production Worker disposed');
+    await entered.promise;
+    await client.dispose();
+    await rejected;
+    expect(mocks.terminate).toHaveBeenCalledOnce();
+    release.resolve();
+    await finished.promise;
+    expect(received).toEqual(['entered-before-disposal']);
   });
 });
 
@@ -274,17 +278,18 @@ describe('investigation-owned generation capture client', () => {
     mocks.wrap.mockReturnValue({ generateText, takeGenerationCapture });
     const { createTransformersJsWorkerClient } = await import('./client-hosted');
     const client = createTransformersJsWorkerClient();
-    try {
-      await MockWorker.latest.publishReady();
-      await generate({ client });
-      expect(generateText).toHaveBeenCalledExactlyOnceWith(
-        [{ role: 'user', content: 'Synthetic capture input.' }],
-        expect.any(Function), expect.any(Function), undefined, undefined, undefined, undefined,
-      );
-      expect(takeGenerationCapture).not.toHaveBeenCalled();
-    } finally {
-      await client.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await client.dispose();
+      },
+    });
+    await MockWorker.latest.publishReady();
+    await generate({ client });
+    expect(generateText).toHaveBeenCalledExactlyOnceWith(
+      [{ role: 'user', content: 'Synthetic capture input.' }],
+      expect.any(Function), expect.any(Function), undefined, undefined, undefined, undefined,
+    );
+    expect(takeGenerationCapture).not.toHaveBeenCalled();
   });
 
   it('passes operation ownership only in the appended RPC slot without enabling capture', async () => {
@@ -293,13 +298,14 @@ describe('investigation-owned generation capture client', () => {
     const { createTransformersJsWorkerClient } = await import('./client-hosted');
     const client = createTransformersJsWorkerClient();
     const continuationOwner = 'f28f6802-947c-4b9d-bc99-223d8d469f4b';
-    try {
-      await MockWorker.latest.publishReady();
-      await client.generateText({ messages: [], onChunk: () => undefined, onToolCalls: () => undefined, params: undefined, tools: undefined, continuationOwner });
-      expect(generateText).toHaveBeenCalledExactlyOnceWith([], expect.any(Function), expect.any(Function), undefined, undefined, undefined, continuationOwner);
-    } finally {
-      await client.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await client.dispose();
+      },
+    });
+    await MockWorker.latest.publishReady();
+    await client.generateText({ messages: [], onChunk: () => undefined, onToolCalls: () => undefined, params: undefined, tools: undefined, continuationOwner });
+    expect(generateText).toHaveBeenCalledExactlyOnceWith([], expect.any(Function), expect.any(Function), undefined, undefined, undefined, continuationOwner);
   });
 
   it('snapshots request identity before startup and separates calls within the same Provider request', async () => {
@@ -316,28 +322,29 @@ describe('investigation-owned generation capture client', () => {
       limits,
       getActiveRequest,
     });
-    try {
-      const first = generate({ client: owner.client });
-      expect(getActiveRequest).toHaveBeenCalledOnce();
-      expect(generateText).not.toHaveBeenCalled();
-      active.requestId = 'second-request';
-      limits.maxCalls = 1;
-      await MockWorker.latest.publishReady();
-      await first;
-      await generate({ client: owner.client });
-      await generate({ client: owner.client });
-      expect(generateText.mock.calls.map(call => call[5])).toEqual([
-        { context: { runId: 'synthetic-run', workerEpoch: 1, requestId: 'first-request', generationCallId: 1 }, limits: captureLimits },
-        { context: { runId: 'synthetic-run', workerEpoch: 1, requestId: 'second-request', generationCallId: 2 }, limits: captureLimits },
-        { context: { runId: 'synthetic-run', workerEpoch: 1, requestId: 'second-request', generationCallId: 3 }, limits: captureLimits },
-      ]);
-      expect(takeGenerationCapture).not.toHaveBeenCalled();
-      expect(owner.getCaptureLifetime().issuedCalls).toEqual(generateText.mock.calls.map(call => call[5].context));
-      await expect(owner.takeGenerationCapture()).resolves.toEqual({ status: 'not-started' });
-      expect(takeGenerationCapture).toHaveBeenCalledExactlyOnceWith({ runId: 'synthetic-run', workerEpoch: 1 });
-    } finally {
-      await owner.client.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await owner.client.dispose();
+      },
+    });
+    const first = generate({ client: owner.client });
+    expect(getActiveRequest).toHaveBeenCalledOnce();
+    expect(generateText).not.toHaveBeenCalled();
+    active.requestId = 'second-request';
+    limits.maxCalls = 1;
+    await MockWorker.latest.publishReady();
+    await first;
+    await generate({ client: owner.client });
+    await generate({ client: owner.client });
+    expect(generateText.mock.calls.map(call => call[5])).toEqual([
+      { context: { runId: 'synthetic-run', workerEpoch: 1, requestId: 'first-request', generationCallId: 1 }, limits: captureLimits },
+      { context: { runId: 'synthetic-run', workerEpoch: 1, requestId: 'second-request', generationCallId: 2 }, limits: captureLimits },
+      { context: { runId: 'synthetic-run', workerEpoch: 1, requestId: 'second-request', generationCallId: 3 }, limits: captureLimits },
+    ]);
+    expect(takeGenerationCapture).not.toHaveBeenCalled();
+    expect(owner.getCaptureLifetime().issuedCalls).toEqual(generateText.mock.calls.map(call => call[5].context));
+    await expect(owner.takeGenerationCapture()).resolves.toEqual({ status: 'not-started' });
+    expect(takeGenerationCapture).toHaveBeenCalledExactlyOnceWith({ runId: 'synthetic-run', workerEpoch: 1 });
   });
 
   it('retains a bounded incomplete record while still forwarding calls beyond recording capacity', async () => {
@@ -351,22 +358,23 @@ describe('investigation-owned generation capture client', () => {
       limits: { ...captureLimits, maxCalls: 1 },
       getActiveRequest,
     });
-    try {
-      await MockWorker.latest.publishReady();
-      await generate({ client: owner.client });
-      await generate({ client: owner.client });
-      await generate({ client: owner.client });
-      expect(generateText).toHaveBeenCalledTimes(3);
-      expect(generateText.mock.calls.slice(1).map(call => call[5])).toEqual([undefined, undefined]);
-      expect(getActiveRequest).toHaveBeenCalledOnce();
-      const snapshot = owner.getCaptureLifetime();
-      expect(snapshot.incompleteReasons).toEqual(['call-limit']);
-      expect(snapshot.issuedCalls).toEqual([{ runId: 'synthetic-run', workerEpoch: 2, requestId: 'first-request', generationCallId: 1 }]);
-      snapshot.issuedCalls[0]!.requestId = 'modified-copy';
-      expect(owner.getCaptureLifetime().issuedCalls[0]!.requestId).toBe('first-request');
-    } finally {
-      await owner.client.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await owner.client.dispose();
+      },
+    });
+    await MockWorker.latest.publishReady();
+    await generate({ client: owner.client });
+    await generate({ client: owner.client });
+    await generate({ client: owner.client });
+    expect(generateText).toHaveBeenCalledTimes(3);
+    expect(generateText.mock.calls.slice(1).map(call => call[5])).toEqual([undefined, undefined]);
+    expect(getActiveRequest).toHaveBeenCalledOnce();
+    const snapshot = owner.getCaptureLifetime();
+    expect(snapshot.incompleteReasons).toEqual(['call-limit']);
+    expect(snapshot.issuedCalls).toEqual([{ runId: 'synthetic-run', workerEpoch: 2, requestId: 'first-request', generationCallId: 1 }]);
+    snapshot.issuedCalls[0]!.requestId = 'modified-copy';
+    expect(owner.getCaptureLifetime().issuedCalls[0]!.requestId).toBe('first-request');
   });
 
   it('does not replace a generation rejection when the request observer throws', async () => {
@@ -382,14 +390,15 @@ describe('investigation-owned generation capture client', () => {
         throw new Error('Synthetic observer failure');
       },
     });
-    try {
-      await MockWorker.latest.publishReady();
-      await expect(generate({ client: owner.client })).rejects.toBe(original);
-      expect(generateText.mock.calls[0]![5]).toBeUndefined();
-      expect(owner.getCaptureLifetime().incompleteReasons).toEqual(['request-invalid']);
-    } finally {
-      await owner.client.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await owner.client.dispose();
+      },
+    });
+    await MockWorker.latest.publishReady();
+    await expect(generate({ client: owner.client })).rejects.toBe(original);
+    expect(generateText.mock.calls[0]![5]).toBeUndefined();
+    expect(owner.getCaptureLifetime().incompleteReasons).toEqual(['request-invalid']);
   });
 
   it('does not attach another run identity to a successful generation', async () => {
@@ -402,15 +411,16 @@ describe('investigation-owned generation capture client', () => {
       limits: captureLimits,
       getActiveRequest: () => ({ runId: 'other-run', requestId: 'first-request' }),
     });
-    try {
-      await MockWorker.latest.publishReady();
-      await expect(generate({ client: owner.client })).resolves.toBeUndefined();
-      expect(generateText.mock.calls[0]![5]).toBeUndefined();
-      expect(owner.getCaptureLifetime().issuedCalls).toEqual([]);
-      expect(owner.getCaptureLifetime().incompleteReasons).toEqual(['request-invalid']);
-    } finally {
-      await owner.client.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await owner.client.dispose();
+      },
+    });
+    await MockWorker.latest.publishReady();
+    await expect(generate({ client: owner.client })).resolves.toBeUndefined();
+    expect(generateText.mock.calls[0]![5]).toBeUndefined();
+    expect(owner.getCaptureLifetime().issuedCalls).toEqual([]);
+    expect(owner.getCaptureLifetime().incompleteReasons).toEqual(['request-invalid']);
   });
 
   it('returns busy without waiting and preserves terminal disposal for later collection', async () => {
@@ -444,13 +454,14 @@ describe('investigation-owned generation capture client', () => {
       limits: captureLimits,
       getActiveRequest: () => undefined,
     });
-    try {
-      await MockWorker.latest.publishReady();
-      await expect(owner.takeGenerationCapture()).rejects.toThrow(/^Invalid generation capture response$/u);
-      expect(takeGenerationCapture).toHaveBeenCalledOnce();
-    } finally {
-      await owner.client.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await owner.client.dispose();
+      },
+    });
+    await MockWorker.latest.publishReady();
+    await expect(owner.takeGenerationCapture()).rejects.toThrow(/^Invalid generation capture response$/u);
+    expect(takeGenerationCapture).toHaveBeenCalledOnce();
   });
 
   it('records requested Load identity without claiming that main was resolved or loading succeeded', async () => {
@@ -464,14 +475,15 @@ describe('investigation-owned generation capture client', () => {
       limits: captureLimits,
       getActiveRequest: () => undefined,
     });
-    try {
-      await MockWorker.latest.publishReady();
-      await expect(owner.client.loadDownloadedModel({ modelId: 'org/synthetic-model', revisionSelection: { kind: 'pinned', revision: 'main' }, progressCallback: () => undefined })).rejects.toBe(original);
-      expect(owner.getCaptureLifetime().loadRequests).toEqual([{ requestedModelId: 'org/synthetic-model', requestedRevision: 'main', revisionSelection: { kind: 'pinned', revision: 'main' } }]);
-      expect(loadDownloadedModel).toHaveBeenCalledExactlyOnceWith('org/synthetic-model', { kind: 'pinned', revision: 'main' }, expect.any(Function), { runId: 'synthetic-run', workerEpoch: 1 });
-    } finally {
-      await owner.client.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await owner.client.dispose();
+      },
+    });
+    await MockWorker.latest.publishReady();
+    await expect(owner.client.loadDownloadedModel({ modelId: 'org/synthetic-model', revisionSelection: { kind: 'pinned', revision: 'main' }, progressCallback: () => undefined })).rejects.toBe(original);
+    expect(owner.getCaptureLifetime().loadRequests).toEqual([{ requestedModelId: 'org/synthetic-model', requestedRevision: 'main', revisionSelection: { kind: 'pinned', revision: 'main' } }]);
+    expect(loadDownloadedModel).toHaveBeenCalledExactlyOnceWith('org/synthetic-model', { kind: 'pinned', revision: 'main' }, expect.any(Function), { runId: 'synthetic-run', workerEpoch: 1 });
   });
 
   it('rejects a structurally valid capture belonging to another Worker epoch', async () => {
@@ -497,12 +509,13 @@ describe('investigation-owned generation capture client', () => {
       limits: captureLimits,
       getActiveRequest: () => undefined,
     });
-    try {
-      await MockWorker.latest.publishReady();
-      await expect(owner.takeGenerationCapture()).rejects.toThrow(/^Invalid generation capture response$/u);
-    } finally {
-      await owner.client.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await owner.client.dispose();
+      },
+    });
+    await MockWorker.latest.publishReady();
+    await expect(owner.takeGenerationCapture()).rejects.toThrow(/^Invalid generation capture response$/u);
   });
 
   it('rejects a structurally valid capture with different recording limits', async () => {
@@ -528,12 +541,13 @@ describe('investigation-owned generation capture client', () => {
       limits: captureLimits,
       getActiveRequest: () => undefined,
     });
-    try {
-      await MockWorker.latest.publishReady();
-      await expect(owner.takeGenerationCapture()).rejects.toThrow(/^Invalid generation capture response$/u);
-    } finally {
-      await owner.client.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await owner.client.dispose();
+      },
+    });
+    await MockWorker.latest.publishReady();
+    await expect(owner.takeGenerationCapture()).rejects.toThrow(/^Invalid generation capture response$/u);
   });
 
   it('keeps an unavailable environment unavailable without creating a recording Worker', async () => {
@@ -546,34 +560,35 @@ describe('investigation-owned generation capture client', () => {
       limits: captureLimits,
       getActiveRequest,
     });
-    try {
-      await expect(generate({ client: owner.client })).rejects.toThrow('not available in this environment');
-      await expect(owner.takeGenerationCapture()).rejects.toThrow('not available in this environment');
-      expect(owner.getCaptureLifetime()).toEqual({
-        runId: 'synthetic-run',
-        workerEpoch: 1,
-        session: 'inactive',
-        issuedCalls: [],
-        loadRequests: [],
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await owner.client.dispose();
+        vi.stubGlobal('Worker', MockWorker);
+      },
+    });
+    await expect(generate({ client: owner.client })).rejects.toThrow('not available in this environment');
+    await expect(owner.takeGenerationCapture()).rejects.toThrow('not available in this environment');
+    expect(owner.getCaptureLifetime()).toEqual({
+      runId: 'synthetic-run',
+      workerEpoch: 1,
+      session: 'inactive',
+      issuedCalls: [],
+      loadRequests: [],
+      incompleteReasons: [],
+      // The host ledger exists independently of Worker availability. No Load
+      // was requested, so this is not evidence of an unobserved successful Load.
+      loadDiagnostics: {
+        format: 'production-load-diagnostics-v1',
+        owner: { runId: 'synthetic-run', workerEpoch: 1 },
+        limits: { maxEvents: 512, maxResources: 128 },
+        byteAccounting: 'successful-allocation-request-sum-not-live-memory-or-gc',
+        coverage: 'transformers-readResponse-and-session-entry-only-not-response-arrayBuffer-or-ort-internals',
+        events: [],
         incompleteReasons: [],
-        // The host ledger exists independently of Worker availability. No Load
-        // was requested, so this is not evidence of an unobserved successful Load.
-        loadDiagnostics: {
-          format: 'production-load-diagnostics-v1',
-          owner: { runId: 'synthetic-run', workerEpoch: 1 },
-          limits: { maxEvents: 512, maxResources: 128 },
-          byteAccounting: 'successful-allocation-request-sum-not-live-memory-or-gc',
-          coverage: 'transformers-readResponse-and-session-entry-only-not-response-arrayBuffer-or-ort-internals',
-          events: [],
-          incompleteReasons: [],
-        },
-      });
-      expect(getActiveRequest).not.toHaveBeenCalled();
-      expect(mocks.workerConstructor).not.toHaveBeenCalled();
-    } finally {
-      await owner.client.dispose();
-      vi.stubGlobal('Worker', MockWorker);
-    }
+      },
+    });
+    expect(getActiveRequest).not.toHaveBeenCalled();
+    expect(mocks.workerConstructor).not.toHaveBeenCalled();
   });
 });
 
@@ -609,21 +624,22 @@ describe('structured generation through the real Comlink callback boundary', () 
     C.expose(api, channel.port1); mocks.wrap.mockReturnValue(C.wrap<typeof api>(channel.port2));
     const { createTransformersJsWorkerClient } = await import('./client-hosted'); const client = createTransformersJsWorkerClient();
     const first = vi.fn(); const second = vi.fn();
-    try {
-      const pending = client.generateMessage({ messages: input, params: undefined, tools: undefined, continuationOwner: 'scope', onEvent: first });
-      input[0]!.content = 'mutated'; input[0]!.reasoning!.text = 'mutated';
-      await MockWorker.latest.publishReady(); await entered.promise;
-      expect(recorded[0]?.[0]).toMatchObject({ content: '<think>literal</think>', reasoning: { text: '  R\n' } });
-      expect(first).toHaveBeenCalledTimes(2); release.resolve(); await pending;
-      await client.generateMessage({ messages: [], params: undefined, tools: undefined, continuationOwner: 'scope-2', onEvent: second });
-      expect(first).toHaveBeenCalledTimes(2); expect(second).toHaveBeenCalledOnce();
-    } finally {
-      release.resolve(); await client.dispose();
-      for (const callback of remoteCallbacks) {
-        callback.event[C.releaseProxy](); callback.chunk[C.releaseProxy](); callback.calls[C.releaseProxy]();
-      }
-      channel.port1.close(); channel.port2.close();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve(); await client.dispose();
+        for (const callback of remoteCallbacks) {
+          callback.event[C.releaseProxy](); callback.chunk[C.releaseProxy](); callback.calls[C.releaseProxy]();
+        }
+        channel.port1.close(); channel.port2.close();
+      },
+    });
+    const pending = client.generateMessage({ messages: input, params: undefined, tools: undefined, continuationOwner: 'scope', onEvent: first });
+    input[0]!.content = 'mutated'; input[0]!.reasoning!.text = 'mutated';
+    await MockWorker.latest.publishReady(); await entered.promise;
+    expect(recorded[0]?.[0]).toMatchObject({ content: '<think>literal</think>', reasoning: { text: '  R\n' } });
+    expect(first).toHaveBeenCalledTimes(2); release.resolve(); await pending;
+    await client.generateMessage({ messages: [], params: undefined, tools: undefined, continuationOwner: 'scope-2', onEvent: second });
+    expect(first).toHaveBeenCalledTimes(2); expect(second).toHaveBeenCalledOnce();
   });
 
   it('propagates a failed structured callback acknowledgement', async () => {
@@ -638,13 +654,14 @@ describe('structured generation through the real Comlink callback boundary', () 
     };
     C.expose(api, channel.port1); mocks.wrap.mockReturnValue(C.wrap<typeof api>(channel.port2));
     const { createTransformersJsWorkerClient } = await import('./client-hosted'); const client = createTransformersJsWorkerClient(); const sink = vi.fn();
-    try {
-      await MockWorker.latest.publishReady();
-      await expect(client.generateMessage({ messages: [], params: undefined, tools: undefined, continuationOwner: undefined, onEvent: sink })).rejects.toThrow();
-      expect(sink).not.toHaveBeenCalled();
-    } finally {
-      await client.dispose(); for (const callback of retained) callback[C.releaseProxy](); channel.port1.close(); channel.port2.close();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await client.dispose(); for (const callback of retained) callback[C.releaseProxy](); channel.port1.close(); channel.port2.close();
+      },
+    });
+    await MockWorker.latest.publishReady();
+    await expect(client.generateMessage({ messages: [], params: undefined, tools: undefined, continuationOwner: undefined, onEvent: sink })).rejects.toThrow();
+    expect(sink).not.toHaveBeenCalled();
   });
 
   it.each(['dispose', 'worker-error', 'dispose-failure'] as const)('settles an accepted acknowledgement but ignores later structured events after %s', async retirement => {
@@ -660,12 +677,13 @@ describe('structured generation through the real Comlink callback boundary', () 
       // that survives physical retirement in this controlled MessageChannel.
       async generateText(_messages: unknown, chunk: typeof retained[number], calls: typeof retained[number], _params: unknown, _tools: unknown, _capture: unknown, _owner: unknown, event: Callback) {
         retained.push(chunk, calls, event);
-        try {
-          await event({ event: { type: 'text_delta', index: 0, text: 'accepted' } });
-          await event({ event: { type: 'text_delta', index: 0, text: 'retired' } });
-        } finally {
-          remoteSettled.resolve();
-        }
+        using _cleanupResource = createTestDisposable({
+          dispose: () => {
+            remoteSettled.resolve();
+          },
+        });
+        await event({ event: { type: 'text_delta', index: 0, text: 'accepted' } });
+        await event({ event: { type: 'text_delta', index: 0, text: 'retired' } });
       },
     };
     C.expose(api, channel.port1);
@@ -681,42 +699,43 @@ describe('structured generation through the real Comlink callback boundary', () 
       () => ({ type: 'resolved' as const }),
       (error: unknown) => ({ type: 'rejected' as const, error }),
     );
-    try {
-      await MockWorker.latest.publishReady();
-      await accepted.promise;
-      switch (retirement) {
-      case 'dispose':
-        await client.dispose();
-        break;
-      case 'worker-error':
-        MockWorker.latest.dispatchEvent(new ErrorEvent('error', { message: 'Synthetic Worker failure' }));
-        break;
-      case 'dispose-failure': {
-        const failure = new Error('Synthetic physical termination failure');
-        mocks.terminate.mockImplementationOnce(() => {
-          throw failure;
-        });
-        await expect(client.dispose()).rejects.toBe(failure);
-        break;
-      }
-      default: {
-        const exhaustive: never = retirement;
-        throw new Error(`Unhandled retirement: ${exhaustive}`);
-      }
-      }
-      expect(await outcome).toMatchObject({ type: 'rejected', error: { reason: retirement === 'worker-error' ? 'worker-error' : 'disposed' } });
-      release.resolve();
-      await remoteSettled.promise;
-      expect(sink).toHaveBeenCalledExactlyOnceWith({ event: { type: 'text_delta', index: 0, text: 'accepted' } });
-      expect(mocks.terminate).toHaveBeenCalledOnce();
-    } finally {
-      release.resolve();
-      await client.dispose().catch(() => undefined);
-      await outcome;
-      await remoteSettled.promise;
-      for (const callback of retained) callback[C.releaseProxy]();
-      channel.port1.close();
-      channel.port2.close();
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve();
+        await client.dispose().catch(() => undefined);
+        await outcome;
+        await remoteSettled.promise;
+        for (const callback of retained) callback[C.releaseProxy]();
+        channel.port1.close();
+        channel.port2.close();
+      },
+    });
+    await MockWorker.latest.publishReady();
+    await accepted.promise;
+    switch (retirement) {
+    case 'dispose':
+      await client.dispose();
+      break;
+    case 'worker-error':
+      MockWorker.latest.dispatchEvent(new ErrorEvent('error', { message: 'Synthetic Worker failure' }));
+      break;
+    case 'dispose-failure': {
+      const failure = new Error('Synthetic physical termination failure');
+      mocks.terminate.mockImplementationOnce(() => {
+        throw failure;
+      });
+      await expect(client.dispose()).rejects.toBe(failure);
+      break;
     }
+    default: {
+      const exhaustive: never = retirement;
+      throw new Error(`Unhandled retirement: ${exhaustive}`);
+    }
+    }
+    expect(await outcome).toMatchObject({ type: 'rejected', error: { reason: retirement === 'worker-error' ? 'worker-error' : 'disposed' } });
+    release.resolve();
+    await remoteSettled.promise;
+    expect(sink).toHaveBeenCalledExactlyOnceWith({ event: { type: 'text_delta', index: 0, text: 'accepted' } });
+    expect(mocks.terminate).toHaveBeenCalledOnce();
   });
 });

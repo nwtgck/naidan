@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { contract, procedure } from './contract';
 import { NaidanRpcPeer } from './peer';
 import type { NaidanRpcDuplex, NaidanRpcTransport } from './transport';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const definition = contract({
   name: 'test.open-cancellation',
@@ -50,40 +51,41 @@ it.each(['call', 'signal', 'peer', 'deadline', 'maximum'] as const)('%s reports 
     closedCode = error.code;
   });
   const abort = vi.fn();
-  try {
-    expect(openStream).toHaveBeenCalledOnce();
-    switch (kind) {
-    case 'call': call.cancel({ reason: 'User stopped this call' }); break;
-    case 'signal': signal.abort(); break;
-    case 'peer': parent.abort(); break;
-    case 'deadline': case 'maximum': break;
-    default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
-    }
-    await vi.advanceTimersByTimeAsync(20);
-    const expected = kind === 'deadline' || kind === 'maximum' ? 'DEADLINE_EXCEEDED' : 'CANCELLED';
-    expect(resultCode).toBe(expected); expect(closedCode).toBe(expected);
-    expect(abort).not.toHaveBeenCalled();
-    if (kind !== 'peer') {
-      const other = peer.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
-      await expect(other.result).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
-      await expect(other.closed).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
-      expect(openStream).toHaveBeenCalledOnce();
-    }
-    let retired = false;
-    const closing = peer.retire().then(() => {
-      retired = true;
-    });
-    await vi.advanceTimersByTimeAsync(1);
-    expect(retired).toBe(false);
-    opening.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort });
-    await closing;
-    expect(abort).toHaveBeenCalledOnce();
-    expect(resultCode).toBe(expected); expect(closedCode).toBe(expected);
-  } finally {
-    opening.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort });
-    await peer.retire();
-    await Promise.allSettled([call.result, call.closed]);
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      opening.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort });
+      await peer.retire();
+      await Promise.allSettled([call.result, call.closed]);
+    },
+  });
+  expect(openStream).toHaveBeenCalledOnce();
+  switch (kind) {
+  case 'call': call.cancel({ reason: 'User stopped this call' }); break;
+  case 'signal': signal.abort(); break;
+  case 'peer': parent.abort(); break;
+  case 'deadline': case 'maximum': break;
+  default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
   }
+  await vi.advanceTimersByTimeAsync(20);
+  const expected = kind === 'deadline' || kind === 'maximum' ? 'DEADLINE_EXCEEDED' : 'CANCELLED';
+  expect(resultCode).toBe(expected); expect(closedCode).toBe(expected);
+  expect(abort).not.toHaveBeenCalled();
+  if (kind !== 'peer') {
+    const other = peer.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
+    await expect(other.result).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
+    await expect(other.closed).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
+    expect(openStream).toHaveBeenCalledOnce();
+  }
+  let retired = false;
+  const closing = peer.retire().then(() => {
+    retired = true;
+  });
+  await vi.advanceTimersByTimeAsync(1);
+  expect(retired).toBe(false);
+  opening.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort });
+  await closing;
+  expect(abort).toHaveBeenCalledOnce();
+  expect(resultCode).toBe(expected); expect(closedCode).toBe(expected);
 });
 
 it('keeps a cancellation result when a lower open eventually rejects', async () => {

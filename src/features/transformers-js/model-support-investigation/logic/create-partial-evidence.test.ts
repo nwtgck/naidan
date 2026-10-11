@@ -20,6 +20,7 @@ import {
   createBatchModelSupportEvidence,
   createPartialModelSupportEvidence,
 } from "./create-partial-evidence";
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // These serialization tests require real Web Blob/streams, not a DOM. JSZip
 // remains an independent test-only reader for the produced ZIP transport.
@@ -411,27 +412,28 @@ describe("createPartialModelSupportEvidence", () => {
       },
       traceLimits: { maximumEvents: 10, maximumCharacters: 100 },
     });
-    try {
-      checkpoint.run.productionProviderCapture = owner.snapshot();
-      const { blob } = await createPartialModelSupportEvidence({ run: checkpoint.run, recovery: checkpoint.recovery });
-      const archive = await JSZip.loadAsync(await blob.arrayBuffer());
-      const capture = JSON.parse(await archive.file('production-provider/capture.json')!.async('string'));
-      expect(capture.snapshot.run.status).toBe('not-started');
-      expect(capture.snapshot.requests[0].input).toEqual({ captureValue: 'undefined' });
-      expect(capture.limitations.replayEligibility).toBe('not-established');
-      const run = JSON.parse(await archive.file('run.json')!.async('string'));
-      expect(run.productionProviderCapture).toEqual({ format: 'production-provider-capture-reference-v1', path: 'production-provider/capture.json' });
-      expect(run.status).toBe(checkpoint.run.status);
-      const manifest = JSON.parse(await archive.file('manifest.json')!.async('string'));
-      expect(manifest.files).toContainEqual(expect.objectContaining({ path: 'production-provider/capture.json', byteLength: expect.any(Number), sha256: expect.stringMatching(/^[a-f0-9]{64}$/u) }));
-      await expect(verifyGeneratedEvidenceArchive({ blob })).resolves.toMatchObject({ runId: checkpoint.run.runId });
-      expect(await archive.file('SUMMARY.md')!.async('string')).toContain('does not establish replay eligibility');
-      archive.file('production-provider/capture.json', '{}');
-      const corrupted = await archive.generateAsync({ type: 'blob' });
-      await expect(verifyGeneratedEvidenceArchive({ blob: corrupted })).rejects.toThrow('mismatch');
-    } finally {
-      await owner.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await owner.dispose();
+      },
+    });
+    checkpoint.run.productionProviderCapture = owner.snapshot();
+    const { blob } = await createPartialModelSupportEvidence({ run: checkpoint.run, recovery: checkpoint.recovery });
+    const archive = await JSZip.loadAsync(await blob.arrayBuffer());
+    const capture = JSON.parse(await archive.file('production-provider/capture.json')!.async('string'));
+    expect(capture.snapshot.run.status).toBe('not-started');
+    expect(capture.snapshot.requests[0].input).toEqual({ captureValue: 'undefined' });
+    expect(capture.limitations.replayEligibility).toBe('not-established');
+    const run = JSON.parse(await archive.file('run.json')!.async('string'));
+    expect(run.productionProviderCapture).toEqual({ format: 'production-provider-capture-reference-v1', path: 'production-provider/capture.json' });
+    expect(run.status).toBe(checkpoint.run.status);
+    const manifest = JSON.parse(await archive.file('manifest.json')!.async('string'));
+    expect(manifest.files).toContainEqual(expect.objectContaining({ path: 'production-provider/capture.json', byteLength: expect.any(Number), sha256: expect.stringMatching(/^[a-f0-9]{64}$/u) }));
+    await expect(verifyGeneratedEvidenceArchive({ blob })).resolves.toMatchObject({ runId: checkpoint.run.runId });
+    expect(await archive.file('SUMMARY.md')!.async('string')).toContain('does not establish replay eligibility');
+    archive.file('production-provider/capture.json', '{}');
+    const corrupted = await archive.generateAsync({ type: 'blob' });
+    await expect(verifyGeneratedEvidenceArchive({ blob: corrupted })).rejects.toThrow('mismatch');
   });
 
   it('rejects a raw capture carrying extra private fields instead of copying it into run.json', async () => {
@@ -445,13 +447,14 @@ describe("createPartialModelSupportEvidence", () => {
       },
       traceLimits: { maximumEvents: 10, maximumCharacters: 100 },
     });
-    try {
-      const capture = { ...owner.snapshot(), privatePath: '/private/not-for-export' };
-      checkpoint.run.productionProviderCapture = capture;
-      await expect(createPartialModelSupportEvidence({ run: checkpoint.run, recovery: checkpoint.recovery })).rejects.toThrow(/^Invalid Production Provider capture evidence$/u);
-    } finally {
-      await owner.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await owner.dispose();
+      },
+    });
+    const capture = { ...owner.snapshot(), privatePath: '/private/not-for-export' };
+    checkpoint.run.productionProviderCapture = capture;
+    await expect(createPartialModelSupportEvidence({ run: checkpoint.run, recovery: checkpoint.recovery })).rejects.toThrow(/^Invalid Production Provider capture evidence$/u);
   });
 
   it('summarizes nested failures and selected blocked work independently of a passed collection boundary', async () => {

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { serveByteStream } from '@/utils/byte-stream-port';
 import { installStreamDownloadWorker, type DownloadFetchEvent, type DownloadMessageEvent, type DownloadWorkerScope } from './service-worker';
 import { createDownloadUrl, DOWNLOAD_EVENT_LEASE_MS, type DownloadVersion } from './protocol';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -187,15 +188,16 @@ describe('streaming download Service Worker', () => {
     });
     const response = f.fetch({ mode: 'cors', clientId: 'owner', method: 'GET', range: undefined, requestUrl: f.url }).response;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await expect(Promise.race([response.arrayBuffer(), new Promise((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error('response stayed open')), 100);
-      })])).rejects.toThrow('control channel closed');
-      await expect(source.sender.completed).rejects.toMatchObject({ name: 'AbortError' });
-      expect(source.openStream).not.toHaveBeenCalled();
-    } finally {
-      clearTimeout(timer);
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        clearTimeout(timer);
+      },
+    });
+    await expect(Promise.race([response.arrayBuffer(), new Promise((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('response stayed open')), 100);
+    })])).rejects.toThrow('control channel closed');
+    await expect(source.sender.completed).rejects.toMatchObject({ name: 'AbortError' });
+    expect(source.openStream).not.toHaveBeenCalled();
   });
 
   it('renews bounded event leases without accumulating timers or requiring byte production', async () => {

@@ -4,6 +4,7 @@ import { bytesSource, collectBytes, computationSource, encodeDocument } from '@/
 import { prepareTranscript, receiveTranscript, receiveEvents, eventBytes, TRANSCRIPT_LIMIT } from '@/features/naidan-rpc-integration/codecs/chat-wire';
 import { validatePng } from '@/features/naidan-rpc-integration/codecs/png';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
+import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -45,16 +46,17 @@ it('bounds byte-buffer allocation overhead independently of tiny chunk count', a
       allocations++; return Reflect.construct(constructor, args, newTarget);
     },
   }));
-  try {
-    const bytes = await collectBytes({ readable, limit: length, signal: signal() });
-    expect(bytes.byteLength).toBe(length);
-    expect(bytes.every(byte => byte === 7)).toBe(true);
-    // A byte cap must also bound retained object overhead, even for 1-byte chunks.
-    // This allows different growth policies without prescribing an exact capacity.
-    expect(allocations).toBeLessThan(64);
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      vi.unstubAllGlobals();
+    },
+  });
+  const bytes = await collectBytes({ readable, limit: length, signal: signal() });
+  expect(bytes.byteLength).toBe(length);
+  expect(bytes.every(byte => byte === 7)).toBe(true);
+  // A byte cap must also bound retained object overhead, even for 1-byte chunks.
+  // This allows different growth policies without prescribing an exact capacity.
+  expect(allocations).toBeLessThan(64);
 });
 
 it('snapshots reused mutable byte chunks without including spare buffer capacity', async () => {
@@ -102,20 +104,21 @@ for (const consumer of ['bytes', 'events'] as const) {
       }, (error: unknown) => {
         settled = true; return error;
       });
-      try {
-        stop.abort(reason);
-        await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
-        // Drain the read/catch continuations while native cancellation remains held.
-        for (let turn = 0; turn < 12; turn++) await Promise.resolve();
-        expect(settled).toBe(false);
-        expect(readable.locked).toBe(true);
-        if (cleanupOutcome === 'resolved') cleanup.resolve(); else cleanup.reject(new Error('Cleanup failed'));
-        expect(await observed).toBe(reason);
-        expect(cancel).toHaveBeenCalledExactlyOnceWith(reason);
-        expect(readable.locked).toBe(false);
-      } finally {
-        cleanup.resolve(); await observed;
-      }
+      await using _cleanupResource = createAsyncTestDisposable({
+        dispose: async () => {
+          cleanup.resolve(); await observed;
+        },
+      });
+      stop.abort(reason);
+      await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+      // Drain the read/catch continuations while native cancellation remains held.
+      for (let turn = 0; turn < 12; turn++) await Promise.resolve();
+      expect(settled).toBe(false);
+      expect(readable.locked).toBe(true);
+      if (cleanupOutcome === 'resolved') cleanup.resolve(); else cleanup.reject(new Error('Cleanup failed'));
+      expect(await observed).toBe(reason);
+      expect(cancel).toHaveBeenCalledExactlyOnceWith(reason);
+      expect(readable.locked).toBe(false);
     });
   }
 }

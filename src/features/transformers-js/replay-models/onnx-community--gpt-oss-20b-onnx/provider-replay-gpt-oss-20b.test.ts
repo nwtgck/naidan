@@ -23,6 +23,7 @@ import toolInputJson from './provider-template-tool-inputs.evidence.json';
 import { parseProviderReplayTextEvidence, replayRecordedText } from '@/features/transformers-js/replay-models/support/provider-replay-test-causal-gate';
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
 import { createSyntheticModelBody, inspectSyntheticOrtSession } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
+import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function textMessage({ id, role, text }: {
   id: string;
@@ -126,33 +127,34 @@ function createOwnedToolControl({ mutations, boundaries }: {
         if (!call.options.streamer) throw new Error('Missing actual native streamer');
         const put = vi.spyOn(call.options.streamer, 'put');
         const end = vi.spyOn(call.options.streamer, 'end');
+        using _cleanupResource = createTestDisposable({
+          dispose: () => {
+            put.mockRestore(); end.mockRestore();
+          },
+        });
+        const verifyRejection = ({ value, reason }: { value: OwnedReplayCacheControl; reason: string }) => {
+          expect(() => replayCapturedFullInvocationWithOwnedCache({ ...call, cacheControl: value })).toThrow(reason);
+          expect(put, reason).not.toHaveBeenCalled(); expect(end, reason).not.toHaveBeenCalled();
+        };
+        verifyRejection({ value: { ...control, pastKeyValues: new call.runtime.DynamicCache() }, reason: 'owned cache identity' });
+        const previous = BigInt64Array.from(control.previousSequence.data, BigInt); previous[0] = 999n;
+        verifyRejection({ value: { ...control, previousSequence: new call.runtime.Tensor('int64', previous, control.previousSequence.dims) }, reason: 'previous returned sequence prefix' });
+        const length = control.pastKeyValues.get_seq_length();
+        vi.mocked(control.pastKeyValues.get_seq_length).mockReturnValue(length + 1);
         try {
-          const verifyRejection = ({ value, reason }: { value: OwnedReplayCacheControl; reason: string }) => {
-            expect(() => replayCapturedFullInvocationWithOwnedCache({ ...call, cacheControl: value })).toThrow(reason);
-            expect(put, reason).not.toHaveBeenCalled(); expect(end, reason).not.toHaveBeenCalled();
-          };
-          verifyRejection({ value: { ...control, pastKeyValues: new call.runtime.DynamicCache() }, reason: 'owned cache identity' });
-          const previous = BigInt64Array.from(control.previousSequence.data, BigInt); previous[0] = 999n;
-          verifyRejection({ value: { ...control, previousSequence: new call.runtime.Tensor('int64', previous, control.previousSequence.dims) }, reason: 'previous returned sequence prefix' });
-          const length = control.pastKeyValues.get_seq_length();
-          vi.mocked(control.pastKeyValues.get_seq_length).mockReturnValue(length + 1);
-          try {
-            verifyRejection({ value: control, reason: 'owned cache length' });
-          } finally {
-            vi.mocked(control.pastKeyValues.get_seq_length).mockReturnValue(length);
-          }
-          const budget = call.invocation.settings.budget;
-          expect(() => replayCapturedFullInvocationWithOwnedCache({
-            ...call,
-            cacheControl: control,
-            invocation: { ...call.invocation, settings: { ...call.invocation.settings, budget: { ...budget, usedContextTokenCount: budget.promptTokenCount + length } } },
-          })).toThrow('independent budget');
-          expect(() => replayCapturedFullInvocation(call)).toThrow('past-token-count');
-          expect(put).not.toHaveBeenCalled(); expect(end).not.toHaveBeenCalled();
-          boundaries.push(`${caseId}/rejected-identity-length-prefix-double-count`);
+          verifyRejection({ value: control, reason: 'owned cache length' });
         } finally {
-          put.mockRestore(); end.mockRestore();
+          vi.mocked(control.pastKeyValues.get_seq_length).mockReturnValue(length);
         }
+        const budget = call.invocation.settings.budget;
+        expect(() => replayCapturedFullInvocationWithOwnedCache({
+          ...call,
+          cacheControl: control,
+          invocation: { ...call.invocation, settings: { ...call.invocation.settings, budget: { ...budget, usedContextTokenCount: budget.promptTokenCount + length } } },
+        })).toThrow('independent budget');
+        expect(() => replayCapturedFullInvocation(call)).toThrow('past-token-count');
+        expect(put).not.toHaveBeenCalled(); expect(end).not.toHaveBeenCalled();
+        boundaries.push(`${caseId}/rejected-identity-length-prefix-double-count`);
       }
       return control;
     },
@@ -320,50 +322,51 @@ describe('GPT-OSS 20B Provider / basic', () => {
         throw new Error(boundary);
       },
     });
-    try {
-      const capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: inputEvidence.modelId,
-          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    });
+    const capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: inputEvidence.modelId,
+        messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: boundary });
-      const chunks = capturedTextChunks({ capture, type: 'text' });
-      expect(nativeInputs).toHaveLength(1);
-      const observedInput = nativeInputs[0]!;
-      expect(observedInput.templateSha256).toBe(inputEvidence.selectedTemplateSha256);
-      expect(observedInput.rendered).toBe(scenario.renderedText);
-      expect(observedInput.input?.type).toBe('int64');
-      expect(observedInput.input?.dims).toEqual([1, scenario.inputTokenIds.length]);
-      expect(observedInput.input?.data).toEqual(scenario.inputTokenIds);
-      expect(observedInput.mask?.data).toEqual(new BigInt64Array(scenario.inputTokenIds.length).fill(1n));
-      expect(observedInput.past).toBeNull();
-      expect(chunks).toEqual([]);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: boundary });
+    const chunks = capturedTextChunks({ capture, type: 'text' });
+    expect(nativeInputs).toHaveLength(1);
+    const observedInput = nativeInputs[0]!;
+    expect(observedInput.templateSha256).toBe(inputEvidence.selectedTemplateSha256);
+    expect(observedInput.rendered).toBe(scenario.renderedText);
+    expect(observedInput.input?.type).toBe('int64');
+    expect(observedInput.input?.dims).toEqual([1, scenario.inputTokenIds.length]);
+    expect(observedInput.input?.data).toEqual(scenario.inputTokenIds);
+    expect(observedInput.mask?.data).toEqual(new BigInt64Array(scenario.inputTokenIds.length).fill(1n));
+    expect(observedInput.past).toBeNull();
+    expect(chunks).toEqual([]);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it("system-user-generation preserves the exact captured native input through Provider.chat", async () => {
@@ -402,53 +405,54 @@ describe('GPT-OSS 20B Provider / basic', () => {
         throw new Error(boundary);
       },
     });
-    try {
-      const capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: inputEvidence.modelId,
-          messages: [
-            textMessage({ id: 'message_0', role: 'system', text: "Template probe system instruction." }),
-            textMessage({ id: 'message_1', role: 'user', text: "Template probe user message." }),
-          ],
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    });
+    const capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: inputEvidence.modelId,
+        messages: [
+          textMessage({ id: 'message_0', role: 'system', text: "Template probe system instruction." }),
+          textMessage({ id: 'message_1', role: 'user', text: "Template probe user message." }),
+        ],
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: boundary });
-      const chunks = capturedTextChunks({ capture, type: 'text' });
-      expect(nativeInputs).toHaveLength(1);
-      const observedInput = nativeInputs[0]!;
-      expect(observedInput.templateSha256).toBe(inputEvidence.selectedTemplateSha256);
-      expect(observedInput.rendered).toBe(scenario.renderedText);
-      expect(observedInput.input?.type).toBe('int64');
-      expect(observedInput.input?.dims).toEqual([1, scenario.inputTokenIds.length]);
-      expect(observedInput.input?.data).toEqual(scenario.inputTokenIds);
-      expect(observedInput.mask?.data).toEqual(new BigInt64Array(scenario.inputTokenIds.length).fill(1n));
-      expect(observedInput.past).toBeNull();
-      expect(chunks).toEqual([]);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: boundary });
+    const chunks = capturedTextChunks({ capture, type: 'text' });
+    expect(nativeInputs).toHaveLength(1);
+    const observedInput = nativeInputs[0]!;
+    expect(observedInput.templateSha256).toBe(inputEvidence.selectedTemplateSha256);
+    expect(observedInput.rendered).toBe(scenario.renderedText);
+    expect(observedInput.input?.type).toBe('int64');
+    expect(observedInput.input?.dims).toEqual([1, scenario.inputTokenIds.length]);
+    expect(observedInput.input?.data).toEqual(scenario.inputTokenIds);
+    expect(observedInput.mask?.data).toEqual(new BigInt64Array(scenario.inputTokenIds.length).fill(1n));
+    expect(observedInput.past).toBeNull();
+    expect(chunks).toEqual([]);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it("multi-turn-generation preserves the exact captured native input through Provider.chat", async () => {
@@ -487,93 +491,95 @@ describe('GPT-OSS 20B Provider / basic', () => {
         throw new Error(boundary);
       },
     });
-    try {
-      const capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: inputEvidence.modelId,
-          messages: [
-            textMessage({ id: 'message_0', role: 'user', text: "Template probe first user message." }),
-            textMessage({ id: 'message_1', role: 'assistant', text: "Template probe assistant response." }),
-            textMessage({ id: 'message_2', role: 'user', text: "Template probe second user message." }),
-          ],
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    });
+    const capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: inputEvidence.modelId,
+        messages: [
+          textMessage({ id: 'message_0', role: 'user', text: "Template probe first user message." }),
+          textMessage({ id: 'message_1', role: 'assistant', text: "Template probe assistant response." }),
+          textMessage({ id: 'message_2', role: 'user', text: "Template probe second user message." }),
+        ],
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: boundary });
-      const chunks = capturedTextChunks({ capture, type: 'text' });
-      expect(nativeInputs).toHaveLength(1);
-      const observedInput = nativeInputs[0]!;
-      expect(observedInput.templateSha256).toBe(inputEvidence.selectedTemplateSha256);
-      expect(observedInput.rendered).toBe(scenario.renderedText);
-      expect(observedInput.input?.type).toBe('int64');
-      expect(observedInput.input?.dims).toEqual([1, scenario.inputTokenIds.length]);
-      expect(observedInput.input?.data).toEqual(scenario.inputTokenIds);
-      expect(observedInput.mask?.data).toEqual(new BigInt64Array(scenario.inputTokenIds.length).fill(1n));
-      expect(observedInput.past).toBeNull();
-      expect(chunks).toEqual([]);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: boundary });
+    const chunks = capturedTextChunks({ capture, type: 'text' });
+    expect(nativeInputs).toHaveLength(1);
+    const observedInput = nativeInputs[0]!;
+    expect(observedInput.templateSha256).toBe(inputEvidence.selectedTemplateSha256);
+    expect(observedInput.rendered).toBe(scenario.renderedText);
+    expect(observedInput.input?.type).toBe('int64');
+    expect(observedInput.input?.dims).toEqual([1, scenario.inputTokenIds.length]);
+    expect(observedInput.input?.data).toEqual(scenario.inputTokenIds);
+    expect(observedInput.mask?.data).toEqual(new BigInt64Array(scenario.inputTokenIds.length).fill(1n));
+    expect(observedInput.past).toBeNull();
+    expect(chunks).toEqual([]);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('refuses the recorded answer when the public caller changes the input', async () => {
     const captures: ProviderChatCapture[] = [];
     const replay = await createGptOssReplay();
-    try {
-      const capture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: "hf.co/onnx-community/gpt-oss-20b-ONNX",
-          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Different synthetic replay input.' })],
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 16,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
+      },
+    });
+    const capture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: "hf.co/onnx-community/gpt-oss-20b-ONNX",
+        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Different synthetic replay input.' })],
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 16,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: 'Replay causal mismatch: actual source input' });
-      const chunks = capturedTextChunks({ capture, type: 'text' });
-      expect(replay.releasedTokenCount()).toBe(0);
-      expect(chunks).toEqual([]);
-      expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
-      expect(replay.harness.observations.forbiddenTransport).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: 'Replay causal mismatch: actual source input' });
+    const chunks = capturedTextChunks({ capture, type: 'text' });
+    expect(replay.releasedTokenCount()).toBe(0);
+    expect(chunks).toEqual([]);
+    expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
+    expect(replay.harness.observations.forbiddenTransport).toEqual([]);
   }, 30_000);
 
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
@@ -640,51 +646,52 @@ describe('GPT-OSS 20B Provider / system', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // system-user: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "system-user", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [
-              textMessage({ id: 'message_0', role: 'system', text: "Template probe system instruction." }),
-              textMessage({ id: 'message_1', role: 'user', text: "Template probe user message." }),
-            ],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(observed.parts).toEqual([]);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(order).toEqual(['result', 'settled']);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // system-user: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "system-user", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gpt-oss-20b-ONNX",
+          messages: [
+            textMessage({ id: 'message_0', role: 'system', text: "Template probe system instruction." }),
+            textMessage({ id: 'message_1', role: 'user', text: "Template probe user message." }),
+          ],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(observed.parts).toEqual([]);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(order).toEqual(['result', 'settled']);
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -693,36 +700,37 @@ describe('GPT-OSS 20B Provider / history', () => {
     const scenario = inputEvidence.cases.find(candidate => candidate.caseId === 'multi-turn-generation');
     if (!scenario) throw new Error('Missing captured GPT-OSS history input');
     const replay = await createGptOssReplay();
-    try {
-      await replay.harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
-      const tokenizer = await replay.harness.runtime.AutoTokenizer.from_pretrained(inputEvidence.modelId, {
-        revision: inputEvidence.revision,
-        local_files_only: true,
-      });
-      expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'))
-        .toBe(inputEvidence.selectedTemplateSha256);
-      expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true }))
-        .toBe(scenario.renderedText);
-      const cleanInput = tokenizer.apply_chat_template(scenario.messages, { add_generation_prompt: true, return_dict: true });
-      expect(cleanInput.input_ids).toBeInstanceOf(replay.harness.runtime.Tensor);
-      expect(Array.from(cleanInput.input_ids.data, Number)).toEqual(scenario.inputTokenIds);
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await replay.harness.close();
+      },
+    });
+    await replay.harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
+    const tokenizer = await replay.harness.runtime.AutoTokenizer.from_pretrained(inputEvidence.modelId, {
+      revision: inputEvidence.revision,
+      local_files_only: true,
+    });
+    expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'))
+      .toBe(inputEvidence.selectedTemplateSha256);
+    expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true }))
+      .toBe(scenario.renderedText);
+    const cleanInput = tokenizer.apply_chat_template(scenario.messages, { add_generation_prompt: true, return_dict: true });
+    expect(cleanInput.input_ids).toBeInstanceOf(replay.harness.runtime.Tensor);
+    expect(Array.from(cleanInput.input_ids.data, Number)).toEqual(scenario.inputTokenIds);
 
-      // buildGptOssPromptMessages adds own tool_calls:undefined even when the
-      // public message has no tools. The template uses membership, not truthiness:
-      // the assistant enters message.tool_calls[0] instead of ordinary history.
-      // Keep this isolated comparison alongside the public contract RED below;
-      // never remove the real adapter's property in the replay harness.
-      const withUndefinedToolCalls = scenario.messages.map(message => ({ ...message, tool_calls: undefined }));
-      expect(Object.hasOwn(withUndefinedToolCalls[1]!, 'tool_calls')).toBe(true);
-      expect(() => tokenizer.apply_chat_template(withUndefinedToolCalls, { tokenize: false, add_generation_prompt: true }))
-        .toThrow('Cannot access property with non-string: got IntegerValue');
-      expect(replay.releasedTokenCount()).toBe(0);
-      expect(replay.harness.observations.inferenceCalls).toEqual([]);
-      expect(replay.harness.observations.forbiddenTransport).toEqual([]);
-      expect(replay.harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await replay.harness.close();
-    }
+    // buildGptOssPromptMessages adds own tool_calls:undefined even when the
+    // public message has no tools. The template uses membership, not truthiness:
+    // the assistant enters message.tool_calls[0] instead of ordinary history.
+    // Keep this isolated comparison alongside the public contract RED below;
+    // never remove the real adapter's property in the replay harness.
+    const withUndefinedToolCalls = scenario.messages.map(message => ({ ...message, tool_calls: undefined }));
+    expect(Object.hasOwn(withUndefinedToolCalls[1]!, 'tool_calls')).toBe(true);
+    expect(() => tokenizer.apply_chat_template(withUndefinedToolCalls, { tokenize: false, add_generation_prompt: true }))
+      .toThrow('Cannot access property with non-string: got IntegerValue');
+    expect(replay.releasedTokenCount()).toBe(0);
+    expect(replay.harness.observations.inferenceCalls).toEqual([]);
+    expect(replay.harness.observations.forbiddenTransport).toEqual([]);
+    expect(replay.harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
@@ -734,52 +742,53 @@ describe('GPT-OSS 20B Provider / history', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // supplied-history: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "supplied-history", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [
-              textMessage({ id: 'message_0', role: 'user', text: "Template probe first user message." }),
-              textMessage({ id: 'message_1', role: 'assistant', text: "Template probe assistant response." }),
-              textMessage({ id: 'message_2', role: 'user', text: "Template probe second user message." }),
-            ],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-        expect(observed.parts).toEqual([]);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(order).toEqual(['result', 'settled']);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // supplied-history: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "supplied-history", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gpt-oss-20b-ONNX",
+          messages: [
+            textMessage({ id: 'message_0', role: 'user', text: "Template probe first user message." }),
+            textMessage({ id: 'message_1', role: 'assistant', text: "Template probe assistant response." }),
+            textMessage({ id: 'message_2', role: 'user', text: "Template probe second user message." }),
+          ],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+      expect(observed.parts).toEqual([]);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(order).toEqual(['result', 'settled']);
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -853,95 +862,96 @@ describe('GPT-OSS 20B Provider / independent', () => {
         return next(context);
       },
     });
-    try {
-      const firstCapture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: "hf.co/onnx-community/gpt-oss-20b-ONNX",
-          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 16,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    });
+    const firstCapture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: "hf.co/onnx-community/gpt-oss-20b-ONNX",
+        messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 16,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(firstCapture);
-      await firstCapture.completion;
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(firstCapture);
+    await firstCapture.completion;
 
-      const ortCountAfterFirst = harness.observations.ortCalls.length;
+    const ortCountAfterFirst = harness.observations.ortCalls.length;
 
-      const secondCapture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: "hf.co/onnx-community/gpt-oss-20b-ONNX",
-          messages: nextMessages,
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    const secondCapture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: "hf.co/onnx-community/gpt-oss-20b-ONNX",
+        messages: nextMessages,
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(secondCapture);
-      await secondCapture.completion;
-      expectDeliveredErrorCapture({ capture: secondCapture, message: stop });
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(secondCapture);
+    await secondCapture.completion;
+    expectDeliveredErrorCapture({ capture: secondCapture, message: stop });
 
-      expect(nativeInputs).toHaveLength(1);
-      const observedInput = nativeInputs[0]!;
-      expect(observedInput.templateSha256).toBe(inputEvidence.selectedTemplateSha256);
-      expect(observedInput.rendered).toBe(nextPrompt);
-      expect(observedInput.input?.type).toBe('int64');
-      expect(observedInput.input?.location).toBe('cpu');
-      expect(observedInput.input?.dims).toEqual([1, observedInput.expectedIds.length]);
-      expect(observedInput.input?.data).toEqual(observedInput.expectedIds);
-      expect(observedInput.mask?.type).toBe('int64');
-      expect(observedInput.mask?.location).toBe('cpu');
-      expect(observedInput.mask?.dims).toEqual([1, observedInput.expectedIds.length]);
-      expect(observedInput.mask?.data).toEqual(observedInput.expectedIds.map(() => 1n));
-      expect(observedInput.past).toBeNull();
-      expect(observedInput.maxNewTokens).toBe(1);
-      expect(observedInput.temperature).toBe(0);
-      expect(observedInput.topP).toBe(1);
-      expect(observedInput.doSample).toBe(false);
-      expect(firstReleased).toBe(16);
-      expect(secondCapture.snapshot().parts).toEqual([]);
-      expect(contexts).toHaveLength(2);
-      expect(contexts[1]!.model).toBe(contexts[0]!.model);
-      expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
-      expect(contexts.map(({ options }) => options.past_key_values)).toEqual([null, null]);
-      expect(invocations).toEqual([]);
-      expect(harness.observations.inferenceCalls).toHaveLength(2);
-      expect(ortCountAfterFirst).toBe(1);
-      expect(harness.observations.ortCalls).toHaveLength(ortCountAfterFirst);
-      expect(harness.observations.workers).toHaveLength(1);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.localImageFetchCalls).toEqual([]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+    expect(nativeInputs).toHaveLength(1);
+    const observedInput = nativeInputs[0]!;
+    expect(observedInput.templateSha256).toBe(inputEvidence.selectedTemplateSha256);
+    expect(observedInput.rendered).toBe(nextPrompt);
+    expect(observedInput.input?.type).toBe('int64');
+    expect(observedInput.input?.location).toBe('cpu');
+    expect(observedInput.input?.dims).toEqual([1, observedInput.expectedIds.length]);
+    expect(observedInput.input?.data).toEqual(observedInput.expectedIds);
+    expect(observedInput.mask?.type).toBe('int64');
+    expect(observedInput.mask?.location).toBe('cpu');
+    expect(observedInput.mask?.dims).toEqual([1, observedInput.expectedIds.length]);
+    expect(observedInput.mask?.data).toEqual(observedInput.expectedIds.map(() => 1n));
+    expect(observedInput.past).toBeNull();
+    expect(observedInput.maxNewTokens).toBe(1);
+    expect(observedInput.temperature).toBe(0);
+    expect(observedInput.topP).toBe(1);
+    expect(observedInput.doSample).toBe(false);
+    expect(firstReleased).toBe(16);
+    expect(secondCapture.snapshot().parts).toEqual([]);
+    expect(contexts).toHaveLength(2);
+    expect(contexts[1]!.model).toBe(contexts[0]!.model);
+    expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
+    expect(contexts.map(({ options }) => options.past_key_values)).toEqual([null, null]);
+    expect(invocations).toEqual([]);
+    expect(harness.observations.inferenceCalls).toHaveLength(2);
+    expect(ortCountAfterFirst).toBe(1);
+    expect(harness.observations.ortCalls).toHaveLength(ortCountAfterFirst);
+    expect(harness.observations.workers).toHaveLength(1);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.localImageFetchCalls).toEqual([]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
@@ -954,116 +964,117 @@ describe('GPT-OSS 20B Provider / independent', () => {
     });
     const captures: ProviderChatCapture[] = [];
     let firstResponse = '';
-    try {
-      // first-turn: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 16,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "first-turn", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const reasoning = 'The user says "Template probe user message." This seems like a';
-        expectPartialReasoningCapture({ capture, text: reasoning });
-        firstResponse = reasoning;
-      }
-      // The recorded prefix ended during reasoning. The ordered DTO therefore
-      // preserves it as partial and must reject it as completed history before
-      // any native continuation can consume the old continuity capture.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 16,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [
-              textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." }),
-              reasoningMessage({ id: 'message_1', text: firstResponse, completeness: 'partial' }),
-              textMessage({ id: 'message_2', role: 'user', text: "Continue the synthetic conversation with a short response." }),
-            ],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        expectDeliveredErrorCapture({
-          capture,
-          message: 'The model template cannot close unfinished structured reasoning.',
-        });
-      }
-      // independent-next-input: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "independent-next-input", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [textMessage({ id: 'message_0', role: 'user', text: "A separate synthetic capture conversation." })],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        expectEmptyInterruptedCapture({ capture });
-      }
-      replay.assertComplete({ requests: 2, nativeCalls: 2 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // first-turn: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "first-turn", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gpt-oss-20b-ONNX",
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const reasoning = 'The user says "Template probe user message." This seems like a';
+      expectPartialReasoningCapture({ capture, text: reasoning });
+      firstResponse = reasoning;
     }
+    // The recorded prefix ended during reasoning. The ordered DTO therefore
+    // preserves it as partial and must reject it as completed history before
+    // any native continuation can consume the old continuity capture.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gpt-oss-20b-ONNX",
+          messages: [
+            textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." }),
+            reasoningMessage({ id: 'message_1', text: firstResponse, completeness: 'partial' }),
+            textMessage({ id: 'message_2', role: 'user', text: "Continue the synthetic conversation with a short response." }),
+          ],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      expectDeliveredErrorCapture({
+        capture,
+        message: 'The model template cannot close unfinished structured reasoning.',
+      });
+    }
+    // independent-next-input: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "independent-next-input", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gpt-oss-20b-ONNX",
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "A separate synthetic capture conversation." })],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      expectEmptyInterruptedCapture({ capture });
+    }
+    replay.assertComplete({ requests: 2, nativeCalls: 2 });
   }, 30_000);
 });
 
@@ -1071,66 +1082,67 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
   it('delivers the captured analysis prefix as thinking before Provider settlement', async () => {
     const captures: ProviderChatCapture[] = [];
     const replay = await createGptOssReplay();
-    try {
-      const capture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: "hf.co/onnx-community/gpt-oss-20b-ONNX",
-          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 16,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
+      },
+    });
+    const capture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: "hf.co/onnx-community/gpt-oss-20b-ONNX",
+        messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 16,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      const observed = capture.snapshot();
-      expect(replay.releasedTokenCount()).toBe(16);
-      expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
-      expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
-      expect(replay.harness.observations.forbiddenTransport).toEqual([]);
-      // The ORT boundary is replaced, so independently verify what reached it.
-      // Identifiable bodies detect a wrong core/revision or swapped data shard.
-      const expectedExternalPaths = [
-        'model_q4f16.onnx_data', 'model_q4f16.onnx_data_1', 'model_q4f16.onnx_data_2',
-        'model_q4f16.onnx_data_3', 'model_q4f16.onnx_data_4', 'model_q4f16.onnx_data_5', 'model_q4f16.onnx_data_6',
-      ];
-      expect(replay.harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
-        modelId: 'onnx-community/gpt-oss-20b-ONNX',
-        revision: evidence.identity.resolvedRevision,
-        repositoryPaths: new Set(['onnx/model_q4f16.onnx', ...expectedExternalPaths.map(path => `onnx/${path}`)]),
-        core,
-        options,
-      }))).toEqual([{
-        modelId: 'onnx-community/gpt-oss-20b-ONNX',
-        revision: evidence.identity.resolvedRevision,
-        corePath: 'onnx/model_q4f16.onnx',
-        executionProviders: ['webgpu'],
-        externalData: expectedExternalPaths.map(path => ({ path, artifactPath: `onnx/${path}` })),
-      }]);
-      expect(replay.harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
-      // A truncated analysis prefix is not a completed answer. Do not append a
-      // fabricated </think> or wait for late callbacks to make this assertion pass.
-      expectPartialReasoningCapture({
-        capture,
-        text: 'The user says "Template probe user message." This seems like a',
-      });
-      expect(observed.parts.filter(part => part.type === 'tool_call')).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    const observed = capture.snapshot();
+    expect(replay.releasedTokenCount()).toBe(16);
+    expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
+    expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
+    expect(replay.harness.observations.forbiddenTransport).toEqual([]);
+    // The ORT boundary is replaced, so independently verify what reached it.
+    // Identifiable bodies detect a wrong core/revision or swapped data shard.
+    const expectedExternalPaths = [
+      'model_q4f16.onnx_data', 'model_q4f16.onnx_data_1', 'model_q4f16.onnx_data_2',
+      'model_q4f16.onnx_data_3', 'model_q4f16.onnx_data_4', 'model_q4f16.onnx_data_5', 'model_q4f16.onnx_data_6',
+    ];
+    expect(replay.harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
+      modelId: 'onnx-community/gpt-oss-20b-ONNX',
+      revision: evidence.identity.resolvedRevision,
+      repositoryPaths: new Set(['onnx/model_q4f16.onnx', ...expectedExternalPaths.map(path => `onnx/${path}`)]),
+      core,
+      options,
+    }))).toEqual([{
+      modelId: 'onnx-community/gpt-oss-20b-ONNX',
+      revision: evidence.identity.resolvedRevision,
+      corePath: 'onnx/model_q4f16.onnx',
+      executionProviders: ['webgpu'],
+      externalData: expectedExternalPaths.map(path => ({ path, artifactPath: `onnx/${path}` })),
+    }]);
+    expect(replay.harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
+    // A truncated analysis prefix is not a completed answer. Do not append a
+    // fabricated </think> or wait for late callbacks to make this assertion pass.
+    expectPartialReasoningCapture({
+      capture,
+      text: 'The user says "Template probe user message." This seems like a',
+    });
+    expect(observed.parts.filter(part => part.type === 'tool_call')).toEqual([]);
   }, 30_000);
 
   it('reasoning: preserves the recorded none-effort request and callbacks', async () => {
@@ -1142,43 +1154,44 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // reasoning-none: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: "none",
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "reasoning-none", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        expectEmptyInterruptedCapture({ capture });
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // reasoning-none: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "none",
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "reasoning-none", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gpt-oss-20b-ONNX",
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      expectEmptyInterruptedCapture({ capture });
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
@@ -1190,43 +1203,44 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // reasoning-low: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: "low",
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "reasoning-low", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        expectEmptyInterruptedCapture({ capture });
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // reasoning-low: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "low",
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "reasoning-low", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gpt-oss-20b-ONNX",
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      expectEmptyInterruptedCapture({ capture });
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
@@ -1238,43 +1252,44 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // reasoning-medium: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: "medium",
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "reasoning-medium", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        expectEmptyInterruptedCapture({ capture });
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // reasoning-medium: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "medium",
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "reasoning-medium", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gpt-oss-20b-ONNX",
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      expectEmptyInterruptedCapture({ capture });
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
@@ -1286,43 +1301,44 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // reasoning-high: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: "high",
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "reasoning-high", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        expectEmptyInterruptedCapture({ capture });
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // reasoning-high: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "high",
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "reasoning-high", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gpt-oss-20b-ONNX",
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      expectEmptyInterruptedCapture({ capture });
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -1537,144 +1553,141 @@ type lookup_weather = (_: {
         throw new Error(boundary);
       },
     });
-    try {
-      await harness.service.loadDownloadedModel({ modelId: toolInputEvidence.modelId });
-      const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(toolInputEvidence.modelId, {
-        revision: toolInputEvidence.revision,
-        local_files_only: true,
-      });
-      expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
-        .toBe(toolInputEvidence.selectedTemplateSha256);
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: scenario.tools,
-      })).toBe(scenario.renderedText);
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true,
-        return_tensor: false,
-        return_dict: false,
-        add_generation_prompt: true,
-        tools: scenario.tools,
-      })).toEqual(scenario.inputTokenIds);
-      // The template does not render additionalProperties, so this explicit
-      // public schema difference is not the source of the namespace difference.
-      const strictTools = scenario.tools.map(tool => ({
-        ...tool,
-        function: {
-          ...tool.function,
-          parameters: {
-            ...tool.function.parameters,
-            additionalProperties: false,
+    await using _cleanupResource2 = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    });
+    await harness.service.loadDownloadedModel({ modelId: toolInputEvidence.modelId });
+    const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(toolInputEvidence.modelId, {
+      revision: toolInputEvidence.revision,
+      local_files_only: true,
+    });
+    expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
+      .toBe(toolInputEvidence.selectedTemplateSha256);
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: scenario.tools,
+    })).toBe(scenario.renderedText);
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: true,
+      return_tensor: false,
+      return_dict: false,
+      add_generation_prompt: true,
+      tools: scenario.tools,
+    })).toEqual(scenario.inputTokenIds);
+    // The template does not render additionalProperties, so this explicit
+    // public schema difference is not the source of the namespace difference.
+    const strictTools = scenario.tools.map(tool => ({
+      ...tool,
+      function: {
+        ...tool.function,
+        parameters: {
+          ...tool.function.parameters,
+          additionalProperties: false,
+        },
+      },
+    }));
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: strictTools,
+    })).toBe(scenario.renderedText);
+    const expectedIds = tokenizer.encode(expectedRenderedText, { add_special_tokens: false });
+    using templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
+    const capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: toolInputEvidence.modelId,
+        messages: [textMessage({ id: 'message_0', role: 'user', text: "Use the weather tool for Tokyo." })],
+        tools: [publicTool],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
         },
-      }));
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: strictTools,
-      })).toBe(scenario.renderedText);
-      const expectedIds = tokenizer.encode(expectedRenderedText, { add_special_tokens: false });
-      const templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
-      try {
-        const capture = captureProviderChat({
-          provider: harness.provider,
-          request: {
-            model: toolInputEvidence.modelId,
-            messages: [textMessage({ id: 'message_0', role: 'user', text: "Use the weather tool for Tokyo." })],
-            tools: [publicTool],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 1,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: {
-                effort: undefined,
-              },
-            },
-            readBinaryObject: undefined,
-            debug: undefined,
-            signal: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.result).toMatchObject({ type: 'error', error: { message: boundary } });
-        const chunks = observed.parts.filter(part => part.type === 'text' || part.type === 'reasoning').flatMap(part => part.chunks);
-        const toolCalls = observed.parts.filter(part => part.type === 'tool_call');
-        const observedMessageSchema = z.object({
-          role: z.string(),
-          content: z.string(),
-          tool_calls: toolAssistantSchema.shape.tool_calls.optional(),
-          tool_call_id: z.literal('call_template_probe_1').optional(),
-        }).strict();
-        const observedTokenizations = templateSpy.mock.calls
-          .filter(([, options]) => options?.tokenize !== false)
-          .map(([rawMessages, options]) => [
-            z.array(observedMessageSchema).parse(rawMessages).map(message => {
-              const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
-              unhandled satisfies Record<PropertyKey, never>;
-              return { role, content, tool_calls, tool_call_id };
-            }), options,
-          ]);
-        // Compare semantic values after the real call, not property membership.
-        // The separate history regression demonstrates why the real adapter's
-        // own undefined property must be removable by a subsequent fix. Nothing
-        // is normalized on the actual Production/tokenizer execution path.
-        expect(observedTokenizations).toStrictEqual([[
-          [
-            { role: 'developer', content: developerNamespace, tool_calls: undefined, tool_call_id: undefined },
-            ...scenario.messages.map(message => ({
-              role: message.role,
-              content: message.content,
-              tool_calls: 'tool_calls' in message ? message.tool_calls : undefined,
-              tool_call_id: 'tool_call_id' in message ? message.tool_call_id : undefined,
-            })),
-          ],
-          { add_generation_prompt: true, return_dict: true },
-        ]]);
-        expect(nativeInputs).toHaveLength(1);
-        const observedInput = nativeInputs[0]!;
-        expect(observedInput.input?.data).toEqual(expectedIds);
-        expect(observedInput.input?.type).toBe('int64');
-        expect(observedInput.input?.location).toBe('cpu');
-        expect(observedInput.input?.dims).toEqual([1, expectedIds.length]);
-        expect(observedInput.mask?.type).toBe('int64');
-        expect(observedInput.mask?.location).toBe('cpu');
-        expect(observedInput.mask?.dims).toEqual([1, expectedIds.length]);
-        expect(observedInput.mask?.data).toEqual(expectedIds.map(() => 1n));
-        expect(observedInput.past).toBeNull();
-        expect(chunks).toEqual([]);
-        expect(execute).not.toHaveBeenCalled();
-        expect(toolCalls).toEqual([]);
-        expect(harness.observations.inferenceCalls).toHaveLength(1);
-        expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-        expect(harness.observations.localImageFetchCalls).toEqual([]);
-        expect(harness.observations.forbiddenTransport).toEqual([]);
-        expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-        expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
-          modelId: toolInputEvidence.modelId,
-          revision: toolInputEvidence.revision,
-          repositoryPaths: new Set(repositoryPaths),
-          core,
-          options,
-        }))).toEqual([{
-          modelId: toolInputEvidence.modelId,
-          revision: toolInputEvidence.revision,
-          corePath: repositoryPaths[0],
-          executionProviders: ['webgpu'],
-          externalData: repositoryPaths.slice(1).map(artifactPath => ({ path: artifactPath.slice('onnx/'.length), artifactPath })),
-        }]);
-      } finally {
-        templateSpy.mockRestore();
-      }
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(observed.result).toMatchObject({ type: 'error', error: { message: boundary } });
+    const chunks = observed.parts.filter(part => part.type === 'text' || part.type === 'reasoning').flatMap(part => part.chunks);
+    const toolCalls = observed.parts.filter(part => part.type === 'tool_call');
+    const observedMessageSchema = z.object({
+      role: z.string(),
+      content: z.string(),
+      tool_calls: toolAssistantSchema.shape.tool_calls.optional(),
+      tool_call_id: z.literal('call_template_probe_1').optional(),
+    }).strict();
+    const observedTokenizations = templateSpy.mock.calls
+      .filter(([, options]) => options?.tokenize !== false)
+      .map(([rawMessages, options]) => [
+        z.array(observedMessageSchema).parse(rawMessages).map(message => {
+          const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
+          unhandled satisfies Record<PropertyKey, never>;
+          return { role, content, tool_calls, tool_call_id };
+        }), options,
+      ]);
+    // Compare semantic values after the real call, not property membership.
+    // The separate history regression demonstrates why the real adapter's
+    // own undefined property must be removable by a subsequent fix. Nothing
+    // is normalized on the actual Production/tokenizer execution path.
+    expect(observedTokenizations).toStrictEqual([[
+      [
+        { role: 'developer', content: developerNamespace, tool_calls: undefined, tool_call_id: undefined },
+        ...scenario.messages.map(message => ({
+          role: message.role,
+          content: message.content,
+          tool_calls: 'tool_calls' in message ? message.tool_calls : undefined,
+          tool_call_id: 'tool_call_id' in message ? message.tool_call_id : undefined,
+        })),
+      ],
+      { add_generation_prompt: true, return_dict: true },
+    ]]);
+    expect(nativeInputs).toHaveLength(1);
+    const observedInput = nativeInputs[0]!;
+    expect(observedInput.input?.data).toEqual(expectedIds);
+    expect(observedInput.input?.type).toBe('int64');
+    expect(observedInput.input?.location).toBe('cpu');
+    expect(observedInput.input?.dims).toEqual([1, expectedIds.length]);
+    expect(observedInput.mask?.type).toBe('int64');
+    expect(observedInput.mask?.location).toBe('cpu');
+    expect(observedInput.mask?.dims).toEqual([1, expectedIds.length]);
+    expect(observedInput.mask?.data).toEqual(expectedIds.map(() => 1n));
+    expect(observedInput.past).toBeNull();
+    expect(chunks).toEqual([]);
+    expect(execute).not.toHaveBeenCalled();
+    expect(toolCalls).toEqual([]);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.localImageFetchCalls).toEqual([]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
+      modelId: toolInputEvidence.modelId,
+      revision: toolInputEvidence.revision,
+      repositoryPaths: new Set(repositoryPaths),
+      core,
+      options,
+    }))).toEqual([{
+      modelId: toolInputEvidence.modelId,
+      revision: toolInputEvidence.revision,
+      corePath: repositoryPaths[0],
+      executionProviders: ['webgpu'],
+      externalData: repositoryPaths.slice(1).map(artifactPath => ({ path: artifactPath.slice('onnx/'.length), artifactPath })),
+    }]);
   }, 30_000);
 
   it("tool-result-continuation characterizes the current developer-namespace projection without certifying native tool compatibility", async () => {
@@ -1763,144 +1776,141 @@ type lookup_weather = (_: {
         throw new Error(boundary);
       },
     });
-    try {
-      await harness.service.loadDownloadedModel({ modelId: toolInputEvidence.modelId });
-      const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(toolInputEvidence.modelId, {
-        revision: toolInputEvidence.revision,
-        local_files_only: true,
-      });
-      expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
-        .toBe(toolInputEvidence.selectedTemplateSha256);
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: scenario.tools,
-      })).toBe(scenario.renderedText);
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true,
-        return_tensor: false,
-        return_dict: false,
-        add_generation_prompt: true,
-        tools: scenario.tools,
-      })).toEqual(scenario.inputTokenIds);
-      // The template does not render additionalProperties, so this explicit
-      // public schema difference is not the source of the namespace difference.
-      const strictTools = scenario.tools.map(tool => ({
-        ...tool,
-        function: {
-          ...tool.function,
-          parameters: {
-            ...tool.function.parameters,
-            additionalProperties: false,
+    await using _cleanupResource2 = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    });
+    await harness.service.loadDownloadedModel({ modelId: toolInputEvidence.modelId });
+    const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(toolInputEvidence.modelId, {
+      revision: toolInputEvidence.revision,
+      local_files_only: true,
+    });
+    expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
+      .toBe(toolInputEvidence.selectedTemplateSha256);
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: scenario.tools,
+    })).toBe(scenario.renderedText);
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: true,
+      return_tensor: false,
+      return_dict: false,
+      add_generation_prompt: true,
+      tools: scenario.tools,
+    })).toEqual(scenario.inputTokenIds);
+    // The template does not render additionalProperties, so this explicit
+    // public schema difference is not the source of the namespace difference.
+    const strictTools = scenario.tools.map(tool => ({
+      ...tool,
+      function: {
+        ...tool.function,
+        parameters: {
+          ...tool.function.parameters,
+          additionalProperties: false,
+        },
+      },
+    }));
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: strictTools,
+    })).toBe(scenario.renderedText);
+    const expectedIds = tokenizer.encode(expectedRenderedText, { add_special_tokens: false });
+    using templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
+    const capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: toolInputEvidence.modelId,
+        messages,
+        tools: [publicTool],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
         },
-      }));
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: strictTools,
-      })).toBe(scenario.renderedText);
-      const expectedIds = tokenizer.encode(expectedRenderedText, { add_special_tokens: false });
-      const templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
-      try {
-        const capture = captureProviderChat({
-          provider: harness.provider,
-          request: {
-            model: toolInputEvidence.modelId,
-            messages,
-            tools: [publicTool],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 1,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: {
-                effort: undefined,
-              },
-            },
-            readBinaryObject: undefined,
-            debug: undefined,
-            signal: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.result).toMatchObject({ type: 'error', error: { message: boundary } });
-        const chunks = observed.parts.filter(part => part.type === 'text' || part.type === 'reasoning').flatMap(part => part.chunks);
-        const toolCalls = observed.parts.filter(part => part.type === 'tool_call');
-        const observedMessageSchema = z.object({
-          role: z.string(),
-          content: z.string(),
-          tool_calls: toolAssistantSchema.shape.tool_calls.optional(),
-          tool_call_id: z.literal('call_template_probe_1').optional(),
-        }).strict();
-        const observedTokenizations = templateSpy.mock.calls
-          .filter(([, options]) => options?.tokenize !== false)
-          .map(([rawMessages, options]) => [
-            z.array(observedMessageSchema).parse(rawMessages).map(message => {
-              const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
-              unhandled satisfies Record<PropertyKey, never>;
-              return { role, content, tool_calls, tool_call_id };
-            }), options,
-          ]);
-        // Compare semantic values after the real call, not property membership.
-        // The separate history regression demonstrates why the real adapter's
-        // own undefined property must be removable by a subsequent fix. Nothing
-        // is normalized on the actual Production/tokenizer execution path.
-        expect(observedTokenizations).toStrictEqual([[
-          [
-            { role: 'developer', content: developerNamespace, tool_calls: undefined, tool_call_id: undefined },
-            ...scenario.messages.map(message => ({
-              role: message.role,
-              content: message.content,
-              tool_calls: 'tool_calls' in message ? message.tool_calls : undefined,
-              tool_call_id: 'tool_call_id' in message ? message.tool_call_id : undefined,
-            })),
-          ],
-          { add_generation_prompt: true, return_dict: true },
-        ]]);
-        expect(nativeInputs).toHaveLength(1);
-        const observedInput = nativeInputs[0]!;
-        expect(observedInput.input?.data).toEqual(expectedIds);
-        expect(observedInput.input?.type).toBe('int64');
-        expect(observedInput.input?.location).toBe('cpu');
-        expect(observedInput.input?.dims).toEqual([1, expectedIds.length]);
-        expect(observedInput.mask?.type).toBe('int64');
-        expect(observedInput.mask?.location).toBe('cpu');
-        expect(observedInput.mask?.dims).toEqual([1, expectedIds.length]);
-        expect(observedInput.mask?.data).toEqual(expectedIds.map(() => 1n));
-        expect(observedInput.past).toBeNull();
-        expect(chunks).toEqual([]);
-        expect(execute).not.toHaveBeenCalled();
-        expect(toolCalls).toEqual([]);
-        expect(harness.observations.inferenceCalls).toHaveLength(1);
-        expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-        expect(harness.observations.localImageFetchCalls).toEqual([]);
-        expect(harness.observations.forbiddenTransport).toEqual([]);
-        expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-        expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
-          modelId: toolInputEvidence.modelId,
-          revision: toolInputEvidence.revision,
-          repositoryPaths: new Set(repositoryPaths),
-          core,
-          options,
-        }))).toEqual([{
-          modelId: toolInputEvidence.modelId,
-          revision: toolInputEvidence.revision,
-          corePath: repositoryPaths[0],
-          executionProviders: ['webgpu'],
-          externalData: repositoryPaths.slice(1).map(artifactPath => ({ path: artifactPath.slice('onnx/'.length), artifactPath })),
-        }]);
-      } finally {
-        templateSpy.mockRestore();
-      }
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(observed.result).toMatchObject({ type: 'error', error: { message: boundary } });
+    const chunks = observed.parts.filter(part => part.type === 'text' || part.type === 'reasoning').flatMap(part => part.chunks);
+    const toolCalls = observed.parts.filter(part => part.type === 'tool_call');
+    const observedMessageSchema = z.object({
+      role: z.string(),
+      content: z.string(),
+      tool_calls: toolAssistantSchema.shape.tool_calls.optional(),
+      tool_call_id: z.literal('call_template_probe_1').optional(),
+    }).strict();
+    const observedTokenizations = templateSpy.mock.calls
+      .filter(([, options]) => options?.tokenize !== false)
+      .map(([rawMessages, options]) => [
+        z.array(observedMessageSchema).parse(rawMessages).map(message => {
+          const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
+          unhandled satisfies Record<PropertyKey, never>;
+          return { role, content, tool_calls, tool_call_id };
+        }), options,
+      ]);
+    // Compare semantic values after the real call, not property membership.
+    // The separate history regression demonstrates why the real adapter's
+    // own undefined property must be removable by a subsequent fix. Nothing
+    // is normalized on the actual Production/tokenizer execution path.
+    expect(observedTokenizations).toStrictEqual([[
+      [
+        { role: 'developer', content: developerNamespace, tool_calls: undefined, tool_call_id: undefined },
+        ...scenario.messages.map(message => ({
+          role: message.role,
+          content: message.content,
+          tool_calls: 'tool_calls' in message ? message.tool_calls : undefined,
+          tool_call_id: 'tool_call_id' in message ? message.tool_call_id : undefined,
+        })),
+      ],
+      { add_generation_prompt: true, return_dict: true },
+    ]]);
+    expect(nativeInputs).toHaveLength(1);
+    const observedInput = nativeInputs[0]!;
+    expect(observedInput.input?.data).toEqual(expectedIds);
+    expect(observedInput.input?.type).toBe('int64');
+    expect(observedInput.input?.location).toBe('cpu');
+    expect(observedInput.input?.dims).toEqual([1, expectedIds.length]);
+    expect(observedInput.mask?.type).toBe('int64');
+    expect(observedInput.mask?.location).toBe('cpu');
+    expect(observedInput.mask?.dims).toEqual([1, expectedIds.length]);
+    expect(observedInput.mask?.data).toEqual(expectedIds.map(() => 1n));
+    expect(observedInput.past).toBeNull();
+    expect(chunks).toEqual([]);
+    expect(execute).not.toHaveBeenCalled();
+    expect(toolCalls).toEqual([]);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.localImageFetchCalls).toEqual([]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({
+      modelId: toolInputEvidence.modelId,
+      revision: toolInputEvidence.revision,
+      repositoryPaths: new Set(repositoryPaths),
+      core,
+      options,
+    }))).toEqual([{
+      modelId: toolInputEvidence.modelId,
+      revision: toolInputEvidence.revision,
+      corePath: repositoryPaths[0],
+      executionProviders: ['webgpu'],
+      externalData: repositoryPaths.slice(1).map(artifactPath => ({ path: artifactPath.slice('onnx/'.length), artifactPath })),
+    }]);
   }, 30_000);
 });
 
@@ -1914,56 +1924,57 @@ describe('GPT-OSS 20B Provider / images', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // image: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "image", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [{
-              id: toMessageId({ raw: 'message_0' }),
-              role: 'user',
-              parts: [
-                { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-                { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) },
-              ],
-            }],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.parts).toEqual([]);
-        expect(observed.result).toMatchObject({
-          type: 'error',
-          error: { message: 'GPT-OSS input is text-only; image content cannot be omitted.' },
-        });
-        replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 0 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // image: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "image", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gpt-oss-20b-ONNX",
+          messages: [{
+            id: toMessageId({ raw: 'message_0' }),
+            role: 'user',
+            parts: [
+              { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) },
+            ],
+          }],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(observed.parts).toEqual([]);
+      expect(observed.result).toMatchObject({
+        type: 'error',
+        error: { message: 'GPT-OSS input is text-only; image content cannot be omitted.' },
+      });
+      replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 0 });
   }, 30_000);
 });
 
@@ -2288,84 +2299,85 @@ Here’s the current weather in Tokyo:
     });
     const captures: ProviderChatCapture[] = [];
     let firstResponse = '';
-    try {
-      // first-turn: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 16,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "first-turn", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const reasoning = 'The user says "Template probe user message." This seems like a';
-        expectPartialReasoningCapture({ capture, text: reasoning });
-        firstResponse = reasoning;
-      }
-      // The old continuity capture treated a raw `<think>` prefix as ordinary
-      // assistant content. The ordered DTO records interrupted reasoning and
-      // rejects it before native generation instead of upgrading it to history.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 16,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "onnx-community/gpt-oss-20b-ONNX",
-            messages: [
-              textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." }),
-              reasoningMessage({ id: 'message_1', text: firstResponse, completeness: 'partial' }),
-              textMessage({ id: 'message_2', role: 'user', text: "Continue the synthetic conversation with a short response." }),
-            ],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        expectDeliveredErrorCapture({
-          capture,
-          message: 'The model template cannot close unfinished structured reasoning.',
-        });
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // first-turn: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "first-turn", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gpt-oss-20b-ONNX",
+          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const reasoning = 'The user says "Template probe user message." This seems like a';
+      expectPartialReasoningCapture({ capture, text: reasoning });
+      firstResponse = reasoning;
     }
+    // The old continuity capture treated a raw `<think>` prefix as ordinary
+    // assistant content. The ordered DTO records interrupted reasoning and
+    // rejects it before native generation instead of upgrading it to history.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "onnx-community/gpt-oss-20b-ONNX",
+          messages: [
+            textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." }),
+            reasoningMessage({ id: 'message_1', text: firstResponse, completeness: 'partial' }),
+            textMessage({ id: 'message_2', role: 'user', text: "Continue the synthetic conversation with a short response." }),
+          ],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      expectDeliveredErrorCapture({
+        capture,
+        message: 'The model template cannot close unfinished structured reasoning.',
+      });
+    }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('preserves recorded calls and the independent image request without replaying invalid cached continuations', async () => {

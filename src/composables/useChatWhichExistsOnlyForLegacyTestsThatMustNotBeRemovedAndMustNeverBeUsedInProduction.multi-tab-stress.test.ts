@@ -1,9 +1,10 @@
 import type { StorageService } from '@/00-storage/service';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 import { storageService } from '@/00-storage/service';
 import type { Chat, Hierarchy } from '@/01-models/types';
 import { toChatId, toMessageId } from '@/01-models/ids';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 /**
  * Multi-Tab Stress & Glitch Tests
@@ -185,19 +186,20 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         // Use a very short interval for the test
         if (now - lastSave > 10 && !isSaving) {
           isSaving = true;
-          try {
-            await storageService.updateChatContent({
-              id: chat.id,
-              updater: ({ current }) => ({
-                ...current,
-                root: chat.root,
-                currentLeafId: chat.currentLeafId,
-              }),
-            });
-            lastSave = Date.now();
-          } finally {
-            isSaving = false;
-          }
+          using _cleanupResource = createTestDisposable({
+            dispose: () => {
+              isSaving = false;
+            },
+          });
+          await storageService.updateChatContent({
+            id: chat.id,
+            updater: ({ current }) => ({
+              ...current,
+              root: chat.root,
+              currentLeafId: chat.currentLeafId,
+            }),
+          });
+          lastSave = Date.now();
         }
         await new Promise(r => setTimeout(r, 5));
       }

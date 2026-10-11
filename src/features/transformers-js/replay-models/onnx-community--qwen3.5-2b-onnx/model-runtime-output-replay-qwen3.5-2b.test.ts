@@ -13,6 +13,7 @@ import { EMPTY_LM_PARAMETERS, type AssistantMessageNode, type ChatContent, type 
 import type { InferenceGenerationEvent } from '@/features/transformers-js/generation-events';
 import type { GenerationStrategy } from '@/features/transformers-js/generation-strategies';
 import type { NativeProtocolStreamer as NativeStreamerType } from '@/features/transformers-js/models/native-protocol-streamer';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 type Context = Parameters<GenerationStrategy['generate']>[0];
 const modelId = 'onnx-community/Qwen3.5-2B-ONNX';
@@ -180,26 +181,27 @@ R
         signal: abortController.signal,
         generate: async ({ onEvent }) => {
           const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
-          try {
-            await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: modelId }).generate({
-              model: { config: {}, sessions: {}, generate: nativeGenerate } as unknown as Context['model'],
-              tokenizer: tokenizer as unknown as Context['tokenizer'],
-              messages: [{ role: 'user', content: 'Calculate.' }],
-              onChunk,
-              onToolCalls,
-              onRawChunk: () => {},
-              params: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } },
-              tools: [{ type: 'function', function: { name: 'calculator', description: 'Arithmetic', parameters: { type: 'object', properties: { expression: { type: 'string' } } } } }],
-              stoppingCriteria: { reset: () => {}, interrupt: () => {} },
-              runtimeState: state,
-              debugLog: () => {},
-              observationSink: undefined,
-              generationCapture: undefined,
-              onGenerationEvent: ({ event }) => queue.enqueue({ event }),
-            });
-          } finally {
-            await queue.finish();
-          }
+          await using _cleanupResource = createAsyncTestDisposable({
+            dispose: async () => {
+              await queue.finish();
+            },
+          });
+          await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: modelId }).generate({
+            model: { config: {}, sessions: {}, generate: nativeGenerate } as unknown as Context['model'],
+            tokenizer: tokenizer as unknown as Context['tokenizer'],
+            messages: [{ role: 'user', content: 'Calculate.' }],
+            onChunk,
+            onToolCalls,
+            onRawChunk: () => {},
+            params: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } },
+            tools: [{ type: 'function', function: { name: 'calculator', description: 'Arithmetic', parameters: { type: 'object', properties: { expression: { type: 'string' } } } } }],
+            stoppingCriteria: { reset: () => {}, interrupt: () => {} },
+            runtimeState: state,
+            debugLog: () => {},
+            observationSink: undefined,
+            generationCapture: undefined,
+            onGenerationEvent: ({ event }) => queue.enqueue({ event }),
+          });
         },
       }),
     });

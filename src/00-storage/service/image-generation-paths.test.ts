@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toBinaryObjectId, toImageGenerationAssetId, toImageGenerationRunId, toImageGenerationSessionId } from '@/01-models/ids';
 import type { ImageGenerationAsset, ImageGenerationRun, ImageGenerationSession, ImageGenerationSessionDraft } from '@/01-models/image-generation';
 import * as service from './image-generation';
-import { createImageGenerationStorageHarness, generationAssetFixture, generationDraftFixture, generationRunFixture, generationSessionFixture } from './image-generation/test-support';
+import { createImageGenerationStorageHarness, generationAssetFixture, generationDraftFixture, generationRunFixture, generationSessionFixture } from './image-generation/index.test-support';
 
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
 

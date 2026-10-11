@@ -29,6 +29,7 @@ import { captureProviderChat as captureStructuredProviderChat, type CapturedChat
 import { closeProviderReplayCaptures, createReplayImageAttachment, runProviderReplayTurn } from '@/features/transformers-js/replay-models/support/provider-replay-chat';
 import type { StructuredPartsReplayContract } from '@/features/transformers-js/replay-models/support/provider-replay-structured-parts';
 import { exactObject } from '@/utils/exact-object';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 type RecordedMessage =
   | { role: 'user' | 'system' | 'assistant'; content: string; tool_calls?: readonly [{ id: string | ToolCallId; type: 'function'; function: { name: string; arguments: string } }] }
@@ -930,78 +931,82 @@ Describe this synthetic Qwen2 image.<|vision_start|><|image_pad|><|vision_end|><
 describe('Qwen3.5 2B Provider / basic', () => {
   it('rejects changed messages at the historical adapter before releasing any native tokens', async () => {
     const control = await createHistoricalMutationControl();
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      capture = captureProviderChat({
-        provider: control.harness.provider,
-        request: {
-          model: 'onnx-community/Qwen3.5-2B-ONNX',
-          messages: [{ role: 'user', content: 'Changed synthetic message.' }],
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 16,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
-          signal: new AbortController().signal,
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
+      },
+    });
+    capture = captureProviderChat({
+      provider: control.harness.provider,
+      request: {
+        model: 'onnx-community/Qwen3.5-2B-ONNX',
+        messages: [{ role: 'user', content: 'Changed synthetic message.' }],
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 16,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-      });
-      await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: undefined });
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.events.map(event => event.kind)).toEqual(['result', 'settled']);
-      expect(capturedChunks({ snapshot: observed })).toEqual([]);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      expect(control.adapter.serviceSpy).not.toHaveBeenCalled();
-      expect(control.adapter.builderSpy).toHaveBeenCalledOnce();
-      expect(control.generate).not.toHaveBeenCalled();
-      expect(control.harness.observations.inferenceCalls).toHaveLength(0);
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
-    }
+        signal: new AbortController().signal,
+      },
+    });
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: undefined });
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(observed.events.map(event => event.kind)).toEqual(['result', 'settled']);
+    expect(capturedChunks({ snapshot: observed })).toEqual([]);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    expect(control.adapter.serviceSpy).not.toHaveBeenCalled();
+    expect(control.adapter.builderSpy).toHaveBeenCalledOnce();
+    expect(control.generate).not.toHaveBeenCalled();
+    expect(control.harness.observations.inferenceCalls).toHaveLength(0);
   }, 30_000);
 
   it('rejects changed generation parameters at the historical adapter before releasing any native tokens', async () => {
     const control = await createHistoricalMutationControl();
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      capture = captureProviderChat({
-        provider: control.harness.provider,
-        request: {
-          model: 'onnx-community/Qwen3.5-2B-ONNX',
-          messages: [{ role: 'user', content: 'Template probe user message.' }],
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 15,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
-          signal: new AbortController().signal,
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
+      },
+    });
+    capture = captureProviderChat({
+      provider: control.harness.provider,
+      request: {
+        model: 'onnx-community/Qwen3.5-2B-ONNX',
+        messages: [{ role: 'user', content: 'Template probe user message.' }],
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 15,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-      });
-      await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: undefined });
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.events.map(event => event.kind)).toEqual(['result', 'settled']);
-      expect(capturedChunks({ snapshot: observed })).toEqual([]);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      expect(control.adapter.serviceSpy).not.toHaveBeenCalled();
-      expect(control.adapter.builderSpy).toHaveBeenCalledOnce();
-      expect(control.generate).toHaveBeenCalledOnce();
-      expect(control.harness.observations.inferenceCalls).toHaveLength(1);
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
-    }
+        signal: new AbortController().signal,
+      },
+    });
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: undefined });
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(observed.events.map(event => event.kind)).toEqual(['result', 'settled']);
+    expect(capturedChunks({ snapshot: observed })).toEqual([]);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    expect(control.adapter.serviceSpy).not.toHaveBeenCalled();
+    expect(control.adapter.builderSpy).toHaveBeenCalledOnce();
+    expect(control.generate).toHaveBeenCalledOnce();
+    expect(control.harness.observations.inferenceCalls).toHaveLength(1);
   }, 30_000);
 
   it('rejects a changed selected template at the historical adapter before releasing any native tokens', async () => {
@@ -1009,42 +1014,44 @@ describe('Qwen3.5 2B Provider / basic', () => {
     const tokenizer = control.harness.observations.processors[0]!.tokenizer;
     if (tokenizer === undefined) throw new Error('Expected the selected native tokenizer');
     const template = vi.spyOn(tokenizer, 'get_chat_template').mockReturnValue('changed synthetic template');
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      capture = captureProviderChat({
-        provider: control.harness.provider,
-        request: {
-          model: 'onnx-community/Qwen3.5-2B-ONNX',
-          messages: [{ role: 'user', content: 'Template probe user message.' }],
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 16,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
-          signal: new AbortController().signal,
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        template.mockRestore();
+        await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
+      },
+    });
+    capture = captureProviderChat({
+      provider: control.harness.provider,
+      request: {
+        model: 'onnx-community/Qwen3.5-2B-ONNX',
+        messages: [{ role: 'user', content: 'Template probe user message.' }],
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 16,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-      });
-      await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: undefined });
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.events.map(event => event.kind)).toEqual(['result', 'settled']);
-      expect(capturedChunks({ snapshot: observed })).toEqual([]);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      expect(control.adapter.serviceSpy).not.toHaveBeenCalled();
-      expect(control.adapter.builderSpy).toHaveBeenCalledOnce();
-      expect(template).toHaveBeenCalledOnce();
-      expect(control.generate).not.toHaveBeenCalled();
-      expect(control.harness.observations.inferenceCalls).toHaveLength(0);
-    } finally {
-      template.mockRestore();
-      await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
-    }
+        signal: new AbortController().signal,
+      },
+    });
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: undefined });
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(observed.events.map(event => event.kind)).toEqual(['result', 'settled']);
+    expect(capturedChunks({ snapshot: observed })).toEqual([]);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    expect(control.adapter.serviceSpy).not.toHaveBeenCalled();
+    expect(control.adapter.builderSpy).toHaveBeenCalledOnce();
+    expect(template).toHaveBeenCalledOnce();
+    expect(control.generate).not.toHaveBeenCalled();
+    expect(control.harness.observations.inferenceCalls).toHaveLength(0);
   }, 30_000);
 
   it('preserves the historical 13-ID first input through an explicit legacy serializer adapter', async () => {
@@ -1078,81 +1085,83 @@ describe('Qwen3.5 2B Provider / basic', () => {
       },
     });
     const historicalAdapter = await installHistoricalQwenSerializer({ harness, capture: firstQwenCapture, effort: undefined, expectedMode: 'default', expectedPrompt: recordedQwenUserPrompt });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: source.identity.modelId,
-          messages: source.scenario.messages,
-          tools: [],
-          parameters: {
-            ...source.scenario.lmParameters,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        historicalAdapter.restore();
+        await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
+      },
+    });
+    capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: source.identity.modelId,
+        messages: source.scenario.messages,
+        tools: [],
+        parameters: {
+          ...source.scenario.lmParameters,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-      });
-      await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: stop });
-      const observed = capture.snapshot();
-      expect(inputs).toHaveLength(1);
-      const native = inputs[0]!;
-      const { options, tokenizer, runtime } = native;
-      expect(runtime.env.version).toBe(source.identity.transformersJsVersion);
-      expect(tokenizer).toBeInstanceOf(runtime.PreTrainedTokenizer);
-      expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'))
-        .toBe('273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80');
-      expect(tokenizer).toBe(harness.observations.processors[0]?.tokenizer);
-      expect(native.optionKeys).toEqual([
-        'attention_mask', 'do_sample', 'input_ids', 'max_new_tokens', 'past_key_values',
-        'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
-      ].sort());
-      if (!options.input_ids || !options.attention_mask) {
-        throw new Error('Expected actual first-input Tensor instances');
-      }
-      const tensors = { input_ids: options.input_ids, attention_mask: options.attention_mask };
-      for (const fact of source.inputContract.inputTensorFacts) {
-        const tensor = tensors[fact.name];
-        expect({ name: fact.name, dtype: tensor.type, dims: tensor.dims, location: tensor.location }).toEqual(fact);
-        expect(tensor.data).toBeInstanceOf(BigInt64Array);
-      }
-      const actualIds = Array.from(options.input_ids.data, Number);
-      expect(options.input_ids.dims).toEqual([1, 13]);
-      expect(actualIds).toEqual(source.inputContract.inputTokenIds);
-      expect(actualIds).toEqual(source.modelReplay.sourceInputTokenIds);
-      expect(createHash('sha256').update(JSON.stringify(actualIds)).digest('hex')).toBe(source.modelReplay.sourceInputSha256);
-      expect(Array.from(options.attention_mask.data, BigInt)).toEqual(source.modelReplay.sourceInputTokenIds.map(() => 1n));
-      // The source records these four requested settings, not every merged
-      // GenerationConfig default or native GPU state.
-      expect({
-        maxNewTokens: options.max_new_tokens,
-        temperature: options.temperature,
-        topP: options.top_p,
-        doSample: options.do_sample,
-      }).toEqual(source.inputContract.effectiveGenerationConfig);
-      expect(options.past_key_values).toBeNull();
-      expect(options.return_dict_in_generate).toBe(true);
-      expect(native.streamerIsTextStreamer).toBe(true);
-      expect(native.stoppingCriteriaType).toBe('function');
-      expect(historicalAdapter.builderSpy).toHaveBeenCalledOnce();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedChunks({ snapshot: observed })).toEqual([]);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.workers).toHaveLength(1);
-      expect(harness.observations.ortCalls).toHaveLength(2);
-      expect(harness.observations.processors).toHaveLength(1);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.localImageFetchCalls).toEqual([]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      historicalAdapter.restore();
-      await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
+      },
+    });
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: stop });
+    const observed = capture.snapshot();
+    expect(inputs).toHaveLength(1);
+    const native = inputs[0]!;
+    const { options, tokenizer, runtime } = native;
+    expect(runtime.env.version).toBe(source.identity.transformersJsVersion);
+    expect(tokenizer).toBeInstanceOf(runtime.PreTrainedTokenizer);
+    expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex'))
+      .toBe('273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80');
+    expect(tokenizer).toBe(harness.observations.processors[0]?.tokenizer);
+    expect(native.optionKeys).toEqual([
+      'attention_mask', 'do_sample', 'input_ids', 'max_new_tokens', 'past_key_values',
+      'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
+    ].sort());
+    if (!options.input_ids || !options.attention_mask) {
+      throw new Error('Expected actual first-input Tensor instances');
     }
+    const tensors = { input_ids: options.input_ids, attention_mask: options.attention_mask };
+    for (const fact of source.inputContract.inputTensorFacts) {
+      const tensor = tensors[fact.name];
+      expect({ name: fact.name, dtype: tensor.type, dims: tensor.dims, location: tensor.location }).toEqual(fact);
+      expect(tensor.data).toBeInstanceOf(BigInt64Array);
+    }
+    const actualIds = Array.from(options.input_ids.data, Number);
+    expect(options.input_ids.dims).toEqual([1, 13]);
+    expect(actualIds).toEqual(source.inputContract.inputTokenIds);
+    expect(actualIds).toEqual(source.modelReplay.sourceInputTokenIds);
+    expect(createHash('sha256').update(JSON.stringify(actualIds)).digest('hex')).toBe(source.modelReplay.sourceInputSha256);
+    expect(Array.from(options.attention_mask.data, BigInt)).toEqual(source.modelReplay.sourceInputTokenIds.map(() => 1n));
+    // The source records these four requested settings, not every merged
+    // GenerationConfig default or native GPU state.
+    expect({
+      maxNewTokens: options.max_new_tokens,
+      temperature: options.temperature,
+      topP: options.top_p,
+      doSample: options.do_sample,
+    }).toEqual(source.inputContract.effectiveGenerationConfig);
+    expect(options.past_key_values).toBeNull();
+    expect(options.return_dict_in_generate).toBe(true);
+    expect(native.streamerIsTextStreamer).toBe(true);
+    expect(native.stoppingCriteriaType).toBe('function');
+    expect(historicalAdapter.builderSpy).toHaveBeenCalledOnce();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedChunks({ snapshot: observed })).toEqual([]);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.workers).toHaveLength(1);
+    expect(harness.observations.ortCalls).toHaveLength(2);
+    expect(harness.observations.processors).toHaveLength(1);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.localImageFetchCalls).toEqual([]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('rejects historical first-turn output at the repaired native input without a legacy adapter', async () => {
@@ -1167,80 +1176,18 @@ describe('Qwen3.5 2B Provider / basic', () => {
 
 `,
       });
+      // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
       let capture: ProviderChatCapture | undefined;
-      try {
-        capture = captureProviderChat({
-          provider: control.harness.provider,
-          request: {
-            model: "onnx-community/Qwen3.5-2B-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
-            tools: [],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 16,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: { effort: undefined },
-            },
-          },
-        });
-        await capture.completion;
-        expectDeliveredErrorCapture({ capture, message: control.stop });
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
-        expect(capturedChunks({ snapshot: observed })).toEqual([]);
-        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-        control.verifyNativeInput();
-      } finally {
-        await closeProviderReplayCaptures({ captures: [capture], close: () => control.harness.close() });
-      }
-    }
-  }, 30_000);
-
-  it('preserves the native default template and its independently recorded 17 tokens', async () => {
-    const generate = vi.fn<ProviderReplayGenerate>(async () => {
-      throw new Error('This native input test must not generate');
-    });
-    const harness = await createQwenReplay({ generate });
-    try {
-      await harness.service.loadDownloadedModel({ modelId: evidence.identity.modelId });
-      expect(harness.observations.processors).toHaveLength(1);
-      const processor = harness.observations.processors[0]!;
-      expect(processor.constructor.name).toBe('Qwen3VLProcessor');
-      const tokenizer = processor.tokenizer;
-      if (!tokenizer) throw new Error('Actual processor did not expose its tokenizer');
-      expect(tokenizer).toBeInstanceOf(harness.runtime.PreTrainedTokenizer);
-      expect(tokenizer.apply_chat_template(evidence.nativeTemplate.messages, { tokenize: false, add_generation_prompt: true })).toBe(evidence.nativeTemplate.renderedText);
-      expect(tokenizer.apply_chat_template(evidence.nativeTemplate.messages, { tokenize: true, add_generation_prompt: true, return_tensor: false, return_dict: false })).toEqual(evidence.nativeTemplate.inputIds);
-      expect(generate).not.toHaveBeenCalled();
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await harness.close();
-    }
-  }, 30_000);
-
-  it('passes the same native default input through public Provider before any token can be released', async () => {
-    const inputs: ReturnType<typeof snapshotQwenInput>[] = [];
-    const stop = new Error('Qwen input captured; native inference intentionally not executed');
-    const generate = vi.fn<ProviderReplayGenerate>(async context => {
-      inputs.push(snapshotQwenInput({ context }));
-      // No captured generation token IDs are present in this fixture. Never
-      // call streamer.put/end or invent KV state for an unmatched input.
-      throw stop;
-    });
-    const harness = await createQwenReplay({ generate });
-    let capture: ProviderChatCapture | undefined;
-    try {
+      await using _cleanupResource = createAsyncTestDisposable({
+        dispose: async () => {
+          await closeProviderReplayCaptures({ captures: [capture], close: () => control.harness.close() });
+        },
+      });
       capture = captureProviderChat({
-        provider: harness.provider,
+        provider: control.harness.provider,
         request: {
-          model: `hf.co/${evidence.identity.modelId}`,
-          messages: evidence.productionInput.messages,
+          model: "onnx-community/Qwen3.5-2B-ONNX",
+          messages: [{ role: "user", content: "Template probe user message." }],
           tools: [],
           parameters: {
             temperature: 0,
@@ -1254,34 +1201,101 @@ describe('Qwen3.5 2B Provider / basic', () => {
         },
       });
       await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: stop.message });
+      expectDeliveredErrorCapture({ capture, message: control.stop });
       const observed = capture.snapshot();
-      expect(generate).toHaveBeenCalledOnce();
-      expect(inputs).toHaveLength(1);
-      const { options, tokenizer } = inputs[0]!;
-      const input = options.input_ids;
-      const mask = options.attention_mask;
-      if (!input || !mask) throw new Error('Expected actual processor tensors');
-      const actualInput = Array.from(input.data, BigInt);
-      expect(Array.from(mask.data, BigInt)).toEqual(actualInput.map(() => 1n));
-      expect(input.dims).toEqual([1, actualInput.length]);
-      expect({ maxNewTokens: options.max_new_tokens, temperature: options.temperature, topP: options.top_p, doSample: options.do_sample }).toEqual(evidence.productionInput.effectiveGenerationConfig);
-      expect(tokenizer.apply_chat_template(evidence.nativeTemplate.messages, { tokenize: true, add_generation_prompt: true, return_tensor: false, return_dict: false })).toEqual(evidence.nativeTemplate.inputIds);
-      expect(harness.observations.processors).toHaveLength(1);
       expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
       expect(capturedChunks({ snapshot: observed })).toEqual([]);
       expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-      // The historical 13-token observation is provenance, not a success
-      // expectation. This tests recorded native-default parity; it does not
-      // mandate that every user reasoning policy use the 17-token default.
-      // Any later explicit policy mapping needs a separately reviewed contract.
-      expect(actualInput, JSON.stringify({ historicalProductionInput: evidence.productionInput.inputTokenIds })).toEqual(evidence.nativeTemplate.inputIds.map(BigInt));
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
+      control.verifyNativeInput();
     }
+  }, 30_000);
+
+  it('preserves the native default template and its independently recorded 17 tokens', async () => {
+    const generate = vi.fn<ProviderReplayGenerate>(async () => {
+      throw new Error('This native input test must not generate');
+    });
+    const harness = await createQwenReplay({ generate });
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+      },
+    });
+    await harness.service.loadDownloadedModel({ modelId: evidence.identity.modelId });
+    expect(harness.observations.processors).toHaveLength(1);
+    const processor = harness.observations.processors[0]!;
+    expect(processor.constructor.name).toBe('Qwen3VLProcessor');
+    const tokenizer = processor.tokenizer;
+    if (!tokenizer) throw new Error('Actual processor did not expose its tokenizer');
+    expect(tokenizer).toBeInstanceOf(harness.runtime.PreTrainedTokenizer);
+    expect(tokenizer.apply_chat_template(evidence.nativeTemplate.messages, { tokenize: false, add_generation_prompt: true })).toBe(evidence.nativeTemplate.renderedText);
+    expect(tokenizer.apply_chat_template(evidence.nativeTemplate.messages, { tokenize: true, add_generation_prompt: true, return_tensor: false, return_dict: false })).toEqual(evidence.nativeTemplate.inputIds);
+    expect(generate).not.toHaveBeenCalled();
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+  }, 30_000);
+
+  it('passes the same native default input through public Provider before any token can be released', async () => {
+    const inputs: ReturnType<typeof snapshotQwenInput>[] = [];
+    const stop = new Error('Qwen input captured; native inference intentionally not executed');
+    const generate = vi.fn<ProviderReplayGenerate>(async context => {
+      inputs.push(snapshotQwenInput({ context }));
+      // No captured generation token IDs are present in this fixture. Never
+      // call streamer.put/end or invent KV state for an unmatched input.
+      throw stop;
+    });
+    const harness = await createQwenReplay({ generate });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    let capture: ProviderChatCapture | undefined;
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
+      },
+    });
+    capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: `hf.co/${evidence.identity.modelId}`,
+        messages: evidence.productionInput.messages,
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 16,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
+        },
+      },
+    });
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: stop.message });
+    const observed = capture.snapshot();
+    expect(generate).toHaveBeenCalledOnce();
+    expect(inputs).toHaveLength(1);
+    const { options, tokenizer } = inputs[0]!;
+    const input = options.input_ids;
+    const mask = options.attention_mask;
+    if (!input || !mask) throw new Error('Expected actual processor tensors');
+    const actualInput = Array.from(input.data, BigInt);
+    expect(Array.from(mask.data, BigInt)).toEqual(actualInput.map(() => 1n));
+    expect(input.dims).toEqual([1, actualInput.length]);
+    expect({ maxNewTokens: options.max_new_tokens, temperature: options.temperature, topP: options.top_p, doSample: options.do_sample }).toEqual(evidence.productionInput.effectiveGenerationConfig);
+    expect(tokenizer.apply_chat_template(evidence.nativeTemplate.messages, { tokenize: true, add_generation_prompt: true, return_tensor: false, return_dict: false })).toEqual(evidence.nativeTemplate.inputIds);
+    expect(harness.observations.processors).toHaveLength(1);
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedChunks({ snapshot: observed })).toEqual([]);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    // The historical 13-token observation is provenance, not a success
+    // expectation. This tests recorded native-default parity; it does not
+    // mandate that every user reasoning policy use the 17-token default.
+    // Any later explicit policy mapping needs a separately reviewed contract.
+    expect(actualInput, JSON.stringify({ historicalProductionInput: evidence.productionInput.inputTokenIds })).toEqual(evidence.nativeTemplate.inputIds.map(BigInt));
   }, 30_000);
 
   it('delivers the historical 13-input prefix through the legacy serializer adapter before Provider settlement', async () => {
@@ -1300,104 +1314,110 @@ describe('Qwen3.5 2B Provider / basic', () => {
           expect(firstQwenCapture.replay.modelReplay.generatedTokenIds).toHaveLength(16);
         },
       });
+      // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
       let capture: ProviderChatCapture | undefined;
-      try {
-        capture = captureProviderChat({
-          provider: control.harness.provider,
-          request: {
-            model: "onnx-community/Qwen3.5-2B-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
-            tools: [],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 16,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: { effort: undefined },
-            },
+      await using _cleanupResource = createAsyncTestDisposable({
+        dispose: async () => {
+          await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
+        },
+      });
+      capture = captureProviderChat({
+        provider: control.harness.provider,
+        request: {
+          model: "onnx-community/Qwen3.5-2B-ONNX",
+          messages: [{ role: "user", content: "Template probe user message." }],
+          tools: [],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 16,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: undefined },
           },
-        });
-        await capture.completion;
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(capturedTexts({ snapshot: observed })).toEqual(['Okay, the user is asking for a template for a user message.']);
-        expect(capturedChunks({ snapshot: observed })).toEqual(['', ...firstQwenCapture.streamChunks.slice(1)]);
-        expect(capturedTextParts({ snapshot: observed })).toHaveLength(1);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-        control.verifyNativeInput();
-      } finally {
-        await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
-      }
+        },
+      });
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(capturedTexts({ snapshot: observed })).toEqual(['Okay, the user is asking for a template for a user message.']);
+      expect(capturedChunks({ snapshot: observed })).toEqual(['', ...firstQwenCapture.streamChunks.slice(1)]);
+      expect(capturedTextParts({ snapshot: observed })).toHaveLength(1);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+      control.verifyNativeInput();
     }
   }, 30_000);
 
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
-      replay.beginNativeRequest({ caseId: "first-turn", parameters: parameters });
-      capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/Qwen3.5-2B-ONNX",
-          messages: [{ role: "user", content: "Template probe user message." }],
-          tools: [],
-          parameters,
-          signal,
-        },
-      });
-      await capture.completion;
-      replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedTexts({ snapshot: observed })).toEqual(["It looks like you might be looking for a **prompt template** to use with"]);
-      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
+      },
+    });
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
+    replay.beginNativeRequest({ caseId: "first-turn", parameters: parameters });
+    capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/Qwen3.5-2B-ONNX",
+        messages: [{ role: "user", content: "Template probe user message." }],
+        tools: [],
+        parameters,
+        signal,
+      },
+    });
+    await capture.completion;
+    replay.endNativeRequest();
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedTexts({ snapshot: observed })).toEqual(["It looks like you might be looking for a **prompt template** to use with"]);
+    expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
 describe('Qwen3.5 2B Provider / system', () => {
   it('system: preserves instructions and delivers the recorded callbacks', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["system-user"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      const messages: RecordedMessage[] = [{ role: "system", content: "Template probe system instruction." }, { role: "user", content: "Template probe user message." }];
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
-      replay.beginNativeRequest({ caseId: "system-user", parameters: parameters });
-      capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/Qwen3.5-2B-ONNX",
-          messages,
-          tools: [],
-          parameters,
-          signal,
-        },
-      });
-      await capture.completion;
-      replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedTexts({ snapshot: observed })).toEqual(["Hello"]);
-      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
+      },
+    });
+    const messages: RecordedMessage[] = [{ role: "system", content: "Template probe system instruction." }, { role: "user", content: "Template probe user message." }];
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
+    replay.beginNativeRequest({ caseId: "system-user", parameters: parameters });
+    capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/Qwen3.5-2B-ONNX",
+        messages,
+        tools: [],
+        parameters,
+        signal,
+      },
+    });
+    await capture.completion;
+    replay.endNativeRequest();
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedTexts({ snapshot: observed })).toEqual(["Hello"]);
+    expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -1422,40 +1442,42 @@ Continue with one short sentence.<|im_end|>
 
 `,
       });
+      // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
       let capture: ProviderChatCapture | undefined;
-      try {
-        capture = captureProviderChat({
-          provider: control.harness.provider,
-          request: {
-            model: "onnx-community/Qwen3.5-2B-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }, {
-              role: "assistant",
-              content: `\
+      await using _cleanupResource = createAsyncTestDisposable({
+        dispose: async () => {
+          await closeProviderReplayCaptures({ captures: [capture], close: () => control.harness.close() });
+        },
+      });
+      capture = captureProviderChat({
+        provider: control.harness.provider,
+        request: {
+          model: "onnx-community/Qwen3.5-2B-ONNX",
+          messages: [{ role: "user", content: "Template probe user message." }, {
+            role: "assistant",
+            content: `\
 <think>
 Okay, the user is asking for a template for a user message.`,
-            }, { role: "user", content: "Continue with one short sentence." }],
-            tools: [],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 16,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: { effort: undefined },
-            },
+          }, { role: "user", content: "Continue with one short sentence." }],
+          tools: [],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 16,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: undefined },
           },
-        });
-        await capture.completion;
-        expectDeliveredErrorCapture({ capture, message: control.stop });
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(capturedChunks({ snapshot: observed })).toEqual([]);
-        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-        control.verifyNativeInput();
-      } finally {
-        await closeProviderReplayCaptures({ captures: [capture], close: () => control.harness.close() });
-      }
+        },
+      });
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: control.stop });
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+      control.verifyNativeInput();
     }
   }, 30_000);
 
@@ -1470,72 +1492,74 @@ Okay, the user is asking for a template for a user message.`,
       throw new Error(boundary);
     });
     const harness = await createQwenReplay({ generate });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      await harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
-      expect(harness.observations.processors).toHaveLength(1);
-      const processor = harness.observations.processors[0]!;
-      const tokenizer = processor.tokenizer;
-      if (!tokenizer) throw new Error('Actual Qwen processor tokenizer unavailable');
-      expect(tokenizer).toBeInstanceOf(harness.runtime.PreTrainedTokenizer);
-      // Independent native control runs before public generation, so an input
-      // adaptation failure cannot hide a changed tokenizer/template fixture.
-      expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(scenario.selectedTemplateSha256);
-      expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true })).toBe(scenario.renderedText);
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true,
-        add_generation_prompt: true,
-        return_tensor: false,
-        return_dict: false,
-      })).toEqual(scenario.inputTokenIds);
-      capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: inputEvidence.modelId,
-          messages: scenario.messages,
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
+      },
+    });
+    await harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
+    expect(harness.observations.processors).toHaveLength(1);
+    const processor = harness.observations.processors[0]!;
+    const tokenizer = processor.tokenizer;
+    if (!tokenizer) throw new Error('Actual Qwen processor tokenizer unavailable');
+    expect(tokenizer).toBeInstanceOf(harness.runtime.PreTrainedTokenizer);
+    // Independent native control runs before public generation, so an input
+    // adaptation failure cannot hide a changed tokenizer/template fixture.
+    expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(scenario.selectedTemplateSha256);
+    expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true })).toBe(scenario.renderedText);
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: true,
+      add_generation_prompt: true,
+      return_tensor: false,
+      return_dict: false,
+    })).toEqual(scenario.inputTokenIds);
+    capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: inputEvidence.modelId,
+        messages: scenario.messages,
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-      });
-      await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: boundary });
-      const observed = capture.snapshot();
-      expect(generate).toHaveBeenCalledOnce();
-      expect(inputs).toHaveLength(1);
-      const { options } = inputs[0]!;
-      if (!options.input_ids || !options.attention_mask) {
-        throw new Error('Expected actual Qwen processor tensors');
-      }
-      const actualInput = Array.from(options.input_ids.data, BigInt);
-      expect(options.input_ids.type).toBe('int64');
-      expect(options.input_ids.location).toBe('cpu');
-      expect(options.input_ids.dims).toEqual([1, actualInput.length]);
-      expect(options.attention_mask.type).toBe('int64');
-      expect(options.attention_mask.location).toBe('cpu');
-      expect(options.attention_mask.dims).toEqual([1, actualInput.length]);
-      expect(options.attention_mask.data).toEqual(new BigInt64Array(actualInput.length).fill(1n));
-      expect(options.past_key_values).toBeNull();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedChunks({ snapshot: observed })).toEqual([]);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.localImageFetchCalls).toEqual([]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-      // Native-default parity, not a decision that every reasoning policy must
-      // use this suffix. Later policy changes need a separately reviewed mapping.
-      expect(actualInput).toEqual(scenario.inputTokenIds.map(BigInt));
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
+      },
+    });
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: boundary });
+    const observed = capture.snapshot();
+    expect(generate).toHaveBeenCalledOnce();
+    expect(inputs).toHaveLength(1);
+    const { options } = inputs[0]!;
+    if (!options.input_ids || !options.attention_mask) {
+      throw new Error('Expected actual Qwen processor tensors');
     }
+    const actualInput = Array.from(options.input_ids.data, BigInt);
+    expect(options.input_ids.type).toBe('int64');
+    expect(options.input_ids.location).toBe('cpu');
+    expect(options.input_ids.dims).toEqual([1, actualInput.length]);
+    expect(options.attention_mask.type).toBe('int64');
+    expect(options.attention_mask.location).toBe('cpu');
+    expect(options.attention_mask.dims).toEqual([1, actualInput.length]);
+    expect(options.attention_mask.data).toEqual(new BigInt64Array(actualInput.length).fill(1n));
+    expect(options.past_key_values).toBeNull();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedChunks({ snapshot: observed })).toEqual([]);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.localImageFetchCalls).toEqual([]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    // Native-default parity, not a decision that every reasoning policy must
+    // use this suffix. Later policy changes need a separately reviewed mapping.
+    expect(actualInput).toEqual(scenario.inputTokenIds.map(BigInt));
   }, 30_000);
 
   it('replays historical raw assistant-history through the legacy serializer adapter without inventing output KV', async () => {
@@ -1568,82 +1592,86 @@ Continue with one short sentence.<|im_end|>
           expect(historyQwenCapture.replay.modelReplay.generatedTokenIds).toHaveLength(16);
         },
       });
+      // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
       let capture: ProviderChatCapture | undefined;
-      try {
-        capture = captureProviderChat({
-          provider: control.harness.provider,
-          request: {
-            model: "onnx-community/Qwen3.5-2B-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }, {
-              role: "assistant",
-              content: `\
+      await using _cleanupResource = createAsyncTestDisposable({
+        dispose: async () => {
+          await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
+        },
+      });
+      capture = captureProviderChat({
+        provider: control.harness.provider,
+        request: {
+          model: "onnx-community/Qwen3.5-2B-ONNX",
+          messages: [{ role: "user", content: "Template probe user message." }, {
+            role: "assistant",
+            content: `\
 <think>
 Okay, the user is asking for a template for a user message.`,
-            }, { role: "user", content: "Continue with one short sentence." }],
-            tools: [],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 16,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: { effort: undefined },
-            },
+          }, { role: "user", content: "Continue with one short sentence." }],
+          tools: [],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 16,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: undefined },
           },
-        });
-        await capture.completion;
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(capturedTexts({ snapshot: observed })).toEqual([`\
+        },
+      });
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(capturedTexts({ snapshot: observed })).toEqual([`\
 Thinking Process:
 
 1.  **Analyze the Request:**
 `]);
-        expect(capturedChunks({ snapshot: observed })).toEqual([
-          '', 'Thinking ', 'Process:\n', '\n', '1. ', ' ', '**Analyze ', 'the ', 'Request:**', '\n',
-        ]);
-        expect(capturedTextParts({ snapshot: observed })).toHaveLength(1);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-        control.verifyNativeInput();
-      } finally {
-        await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
-      }
+      expect(capturedChunks({ snapshot: observed })).toEqual([
+        '', 'Thinking ', 'Process:\n', '\n', '1. ', ' ', '**Analyze ', 'the ', 'Request:**', '\n',
+      ]);
+      expect(capturedTextParts({ snapshot: observed })).toHaveLength(1);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+      control.verifyNativeInput();
     }
   }, 30_000);
 
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["supplied-history"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      const messages: RecordedMessage[] = [{ role: "user", content: "Template probe first user message." }, { role: "assistant", content: "Template probe assistant response." }, { role: "user", content: "Template probe second user message." }];
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
-      replay.beginNativeRequest({ caseId: "supplied-history", parameters: parameters });
-      capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/Qwen3.5-2B-ONNX",
-          messages,
-          tools: [],
-          parameters,
-          signal,
-        },
-      });
-      await capture.completion;
-      replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedTexts({ snapshot: observed })).toEqual(["Hello"]);
-      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
+      },
+    });
+    const messages: RecordedMessage[] = [{ role: "user", content: "Template probe first user message." }, { role: "assistant", content: "Template probe assistant response." }, { role: "user", content: "Template probe second user message." }];
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
+    replay.beginNativeRequest({ caseId: "supplied-history", parameters: parameters });
+    capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/Qwen3.5-2B-ONNX",
+        messages,
+        tools: [],
+        parameters,
+        signal,
+      },
+    });
+    await capture.completion;
+    replay.endNativeRequest();
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedTexts({ snapshot: observed })).toEqual(["Hello"]);
+    expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -1701,191 +1729,193 @@ A separate synthetic Qwen conversation.<|im_end|>
     });
     const historicalAdapter = await installHistoricalQwenSerializer({ harness, capture: firstQwenCapture, effort: undefined, expectedMode: 'default', expectedPrompt: recordedQwenUserPrompt });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const firstCapture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: source.identity.modelId,
-          messages: source.scenario.messages,
-          tools: [],
-          parameters: {
-            ...source.scenario.lmParameters,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        historicalAdapter.restore();
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    });
+    const firstCapture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: source.identity.modelId,
+        messages: source.scenario.messages,
+        tools: [],
+        parameters: {
+          ...source.scenario.lmParameters,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-      });
-      captures.push(firstCapture);
-      await firstCapture.completion;
-      const firstObserved = firstCapture.snapshot();
-      expect(firstObserved.settlement).toEqual({ status: 'fulfilled' });
-      expect(historicalAdapter.builderSpy).toHaveBeenCalledOnce();
-      historicalAdapter.restore();
-      expect(capturedChunks({ snapshot: firstObserved })).toEqual(['', ...firstQwenCapture.streamChunks.slice(1)]);
-      expect(capturedTextParts({ snapshot: firstObserved })).toHaveLength(1);
-      expect(firstObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(firstObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(capturedToolCalls({ snapshot: firstObserved })).toEqual([]);
-      const ortCountAfterFirst = harness.observations.ortCalls.length;
-      expect(harness.observations.processors).toHaveLength(1);
-      const processorAfterFirst = harness.observations.processors[0];
-      const secondCapture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: source.identity.modelId,
-          messages: nextMessages,
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
+      },
+    });
+    captures.push(firstCapture);
+    await firstCapture.completion;
+    const firstObserved = firstCapture.snapshot();
+    expect(firstObserved.settlement).toEqual({ status: 'fulfilled' });
+    expect(historicalAdapter.builderSpy).toHaveBeenCalledOnce();
+    historicalAdapter.restore();
+    expect(capturedChunks({ snapshot: firstObserved })).toEqual(['', ...firstQwenCapture.streamChunks.slice(1)]);
+    expect(capturedTextParts({ snapshot: firstObserved })).toHaveLength(1);
+    expect(firstObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(firstObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(capturedToolCalls({ snapshot: firstObserved })).toEqual([]);
+    const ortCountAfterFirst = harness.observations.ortCalls.length;
+    expect(harness.observations.processors).toHaveLength(1);
+    const processorAfterFirst = harness.observations.processors[0];
+    const secondCapture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: source.identity.modelId,
+        messages: nextMessages,
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-      });
-      captures.push(secondCapture);
-      await secondCapture.completion;
-      expectDeliveredErrorCapture({ capture: secondCapture, message: stop });
-      const secondObserved = secondCapture.snapshot();
-      expect(secondObserved.settlement).toEqual({ status: 'fulfilled' });
-      expect(contexts).toHaveLength(2);
-      const native = contexts[1]!;
-      const { options, tokenizer } = native;
-      expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe('273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80');
-      const processor = harness.observations.processors[0];
-      if (!processor) throw new Error('Expected actual loaded Qwen2 processor');
-      expect(tokenizer).toBe(processor.tokenizer);
-      // This independent next-input contract uses the existing Production
-      // serializer, not a claim of native-default parity. Keep that distinct
-      // default native suffix visible without using its tokens for inference.
-      const nativeDefaultPrompt = nextPrompt;
-      expect(tokenizer.apply_chat_template(nextMessages, { tokenize: false, add_generation_prompt: true })).toBe(nativeDefaultPrompt);
-      expect(nativeDefaultPrompt).not.toBe(historicalNextPrompt);
-      const ids = tokenizer.encode(nextPrompt, { add_special_tokens: false });
-      if (!options.input_ids || !options.attention_mask) throw new Error('Expected actual next-input tensors');
-      expect(options.input_ids.type).toBe('int64');
-      expect(options.input_ids.location).toBe('cpu');
-      expect(options.input_ids.dims).toEqual([1, ids.length]);
-      expect(Array.from(options.input_ids.data, Number)).toEqual(ids);
-      expect(options.attention_mask.type).toBe('int64');
-      expect(options.attention_mask.location).toBe('cpu');
-      expect(options.attention_mask.dims).toEqual([1, ids.length]);
-      expect(Array.from(options.attention_mask.data, BigInt)).toEqual(ids.map(() => 1n));
-      expect(native.optionKeys).toEqual([
-        'attention_mask', 'do_sample', 'input_ids', 'max_new_tokens', 'past_key_values',
-        'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
-      ].sort());
-      expect({ maxNewTokens: options.max_new_tokens, temperature: options.temperature, topP: options.top_p, doSample: options.do_sample })
-        .toEqual({ maxNewTokens: 1, temperature: 0, topP: 1, doSample: false });
-      expect(options.return_dict_in_generate).toBe(true);
-      expect(native.streamerIsTextStreamer).toBe(true);
-      expect(native.stoppingCriteriaType).toBe('function');
-      expect(options.past_key_values).toBeNull();
-      expect(firstReleased).toBe(16);
-      expect(capturedChunks({ snapshot: secondObserved })).toEqual([]);
-      expect(capturedToolCalls({ snapshot: secondObserved })).toEqual([]);
-      expect(contexts).toHaveLength(2);
-      expect(contexts[1]!.model).toBe(contexts[0]!.model);
-      expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
-      expect(contexts.map(context => context.options.past_key_values)).toEqual([null, null]);
-      expect(invocations).toEqual([]);
-      expect(harness.observations.inferenceCalls).toHaveLength(2);
-      expect(ortCountAfterFirst).toBe(2);
-      expect(harness.observations.ortCalls).toHaveLength(ortCountAfterFirst);
-      expect(harness.observations.workers).toHaveLength(1);
-      expect(harness.observations.processors).toHaveLength(1);
-      expect(harness.observations.processors[0]).toBe(processorAfterFirst);
-      expect(contexts[1]!.tokenizer).toBe(processorAfterFirst?.tokenizer);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.localImageFetchCalls).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      historicalAdapter.restore();
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+      },
+    });
+    captures.push(secondCapture);
+    await secondCapture.completion;
+    expectDeliveredErrorCapture({ capture: secondCapture, message: stop });
+    const secondObserved = secondCapture.snapshot();
+    expect(secondObserved.settlement).toEqual({ status: 'fulfilled' });
+    expect(contexts).toHaveLength(2);
+    const native = contexts[1]!;
+    const { options, tokenizer } = native;
+    expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe('273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80');
+    const processor = harness.observations.processors[0];
+    if (!processor) throw new Error('Expected actual loaded Qwen2 processor');
+    expect(tokenizer).toBe(processor.tokenizer);
+    // This independent next-input contract uses the existing Production
+    // serializer, not a claim of native-default parity. Keep that distinct
+    // default native suffix visible without using its tokens for inference.
+    const nativeDefaultPrompt = nextPrompt;
+    expect(tokenizer.apply_chat_template(nextMessages, { tokenize: false, add_generation_prompt: true })).toBe(nativeDefaultPrompt);
+    expect(nativeDefaultPrompt).not.toBe(historicalNextPrompt);
+    const ids = tokenizer.encode(nextPrompt, { add_special_tokens: false });
+    if (!options.input_ids || !options.attention_mask) throw new Error('Expected actual next-input tensors');
+    expect(options.input_ids.type).toBe('int64');
+    expect(options.input_ids.location).toBe('cpu');
+    expect(options.input_ids.dims).toEqual([1, ids.length]);
+    expect(Array.from(options.input_ids.data, Number)).toEqual(ids);
+    expect(options.attention_mask.type).toBe('int64');
+    expect(options.attention_mask.location).toBe('cpu');
+    expect(options.attention_mask.dims).toEqual([1, ids.length]);
+    expect(Array.from(options.attention_mask.data, BigInt)).toEqual(ids.map(() => 1n));
+    expect(native.optionKeys).toEqual([
+      'attention_mask', 'do_sample', 'input_ids', 'max_new_tokens', 'past_key_values',
+      'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
+    ].sort());
+    expect({ maxNewTokens: options.max_new_tokens, temperature: options.temperature, topP: options.top_p, doSample: options.do_sample })
+      .toEqual({ maxNewTokens: 1, temperature: 0, topP: 1, doSample: false });
+    expect(options.return_dict_in_generate).toBe(true);
+    expect(native.streamerIsTextStreamer).toBe(true);
+    expect(native.stoppingCriteriaType).toBe('function');
+    expect(options.past_key_values).toBeNull();
+    expect(firstReleased).toBe(16);
+    expect(capturedChunks({ snapshot: secondObserved })).toEqual([]);
+    expect(capturedToolCalls({ snapshot: secondObserved })).toEqual([]);
+    expect(contexts).toHaveLength(2);
+    expect(contexts[1]!.model).toBe(contexts[0]!.model);
+    expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
+    expect(contexts.map(context => context.options.past_key_values)).toEqual([null, null]);
+    expect(invocations).toEqual([]);
+    expect(harness.observations.inferenceCalls).toHaveLength(2);
+    expect(ortCountAfterFirst).toBe(2);
+    expect(harness.observations.ortCalls).toHaveLength(ortCountAfterFirst);
+    expect(harness.observations.workers).toHaveLength(1);
+    expect(harness.observations.processors).toHaveLength(1);
+    expect(harness.observations.processors[0]).toBe(processorAfterFirst);
+    expect(contexts[1]!.tokenizer).toBe(processorAfterFirst?.tokenizer);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.localImageFetchCalls).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn", "continuity", "independent-next-input"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const firstSignal = new AbortController().signal;
-      const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
-      replay.beginNativeRequest({ caseId: "first-turn", parameters: firstParameters });
-      const firstCapture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/Qwen3.5-2B-ONNX",
-          messages: [{ role: "user", content: "Template probe user message." }],
-          tools: [],
-          parameters: firstParameters,
-          signal: firstSignal,
-        },
-      });
-      captures.push(firstCapture);
-      await firstCapture.completion;
-      replay.endNativeRequest();
-      const firstObserved = firstCapture.snapshot();
-      expect(firstObserved.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedTexts({ snapshot: firstObserved })).toEqual(["It looks like you might be looking for a **prompt template** to use with"]);
-      expect(firstObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(firstObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(capturedToolCalls({ snapshot: firstObserved })).toEqual([]);
-      const nextMessages: RecordedMessage[] = [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: capturedTexts({ snapshot: firstObserved })[0]! }, { role: "user", content: "Continue the synthetic conversation with a short response." }];
-      const nextSignal = new AbortController().signal;
-      const nextParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
-      replay.beginNativeRequest({ caseId: "continuity", parameters: nextParameters });
-      const nextCapture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/Qwen3.5-2B-ONNX",
-          messages: nextMessages,
-          tools: [],
-          parameters: nextParameters,
-          signal: nextSignal,
-        },
-      });
-      captures.push(nextCapture);
-      await nextCapture.completion;
-      replay.endNativeRequest();
-      const nextObserved = nextCapture.snapshot();
-      expect(nextObserved.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedTexts({ snapshot: nextObserved })).toEqual(["Got it! I'm ready to continue the conversation. What would you like to"]);
-      expect(nextObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(nextObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(capturedToolCalls({ snapshot: nextObserved })).toEqual([]);
-      const independentSignal = new AbortController().signal;
-      const independentParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
-      replay.beginNativeRequest({ caseId: "independent-next-input", parameters: independentParameters });
-      const independentCapture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/Qwen3.5-2B-ONNX",
-          messages: [{ role: "user", content: "A separate synthetic capture conversation." }],
-          tools: [],
-          parameters: independentParameters,
-          signal: independentSignal,
-        },
-      });
-      captures.push(independentCapture);
-      await independentCapture.completion;
-      replay.endNativeRequest();
-      const independentObserved = independentCapture.snapshot();
-      expect(independentObserved.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedTexts({ snapshot: independentObserved })).toEqual(["I"]);
-      expect(independentObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(independentObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(capturedToolCalls({ snapshot: independentObserved })).toEqual([]);
-      replay.assertComplete({ requests: 3, nativeCalls: 3 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const firstSignal = new AbortController().signal;
+    const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
+    replay.beginNativeRequest({ caseId: "first-turn", parameters: firstParameters });
+    const firstCapture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/Qwen3.5-2B-ONNX",
+        messages: [{ role: "user", content: "Template probe user message." }],
+        tools: [],
+        parameters: firstParameters,
+        signal: firstSignal,
+      },
+    });
+    captures.push(firstCapture);
+    await firstCapture.completion;
+    replay.endNativeRequest();
+    const firstObserved = firstCapture.snapshot();
+    expect(firstObserved.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedTexts({ snapshot: firstObserved })).toEqual(["It looks like you might be looking for a **prompt template** to use with"]);
+    expect(firstObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(firstObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(capturedToolCalls({ snapshot: firstObserved })).toEqual([]);
+    const nextMessages: RecordedMessage[] = [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: capturedTexts({ snapshot: firstObserved })[0]! }, { role: "user", content: "Continue the synthetic conversation with a short response." }];
+    const nextSignal = new AbortController().signal;
+    const nextParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
+    replay.beginNativeRequest({ caseId: "continuity", parameters: nextParameters });
+    const nextCapture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/Qwen3.5-2B-ONNX",
+        messages: nextMessages,
+        tools: [],
+        parameters: nextParameters,
+        signal: nextSignal,
+      },
+    });
+    captures.push(nextCapture);
+    await nextCapture.completion;
+    replay.endNativeRequest();
+    const nextObserved = nextCapture.snapshot();
+    expect(nextObserved.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedTexts({ snapshot: nextObserved })).toEqual(["Got it! I'm ready to continue the conversation. What would you like to"]);
+    expect(nextObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(nextObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(capturedToolCalls({ snapshot: nextObserved })).toEqual([]);
+    const independentSignal = new AbortController().signal;
+    const independentParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
+    replay.beginNativeRequest({ caseId: "independent-next-input", parameters: independentParameters });
+    const independentCapture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/Qwen3.5-2B-ONNX",
+        messages: [{ role: "user", content: "A separate synthetic capture conversation." }],
+        tools: [],
+        parameters: independentParameters,
+        signal: independentSignal,
+      },
+    });
+    captures.push(independentCapture);
+    await independentCapture.completion;
+    replay.endNativeRequest();
+    const independentObserved = independentCapture.snapshot();
+    expect(independentObserved.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedTexts({ snapshot: independentObserved })).toEqual(["I"]);
+    expect(independentObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(independentObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(capturedToolCalls({ snapshot: independentObserved })).toEqual([]);
+    replay.assertComplete({ requests: 3, nativeCalls: 3 });
   }, 30_000);
 });
 
@@ -1902,72 +1932,76 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
 
 `,
       });
+      // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
       let capture: ProviderChatCapture | undefined;
-      try {
-        capture = captureProviderChat({
-          provider: control.harness.provider,
-          request: {
-            model: "onnx-community/Qwen3.5-2B-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
-            tools: [],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 1,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: { effort: 'none' },
-            },
+      await using _cleanupResource = createAsyncTestDisposable({
+        dispose: async () => {
+          await closeProviderReplayCaptures({ captures: [capture], close: () => control.harness.close() });
+        },
+      });
+      capture = captureProviderChat({
+        provider: control.harness.provider,
+        request: {
+          model: "onnx-community/Qwen3.5-2B-ONNX",
+          messages: [{ role: "user", content: "Template probe user message." }],
+          tools: [],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: 'none' },
           },
-        });
-        await capture.completion;
-        expectDeliveredErrorCapture({ capture, message: control.stop });
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
-        expect(capturedChunks({ snapshot: observed })).toEqual([]);
-        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-        control.verifyNativeInput();
-      } finally {
-        await closeProviderReplayCaptures({ captures: [capture], close: () => control.harness.close() });
-      }
+        },
+      });
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: control.stop });
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+      control.verifyNativeInput();
     }
   }, 30_000);
 
   it('rejects historical high output at the repaired native input without a legacy adapter', async () => {
     {
       const control = await createCurrentQwenHistoricalOutputControl({ capture: enabledQwenCapture, effort: 'high', expectedNativePrompt: recordedQwenUserPrompt + '<think>\n' });
+      // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
       let capture: ProviderChatCapture | undefined;
-      try {
-        capture = captureProviderChat({
-          provider: control.harness.provider,
-          request: {
-            model: "onnx-community/Qwen3.5-2B-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
-            tools: [],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 1,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: { effort: 'high' },
-            },
+      await using _cleanupResource = createAsyncTestDisposable({
+        dispose: async () => {
+          await closeProviderReplayCaptures({ captures: [capture], close: () => control.harness.close() });
+        },
+      });
+      capture = captureProviderChat({
+        provider: control.harness.provider,
+        request: {
+          model: "onnx-community/Qwen3.5-2B-ONNX",
+          messages: [{ role: "user", content: "Template probe user message." }],
+          tools: [],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: 'high' },
           },
-        });
-        await capture.completion;
-        expectDeliveredErrorCapture({ capture, message: control.stop });
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
-        expect(capturedChunks({ snapshot: observed })).toEqual([]);
-        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-        control.verifyNativeInput();
-      } finally {
-        await closeProviderReplayCaptures({ captures: [capture], close: () => control.harness.close() });
-      }
+        },
+      });
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: control.stop });
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+      control.verifyNativeInput();
     }
   }, 30_000);
 
@@ -2021,34 +2055,36 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
           expect(disabledQwenCapture.replay.modelReplay.generatedTokenIds).toEqual([40]);
         },
       });
+      // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
       let capture: ProviderChatCapture | undefined;
-      try {
-        capture = captureProviderChat({
-          provider: control.harness.provider,
-          request: {
-            model: "onnx-community/Qwen3.5-2B-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
-            tools: [],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 1,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: { effort: reasoningSelection.disabledEffort },
-            },
+      await using _cleanupResource = createAsyncTestDisposable({
+        dispose: async () => {
+          await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
+        },
+      });
+      capture = captureProviderChat({
+        provider: control.harness.provider,
+        request: {
+          model: "onnx-community/Qwen3.5-2B-ONNX",
+          messages: [{ role: "user", content: "Template probe user message." }],
+          tools: [],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: reasoningSelection.disabledEffort },
           },
-        });
-        await capture.completion;
-        const observed = capture.snapshot();
-        expectDeliveredErrorCapture({ capture, message: 'Unsupported Qwen generation prefix.' });
-        expect(observed.parts).toEqual([]);
-        expect(capturedChunks({ snapshot: observed })).toEqual([]);
-        control.verifyObsoletePrefixRejected();
-      } finally {
-        await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
-      }
+        },
+      });
+      await capture.completion;
+      const observed = capture.snapshot();
+      expectDeliveredErrorCapture({ capture, message: 'Unsupported Qwen generation prefix.' });
+      expect(observed.parts).toEqual([]);
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      control.verifyObsoletePrefixRejected();
     }
   }, 30_000);
 
@@ -2069,159 +2105,169 @@ describe('Qwen3.5 2B Provider / reasoning', () => {
           expect(enabledQwenCapture.replay.modelReplay.generatedTokenIds).toEqual([248069]);
         },
       });
+      // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
       let capture: ProviderChatCapture | undefined;
-      try {
-        capture = captureProviderChat({
-          provider: control.harness.provider,
-          request: {
-            model: "onnx-community/Qwen3.5-2B-ONNX",
-            messages: [{ role: "user", content: "Template probe user message." }],
-            tools: [],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 1,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: { effort: reasoningSelection.enabledEffort },
-            },
+      await using _cleanupResource = createAsyncTestDisposable({
+        dispose: async () => {
+          await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
+        },
+      });
+      capture = captureProviderChat({
+        provider: control.harness.provider,
+        request: {
+          model: "onnx-community/Qwen3.5-2B-ONNX",
+          messages: [{ role: "user", content: "Template probe user message." }],
+          tools: [],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: reasoningSelection.enabledEffort },
           },
-        });
-        await capture.completion;
-        const observed = capture.snapshot();
-        expectDeliveredErrorCapture({ capture, message: 'Unsupported Qwen generation prefix.' });
-        expect(observed.parts).toEqual([]);
-        expect(capturedChunks({ snapshot: observed })).toEqual([]);
-        control.verifyObsoletePrefixRejected();
-      } finally {
-        await closeProviderReplayCaptures({ captures: [capture], close: () => control.close() });
-      }
+        },
+      });
+      await capture.completion;
+      const observed = capture.snapshot();
+      expectDeliveredErrorCapture({ capture, message: 'Unsupported Qwen generation prefix.' });
+      expect(observed.parts).toEqual([]);
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      control.verifyObsoletePrefixRejected();
     }
   }, 30_000);
 
   it('reasoning: preserves the recorded none-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-none"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "none" } };
-      replay.beginNativeRequest({ caseId: "reasoning-none", parameters: parameters });
-      capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/Qwen3.5-2B-ONNX",
-          messages: [{ role: "user", content: "Template probe user message." }],
-          tools: [],
-          parameters,
-          signal,
-        },
-      });
-      await capture.completion;
-      replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedTexts({ snapshot: observed })).toEqual(["It"]);
-      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
+      },
+    });
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "none" } };
+    replay.beginNativeRequest({ caseId: "reasoning-none", parameters: parameters });
+    capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/Qwen3.5-2B-ONNX",
+        messages: [{ role: "user", content: "Template probe user message." }],
+        tools: [],
+        parameters,
+        signal,
+      },
+    });
+    await capture.completion;
+    replay.endNativeRequest();
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedTexts({ snapshot: observed })).toEqual(["It"]);
+    expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-low"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "low" } };
-      replay.beginNativeRequest({ caseId: "reasoning-low", parameters: parameters });
-      capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/Qwen3.5-2B-ONNX",
-          messages: [{ role: "user", content: "Template probe user message." }],
-          tools: [],
-          parameters,
-          signal,
-        },
-      });
-      await capture.completion;
-      replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedTexts({ snapshot: observed })).toEqual(['Okay']);
-      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
+      },
+    });
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "low" } };
+    replay.beginNativeRequest({ caseId: "reasoning-low", parameters: parameters });
+    capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/Qwen3.5-2B-ONNX",
+        messages: [{ role: "user", content: "Template probe user message." }],
+        tools: [],
+        parameters,
+        signal,
+      },
+    });
+    await capture.completion;
+    replay.endNativeRequest();
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedTexts({ snapshot: observed })).toEqual(['Okay']);
+    expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-medium"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "medium" } };
-      replay.beginNativeRequest({ caseId: "reasoning-medium", parameters: parameters });
-      capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/Qwen3.5-2B-ONNX",
-          messages: [{ role: "user", content: "Template probe user message." }],
-          tools: [],
-          parameters,
-          signal,
-        },
-      });
-      await capture.completion;
-      replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedTexts({ snapshot: observed })).toEqual(['Okay']);
-      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
+      },
+    });
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "medium" } };
+    replay.beginNativeRequest({ caseId: "reasoning-medium", parameters: parameters });
+    capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/Qwen3.5-2B-ONNX",
+        messages: [{ role: "user", content: "Template probe user message." }],
+        tools: [],
+        parameters,
+        signal,
+      },
+    });
+    await capture.completion;
+    replay.endNativeRequest();
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedTexts({ snapshot: observed })).toEqual(['Okay']);
+    expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-high"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "high" } };
-      replay.beginNativeRequest({ caseId: "reasoning-high", parameters: parameters });
-      capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/Qwen3.5-2B-ONNX",
-          messages: [{ role: "user", content: "Template probe user message." }],
-          tools: [],
-          parameters,
-          signal,
-        },
-      });
-      await capture.completion;
-      replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedTexts({ snapshot: observed })).toEqual(['Okay']);
-      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
+      },
+    });
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "high" } };
+    replay.beginNativeRequest({ caseId: "reasoning-high", parameters: parameters });
+    capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/Qwen3.5-2B-ONNX",
+        messages: [{ role: "user", content: "Template probe user message." }],
+        tools: [],
+        parameters,
+        signal,
+      },
+    });
+    await capture.completion;
+    replay.endNativeRequest();
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedTexts({ snapshot: observed })).toEqual(['Okay']);
+    expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -2230,130 +2276,131 @@ describe('Qwen3.5 2B Provider / tools', () => {
     const scenario = toolInputEvidence.cases[0];
     const replay = await createQwenToolInputReplay();
     const captures: ProviderChatCapture[] = [];
-    try {
-      const { tokenizer } = replay;
-      expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: scenario.tools,
-      })).toBe(scenario.renderedText);
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true,
-        return_tensor: false,
-        return_dict: false,
-        add_generation_prompt: true,
-        tools: scenario.tools,
-      })).toEqual(scenario.inputTokenIds);
-      expect(scenario.renderedText.split('"required": ["city"]')).toHaveLength(2);
-      const strictNativePrompt = scenario.renderedText.replace('"required": ["city"]', '"required": ["city"], "additionalProperties": false');
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: strictQwenTools,
-      })).toBe(strictNativePrompt);
-      const strictNativeIds = tokenizer.encode(strictNativePrompt, { add_special_tokens: false });
-      expect(strictNativeIds).not.toEqual(scenario.inputTokenIds);
-      const expectedJsonPrompt = qwenJsonToolPrelude + `\
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const { tokenizer } = replay;
+    expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: scenario.tools,
+    })).toBe(scenario.renderedText);
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: true,
+      return_tensor: false,
+      return_dict: false,
+      add_generation_prompt: true,
+      tools: scenario.tools,
+    })).toEqual(scenario.inputTokenIds);
+    expect(scenario.renderedText.split('"required": ["city"]')).toHaveLength(2);
+    const strictNativePrompt = scenario.renderedText.replace('"required": ["city"]', '"required": ["city"], "additionalProperties": false');
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: strictQwenTools,
+    })).toBe(strictNativePrompt);
+    const strictNativeIds = tokenizer.encode(strictNativePrompt, { add_special_tokens: false });
+    expect(strictNativeIds).not.toEqual(scenario.inputTokenIds);
+    const expectedJsonPrompt = qwenJsonToolPrelude + `\
 
 <|im_start|>user
 Use the weather tool for Tokyo.<|im_end|>
 <|im_start|>assistant
 `;
-      // Strictness alone is not the protocol difference: native uses XML
-      // function/parameter blocks and a default closed-thinking prefix. The
-      // historical JSON protocol must not be mistaken for this native input.
-      expect(strictNativePrompt).toContain('<function=example_function_name>');
-      expect(expectedJsonPrompt).not.toBe(strictNativePrompt);
-      {
-        const before = replay.generate.mock.calls.length;
-        const capture = captureProviderChat({
-          provider: replay.harness.provider,
-          request: {
-            model: "onnx-community/Qwen3.5-2B-ONNX",
-            messages: scenario.messages,
-            tools: [replay.publicTool],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 1,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: { effort: undefined },
-            },
+    // Strictness alone is not the protocol difference: native uses XML
+    // function/parameter blocks and a default closed-thinking prefix. The
+    // historical JSON protocol must not be mistaken for this native input.
+    expect(strictNativePrompt).toContain('<function=example_function_name>');
+    expect(expectedJsonPrompt).not.toBe(strictNativePrompt);
+    {
+      const before = replay.generate.mock.calls.length;
+      const capture = captureProviderChat({
+        provider: replay.harness.provider,
+        request: {
+          model: "onnx-community/Qwen3.5-2B-ONNX",
+          messages: scenario.messages,
+          tools: [replay.publicTool],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: undefined },
           },
-        });
-        captures.push(capture);
-        await capture.completion;
-        expectDeliveredErrorCapture({ capture, message: QWEN_TOOL_INPUT_STOP });
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
-        expect(capturedChunks({ snapshot: observed })).toEqual([]);
-        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-        expect(replay.execute).not.toHaveBeenCalled();
-        verifyQwenToolInput({
-          ...{
-            replay,
-            messages: scenario.messages,
-            publicTool: replay.publicTool,
-            expectedToolDefinition: strictQwenTools[0],
-            expectedPrompt: strictNativePrompt,
-          },
-          before,
-        });
-      }
-
-      // Exercise actual public sensitivity, not only a second native render:
-      // preserve both changed description and user message in the complete prompt.
-      const changedDescription = 'Changed synthetic tool description.';
-      const changedContent = 'Use the weather tool for Osaka.';
-      expect(expectedJsonPrompt.split(replay.publicTool.description)).toHaveLength(2);
-      expect(expectedJsonPrompt.split(scenario.messages[0].content)).toHaveLength(2);
-      {
-        const before = replay.generate.mock.calls.length;
-        const capture = captureProviderChat({
-          provider: replay.harness.provider,
-          request: {
-            model: "onnx-community/Qwen3.5-2B-ONNX",
-            messages: [{ role: 'user', content: changedContent }],
-            tools: [{ ...replay.publicTool, description: changedDescription }],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 1,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: { effort: undefined },
-            },
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        expectDeliveredErrorCapture({ capture, message: QWEN_TOOL_INPUT_STOP });
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
-        expect(capturedChunks({ snapshot: observed })).toEqual([]);
-        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-        expect(replay.execute).not.toHaveBeenCalled();
-        verifyQwenToolInput({
-          ...{
-            replay,
-            messages: [{ role: 'user', content: changedContent }],
-            publicTool: { ...replay.publicTool, description: changedDescription },
-            expectedToolDefinition: { ...strictQwenTools[0], function: { ...strictQwenTools[0].function, description: changedDescription } },
-            expectedPrompt: strictNativePrompt.replace(replay.publicTool.description, changedDescription).replace(scenario.messages[0].content, changedContent),
-          },
-          before,
-        });
-      }
-      expect(replay.harness.observations.inferenceCalls).toHaveLength(2);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: QWEN_TOOL_INPUT_STOP });
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+      expect(replay.execute).not.toHaveBeenCalled();
+      verifyQwenToolInput({
+        ...{
+          replay,
+          messages: scenario.messages,
+          publicTool: replay.publicTool,
+          expectedToolDefinition: strictQwenTools[0],
+          expectedPrompt: strictNativePrompt,
+        },
+        before,
+      });
     }
+
+    // Exercise actual public sensitivity, not only a second native render:
+    // preserve both changed description and user message in the complete prompt.
+    const changedDescription = 'Changed synthetic tool description.';
+    const changedContent = 'Use the weather tool for Osaka.';
+    expect(expectedJsonPrompt.split(replay.publicTool.description)).toHaveLength(2);
+    expect(expectedJsonPrompt.split(scenario.messages[0].content)).toHaveLength(2);
+    {
+      const before = replay.generate.mock.calls.length;
+      const capture = captureProviderChat({
+        provider: replay.harness.provider,
+        request: {
+          model: "onnx-community/Qwen3.5-2B-ONNX",
+          messages: [{ role: 'user', content: changedContent }],
+          tools: [{ ...replay.publicTool, description: changedDescription }],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: undefined },
+          },
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: QWEN_TOOL_INPUT_STOP });
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+      expect(replay.execute).not.toHaveBeenCalled();
+      verifyQwenToolInput({
+        ...{
+          replay,
+          messages: [{ role: 'user', content: changedContent }],
+          publicTool: { ...replay.publicTool, description: changedDescription },
+          expectedToolDefinition: { ...strictQwenTools[0], function: { ...strictQwenTools[0].function, description: changedDescription } },
+          expectedPrompt: strictNativePrompt.replace(replay.publicTool.description, changedDescription).replace(scenario.messages[0].content, changedContent),
+        },
+        before,
+      });
+    }
+    expect(replay.harness.observations.inferenceCalls).toHaveLength(2);
   }, 30_000);
 
   it('tool-result-continuation preserves argument types and result body through native mapping while retaining the raw string-argument failure', async () => {
@@ -2373,43 +2420,47 @@ Use the weather tool for Tokyo.<|im_end|>
       },
       { role: 'tool', tool_call_id: toToolCallId({ raw: 'call_template_probe_1' }), content: scenario.messages[2].content },
     ];
-    try {
-      expect(messages).toStrictEqual(scenario.messages);
-      const { tokenizer } = replay;
-      expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
-      expect(() => tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: scenario.tools,
-      })).toThrow(scenario.error.message);
-      expect(() => tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: strictQwenTools,
-      })).toThrow(scenario.error.message);
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    expect(messages).toStrictEqual(scenario.messages);
+    const { tokenizer } = replay;
+    expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
+    expect(() => tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: scenario.tools,
+    })).toThrow(scenario.error.message);
+    expect(() => tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: strictQwenTools,
+    })).toThrow(scenario.error.message);
 
-      // Current native XML oracle for an explicit mapping. The handoff captured
-      // no successful input IDs for this history; never claim these were recorded.
-      const nativeMessages = [
-        scenario.messages[0],
-        {
-          role: 'assistant',
-          content: '',
-          tool_calls: [{
-            id: 'call_template_probe_1',
-            type: 'function',
-            function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
-          }],
-        },
-        scenario.messages[2],
-      ];
-      const nativeFirst = toolInputEvidence.cases[0];
-      const userHeader = '<|im_start|>user\n';
-      expect(nativeFirst.renderedText.split(userHeader)).toHaveLength(2);
-      const nativeSystem = nativeFirst.renderedText.split(userHeader)[0];
-      if (nativeSystem === undefined) throw new Error('Missing recorded native tool prelude');
-      const strictNativeSystem = nativeSystem.replace('"required": ["city"]', '"required": ["city"], "additionalProperties": false');
-      const nativeSuffix = `\
+    // Current native XML oracle for an explicit mapping. The handoff captured
+    // no successful input IDs for this history; never claim these were recorded.
+    const nativeMessages = [
+      scenario.messages[0],
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          id: 'call_template_probe_1',
+          type: 'function',
+          function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
+        }],
+      },
+      scenario.messages[2],
+    ];
+    const nativeFirst = toolInputEvidence.cases[0];
+    const userHeader = '<|im_start|>user\n';
+    expect(nativeFirst.renderedText.split(userHeader)).toHaveLength(2);
+    const nativeSystem = nativeFirst.renderedText.split(userHeader)[0];
+    if (nativeSystem === undefined) throw new Error('Missing recorded native tool prelude');
+    const strictNativeSystem = nativeSystem.replace('"required": ["city"]', '"required": ["city"], "additionalProperties": false');
+    const nativeSuffix = `\
 <|im_start|>user
 Use the weather tool for Tokyo.<|im_end|>
 <|im_start|>assistant
@@ -2434,17 +2485,17 @@ Tokyo
 </think>
 
 `;
-      expect(tokenizer.apply_chat_template(nativeMessages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: scenario.tools,
-      })).toBe(nativeSystem + nativeSuffix);
-      expect(tokenizer.apply_chat_template(nativeMessages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: strictQwenTools,
-      })).toBe(strictNativeSystem + nativeSuffix);
-      const expectedJsonPrompt = qwenJsonToolPrelude + `\
+    expect(tokenizer.apply_chat_template(nativeMessages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: scenario.tools,
+    })).toBe(nativeSystem + nativeSuffix);
+    expect(tokenizer.apply_chat_template(nativeMessages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: strictQwenTools,
+    })).toBe(strictNativeSystem + nativeSuffix);
+    const expectedJsonPrompt = qwenJsonToolPrelude + `\
 
 <|im_start|>user
 Use the weather tool for Tokyo.<|im_end|>
@@ -2460,111 +2511,108 @@ Use the weather tool for Tokyo.<|im_end|>
 <|im_end|>
 <|im_start|>assistant
 `;
-      expect(expectedJsonPrompt).not.toBe(strictNativeSystem + nativeSuffix);
-      // The parser accepts both syntaxes, but that alone does not establish
-      // natural model/tool interoperability. No source output crosses the gap.
-      {
-        const before = replay.generate.mock.calls.length;
-        const capture = captureProviderChat({
-          provider: replay.harness.provider,
-          request: {
-            model: "onnx-community/Qwen3.5-2B-ONNX",
-            messages,
-            tools: [replay.publicTool],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 1,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: { effort: undefined },
-            },
+    expect(expectedJsonPrompt).not.toBe(strictNativeSystem + nativeSuffix);
+    // The parser accepts both syntaxes, but that alone does not establish
+    // natural model/tool interoperability. No source output crosses the gap.
+    {
+      const before = replay.generate.mock.calls.length;
+      const capture = captureProviderChat({
+        provider: replay.harness.provider,
+        request: {
+          model: "onnx-community/Qwen3.5-2B-ONNX",
+          messages,
+          tools: [replay.publicTool],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: undefined },
           },
-        });
-        captures.push(capture);
-        await capture.completion;
-        expectDeliveredErrorCapture({ capture, message: QWEN_TOOL_INPUT_STOP });
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
-        expect(capturedChunks({ snapshot: observed })).toEqual([]);
-        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-        expect(replay.execute).not.toHaveBeenCalled();
-        verifyQwenToolInput({
-          ...{
-            replay,
-            messages,
-            publicTool: replay.publicTool,
-            expectedToolDefinition: strictQwenTools[0],
-            expectedPrompt: strictNativeSystem + nativeSuffix,
-          },
-          before,
-        });
-      }
-
-      // Another actual public invocation detects dropped arguments/results.
-      // The city stays a string; no expected value is derived from actual output.
-      const changedArguments = '{"city":"Osaka"}';
-      const changedResult = '{"temperatureC":18,"condition":"rain"}';
-      expect(expectedJsonPrompt.split('{"city":"Tokyo"}')).toHaveLength(2);
-      expect(expectedJsonPrompt.split(scenario.messages[2].content)).toHaveLength(2);
-      {
-        const before = replay.generate.mock.calls.length;
-        const changedMessages: RecordedMessage[] = [
-          scenario.messages[0],
-          {
-            role: 'assistant',
-            content: '',
-            tool_calls: [{
-              id: toToolCallId({ raw: 'call_template_probe_1' }),
-              type: 'function',
-              function: { name: 'lookup_weather', arguments: changedArguments },
-            }],
-          },
-          { role: 'tool', tool_call_id: toToolCallId({ raw: 'call_template_probe_1' }), content: changedResult },
-        ];
-        const capture = captureProviderChat({
-          provider: replay.harness.provider,
-          request: {
-            model: "onnx-community/Qwen3.5-2B-ONNX",
-            messages: changedMessages,
-            tools: [replay.publicTool],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 1,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: { effort: undefined },
-            },
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        expectDeliveredErrorCapture({ capture, message: QWEN_TOOL_INPUT_STOP });
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
-        expect(capturedChunks({ snapshot: observed })).toEqual([]);
-        expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-        expect(replay.execute).not.toHaveBeenCalled();
-        verifyQwenToolInput({
-          ...{
-            replay,
-            messages: changedMessages,
-            publicTool: replay.publicTool,
-            expectedToolDefinition: strictQwenTools[0],
-            expectedPrompt: (strictNativeSystem + nativeSuffix).replace('\nTokyo\n', '\nOsaka\n').replace(scenario.messages[2].content, changedResult),
-          },
-          before,
-        });
-      }
-      expect(replay.harness.observations.inferenceCalls).toHaveLength(2);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: QWEN_TOOL_INPUT_STOP });
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+      expect(replay.execute).not.toHaveBeenCalled();
+      verifyQwenToolInput({
+        ...{
+          replay,
+          messages,
+          publicTool: replay.publicTool,
+          expectedToolDefinition: strictQwenTools[0],
+          expectedPrompt: strictNativeSystem + nativeSuffix,
+        },
+        before,
+      });
     }
+
+    // Another actual public invocation detects dropped arguments/results.
+    // The city stays a string; no expected value is derived from actual output.
+    const changedArguments = '{"city":"Osaka"}';
+    const changedResult = '{"temperatureC":18,"condition":"rain"}';
+    expect(expectedJsonPrompt.split('{"city":"Tokyo"}')).toHaveLength(2);
+    expect(expectedJsonPrompt.split(scenario.messages[2].content)).toHaveLength(2);
+    {
+      const before = replay.generate.mock.calls.length;
+      const changedMessages: RecordedMessage[] = [
+        scenario.messages[0],
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{
+            id: toToolCallId({ raw: 'call_template_probe_1' }),
+            type: 'function',
+            function: { name: 'lookup_weather', arguments: changedArguments },
+          }],
+        },
+        { role: 'tool', tool_call_id: toToolCallId({ raw: 'call_template_probe_1' }), content: changedResult },
+      ];
+      const capture = captureProviderChat({
+        provider: replay.harness.provider,
+        request: {
+          model: "onnx-community/Qwen3.5-2B-ONNX",
+          messages: changedMessages,
+          tools: [replay.publicTool],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: { effort: undefined },
+          },
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: QWEN_TOOL_INPUT_STOP });
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(capturedChunks({ snapshot: observed }).join('')).toBe('');
+      expect(capturedChunks({ snapshot: observed })).toEqual([]);
+      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+      expect(replay.execute).not.toHaveBeenCalled();
+      verifyQwenToolInput({
+        ...{
+          replay,
+          messages: changedMessages,
+          publicTool: replay.publicTool,
+          expectedToolDefinition: strictQwenTools[0],
+          expectedPrompt: (strictNativeSystem + nativeSuffix).replace('\nTokyo\n', '\nOsaka\n').replace(scenario.messages[2].content, changedResult),
+        },
+        before,
+      });
+    }
+    expect(replay.harness.observations.inferenceCalls).toHaveLength(2);
   }, 30_000);
 
   async function runNaturalToolCase({ caseId, prompt, expectedText }: {
@@ -2582,52 +2630,54 @@ Use the weather tool for Tokyo.<|im_end|>
         return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
       },
     }];
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    try {
-      replay.beginNativeRequest({ caseId, parameters });
-      turn = await runProviderReplayTurn({
-        provider: replay.provider,
-        request: { model: 'onnx-community/Qwen3.5-2B-ONNX', messages: [textMessage({ id: 'message_0', role: 'user', text: prompt })], parameters, readBinaryObject: undefined, debug: undefined },
-        tools,
-        abortController: new AbortController(),
-        onChange: undefined,
-      });
-      replay.endNativeRequest();
-      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
-      expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
-      const [callAssistant, toolResult, finalAssistant] = turn.generated;
-      expect(callAssistant).toMatchObject({
-        role: 'assistant',
-        interruption: undefined,
-        parts: [{
-          type: 'tool_call',
-          toolCall: { type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } },
-        }],
-      });
-      if (callAssistant?.role !== 'assistant') throw new Error('Expected tool-calling assistant');
-      const call = callAssistant.parts[0];
-      if (call?.type !== 'tool_call') throw new Error('Expected structured tool call');
-      expect(toolResult).toMatchObject({
-        role: 'tool',
-        parts: [{
-          type: 'tool_result',
-          result: {
-            toolCallId: call.toolCall.id,
-            status: 'success',
-            content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-          },
-        }],
-      });
-      expect(finalAssistant).toMatchObject({ role: 'assistant', interruption: undefined, parts: [{ type: 'text', text: expectedText, completeness: 'complete' }] });
-      expect(turn.toolEvents).toEqual([]);
-      expect(executions).toEqual([{ args: { city: 'Tokyo' }, signal: expect.any(AbortSignal) }]);
-      expect(executions[0]?.signal?.aborted).toBe(false);
-      replay.assertComplete({ requests: 1, nativeCalls: 2 });
-    } finally {
-      const beforeClose = structuredClone(turn);
-      await replay.close();
-      expect(structuredClone(turn)).toEqual(beforeClose);
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        const beforeClose = structuredClone(turn);
+        await replay.close();
+        expect(structuredClone(turn)).toEqual(beforeClose);
+      },
+    });
+    replay.beginNativeRequest({ caseId, parameters });
+    turn = await runProviderReplayTurn({
+      provider: replay.provider,
+      request: { model: 'onnx-community/Qwen3.5-2B-ONNX', messages: [textMessage({ id: 'message_0', role: 'user', text: prompt })], parameters, readBinaryObject: undefined, debug: undefined },
+      tools,
+      abortController: new AbortController(),
+      onChange: undefined,
+    });
+    replay.endNativeRequest();
+    expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+    expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
+    const [callAssistant, toolResult, finalAssistant] = turn.generated;
+    expect(callAssistant).toMatchObject({
+      role: 'assistant',
+      interruption: undefined,
+      parts: [{
+        type: 'tool_call',
+        toolCall: { type: 'function', function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } },
+      }],
+    });
+    if (callAssistant?.role !== 'assistant') throw new Error('Expected tool-calling assistant');
+    const call = callAssistant.parts[0];
+    if (call?.type !== 'tool_call') throw new Error('Expected structured tool call');
+    expect(toolResult).toMatchObject({
+      role: 'tool',
+      parts: [{
+        type: 'tool_result',
+        result: {
+          toolCallId: call.toolCall.id,
+          status: 'success',
+          content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+        },
+      }],
+    });
+    expect(finalAssistant).toMatchObject({ role: 'assistant', interruption: undefined, parts: [{ type: 'text', text: expectedText, completeness: 'complete' }] });
+    expect(turn.toolEvents).toEqual([]);
+    expect(executions).toEqual([{ args: { city: 'Tokyo' }, signal: expect.any(AbortSignal) }]);
+    expect(executions[0]?.signal?.aborted).toBe(false);
+    replay.assertComplete({ requests: 1, nativeCalls: 2 });
   }
 
   it('tools: executes the recorded minimal Tokyo call once and continues with its result', async () => {
@@ -2648,47 +2698,49 @@ Here is the weather for Tokyo:
 
   it('tools: preserves structured caller history and the recorded response', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["structured-tool-history"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      const messages: RecordedMessage[] = [{ role: "user", content: "Use the weather tool for Tokyo." }, { role: "assistant", content: "", tool_calls: [{ id: toToolCallId({ raw: "call_model_support_probe_1" }), type: "function", function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } }] }, { role: "tool", content: "{\"temperatureC\":20,\"condition\":\"clear\"}", tool_call_id: toToolCallId({ raw: "call_model_support_probe_1" }) }];
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
-      const executedSignals: Array<AbortSignal | undefined> = [];
-      const executedArgs: unknown[] = [];
-      const execute = vi.fn<Tool['execute']>(async ({ args, signal }) => {
-        executedArgs.push(structuredClone(args));
-        executedSignals.push(signal);
-        return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-      });
-      const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.", parametersSchema: z.object({ city: z.string() }), execute: execute }];
-      replay.beginNativeRequest({ caseId: "structured-tool-history", parameters: parameters });
-      capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/Qwen3.5-2B-ONNX",
-          messages,
-          tools,
-          parameters,
-          signal,
-        },
-      });
-      await capture.completion;
-      replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedTexts({ snapshot: observed })).toEqual([`\
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
+      },
+    });
+    const messages: RecordedMessage[] = [{ role: "user", content: "Use the weather tool for Tokyo." }, { role: "assistant", content: "", tool_calls: [{ id: toToolCallId({ raw: "call_model_support_probe_1" }), type: "function", function: { name: "lookup_weather", arguments: "{\"city\":\"Tokyo\"}" } }] }, { role: "tool", content: "{\"temperatureC\":20,\"condition\":\"clear\"}", tool_call_id: toToolCallId({ raw: "call_model_support_probe_1" }) }];
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
+    const executedSignals: Array<AbortSignal | undefined> = [];
+    const executedArgs: unknown[] = [];
+    const execute = vi.fn<Tool['execute']>(async ({ args, signal }) => {
+      executedArgs.push(structuredClone(args));
+      executedSignals.push(signal);
+      return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+    });
+    const tools: Tool[] = [{ name: "lookup_weather", description: "Return deterministic weather fixture data.", parametersSchema: z.object({ city: z.string() }), execute: execute }];
+    replay.beginNativeRequest({ caseId: "structured-tool-history", parameters: parameters });
+    capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/Qwen3.5-2B-ONNX",
+        messages,
+        tools,
+        parameters,
+        signal,
+      },
+    });
+    await capture.completion;
+    replay.endNativeRequest();
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedTexts({ snapshot: observed })).toEqual([`\
 Here is the weather for Tokyo:
 
 *   **Temperature:** 20°C
 *   **Condition:** Clear`]);
-      expect(observed.result).toEqual({ type: 'finished', next: 'user' });
-      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      expect(execute).not.toHaveBeenCalled();
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
-    }
+    expect(observed.result).toEqual({ type: 'finished', next: 'user' });
+    expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    expect(execute).not.toHaveBeenCalled();
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -2743,56 +2795,58 @@ describe('Qwen3.5 2B Provider / images', () => {
         return replayCapturedFullInvocation({ invocation: { ...facts, callOrdinal: localOrdinal, scenario: 'image' }, options, runtime, modelConfig: model.config, parameters });
       },
     });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      await harness.service.loadDownloadedModel({ modelId });
-      expect(harness.observations.modelLoadCalls).toEqual(['AutoModelForImageTextToText']);
-      expect(harness.observations.processors).toHaveLength(1);
-      expect(harness.observations.processors[0]!.constructor.name).toBe('Qwen3VLProcessor');
-      const expectedSessions = ['decoder_model_merged_q4f16', 'embed_tokens_q4f16', 'vision_encoder_q4f16'].map(name => ({
-        modelId,
-        revision,
-        corePath: `onnx/${name}.onnx`,
-        externalData: [{ path: `${name}.onnx_data`, artifactPath: `onnx/${name}.onnx_data` }],
-        executionProviders: ['webgpu'],
-      }));
-      expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({ modelId, revision, repositoryPaths: new Set(artifacts), core, options }))
-        .sort((a, b) => a.corePath.localeCompare(b.corePath))).toEqual(expectedSessions);
-      capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: modelId,
-          messages,
-          tools: [],
-          parameters,
-          signal: new AbortController().signal,
-        },
-      });
-      await capture.completion;
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedTexts({ snapshot: observed })).toEqual(['A']);
-      expect(capturedChunks({ snapshot: observed })).toEqual(['', 'A']);
-      expect(observed.parts).toEqual([expect.objectContaining({ type: 'text', index: 0, chunks: ['', 'A'], completeness: 'partial' })]);
-      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(observed.events.map(event => event.kind)).toEqual(['part', 'chunk', 'chunk', 'part-complete', 'result', 'settled']);
-      expect(request.events).toEqual([
-        { sequence: 0, phase: 'before-settlement', kind: 'assistant-start' },
-        { sequence: 1, phase: 'before-settlement', kind: 'chunk', chunk: 'A' },
-      ]);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      expect(generations).toBe(1); expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(platform.observations.decodes).toHaveLength(1);
-      expect(harness.observations.localImageFetchCalls).toEqual([imageUrl]);
-      expect(harness.observations.workers).toHaveLength(1);
-      const loadMessage = z.object({ type: z.literal('APPLY'), path: z.tuple([z.literal('loadDownloadedModel')]) });
-      expect(harness.observations.workers[0]!.hostMessages.filter(message => loadMessage.safeParse(message).success)).toHaveLength(1);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
-      expect(harness.observations.workers.every(worker => worker.terminated)).toBe(true);
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
+        expect(harness.observations.workers.every(worker => worker.terminated)).toBe(true);
+      },
+    });
+    await harness.service.loadDownloadedModel({ modelId });
+    expect(harness.observations.modelLoadCalls).toEqual(['AutoModelForImageTextToText']);
+    expect(harness.observations.processors).toHaveLength(1);
+    expect(harness.observations.processors[0]!.constructor.name).toBe('Qwen3VLProcessor');
+    const expectedSessions = ['decoder_model_merged_q4f16', 'embed_tokens_q4f16', 'vision_encoder_q4f16'].map(name => ({
+      modelId,
+      revision,
+      corePath: `onnx/${name}.onnx`,
+      externalData: [{ path: `${name}.onnx_data`, artifactPath: `onnx/${name}.onnx_data` }],
+      executionProviders: ['webgpu'],
+    }));
+    expect(harness.observations.ortCalls.map(([core, options]) => inspectSyntheticOrtSession({ modelId, revision, repositoryPaths: new Set(artifacts), core, options }))
+      .sort((a, b) => a.corePath.localeCompare(b.corePath))).toEqual(expectedSessions);
+    capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: modelId,
+        messages,
+        tools: [],
+        parameters,
+        signal: new AbortController().signal,
+      },
+    });
+    await capture.completion;
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedTexts({ snapshot: observed })).toEqual(['A']);
+    expect(capturedChunks({ snapshot: observed })).toEqual(['', 'A']);
+    expect(observed.parts).toEqual([expect.objectContaining({ type: 'text', index: 0, chunks: ['', 'A'], completeness: 'partial' })]);
+    expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(observed.events.map(event => event.kind)).toEqual(['part', 'chunk', 'chunk', 'part-complete', 'result', 'settled']);
+    expect(request.events).toEqual([
+      { sequence: 0, phase: 'before-settlement', kind: 'assistant-start' },
+      { sequence: 1, phase: 'before-settlement', kind: 'chunk', chunk: 'A' },
+    ]);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    expect(generations).toBe(1); expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(platform.observations.decodes).toHaveLength(1);
+    expect(harness.observations.localImageFetchCalls).toEqual([imageUrl]);
+    expect(harness.observations.workers).toHaveLength(1);
+    const loadMessage = z.object({ type: z.literal('APPLY'), path: z.tuple([z.literal('loadDownloadedModel')]) });
+    expect(harness.observations.workers[0]!.hostMessages.filter(message => loadMessage.safeParse(message).success)).toHaveLength(1);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it.each(qwen2ImageCases)('$name has independently derived pixels, grid and complete native text input', async ({ imageUrl, rgba, rescaled }) => {
@@ -2844,81 +2898,82 @@ describe('Qwen3.5 2B Provider / images', () => {
       ].map(path => ({ path, bytes: createSyntheticModelBody({ modelId, revision, path }) })),
       generate,
     });
-    try {
-      await harness.service.loadDownloadedModel({ modelId });
-      expect(harness.observations.processors).toHaveLength(1);
-      const processor = harness.observations.processors[0];
-      if (!processor?.tokenizer) throw new Error('Expected actual Qwen2 processor/tokenizer');
-      expect(processor.constructor.name).toBe('Qwen3VLProcessor');
-      expect(harness.runtime.env.version).toBe('4.2.0');
-      expect(createHash('sha256').update(processor.tokenizer.get_chat_template()).digest('hex'))
-        .toBe('273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80');
-      expect(processor.tokenizer.apply_chat_template(nativeMessages, { tokenize: false, add_generation_prompt: true }))
-        .toBe(qwen2NativeImagePrompt);
-      const imageProcessor = processor.image_processor;
-      if (typeof imageProcessor !== 'function') throw new Error('Expected actual callable image processor');
-      expect(Reflect.get(imageProcessor, 'config')).toEqual(selectedConfig);
-      // TJS 4.2 AutoImageProcessor reads preprocessor_config; inherited
-      // uses_processor_config=false leaves the separate nested normalize=true
-      // unused. The selected file omits do_normalize, so current native output
-      // is 0/1, NOT the -1/+1 that normalization would produce. This records the
-      // selected native route, not correctness for the model's vision weights.
-      expect({
-        rescale: Reflect.get(imageProcessor, 'do_rescale'),
-        scale: Reflect.get(imageProcessor, 'rescale_factor'),
-        normalize: Reflect.get(imageProcessor, 'do_normalize'),
-        rgb: Reflect.get(imageProcessor, 'do_convert_rgb'),
-      }).toEqual({ rescale: true, scale: 1 / 255, normalize: undefined, rgb: true });
-      const rawImage = await harness.runtime.RawImage.read(imageUrl);
-      expect(rawImage).toBeInstanceOf(harness.runtime.RawImage);
-      expect({ width: rawImage.width, height: rawImage.height, channels: rawImage.channels })
-        .toEqual({ width: 1, height: 1, channels: 4 });
-      expect(rawImage.data).toEqual(rgba);
-      const native = z.object({
-        input_ids: z.instanceof(harness.runtime.Tensor),
-        attention_mask: z.instanceof(harness.runtime.Tensor),
-        pixel_values: z.instanceof(harness.runtime.Tensor),
-        image_grid_thw: z.instanceof(harness.runtime.Tensor),
-      }).parse(await processor(qwen2NativeImagePrompt, rawImage));
-      // Own min-area 65536 and aspect 1 yield 256x256; patch16 gives 16x16.
-      // Temporal2 duplicates the frame: 3 * 2 * 16 * 16 = 1536 per patch.
-      // Grid product / merge_size^2 expands the one image marker to 64 tokens.
-      const expectedPixels = new Float32Array(256 * 1536).fill(rescaled);
-      const expectedGrid = BigInt64Array.of(1n, 16n, 16n);
-      const expectedText = qwen2NativeImagePrompt.replace('<|image_pad|>', '<|image_pad|>'.repeat(64));
-      const expectedIds = processor.tokenizer.encode(expectedText, { add_special_tokens: false });
-      expect({ type: native.pixel_values.type, location: native.pixel_values.location, dims: native.pixel_values.dims })
-        .toEqual({ type: 'float32', location: 'cpu', dims: [256, 1536] });
-      // Every value is compared; avoid constructing a huge diff on failure.
-      expect(isDeepStrictEqual(native.pixel_values.data, expectedPixels)).toBe(true);
-      expect({ type: native.image_grid_thw.type, location: native.image_grid_thw.location, dims: native.image_grid_thw.dims })
-        .toEqual({ type: 'int64', location: 'cpu', dims: [1, 3] });
-      expect(native.image_grid_thw.data).toEqual(expectedGrid);
-      expect(Array.from(native.input_ids.data, Number)).toEqual(expectedIds);
-      expect(native.attention_mask.data).toEqual(new BigInt64Array(expectedIds.length).fill(1n));
-      for (const tensor of [native.input_ids, native.attention_mask]) {
-        expect({ type: tensor.type, location: tensor.location, dims: tensor.dims })
-          .toEqual({ type: 'int64', location: 'cpu', dims: [1, expectedIds.length] });
-      }
-      expect(platform.observations.decodes).toEqual([{
-        bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')),
-        rgba,
-      }]);
-      expect(platform.observations.draws).toEqual([
-        { sourceWidth: 1, sourceHeight: 1, targetWidth: 1, targetHeight: 1 },
-        { sourceWidth: 1, sourceHeight: 1, targetWidth: 256, targetHeight: 256 },
-      ]);
-      expect(harness.observations.localImageFetchCalls).toEqual([imageUrl]);
-      expect(generate).not.toHaveBeenCalled();
-      expect(harness.observations.inferenceCalls).toEqual([]);
-      expect(harness.observations.workers).toHaveLength(1);
-      expect(harness.observations.ortCalls).toHaveLength(3);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await harness.close();
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+      },
+    });
+    await harness.service.loadDownloadedModel({ modelId });
+    expect(harness.observations.processors).toHaveLength(1);
+    const processor = harness.observations.processors[0];
+    if (!processor?.tokenizer) throw new Error('Expected actual Qwen2 processor/tokenizer');
+    expect(processor.constructor.name).toBe('Qwen3VLProcessor');
+    expect(harness.runtime.env.version).toBe('4.2.0');
+    expect(createHash('sha256').update(processor.tokenizer.get_chat_template()).digest('hex'))
+      .toBe('273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80');
+    expect(processor.tokenizer.apply_chat_template(nativeMessages, { tokenize: false, add_generation_prompt: true }))
+      .toBe(qwen2NativeImagePrompt);
+    const imageProcessor = processor.image_processor;
+    if (typeof imageProcessor !== 'function') throw new Error('Expected actual callable image processor');
+    expect(Reflect.get(imageProcessor, 'config')).toEqual(selectedConfig);
+    // TJS 4.2 AutoImageProcessor reads preprocessor_config; inherited
+    // uses_processor_config=false leaves the separate nested normalize=true
+    // unused. The selected file omits do_normalize, so current native output
+    // is 0/1, NOT the -1/+1 that normalization would produce. This records the
+    // selected native route, not correctness for the model's vision weights.
+    expect({
+      rescale: Reflect.get(imageProcessor, 'do_rescale'),
+      scale: Reflect.get(imageProcessor, 'rescale_factor'),
+      normalize: Reflect.get(imageProcessor, 'do_normalize'),
+      rgb: Reflect.get(imageProcessor, 'do_convert_rgb'),
+    }).toEqual({ rescale: true, scale: 1 / 255, normalize: undefined, rgb: true });
+    const rawImage = await harness.runtime.RawImage.read(imageUrl);
+    expect(rawImage).toBeInstanceOf(harness.runtime.RawImage);
+    expect({ width: rawImage.width, height: rawImage.height, channels: rawImage.channels })
+      .toEqual({ width: 1, height: 1, channels: 4 });
+    expect(rawImage.data).toEqual(rgba);
+    const native = z.object({
+      input_ids: z.instanceof(harness.runtime.Tensor),
+      attention_mask: z.instanceof(harness.runtime.Tensor),
+      pixel_values: z.instanceof(harness.runtime.Tensor),
+      image_grid_thw: z.instanceof(harness.runtime.Tensor),
+    }).parse(await processor(qwen2NativeImagePrompt, rawImage));
+    // Own min-area 65536 and aspect 1 yield 256x256; patch16 gives 16x16.
+    // Temporal2 duplicates the frame: 3 * 2 * 16 * 16 = 1536 per patch.
+    // Grid product / merge_size^2 expands the one image marker to 64 tokens.
+    const expectedPixels = new Float32Array(256 * 1536).fill(rescaled);
+    const expectedGrid = BigInt64Array.of(1n, 16n, 16n);
+    const expectedText = qwen2NativeImagePrompt.replace('<|image_pad|>', '<|image_pad|>'.repeat(64));
+    const expectedIds = processor.tokenizer.encode(expectedText, { add_special_tokens: false });
+    expect({ type: native.pixel_values.type, location: native.pixel_values.location, dims: native.pixel_values.dims })
+      .toEqual({ type: 'float32', location: 'cpu', dims: [256, 1536] });
+    // Every value is compared; avoid constructing a huge diff on failure.
+    expect(isDeepStrictEqual(native.pixel_values.data, expectedPixels)).toBe(true);
+    expect({ type: native.image_grid_thw.type, location: native.image_grid_thw.location, dims: native.image_grid_thw.dims })
+      .toEqual({ type: 'int64', location: 'cpu', dims: [1, 3] });
+    expect(native.image_grid_thw.data).toEqual(expectedGrid);
+    expect(Array.from(native.input_ids.data, Number)).toEqual(expectedIds);
+    expect(native.attention_mask.data).toEqual(new BigInt64Array(expectedIds.length).fill(1n));
+    for (const tensor of [native.input_ids, native.attention_mask]) {
+      expect({ type: tensor.type, location: tensor.location, dims: tensor.dims })
+        .toEqual({ type: 'int64', location: 'cpu', dims: [1, expectedIds.length] });
     }
+    expect(platform.observations.decodes).toEqual([{
+      bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')),
+      rgba,
+    }]);
+    expect(platform.observations.draws).toEqual([
+      { sourceWidth: 1, sourceHeight: 1, targetWidth: 1, targetHeight: 1 },
+      { sourceWidth: 1, sourceHeight: 1, targetWidth: 256, targetHeight: 256 },
+    ]);
+    expect(harness.observations.localImageFetchCalls).toEqual([imageUrl]);
+    expect(generate).not.toHaveBeenCalled();
+    expect(harness.observations.inferenceCalls).toEqual([]);
+    expect(harness.observations.workers).toHaveLength(1);
+    expect(harness.observations.ortCalls).toHaveLength(3);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it.each(qwen2ImageCases)('$name reaches generation as actual image tensors, not serialized URL text', async ({ imageUrl, rgba, rescaled }) => {
@@ -2945,100 +3000,102 @@ describe('Qwen3.5 2B Provider / images', () => {
         throw new Error(boundary);
       },
     });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: modelId,
-          messages,
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
+      },
+    });
+    capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: modelId,
+        messages,
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-      });
-      await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: boundary });
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(inputs).toHaveLength(1);
-      const actual = inputs[0];
-      if (!actual) throw new Error('Public Qwen2 image input did not reach generation');
-      expect(harness.observations.processors).toHaveLength(1);
-      const processor = harness.observations.processors[0];
-      if (!processor?.tokenizer) throw new Error('Expected actual Qwen2 processor/tokenizer');
-      expect(actual.tokenizer).toBe(processor.tokenizer);
-      expect(processor.constructor.name).toBe('Qwen3VLProcessor');
-      expect(createHash('sha256').update(actual.tokenizer.get_chat_template()).digest('hex'))
-        .toBe('273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80');
-      expect(actual.options.input_ids).toBeDefined();
-      expect(actual.options.attention_mask).toBeDefined();
-      expect(actual.options.past_key_values).toBeNull();
-      expect({
-        maxNewTokens: actual.options.max_new_tokens,
-        temperature: actual.options.temperature,
-        topP: actual.options.top_p,
-        doSample: actual.options.do_sample,
-      }).toEqual({ maxNewTokens: 1, temperature: 0, topP: 1, doSample: false });
-      expect(actual.options.return_dict_in_generate).toBe(true);
-      expect(actual.streamerIsTextStreamer).toBe(true);
-      expect(actual.stoppingCriteriaType).toBe('function');
-      expect(capturedChunks({ snapshot: observed })).toEqual([]);
-      expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.workers).toHaveLength(1);
-      expect(harness.observations.ortCalls).toHaveLength(3);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-      // This test never invokes a separate RawImage/processor control. Every
-      // image fetch/decode here must come from the actual public request.
-      // The known missing-image RED is independent of the native-default
-      // thinking suffix discrepancy protected in the earlier text scenarios.
-      const imageInput = {
-        imageFetches: harness.observations.localImageFetchCalls,
-        hasPixels: actual.options.pixel_values !== undefined,
-        hasGrid: actual.options.image_grid_thw !== undefined,
-      };
-      expect(imageInput, JSON.stringify(imageInput)).toEqual({ imageFetches: [imageUrl], hasPixels: true, hasGrid: true });
-      const { input_ids, attention_mask, pixel_values, image_grid_thw } = actual.options;
-      if (!input_ids || !attention_mask || !pixel_values || !image_grid_thw) throw new Error('Expected four actual image Tensor snapshots');
-      const tensors = { input_ids, attention_mask, pixel_values, image_grid_thw };
-      expect(actual.optionKeys).toEqual([
-        'attention_mask', 'do_sample', 'image_grid_thw', 'input_ids', 'max_new_tokens', 'past_key_values',
-        'pixel_values', 'original_sizes', 'reshaped_input_sizes', 'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
-      ].sort());
-      expect(actual.options.original_sizes).toEqual([[1, 1]]);
-      expect(actual.options.reshaped_input_sizes).toEqual([[256, 256]]);
-      expect(qwen2NativeImagePrompt).not.toBe(qwen2ProductionImagePrompt);
-      const expectedText = qwen2NativeImagePrompt.replace('<|image_pad|>', '<|image_pad|>'.repeat(64));
-      const expectedIds = actual.tokenizer.encode(expectedText, { add_special_tokens: false });
-      expect(Array.from(tensors.input_ids.data, Number)).toEqual(expectedIds);
-      expect(tensors.attention_mask.data).toEqual(new BigInt64Array(expectedIds.length).fill(1n));
-      for (const tensor of [tensors.input_ids, tensors.attention_mask]) {
-        expect({ type: tensor.type, location: tensor.location, dims: tensor.dims })
-          .toEqual({ type: 'int64', location: 'cpu', dims: [1, expectedIds.length] });
-      }
-      expect({ type: tensors.pixel_values.type, location: tensors.pixel_values.location, dims: tensors.pixel_values.dims })
-        .toEqual({ type: 'float32', location: 'cpu', dims: [256, 1536] });
-      expect(isDeepStrictEqual(tensors.pixel_values.data, new Float32Array(256 * 1536).fill(rescaled))).toBe(true);
-      expect({ type: tensors.image_grid_thw.type, location: tensors.image_grid_thw.location, dims: tensors.image_grid_thw.dims })
-        .toEqual({ type: 'int64', location: 'cpu', dims: [1, 3] });
-      expect(tensors.image_grid_thw.data).toEqual(BigInt64Array.of(1n, 16n, 16n));
-      expect(platform.observations.decodes).toEqual([{
-        bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')),
-        rgba,
-      }]);
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
+      },
+    });
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: boundary });
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(inputs).toHaveLength(1);
+    const actual = inputs[0];
+    if (!actual) throw new Error('Public Qwen2 image input did not reach generation');
+    expect(harness.observations.processors).toHaveLength(1);
+    const processor = harness.observations.processors[0];
+    if (!processor?.tokenizer) throw new Error('Expected actual Qwen2 processor/tokenizer');
+    expect(actual.tokenizer).toBe(processor.tokenizer);
+    expect(processor.constructor.name).toBe('Qwen3VLProcessor');
+    expect(createHash('sha256').update(actual.tokenizer.get_chat_template()).digest('hex'))
+      .toBe('273d8e0e683b885071fb17e08d71e5f2a5ddfb5309756181681de4f5a1822d80');
+    expect(actual.options.input_ids).toBeDefined();
+    expect(actual.options.attention_mask).toBeDefined();
+    expect(actual.options.past_key_values).toBeNull();
+    expect({
+      maxNewTokens: actual.options.max_new_tokens,
+      temperature: actual.options.temperature,
+      topP: actual.options.top_p,
+      doSample: actual.options.do_sample,
+    }).toEqual({ maxNewTokens: 1, temperature: 0, topP: 1, doSample: false });
+    expect(actual.options.return_dict_in_generate).toBe(true);
+    expect(actual.streamerIsTextStreamer).toBe(true);
+    expect(actual.stoppingCriteriaType).toBe('function');
+    expect(capturedChunks({ snapshot: observed })).toEqual([]);
+    expect(capturedToolCalls({ snapshot: observed })).toEqual([]);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.workers).toHaveLength(1);
+    expect(harness.observations.ortCalls).toHaveLength(3);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    // This test never invokes a separate RawImage/processor control. Every
+    // image fetch/decode here must come from the actual public request.
+    // The known missing-image RED is independent of the native-default
+    // thinking suffix discrepancy protected in the earlier text scenarios.
+    const imageInput = {
+      imageFetches: harness.observations.localImageFetchCalls,
+      hasPixels: actual.options.pixel_values !== undefined,
+      hasGrid: actual.options.image_grid_thw !== undefined,
+    };
+    expect(imageInput, JSON.stringify(imageInput)).toEqual({ imageFetches: [imageUrl], hasPixels: true, hasGrid: true });
+    const { input_ids, attention_mask, pixel_values, image_grid_thw } = actual.options;
+    if (!input_ids || !attention_mask || !pixel_values || !image_grid_thw) throw new Error('Expected four actual image Tensor snapshots');
+    const tensors = { input_ids, attention_mask, pixel_values, image_grid_thw };
+    expect(actual.optionKeys).toEqual([
+      'attention_mask', 'do_sample', 'image_grid_thw', 'input_ids', 'max_new_tokens', 'past_key_values',
+      'pixel_values', 'original_sizes', 'reshaped_input_sizes', 'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
+    ].sort());
+    expect(actual.options.original_sizes).toEqual([[1, 1]]);
+    expect(actual.options.reshaped_input_sizes).toEqual([[256, 256]]);
+    expect(qwen2NativeImagePrompt).not.toBe(qwen2ProductionImagePrompt);
+    const expectedText = qwen2NativeImagePrompt.replace('<|image_pad|>', '<|image_pad|>'.repeat(64));
+    const expectedIds = actual.tokenizer.encode(expectedText, { add_special_tokens: false });
+    expect(Array.from(tensors.input_ids.data, Number)).toEqual(expectedIds);
+    expect(tensors.attention_mask.data).toEqual(new BigInt64Array(expectedIds.length).fill(1n));
+    for (const tensor of [tensors.input_ids, tensors.attention_mask]) {
+      expect({ type: tensor.type, location: tensor.location, dims: tensor.dims })
+        .toEqual({ type: 'int64', location: 'cpu', dims: [1, expectedIds.length] });
     }
+    expect({ type: tensors.pixel_values.type, location: tensors.pixel_values.location, dims: tensors.pixel_values.dims })
+      .toEqual({ type: 'float32', location: 'cpu', dims: [256, 1536] });
+    expect(isDeepStrictEqual(tensors.pixel_values.data, new Float32Array(256 * 1536).fill(rescaled))).toBe(true);
+    expect({ type: tensors.image_grid_thw.type, location: tensors.image_grid_thw.location, dims: tensors.image_grid_thw.dims })
+      .toEqual({ type: 'int64', location: 'cpu', dims: [1, 3] });
+    expect(tensors.image_grid_thw.data).toEqual(BigInt64Array.of(1n, 16n, 16n));
+    expect(platform.observations.decodes).toEqual([{
+      bytes: Uint8Array.from(Buffer.from(imageUrl.split(',')[1]!, 'base64')),
+      rgba,
+    }]);
   }, 30_000);
 });
 
@@ -3200,56 +3257,57 @@ describe('Qwen3.5 2B Provider / sequences', () => {
   it('sequences: builds continuation from actually delivered first-request settlement', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn", "continuity"], artifactPaths: ["onnx/decoder_model_merged_q4f16.onnx", "onnx/decoder_model_merged_q4f16.onnx_data", "onnx/embed_tokens_q4f16.onnx", "onnx/embed_tokens_q4f16.onnx_data", "onnx/vision_encoder_q4f16.onnx", "onnx/vision_encoder_q4f16.onnx_data"], imagePlatform: undefined });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const firstSignal = new AbortController().signal;
-      const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
-      replay.beginNativeRequest({ caseId: "first-turn", parameters: firstParameters });
-      const firstCapture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/Qwen3.5-2B-ONNX",
-          messages: [{ role: "user", content: "Template probe user message." }],
-          tools: [],
-          parameters: firstParameters,
-          signal: firstSignal,
-        },
-      });
-      captures.push(firstCapture);
-      await firstCapture.completion;
-      replay.endNativeRequest();
-      const firstObserved = firstCapture.snapshot();
-      expect(firstObserved.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedTexts({ snapshot: firstObserved })).toEqual(["It looks like you might be looking for a **prompt template** to use with"]);
-      expect(firstObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(firstObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(capturedToolCalls({ snapshot: firstObserved })).toEqual([]);
-      const nextMessages: RecordedMessage[] = [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: capturedTexts({ snapshot: firstObserved })[0]! }, { role: "user", content: "Continue the synthetic conversation with a short response." }];
-      const nextSignal = new AbortController().signal;
-      const nextParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
-      replay.beginNativeRequest({ caseId: "continuity", parameters: nextParameters });
-      const nextCapture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/Qwen3.5-2B-ONNX",
-          messages: nextMessages,
-          tools: [],
-          parameters: nextParameters,
-          signal: nextSignal,
-        },
-      });
-      captures.push(nextCapture);
-      await nextCapture.completion;
-      replay.endNativeRequest();
-      const nextObserved = nextCapture.snapshot();
-      expect(nextObserved.settlement).toEqual({ status: 'fulfilled' });
-      expect(capturedTexts({ snapshot: nextObserved })).toEqual(["Got it! I'm ready to continue the conversation. What would you like to"]);
-      expect(nextObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(nextObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(capturedToolCalls({ snapshot: nextObserved })).toEqual([]);
-      replay.assertComplete({ requests: 2, nativeCalls: 2 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const firstSignal = new AbortController().signal;
+    const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
+    replay.beginNativeRequest({ caseId: "first-turn", parameters: firstParameters });
+    const firstCapture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/Qwen3.5-2B-ONNX",
+        messages: [{ role: "user", content: "Template probe user message." }],
+        tools: [],
+        parameters: firstParameters,
+        signal: firstSignal,
+      },
+    });
+    captures.push(firstCapture);
+    await firstCapture.completion;
+    replay.endNativeRequest();
+    const firstObserved = firstCapture.snapshot();
+    expect(firstObserved.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedTexts({ snapshot: firstObserved })).toEqual(["It looks like you might be looking for a **prompt template** to use with"]);
+    expect(firstObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(firstObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(capturedToolCalls({ snapshot: firstObserved })).toEqual([]);
+    const nextMessages: RecordedMessage[] = [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: capturedTexts({ snapshot: firstObserved })[0]! }, { role: "user", content: "Continue the synthetic conversation with a short response." }];
+    const nextSignal = new AbortController().signal;
+    const nextParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
+    replay.beginNativeRequest({ caseId: "continuity", parameters: nextParameters });
+    const nextCapture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/Qwen3.5-2B-ONNX",
+        messages: nextMessages,
+        tools: [],
+        parameters: nextParameters,
+        signal: nextSignal,
+      },
+    });
+    captures.push(nextCapture);
+    await nextCapture.completion;
+    replay.endNativeRequest();
+    const nextObserved = nextCapture.snapshot();
+    expect(nextObserved.settlement).toEqual({ status: 'fulfilled' });
+    expect(capturedTexts({ snapshot: nextObserved })).toEqual(["Got it! I'm ready to continue the conversation. What would you like to"]);
+    expect(nextObserved.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(nextObserved.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(capturedToolCalls({ snapshot: nextObserved })).toEqual([]);
+    replay.assertComplete({ requests: 2, nativeCalls: 2 });
   }, 30_000);
 
   it('preserves twelve recorded text/tool requests and verifies the recorded image input without inventing image output', async () => {

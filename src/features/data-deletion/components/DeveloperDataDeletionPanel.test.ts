@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import DeveloperDataDeletionPanel from './DeveloperDataDeletionPanel.vue';
 import { useConfirm } from '@/composables/useConfirm';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 const routerMocks = vi.hoisted(() => ({
   replace: vi.fn(),

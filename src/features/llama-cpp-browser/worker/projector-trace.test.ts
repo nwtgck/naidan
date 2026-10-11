@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
-import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
+import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics.test-support';
 import { createProjectorTrace } from './projector-trace';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -27,19 +28,20 @@ describe('synchronous projector tensor tracing', () => {
       },
     } as unknown as Core;
     const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: () => {} }); const trace = createProjectorTrace({ core });
-    try {
-      const pointer = pointerBytes === 4 ? -2147483648 : tensorPointer;
-      expect(callback(pointer, 1, 0)).toBe(1); expect(callback(pointer, 0, 0)).toBe(1);
-      const diagnostics = readDiagnostics({ calls: debug.mock.calls });
-      expect(diagnostics).toHaveLength(2);
-      expect(diagnostics[0]).toEqual(expect.objectContaining({ event: 'native-node-start', nativeOpName: 'GGML_OP_ADD', nativeTensorType: 1, nativeTensorShape: [768, 240, 3, 1] }));
-      expect(diagnostics[1]).toEqual(expect.objectContaining({ event: 'native-node-complete', nativeNode: 1 }));
-      view.setBigInt64(8, 9007199254740992n, true);
-      expect(() => callback(pointer, 1, 0)).not.toThrow(); expect(callback(pointer, 0, 0)).toBe(1);
-      expect(readDiagnostics({ calls: debug.mock.calls }).filter(entry => entry.stage === 'projector-trace')).toHaveLength(1);
-    } finally {
-      trace.release(); unsubscribe();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        trace.release(); unsubscribe();
+      },
+    });
+    const pointer = pointerBytes === 4 ? -2147483648 : tensorPointer;
+    expect(callback(pointer, 1, 0)).toBe(1); expect(callback(pointer, 0, 0)).toBe(1);
+    const diagnostics = readDiagnostics({ calls: debug.mock.calls });
+    expect(diagnostics).toHaveLength(2);
+    expect(diagnostics[0]).toEqual(expect.objectContaining({ event: 'native-node-start', nativeOpName: 'GGML_OP_ADD', nativeTensorType: 1, nativeTensorShape: [768, 240, 3, 1] }));
+    expect(diagnostics[1]).toEqual(expect.objectContaining({ event: 'native-node-complete', nativeNode: 1 }));
+    view.setBigInt64(8, 9007199254740992n, true);
+    expect(() => callback(pointer, 1, 0)).not.toThrow(); expect(callback(pointer, 0, 0)).toBe(1);
+    expect(readDiagnostics({ calls: debug.mock.calls }).filter(entry => entry.stage === 'projector-trace')).toHaveLength(1);
   });
 });
 

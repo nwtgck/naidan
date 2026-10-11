@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
-import { audioResult } from './wav';
+import { audioResult } from './wav.test-support';
 
 /** Deliberately small ABI fixture. This tests ownership and orchestration, not
  * trained model inference or the actual device scheduler. */

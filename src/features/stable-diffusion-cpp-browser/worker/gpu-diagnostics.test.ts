@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { observeImageGpu } from './gpu-diagnostics';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
@@ -83,17 +84,18 @@ it('does nothing when the platform has no usable GPU entry point', () => {
 it('keeps critical GPU errors with debug off without instrumenting buffers or pipelines', async () => {
   const h = harness(); h.observation.dispose();
   const observation = observeImageGpu({ emit: h.emit, debug: 'off' });
-  try {
-    await (await h.gpu.requestAdapter())!.requestDevice();
-    expect(h.device.createBuffer).toBe(h.original.buffer);
-    expect(h.device.createComputePipeline).toBe(h.original.pipeline);
-    const event = new Event('uncapturederror');
-    Object.defineProperty(event, 'error', { value: { message: 'Dispatch 65536 exceeds 65535' } });
-    h.device.dispatchEvent(event);
-    expect(h.emit).toHaveBeenCalledWith(expect.objectContaining({ event: 'gpu', message: expect.stringContaining('65536') }));
-  } finally {
-    observation.dispose();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      observation.dispose();
+    },
+  });
+  await (await h.gpu.requestAdapter())!.requestDevice();
+  expect(h.device.createBuffer).toBe(h.original.buffer);
+  expect(h.device.createComputePipeline).toBe(h.original.pipeline);
+  const event = new Event('uncapturederror');
+  Object.defineProperty(event, 'error', { value: { message: 'Dispatch 65536 exceeds 65535' } });
+  h.device.dispatchEvent(event);
+  expect(h.emit).toHaveBeenCalledWith(expect.objectContaining({ event: 'gpu', message: expect.stringContaining('65536') }));
 });
 
 it('counts caller bytes and physical dispatches without adding device work or changing descriptors', async () => {

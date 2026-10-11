@@ -7,7 +7,7 @@ import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { storageService } from '@/00-storage/service';
 import { computed, nextTick, ref } from 'vue';
 import { commitFullHistoryManipulationForChat } from '@/composables/chat/chat-scoped/chat-history-flow';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { Attachment, Chat, MessageNode } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { cloneLmParameters } from '@/utils/lm-parameters';

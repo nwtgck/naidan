@@ -4,7 +4,7 @@ import { generateInputSchema } from '@/features/llama-cpp-browser/types';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { hostModelHandles, type HostModelDirectoryHandle } from '@/00-storage/service/host-model-handles';
 import { idToRaw, toHostModelDirectoryId } from '@/01-models/ids';
-import { MemoryDirectory, MemoryFile } from '@/features/stable-diffusion-cpp-browser/test-utils/storage';
+import { MemoryDirectory, MemoryFile } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
 import { listHostImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
 import { createDownloadWriter } from './writer';
 import { listHuggingFaceModels, listPendingDownloads, repositoryFolder, selectedFile, readJournal, installedSelection } from './storage';

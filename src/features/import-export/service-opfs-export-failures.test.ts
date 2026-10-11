@@ -5,8 +5,9 @@ import { storageService } from '@/00-storage/service';
 import { toBinaryObjectId, toChatId, toMessageId } from '@/01-models/ids';
 import type { Chat } from '@/01-models/types';
 import { MockFileSystemDirectoryHandle } from '@/features/wesh/mocks/InMemoryFileSystem';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { ImportExportService } from './service';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const { addErrorEvent } = vi.hoisted(() => ({ addErrorEvent: vi.fn() }));
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ addErrorEvent }) }));
@@ -107,12 +108,13 @@ describe('OPFS export index read failures', () => {
     vi.spyOn(storageService, 'dumpWithoutLock').mockResolvedValue({
       ...snapshot,
       contentStream: (async function* () {
-        try {
-          for await (const chunk of snapshot.contentStream) {
-            yield chunk.type === 'binary_object' ? { ...chunk, blob, size: blob.size } : chunk;
-          }
-        } finally {
-          iteratorClosed = true;
+        using _cleanupResource = createTestDisposable({
+          dispose: () => {
+            iteratorClosed = true;
+          },
+        });
+        for await (const chunk of snapshot.contentStream) {
+          yield chunk.type === 'binary_object' ? { ...chunk, blob, size: blob.size } : chunk;
         }
       })(),
     });

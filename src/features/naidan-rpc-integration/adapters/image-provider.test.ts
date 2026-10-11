@@ -10,6 +10,7 @@ import { naidanPeerContract } from '@/features/naidan-rpc-integration/contract';
 import { createNaidanPeerImplementation } from '@/features/naidan-rpc-integration/implementation';
 import { createInferenceBudget } from '@/features/naidan-rpc-integration/handlers/inference/budget';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const cleanup: (() => void)[] = [];
 
@@ -82,16 +83,17 @@ it('does not retain empty image chunks and preserves reused byte chunks', async 
     },
   }, { highWaterMark: 0 });
   const fixture = mockClient({ image }), copies = vi.spyOn(Uint8Array.prototype, 'slice');
-  try {
-    const result = await start({ client: fixture.client }).result;
-    if (result.status !== 'completed') throw new Error('Expected confirmed image');
-    expect(new Uint8Array(await result.output.png.arrayBuffer())).toEqual(expected);
-    // Empty chunks consume no payload budget; do not create a retained copy per chunk.
-    expect(copies.mock.contexts.filter(bytes => bytes instanceof Uint8Array && bytes.byteLength === 0)).toHaveLength(0);
-    expect(fixture.generateImage).toHaveBeenCalledOnce();
-  } finally {
-    copies.mockRestore();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      copies.mockRestore();
+    },
+  });
+  const result = await start({ client: fixture.client }).result;
+  if (result.status !== 'completed') throw new Error('Expected confirmed image');
+  expect(new Uint8Array(await result.output.png.arrayBuffer())).toEqual(expected);
+  // Empty chunks consume no payload budget; do not create a retained copy per chunk.
+  expect(copies.mock.contexts.filter(bytes => bytes instanceof Uint8Array && bytes.byteLength === 0)).toHaveLength(0);
+  expect(fixture.generateImage).toHaveBeenCalledOnce();
 });
 
 it('preserves received pixels as interrupted when only final RPC confirmation fails', async () => {

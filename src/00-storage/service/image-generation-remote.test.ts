@@ -3,7 +3,7 @@
 import { expect, it } from 'vitest';
 import { reactive } from 'vue';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey, toImageGenerationId, toImageGenerationSessionId, toBinaryObjectId } from '@/01-models/ids';
-import { generationRunFixture } from '@/00-storage/service/image-generation/test-support';
+import { generationRunFixture } from '@/00-storage/service/image-generation/index.test-support';
 import { imageGenerationRequestToDomain, imageGenerationRequestToDto, imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
 import { ExperimentalImageGenerationSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { ExperimentalImageGenerationRunSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';

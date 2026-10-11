@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest';
 import { hasLoraTensors } from './lora-metadata';
 import { scanImageRepositories } from './model-candidates';
-import { ggufFixture, safetensorsFixture, tensor, zImageTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
+import { ggufFixture, safetensorsFixture, tensor, zImageTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights.test-support';
 
 it.each([
   ['layer.lora_down.weight', 'layer.lora_up.weight'],

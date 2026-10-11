@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import type { Chat, SidebarItem } from '@/01-models/types';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageGenerationChatPicker from './ImageGenerationChatPicker.vue';
 const items = ref<SidebarItem[]>([]);
 const mocks = vi.hoisted(() => ({ create: vi.fn() }));

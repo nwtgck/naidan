@@ -2,10 +2,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { computed, ref, watch } from 'vue';
 import { createImageGallery } from '@/features/image-generation/image-gallery';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view.test-support';
 import type { PreviewFrame } from '@/features/stable-diffusion-cpp-browser/types';
 import ImageGenerationPreview from './ImageGenerationPreview.vue';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 let wrapper: VueWrapper | undefined;
 
@@ -71,32 +72,33 @@ it('keeps preview images while typing a larger retention limit, including when a
     gallery.setLimit({ value });
     view.previewSnapshots.value = gallery.entries();
   });
-  try {
-    for (let i = 0; i < 5; i++) add();
-    wrapper = mount(ImageGenerationPreview, { props: { view, active: true, livePlacement: 'panel' } });
-    const input = wrapper.get<HTMLInputElement>('[data-testid="image-preview-limit"]');
-    for (const draft of ['1', '10', '100']) {
-      input.element.value = draft;
-      await input.trigger('input');
-      expect(view.maxPreviews.value).toBe(20);
-      add();
-      await flushPromises();
-      expect(input.element.value).toBe(draft);
-      expect(URL.revokeObjectURL).not.toHaveBeenCalled();
-    }
-    expect(gallery.entries()).toHaveLength(8);
-    await input.trigger('change');
-    expect(view.maxPreviews.value).toBe(100);
-    for (let i = 0; i < 94; i++) add();
-    expect(gallery.entries()).toHaveLength(100);
-    await input.setValue('2');
-    expect(view.maxPreviews.value).toBe(2);
-    expect(view.previewSnapshots.value).toHaveLength(2);
-    expect(gallery.entries()).toHaveLength(2);
-    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(100);
-  } finally {
-    stop(); gallery.clear();
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      stop(); gallery.clear();
+    },
+  });
+  for (let i = 0; i < 5; i++) add();
+  wrapper = mount(ImageGenerationPreview, { props: { view, active: true, livePlacement: 'panel' } });
+  const input = wrapper.get<HTMLInputElement>('[data-testid="image-preview-limit"]');
+  for (const draft of ['1', '10', '100']) {
+    input.element.value = draft;
+    await input.trigger('input');
+    expect(view.maxPreviews.value).toBe(20);
+    add();
+    await flushPromises();
+    expect(input.element.value).toBe(draft);
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
   }
+  expect(gallery.entries()).toHaveLength(8);
+  await input.trigger('change');
+  expect(view.maxPreviews.value).toBe(100);
+  for (let i = 0; i < 94; i++) add();
+  expect(gallery.entries()).toHaveLength(100);
+  await input.setValue('2');
+  expect(view.maxPreviews.value).toBe(2);
+  expect(view.previewSnapshots.value).toHaveLength(2);
+  expect(gallery.entries()).toHaveLength(2);
+  expect(URL.revokeObjectURL).toHaveBeenCalledTimes(100);
 });
 
 it.each(['card', 'viewer'])('keeps a retained preview downloadable from its %s after selecting an unsupported profile', async location => {

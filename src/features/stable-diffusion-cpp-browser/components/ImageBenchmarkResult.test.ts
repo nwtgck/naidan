@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { BenchmarkRun } from '@/features/stable-diffusion-cpp-browser/benchmark/types';
 import ImageBenchmarkResult from './ImageBenchmarkResult.vue';
 

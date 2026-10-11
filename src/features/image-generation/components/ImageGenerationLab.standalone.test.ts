@@ -2,10 +2,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ref, defineComponent, h } from 'vue';
 import { DEFAULT_SETTINGS } from '@/01-models/types';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageGenerationLab from './ImageGenerationLab.vue';
 import { useImageGeneration } from '@/features/image-generation/use-image-generation-standalone';
 import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 vi.mock('@/features/stable-diffusion-cpp-browser/use-image-benchmark', () => import('@/features/stable-diffusion-cpp-browser/use-image-benchmark-standalone'));
 vi.mock('@/features/image-generation/use-image-generation', () => import('@/features/image-generation/use-image-generation-standalone'));
@@ -60,17 +61,18 @@ it('restores a pending session location before local availability would disable 
       view = useImageGeneration(); return () => h('div');
     },
   }));
-  try {
-    await flushPromises();
-    const local = view.captureDraft!()!; expect(local.inferenceLocation).toEqual({ kind: 'local' }); expect(local.request.runtime).toBeUndefined();
-    const remote = { ...local, inferenceLocation: { kind: 'naidan_rpc' as const, registration: undefined }, request: { ...local.request, parameters: { ...local.request.parameters, prompt: 'Stored remote draft' } } };
-    await view.restoreDraft!({ draft: remote }); await flushPromises();
-    expect(view.inferenceLocation!.kind.value).toBe('naidan_rpc'); expect(view.parameters.value.prompt).toBe('Stored remote draft');
-    expect(worker).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(reader).not.toHaveBeenCalled();
-    await view.restoreDraft!({ draft: local }); expect(view.inferenceLocation!.kind.value).toBe('local');
-  } finally {
-    host.unmount();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      host.unmount();
+    },
+  });
+  await flushPromises();
+  const local = view.captureDraft!()!; expect(local.inferenceLocation).toEqual({ kind: 'local' }); expect(local.request.runtime).toBeUndefined();
+  const remote = { ...local, inferenceLocation: { kind: 'naidan_rpc' as const, registration: undefined }, request: { ...local.request, parameters: { ...local.request.parameters, prompt: 'Stored remote draft' } } };
+  await view.restoreDraft!({ draft: remote }); await flushPromises();
+  expect(view.inferenceLocation!.kind.value).toBe('naidan_rpc'); expect(view.parameters.value.prompt).toBe('Stored remote draft');
+  expect(worker).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(reader).not.toHaveBeenCalled();
+  await view.restoreDraft!({ draft: local }); expect(view.inferenceLocation!.kind.value).toBe('local');
 });
 
 it('does not execute even when generation is invoked programmatically', async () => {

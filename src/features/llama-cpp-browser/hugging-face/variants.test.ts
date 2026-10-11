@@ -8,6 +8,7 @@ import { planStoredModelRemoval, prepareModelRemoval, removeStoredModel } from '
 import { quantizationChoices } from './presentation';
 import { groupModelFiles } from './catalog';
 import type { DownloadSelection } from './types';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 vi.mock('@/utils/worker-transport', () => ({ releaseWorkerRemote: vi.fn() }));
 const repository = 'owner/Model-GGUF'; const revision = 'a'.repeat(40);
 const projector = { path: 'mmproj-Q8_0.gguf', size: 128 };
@@ -145,12 +146,13 @@ describe('scoped local launch validation', () => {
       throw new DOMException('Unrelated model is unreadable', 'NotReadableError');
     });
     const get = vi.spyOn(other, 'getFile').mockResolvedValue(snapshot);
-    try {
-      expect(await installedSelection({ selection: selection({ quant: 'Q4_K_M' }) })).toMatchObject({ name: `hf.co/${repository}:Q4_K_M` });
-      expect(slice).not.toHaveBeenCalled();
-      await expect(installedSelection({ selection: selection({ quant: 'Q8_0' }) })).rejects.toMatchObject({ name: 'NotReadableError' });
-    } finally {
-      slice.mockRestore(); get.mockRestore();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        slice.mockRestore(); get.mockRestore();
+      },
+    });
+    expect(await installedSelection({ selection: selection({ quant: 'Q4_K_M' }) })).toMatchObject({ name: `hf.co/${repository}:Q4_K_M` });
+    expect(slice).not.toHaveBeenCalled();
+    await expect(installedSelection({ selection: selection({ quant: 'Q8_0' }) })).rejects.toMatchObject({ name: 'NotReadableError' });
   });
 });

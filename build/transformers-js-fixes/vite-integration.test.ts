@@ -8,6 +8,7 @@ import { build, createServer, optimizeDeps, resolveConfig, type InlineConfig } f
 import { buildTransformersJsFixesArtifact } from './artifact';
 import { createTransformersJsFixesViteConfig, readTransformersJsFixesPackage } from './plugin';
 import { TRANSFORMERS_JS_FIXES_PROVENANCE, transformersJsFixesSha256 } from './transform';
+import { createAsyncTestDisposable } from '../../src/utils/resource-cleanup.test-support';
 
 const projectRoot = process.cwd();
 const temporaryRoots: string[] = [];
@@ -102,17 +103,18 @@ it('serves the module Worker and unoptimized dependency with the production tran
     server: { middlewareMode: true, hmr: false, watch: null },
     optimizeDeps: { ...fixes.optimizeDeps, noDiscovery: true, exclude: ['@huggingface/transformers', ...ortExternals] },
   });
-  try {
-    const entry = await server.transformRequest('/build/transformers-js-fixes/fixtures/browser-entry.ts');
-    expect(entry?.code.includes('worker_file')).toBe(true);
-    const worker = await server.transformRequest('/build/transformers-js-fixes/fixtures/worker-entry.ts?worker_file&type=module');
-    expect(worker?.code.includes('transformers.web.js')).toBe(true);
-    const dependency = await server.transformRequest('/node_modules/@huggingface/transformers/dist/transformers.web.js');
-    if (dependency === null) throw new Error('Dependency was not served');
-    assertPatchedConsumers({ code: dependency.code });
-  } finally {
-    await server.close();
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      await server.close();
+    },
+  });
+  const entry = await server.transformRequest('/build/transformers-js-fixes/fixtures/browser-entry.ts');
+  expect(entry?.code.includes('worker_file')).toBe(true);
+  const worker = await server.transformRequest('/build/transformers-js-fixes/fixtures/worker-entry.ts?worker_file&type=module');
+  expect(worker?.code.includes('transformers.web.js')).toBe(true);
+  const dependency = await server.transformRequest('/node_modules/@huggingface/transformers/dist/transformers.web.js');
+  if (dependency === null) throw new Error('Dependency was not served');
+  assertPatchedConsumers({ code: dependency.code });
 }, 30_000);
 
 async function optimizerFixture() {

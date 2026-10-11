@@ -1,6 +1,6 @@
 // A small lifecycle model: only native slots, event ordering, message sources and
 // routing live here. Build identities and update decisions stay in production code.
-import { createWorkerHarness, MemoryCacheStorage, TestClients } from './pwa-worker-platform';
+import { createWorkerHarness, MemoryCacheStorage, TestClients } from './pwa-worker-platform.test-support';
 
 type Worker = {
   key: string;

@@ -9,6 +9,7 @@ import type { ProductionProviderTraceEvent } from '@/features/transformers-js/mo
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from './provider-replay-test-runtime';
 import { captureProviderChat } from './capture-provider-chat';
 import { toMessageId } from '@/01-models/ids';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe('reviewed public contracts remain separate from immutable capture', () => {
   const evidence = parseCapturedFullReplay({ value: source });
@@ -295,27 +296,28 @@ describe('captured Full native inference gate', () => {
         return replayCapturedFullInvocation({ invocation, options, runtime, modelConfig: model.config, parameters });
       },
     });
-    try {
-      const observed = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: evidence.modelId,
-          messages: [{ id: toMessageId({ raw: 'input' }), role: 'user', parts: [{ type: 'text', text: 'Template probe user message.', completeness: 'complete' }] }],
-          tools: [],
-          parameters,
-          debug: undefined,
-          readBinaryObject: undefined,
-          signal: undefined,
-        },
-      });
-      await observed.completion;
-      expect(verified).toBe(13);
-      expect(observed.snapshot().result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(observed.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks).join('').length).toBeGreaterThan(0);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-    } finally {
-      await harness.close();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+      },
+    });
+    const observed = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: evidence.modelId,
+        messages: [{ id: toMessageId({ raw: 'input' }), role: 'user', parts: [{ type: 'text', text: 'Template probe user message.', completeness: 'complete' }] }],
+        tools: [],
+        parameters,
+        debug: undefined,
+        readBinaryObject: undefined,
+        signal: undefined,
+      },
+    });
+    await observed.completion;
+    expect(verified).toBe(13);
+    expect(observed.snapshot().result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(observed.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks).join('').length).toBeGreaterThan(0);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
   }, 30_000);
 });

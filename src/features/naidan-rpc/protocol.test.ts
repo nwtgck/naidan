@@ -7,6 +7,7 @@ import { FramedDuplex, frameSchema } from '@/features/naidan-rpc/framing';
 import { encode, Reference } from '@/features/naidan-rpc/codec';
 import { FRAME_BYTES, ITEM_FRAGMENT_BYTES, BYTE_PULL_BYTES, VALUE_BYTES } from './primitives';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
+import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const cleanups: (() => void)[] = [];
 
@@ -96,32 +97,33 @@ it('retains only arrived payload bytes when six peers declare maximum-sized fram
       return Reflect.construct(constructor, args);
     },
   }));
-  try {
-    for (let index = 0; index < 6; index++) {
-      const header = new Original(4); new DataView(header.buffer).setUint32(0, FRAME_BYTES, false);
-      const wire = new FramedDuplex({
-        onProtocolFailure: () => {},
-        duplex: {
-          readable: new ReadableStream({
-            start(controller) {
-              controller.enqueue(encodeProtocolHeader());
-              controller.enqueue(header); controller.enqueue(new Original([1]));
-            },
-          }),
-          writable: new WritableStream(),
-          closed: new Promise(() => {}),
-          abort: () => {},
-        },
-      });
-      channels.push(wire); pending.push(wire.read().catch(error => error));
-    }
-    await new Promise(resolve => setTimeout(resolve, 0));
-    expect(Math.max(...allocations)).toBeLessThanOrEqual(1024);
-    expect(allocations.reduce((sum, size) => sum + size, 0)).toBeLessThan(8192);
-  } finally {
-    for (const channel of channels) await channel.stop({ error: new Error('Finished') });
-    await Promise.all(pending); vi.unstubAllGlobals();
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      for (const channel of channels) await channel.stop({ error: new Error('Finished') });
+      await Promise.all(pending); vi.unstubAllGlobals();
+    },
+  });
+  for (let index = 0; index < 6; index++) {
+    const header = new Original(4); new DataView(header.buffer).setUint32(0, FRAME_BYTES, false);
+    const wire = new FramedDuplex({
+      onProtocolFailure: () => {},
+      duplex: {
+        readable: new ReadableStream({
+          start(controller) {
+            controller.enqueue(encodeProtocolHeader());
+            controller.enqueue(header); controller.enqueue(new Original([1]));
+          },
+        }),
+        writable: new WritableStream(),
+        closed: new Promise(() => {}),
+        abort: () => {},
+      },
+    });
+    channels.push(wire); pending.push(wire.read().catch(error => error));
   }
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(Math.max(...allocations)).toBeLessThanOrEqual(1024);
+  expect(allocations.reduce((sum, size) => sum + size, 0)).toBeLessThan(8192);
 });
 
 it('a stalled maximum-sized item declaration does not reserve its sibling stream budget', async () => {
@@ -190,11 +192,12 @@ it.each(['wrong-type', 'reference'] as const)('retires an awaiting callback afte
       allowedMethods: ['run'],
       implementation: {
         async run({ input }) {
-          try {
-            return await input(3);
-          } finally {
-            completed.resolve();
-          }
+          using _cleanupResource = createTestDisposable({
+            dispose: () => {
+              completed.resolve();
+            },
+          });
+          return await input(3);
         },
       },
     })],
@@ -234,11 +237,12 @@ it('strips finite envelope extensions after inspecting their raw capability refe
         abort: () => {},
       },
     });
-    try {
-      return await wire.read();
-    } finally {
-      wire.release();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        wire.release();
+      },
+    });
+    return await wire.read();
   };
   await expect(read({ value: { type: 'accept', scope: 'input', ids: [], extension: { future: true } } })).resolves.toEqual({ type: 'accept', scope: 'input', ids: [] });
   await expect(read({ value: { type: 'result', value: new Reference({ id: 2, mode: 'items' }), future: new Reference({ id: 4, mode: 'items' }) } })).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' });

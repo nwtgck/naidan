@@ -1,7 +1,7 @@
 import { generateId } from '@/01-models/id';
 import type { MessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { flushPromises, mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode, UserMessageNode, AssistantMessageNode } from '@/01-models/types';

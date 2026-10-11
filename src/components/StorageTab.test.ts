@@ -7,7 +7,7 @@ import { useSettings } from '@/composables/useSettings';
 import { storageService } from '@/00-storage/service';
 import type { ProviderProfile } from '@/01-models/types';
 import { useRouter, useRoute } from 'vue-router';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 // --- Mocks ---
 

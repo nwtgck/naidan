@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createImageClient } from './client-hosted';
 import { requestFixture as request } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
-import { engineSnapshotFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/engine-state';
+import { engineSnapshotFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/engine-state.test-support';
 import type { ImageEngineInspection } from '@/features/stable-diffusion-cpp-browser/engine-state';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 const mocks = vi.hoisted(() => ({ inspect: vi.fn(), generate: vi.fn(), release: vi.fn(), terminate: vi.fn(), constructed: vi.fn(), messages: [] as unknown[], workers: [] as EventTarget[] }));
 vi.mock('@/utils/worker-transport', async importOriginal => ({ ...await importOriginal<typeof import('@/utils/worker-transport')>(), wrapWorkerRemote: () => ({ generate: mocks.generate, inspectEngine: mocks.inspect }), releaseWorkerRemote: () => mocks.release(), workerProxy: ({ value }: { value: unknown }) => value }));
 
@@ -87,43 +88,45 @@ it('retains worker after success and retires malformed responses', async () => {
 it('reports silence from the window when the Worker/native call cannot send anything', async () => {
   vi.useFakeTimers(); const onDiagnostic = vi.fn(); mocks.generate.mockImplementation(() => new Promise(() => undefined));
   const client = createImageClient(), controller = new AbortController();
-  try {
-    const operation = client.generate({ request: request(), signal: controller.signal, onProgress: vi.fn(), onDiagnostic });
-    const stopped = expect(operation).rejects.toMatchObject({ name: 'AbortError' });
-    await vi.advanceTimersByTimeAsync(15000);
-    expect(onDiagnostic.mock.calls.filter(([{ diagnostic }]) => diagnostic.event === 'waiting')).toHaveLength(3);
-    controller.abort(); await stopped;
-    const count = onDiagnostic.mock.calls.length; await vi.advanceTimersByTimeAsync(30000);
-    expect(onDiagnostic).toHaveBeenCalledTimes(count);
-  } finally {
-    client.dispose(); vi.useRealTimers();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      client.dispose(); vi.useRealTimers();
+    },
+  });
+  const operation = client.generate({ request: request(), signal: controller.signal, onProgress: vi.fn(), onDiagnostic });
+  const stopped = expect(operation).rejects.toMatchObject({ name: 'AbortError' });
+  await vi.advanceTimersByTimeAsync(15000);
+  expect(onDiagnostic.mock.calls.filter(([{ diagnostic }]) => diagnostic.event === 'waiting')).toHaveLength(3);
+  controller.abort(); await stopped;
+  const count = onDiagnostic.mock.calls.length; await vi.advanceTimersByTimeAsync(30000);
+  expect(onDiagnostic).toHaveBeenCalledTimes(count);
 });
 
 it('delivers validated diagnostics before the inference promise settles and retains the last real stage', async () => {
   vi.useFakeTimers(); mocks.generate.mockImplementation(() => new Promise(() => undefined));
   const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
   const onDiagnostic = vi.fn(), client = createImageClient(), controller = new AbortController();
-  try {
-    const operation = client.generate({ request: { ...request(), debug: 'on' }, signal: controller.signal, onProgress: vi.fn(), onDiagnostic });
-    const stopped = expect(operation).rejects.toMatchObject({ name: 'AbortError' });
-    const diagnostic = { event: 'start', stage: 'model-load', elapsedMs: 123, fields: { wasmBytes: 65536 } };
-    const worker = mocks.workers[0]!;
-    worker.dispatchEvent(new MessageEvent('message', { data: { type: 'naidan-image-diagnostic-v1', diagnostic } }));
-    expect(onDiagnostic).toHaveBeenLastCalledWith({ diagnostic });
-    expect(consoleLog.mock.calls.some(([text]) => String(text).includes('model-load'))).toBe(true);
-    const count = onDiagnostic.mock.calls.length;
-    worker.dispatchEvent(new MessageEvent('message', { data: { type: 'naidan-image-diagnostic-v1', diagnostic: { prompt: 'injected content' } } }));
-    expect(onDiagnostic).toHaveBeenCalledTimes(count);
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(onDiagnostic).toHaveBeenLastCalledWith({ diagnostic: expect.objectContaining({ event: 'waiting', stage: 'model-load' }) });
-    controller.abort(); await stopped;
-    const after = onDiagnostic.mock.calls.length;
-    worker.dispatchEvent(new MessageEvent('message', { data: { type: 'naidan-image-diagnostic-v1', diagnostic } }));
-    expect(onDiagnostic).toHaveBeenCalledTimes(after);
-  } finally {
-    client.dispose(); consoleLog.mockRestore(); vi.useRealTimers();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      client.dispose(); consoleLog.mockRestore(); vi.useRealTimers();
+    },
+  });
+  const operation = client.generate({ request: { ...request(), debug: 'on' }, signal: controller.signal, onProgress: vi.fn(), onDiagnostic });
+  const stopped = expect(operation).rejects.toMatchObject({ name: 'AbortError' });
+  const diagnostic = { event: 'start', stage: 'model-load', elapsedMs: 123, fields: { wasmBytes: 65536 } };
+  const worker = mocks.workers[0]!;
+  worker.dispatchEvent(new MessageEvent('message', { data: { type: 'naidan-image-diagnostic-v1', diagnostic } }));
+  expect(onDiagnostic).toHaveBeenLastCalledWith({ diagnostic });
+  expect(consoleLog.mock.calls.some(([text]) => String(text).includes('model-load'))).toBe(true);
+  const count = onDiagnostic.mock.calls.length;
+  worker.dispatchEvent(new MessageEvent('message', { data: { type: 'naidan-image-diagnostic-v1', diagnostic: { prompt: 'injected content' } } }));
+  expect(onDiagnostic).toHaveBeenCalledTimes(count);
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(onDiagnostic).toHaveBeenLastCalledWith({ diagnostic: expect.objectContaining({ event: 'waiting', stage: 'model-load' }) });
+  controller.abort(); await stopped;
+  const after = onDiagnostic.mock.calls.length;
+  worker.dispatchEvent(new MessageEvent('message', { data: { type: 'naidan-image-diagnostic-v1', diagnostic } }));
+  expect(onDiagnostic).toHaveBeenCalledTimes(after);
 });
 
 it('terminates a failed Worker once and does not relabel the native failure as cleanup', async () => {
@@ -337,19 +340,15 @@ it('retires a GPU-failed context even when cancellation was requested first', as
 });
 
 it('explains a fresh, retained and explicitly released runtime without disclosing its key', async () => {
-  const logger = vi.spyOn(console, 'log').mockImplementation(() => {});
-  try {
-    const client = createImageClient(), input = request(); input.debug = 'on'; input.parameters.prompt = 'private prompt';
-    mocks.generate.mockResolvedValue({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' });
-    const onDiagnostic = vi.fn();
-    const run = () => client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn(), onDiagnostic });
-    await run(); await run(); client.release(); await run();
-    input.parameters.flashAttention = !input.parameters.flashAttention; await run();
-    const selections = onDiagnostic.mock.calls.map(([{ diagnostic }]) => diagnostic.fields).filter(f => f.metric === 'worker-selection');
-    expect(selections.map(f => f.reason)).toEqual(['first-use', 'same-session-key', 'explicit-release', 'context-key-changed']);
-    expect(selections.map(f => f.reusedWorker)).toEqual([false, true, false, false]);
-    expect(JSON.stringify(selections)).not.toContain('private prompt'); client.dispose();
-  } finally {
-    logger.mockRestore();
-  }
+  using _logger = vi.spyOn(console, 'log').mockImplementation(() => {});
+  const client = createImageClient(), input = request(); input.debug = 'on'; input.parameters.prompt = 'private prompt';
+  mocks.generate.mockResolvedValue({ png: new Blob(['png'], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'fixture' });
+  const onDiagnostic = vi.fn();
+  const run = () => client.generate({ request: input, signal: new AbortController().signal, onProgress: vi.fn(), onDiagnostic });
+  await run(); await run(); client.release(); await run();
+  input.parameters.flashAttention = !input.parameters.flashAttention; await run();
+  const selections = onDiagnostic.mock.calls.map(([{ diagnostic }]) => diagnostic.fields).filter(f => f.metric === 'worker-selection');
+  expect(selections.map(f => f.reason)).toEqual(['first-use', 'same-session-key', 'explicit-release', 'context-key-changed']);
+  expect(selections.map(f => f.reusedWorker)).toEqual([false, true, false, false]);
+  expect(JSON.stringify(selections)).not.toContain('private prompt'); client.dispose();
 });

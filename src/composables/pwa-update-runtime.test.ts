@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPWAUpdateController } from '@/logic/pwa/update-controller';
 import { startPWAUpdateRuntime, TEST_ONLY } from '@/composables/pwa-update-runtime';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 
 vi.mock('@/logic/pwa/update-controller', () => ({ createPWAUpdateController: vi.fn() }));

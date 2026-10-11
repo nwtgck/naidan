@@ -23,6 +23,7 @@ import { parseProviderReplayTextEvidence, replayRecordedText } from '@/features/
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
 import { createSyntheticModelBody } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
 import type { StructuredPartsReplayContract } from '@/features/transformers-js/replay-models/support/provider-replay-structured-parts';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function textMessage({ id, role, text }: {
   id: string;
@@ -402,47 +403,49 @@ describe('Gemma4 E2B Provider / basic', () => {
     const captures: ProviderChatCapture[] = [];
     let capture: ProviderChatCapture | undefined;
     const replay = await createGemmaInputReplay();
-    try {
-      capture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: inputEvidence.modelId,
-          messages: recordedTextMessages({ messages: scenario.messages }),
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
+      },
+    });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    capture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: inputEvidence.modelId,
+        messages: recordedTextMessages({ messages: scenario.messages }),
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: INPUT_BOUNDARY });
-      const chunks = capturedTextChunks({ capture, type: 'text' });
-      replay.verifyNativeInput();
-      expect(replay.inputs).toEqual([scenario.inputTokenIds]);
-      expect(chunks).toEqual([]);
-      expect(replay.harness.observations.processors).toHaveLength(1);
-      const processor = replay.harness.observations.processors[0];
-      if (!processor) throw new Error('Actual Gemma processor was not loaded');
-      expect(processor.apply_chat_template(scenario.messages, { add_generation_prompt: true }))
-        .toBe(scenario.renderedText);
-      expect(replay.harness.observations.forbiddenTransport).toEqual([]);
-      expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
-      expect(replay.harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: INPUT_BOUNDARY });
+    const chunks = capturedTextChunks({ capture, type: 'text' });
+    replay.verifyNativeInput();
+    expect(replay.inputs).toEqual([scenario.inputTokenIds]);
+    expect(chunks).toEqual([]);
+    expect(replay.harness.observations.processors).toHaveLength(1);
+    const processor = replay.harness.observations.processors[0];
+    if (!processor) throw new Error('Actual Gemma processor was not loaded');
+    expect(processor.apply_chat_template(scenario.messages, { add_generation_prompt: true }))
+      .toBe(scenario.renderedText);
+    expect(replay.harness.observations.forbiddenTransport).toEqual([]);
+    expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
+    expect(replay.harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
   }, 30_000);
 
   it('delivers the recorded first-turn prefix through the actual processor and streamer before Provider settlement', async () => {
@@ -478,43 +481,45 @@ describe('Gemma4 E2B Provider / basic', () => {
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from(replay.sequenceTokenIds), [1, replay.sequenceTokenIds.length]), past_key_values: null };
       },
     });
-    try {
-      capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: generationEvidence.identity.modelId,
-          messages: recordedTextMessages({ messages: generationEvidence.scenario.messages }),
-          tools: [],
-          parameters: {
-            ...generationEvidence.scenario.lmParameters,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: generationEvidence.identity.modelId,
+        messages: recordedTextMessages({ messages: generationEvidence.scenario.messages }),
+        tools: [],
+        parameters: {
+          ...generationEvidence.scenario.lmParameters,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      const settledChunks = capturedTextChunks({ capture, type: 'text' });
-      expectPartialTextCapture({ capture, type: 'text', text: settledChunks.join('') });
-      expect(releasedTokenCount).toBe(16);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.processors).toHaveLength(1);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
-      // Exact original stream chunks; no timer or drain turns an unsettled
-      // callback transport into a successful public generation trace.
-      expect(settledChunks.join('')).toBe(generationEvidence.expectedProviderSemantic.visibleContent);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    const settledChunks = capturedTextChunks({ capture, type: 'text' });
+    expectPartialTextCapture({ capture, type: 'text', text: settledChunks.join('') });
+    expect(releasedTokenCount).toBe(16);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.processors).toHaveLength(1);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
+    // Exact original stream chunks; no timer or drain turns an unsettled
+    // callback transport into a successful public generation trace.
+    expect(settledChunks.join('')).toBe(generationEvidence.expectedProviderSemantic.visibleContent);
   }, 30_000);
 
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
@@ -525,40 +530,41 @@ describe('Gemma4 E2B Provider / basic', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 16,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: undefined,
-        },
-      };
-      replay.beginNativeRequest({ caseId: "first-turn", parameters: parameters });
-      const capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-          tools: [],
-          parameters: parameters,
-          signal: signal,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(capture);
-      await capture.completion;
-      replay.endNativeRequest();
-      expectPartialTextCapture({ capture, type: 'text', text: "Please provide the **context** or **purpose** of the \"template probe user" });
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 16,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: undefined,
+      },
+    };
+    replay.beginNativeRequest({ caseId: "first-turn", parameters: parameters });
+    const capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/gemma-4-E2B-it-ONNX",
+        messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+        tools: [],
+        parameters: parameters,
+        signal: signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    replay.endNativeRequest();
+    expectPartialTextCapture({ capture, type: 'text', text: "Please provide the **context** or **purpose** of the \"template probe user" });
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -571,43 +577,44 @@ describe('Gemma4 E2B Provider / system', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 1,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: undefined,
-        },
-      };
-      replay.beginNativeRequest({ caseId: "system-user", parameters: parameters });
-      const capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            textMessage({ id: 'message_0', role: 'system', text: "Template probe system instruction." }),
-            textMessage({ id: 'message_1', role: 'user', text: "Template probe user message." }),
-          ],
-          tools: [],
-          parameters: parameters,
-          signal: signal,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(capture);
-      await capture.completion;
-      replay.endNativeRequest();
-      expectPartialTextCapture({ capture, type: 'text', text: 'Please' });
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 1,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: undefined,
+      },
+    };
+    replay.beginNativeRequest({ caseId: "system-user", parameters: parameters });
+    const capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/gemma-4-E2B-it-ONNX",
+        messages: [
+          textMessage({ id: 'message_0', role: 'system', text: "Template probe system instruction." }),
+          textMessage({ id: 'message_1', role: 'user', text: "Template probe user message." }),
+        ],
+        tools: [],
+        parameters: parameters,
+        signal: signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    replay.endNativeRequest();
+    expectPartialTextCapture({ capture, type: 'text', text: 'Please' });
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -651,48 +658,50 @@ describe('Gemma4 E2B Provider / history', () => {
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from(replay.sequenceTokenIds), [1, replay.sequenceTokenIds.length]), past_key_values: null };
       },
     });
-    try {
-      capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: continuity.identity.modelId,
-          messages: recordedTextMessages({ messages: continuity.scenario.messages }),
-          tools: [],
-          parameters: {
-            ...continuity.scenario.lmParameters,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: continuity.identity.modelId,
+        messages: recordedTextMessages({ messages: continuity.scenario.messages }),
+        tools: [],
+        parameters: {
+          ...continuity.scenario.lmParameters,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      const observed = capture.snapshot();
-      const settledChunks = capturedTextChunks({ capture, type: 'text' });
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.parts).toEqual([expect.objectContaining({ type: 'text', index: 0, completeness: 'complete' })]);
-      expect(observed.result).toEqual({ type: 'finished', next: 'user' });
-      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind))
-        .toEqual(['part', 'part-complete', 'result', 'settled']);
-      expect(releasedTokenCount).toBe(12);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.processors).toHaveLength(1);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-      // Recorded output, not a claim that native stop-cause selection or a
-      // previous Provider callback completed successfully in this harness.
-      expect(settledChunks.join('')).toBe(continuity.expectedProviderSemantic.visibleContent);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    const observed = capture.snapshot();
+    const settledChunks = capturedTextChunks({ capture, type: 'text' });
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(observed.parts).toEqual([expect.objectContaining({ type: 'text', index: 0, completeness: 'complete' })]);
+    expect(observed.result).toEqual({ type: 'finished', next: 'user' });
+    expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind))
+      .toEqual(['part', 'part-complete', 'result', 'settled']);
+    expect(releasedTokenCount).toBe(12);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.processors).toHaveLength(1);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    // Recorded output, not a claim that native stop-cause selection or a
+    // previous Provider callback completed successfully in this harness.
+    expect(settledChunks.join('')).toBe(continuity.expectedProviderSemantic.visibleContent);
   }, 30_000);
 
   it('preserves the separate 16-token continuation capture without inferring why native generation stopped', async () => {
@@ -747,46 +756,48 @@ describe('Gemma4 E2B Provider / history', () => {
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from(replay.sequenceTokenIds), [1, replay.sequenceTokenIds.length]), past_key_values: null };
       },
     });
-    try {
-      capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: budgetContinuity.identity.modelId,
-          messages: recordedTextMessages({ messages: budgetContinuity.scenario.messages }),
-          tools: [],
-          parameters: {
-            ...budgetContinuity.scenario.lmParameters,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: budgetContinuity.identity.modelId,
+        messages: recordedTextMessages({ messages: budgetContinuity.scenario.messages }),
+        tools: [],
+        parameters: {
+          ...budgetContinuity.scenario.lmParameters,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      const observed = capture.snapshot();
-      const settledChunks = capturedTextChunks({ capture, type: 'text' });
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.parts).toEqual([expect.objectContaining({ type: 'text', index: 0, completeness: 'complete' })]);
-      expect(observed.result).toEqual({ type: 'finished', next: 'user' });
-      expect(releasedTokenCount).toBe(16);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.processors).toHaveLength(1);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.localImageFetchCalls).toEqual([]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-      expect(budgetContinuitySource.originalStreamChunks).toEqual(['**What ', 'kind ', 'of ', 'template ', 'are ', 'you ', 'looking ', 'for?**']);
-      expect(settledChunks.join('')).toBe(budgetContinuitySource.originalStreamChunks.join(''));
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    const observed = capture.snapshot();
+    const settledChunks = capturedTextChunks({ capture, type: 'text' });
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(observed.parts).toEqual([expect.objectContaining({ type: 'text', index: 0, completeness: 'complete' })]);
+    expect(observed.result).toEqual({ type: 'finished', next: 'user' });
+    expect(releasedTokenCount).toBe(16);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.processors).toHaveLength(1);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.localImageFetchCalls).toEqual([]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    expect(budgetContinuitySource.originalStreamChunks).toEqual(['**What ', 'kind ', 'of ', 'template ', 'are ', 'you ', 'looking ', 'for?**']);
+    expect(settledChunks.join('')).toBe(budgetContinuitySource.originalStreamChunks.join(''));
   }, 30_000);
 
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
@@ -797,44 +808,45 @@ describe('Gemma4 E2B Provider / history', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 1,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: undefined,
-        },
-      };
-      replay.beginNativeRequest({ caseId: "supplied-history", parameters: parameters });
-      const capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            textMessage({ id: 'message_0', role: 'user', text: "Template probe first user message." }),
-            textMessage({ id: 'message_1', role: 'assistant', text: "Template probe assistant response." }),
-            textMessage({ id: 'message_2', role: 'user', text: "Template probe second user message." }),
-          ],
-          tools: [],
-          parameters: parameters,
-          signal: signal,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(capture);
-      await capture.completion;
-      replay.endNativeRequest();
-      expectPartialTextCapture({ capture, type: 'text', text: 'Please' });
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 1,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: undefined,
+      },
+    };
+    replay.beginNativeRequest({ caseId: "supplied-history", parameters: parameters });
+    const capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/gemma-4-E2B-it-ONNX",
+        messages: [
+          textMessage({ id: 'message_0', role: 'user', text: "Template probe first user message." }),
+          textMessage({ id: 'message_1', role: 'assistant', text: "Template probe assistant response." }),
+          textMessage({ id: 'message_2', role: 'user', text: "Template probe second user message." }),
+        ],
+        tools: [],
+        parameters: parameters,
+        signal: signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    replay.endNativeRequest();
+    expectPartialTextCapture({ capture, type: 'text', text: 'Please' });
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -889,110 +901,113 @@ A separate synthetic Gemma conversation.<turn|>
         return next(context);
       },
     });
-    try {
-      firstCapture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: generationEvidence.identity.modelId,
-          messages: recordedTextMessages({ messages: generationEvidence.scenario.messages }),
-          tools: [],
-          parameters: {
-            ...generationEvidence.scenario.lmParameters,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    firstCapture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: generationEvidence.identity.modelId,
+        messages: recordedTextMessages({ messages: generationEvidence.scenario.messages }),
+        tools: [],
+        parameters: {
+          ...generationEvidence.scenario.lmParameters,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(firstCapture);
-      await firstCapture.completion;
-      expectPartialTextCapture({ capture: firstCapture, type: 'text', text: generationEvidence.expectedProviderSemantic.visibleContent });
-      const ortCountAfterFirst = harness.observations.ortCalls.length;
-      expect(harness.observations.processors).toHaveLength(1);
-      const processorAfterFirst = harness.observations.processors[0];
-      secondCapture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: generationEvidence.identity.modelId,
-          messages: nextMessages,
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(firstCapture);
+    await firstCapture.completion;
+    expectPartialTextCapture({ capture: firstCapture, type: 'text', text: generationEvidence.expectedProviderSemantic.visibleContent });
+    const ortCountAfterFirst = harness.observations.ortCalls.length;
+    expect(harness.observations.processors).toHaveLength(1);
+    const processorAfterFirst = harness.observations.processors[0];
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    secondCapture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: generationEvidence.identity.modelId,
+        messages: nextMessages,
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(secondCapture);
-      await secondCapture.completion;
-      expectDeliveredErrorCapture({ capture: secondCapture, message: stop });
-      const tokenizer = contexts[1]!.tokenizer;
-      expect(stoppedInputs).toHaveLength(1);
-      const native = stoppedInputs[0];
-      expect(native?.tensors.input_ids.isTensor).toBe(true);
-      expect(native?.tensors.attention_mask.isTensor).toBe(true);
-      if (!native?.tensors.input_ids.isTensor || !native.tensors.attention_mask.isTensor) throw new Error('Expected actual next-input tensors');
-      const { input_ids: input, attention_mask: mask } = native.tensors;
-      expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe('781d10940fbc44be40064b5d43a056fc486c84ceaa55538226368b57314132bf');
-      const processor = harness.observations.processors[0];
-      if (!processor) throw new Error('Expected actual loaded Gemma processor');
-      expect(tokenizer).toBe(processor.tokenizer);
-      expect(processor.apply_chat_template(nextTemplateMessages, { add_generation_prompt: true })).toBe(nextPrompt);
-      const ids = tokenizer.encode(nextPrompt, { add_special_tokens: false });
-      expect(input.type).toBe('int64');
-      expect(input.location).toBe('cpu');
-      expect(input.dims).toEqual([1, ids.length]);
-      expect(Array.from(input.data, Number)).toEqual(ids);
-      expect(mask.type).toBe('int64');
-      expect(mask.location).toBe('cpu');
-      expect(mask.dims).toEqual([1, ids.length]);
-      expect(Array.from(mask.data, BigInt)).toEqual(ids.map(() => 1n));
-      expect(native.optionKeys.sort()).toEqual([
-        'attention_mask', 'do_sample', 'input_ids', 'max_new_tokens', 'past_key_values',
-        'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
-      ].sort());
-      expect(native.settings)
-        .toEqual({ maxNewTokens: 1, temperature: 0, topP: 1, doSample: false });
-      expect(native.returnDict).toBe(true);
-      expect(native.isTextStreamer).toBe(true);
-      expect(native.stoppingCriteriaType).toBe('function');
-      expect(native.pastIsNull).toBe(true);
-      expect(firstReleased).toBe(16);
-      expect(capturedTextChunks({ capture: secondCapture, type: 'text' })).toEqual([]);
-      expect(contexts).toHaveLength(2);
-      expect(contexts[1]!.model).toBe(contexts[0]!.model);
-      expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
-      expect(contexts.map(context => context.options.past_key_values)).toEqual([null, null]);
-      expect(invocations).toEqual([]);
-      expect(harness.observations.inferenceCalls).toHaveLength(2);
-      expect(ortCountAfterFirst).toBe(4);
-      expect(harness.observations.ortCalls).toHaveLength(ortCountAfterFirst);
-      expect(harness.observations.workers).toHaveLength(1);
-      expect(harness.observations.processors).toHaveLength(1);
-      expect(harness.observations.processors[0]).toBe(processorAfterFirst);
-      expect(contexts[1]!.tokenizer).toBe(processorAfterFirst?.tokenizer);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.localImageFetchCalls).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(secondCapture);
+    await secondCapture.completion;
+    expectDeliveredErrorCapture({ capture: secondCapture, message: stop });
+    const tokenizer = contexts[1]!.tokenizer;
+    expect(stoppedInputs).toHaveLength(1);
+    const native = stoppedInputs[0];
+    expect(native?.tensors.input_ids.isTensor).toBe(true);
+    expect(native?.tensors.attention_mask.isTensor).toBe(true);
+    if (!native?.tensors.input_ids.isTensor || !native.tensors.attention_mask.isTensor) throw new Error('Expected actual next-input tensors');
+    const { input_ids: input, attention_mask: mask } = native.tensors;
+    expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe('781d10940fbc44be40064b5d43a056fc486c84ceaa55538226368b57314132bf');
+    const processor = harness.observations.processors[0];
+    if (!processor) throw new Error('Expected actual loaded Gemma processor');
+    expect(tokenizer).toBe(processor.tokenizer);
+    expect(processor.apply_chat_template(nextTemplateMessages, { add_generation_prompt: true })).toBe(nextPrompt);
+    const ids = tokenizer.encode(nextPrompt, { add_special_tokens: false });
+    expect(input.type).toBe('int64');
+    expect(input.location).toBe('cpu');
+    expect(input.dims).toEqual([1, ids.length]);
+    expect(Array.from(input.data, Number)).toEqual(ids);
+    expect(mask.type).toBe('int64');
+    expect(mask.location).toBe('cpu');
+    expect(mask.dims).toEqual([1, ids.length]);
+    expect(Array.from(mask.data, BigInt)).toEqual(ids.map(() => 1n));
+    expect(native.optionKeys.sort()).toEqual([
+      'attention_mask', 'do_sample', 'input_ids', 'max_new_tokens', 'past_key_values',
+      'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
+    ].sort());
+    expect(native.settings)
+      .toEqual({ maxNewTokens: 1, temperature: 0, topP: 1, doSample: false });
+    expect(native.returnDict).toBe(true);
+    expect(native.isTextStreamer).toBe(true);
+    expect(native.stoppingCriteriaType).toBe('function');
+    expect(native.pastIsNull).toBe(true);
+    expect(firstReleased).toBe(16);
+    expect(capturedTextChunks({ capture: secondCapture, type: 'text' })).toEqual([]);
+    expect(contexts).toHaveLength(2);
+    expect(contexts[1]!.model).toBe(contexts[0]!.model);
+    expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
+    expect(contexts.map(context => context.options.past_key_values)).toEqual([null, null]);
+    expect(invocations).toEqual([]);
+    expect(harness.observations.inferenceCalls).toHaveLength(2);
+    expect(ortCountAfterFirst).toBe(4);
+    expect(harness.observations.ortCalls).toHaveLength(ortCountAfterFirst);
+    expect(harness.observations.workers).toHaveLength(1);
+    expect(harness.observations.processors).toHaveLength(1);
+    expect(harness.observations.processors[0]).toBe(processorAfterFirst);
+    expect(contexts[1]!.tokenizer).toBe(processorAfterFirst?.tokenizer);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.localImageFetchCalls).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
@@ -1003,103 +1018,104 @@ A separate synthetic Gemma conversation.<turn|>
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const firstSignal = new AbortController().signal;
-      const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 16,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: undefined,
-        },
-      };
-      replay.beginNativeRequest({ caseId: "first-turn", parameters: firstParameters });
-      const firstCapture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-          tools: [],
-          parameters: firstParameters,
-          signal: firstSignal,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(firstCapture);
-      await firstCapture.completion;
-      replay.endNativeRequest();
-      const firstText = "Please provide the **context** or **purpose** of the \"template probe user";
-      expectPartialTextCapture({ capture: firstCapture, type: 'text', text: firstText });
-      const nextSignal = new AbortController().signal;
-      const nextParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 16,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: undefined,
-        },
-      };
-      replay.beginNativeRequest({ caseId: "continuity", parameters: nextParameters });
-      const nextCapture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." }),
-            textMessage({ id: 'message_1', role: 'assistant', text: firstText }),
-            textMessage({ id: 'message_2', role: 'user', text: "Continue the synthetic conversation with a short response." }),
-          ],
-          tools: [],
-          parameters: nextParameters,
-          signal: nextSignal,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(nextCapture);
-      await nextCapture.completion;
-      replay.endNativeRequest();
-      expectPartialTextCapture({ capture: nextCapture, type: 'text', text: "Please provide the **previous part of the conversation** or the **topic** you" });
-      const independentSignal = new AbortController().signal;
-      const independentParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 1,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: undefined,
-        },
-      };
-      replay.beginNativeRequest({ caseId: "independent-next-input", parameters: independentParameters });
-      const independentCapture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [textMessage({ id: 'message_0', role: 'user', text: "A separate synthetic capture conversation." })],
-          tools: [],
-          parameters: independentParameters,
-          signal: independentSignal,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(independentCapture);
-      await independentCapture.completion;
-      replay.endNativeRequest();
-      expectPartialTextCapture({ capture: independentCapture, type: 'text', text: 'Please' });
-      replay.assertComplete({ requests: 3, nativeCalls: 3 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const firstSignal = new AbortController().signal;
+    const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 16,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: undefined,
+      },
+    };
+    replay.beginNativeRequest({ caseId: "first-turn", parameters: firstParameters });
+    const firstCapture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/gemma-4-E2B-it-ONNX",
+        messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+        tools: [],
+        parameters: firstParameters,
+        signal: firstSignal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(firstCapture);
+    await firstCapture.completion;
+    replay.endNativeRequest();
+    const firstText = "Please provide the **context** or **purpose** of the \"template probe user";
+    expectPartialTextCapture({ capture: firstCapture, type: 'text', text: firstText });
+    const nextSignal = new AbortController().signal;
+    const nextParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 16,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: undefined,
+      },
+    };
+    replay.beginNativeRequest({ caseId: "continuity", parameters: nextParameters });
+    const nextCapture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/gemma-4-E2B-it-ONNX",
+        messages: [
+          textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." }),
+          textMessage({ id: 'message_1', role: 'assistant', text: firstText }),
+          textMessage({ id: 'message_2', role: 'user', text: "Continue the synthetic conversation with a short response." }),
+        ],
+        tools: [],
+        parameters: nextParameters,
+        signal: nextSignal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(nextCapture);
+    await nextCapture.completion;
+    replay.endNativeRequest();
+    expectPartialTextCapture({ capture: nextCapture, type: 'text', text: "Please provide the **previous part of the conversation** or the **topic** you" });
+    const independentSignal = new AbortController().signal;
+    const independentParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 1,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: undefined,
+      },
+    };
+    replay.beginNativeRequest({ caseId: "independent-next-input", parameters: independentParameters });
+    const independentCapture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/gemma-4-E2B-it-ONNX",
+        messages: [textMessage({ id: 'message_0', role: 'user', text: "A separate synthetic capture conversation." })],
+        tools: [],
+        parameters: independentParameters,
+        signal: independentSignal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(independentCapture);
+    await independentCapture.completion;
+    replay.endNativeRequest();
+    expectPartialTextCapture({ capture: independentCapture, type: 'text', text: 'Please' });
+    replay.assertComplete({ requests: 3, nativeCalls: 3 });
   }, 30_000);
 });
 
@@ -1128,55 +1144,57 @@ Template probe user message.<turn|>
     },
   ])('passes explicit $effort to the exact native Gemma thinking input without claiming generated reasoning quality', async ({ effort, enableThinking, expectedPrompt }) => {
     const captures: ProviderChatCapture[] = [];
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
     const replay = await createGemmaInputReplay();
     const templateMessages = [{ role: 'user' as const, content: 'Template probe user message.' }];
     const messages = [textMessage({ id: 'message_0', role: 'user', text: 'Template probe user message.' })];
-    try {
-      await replay.harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
-      const processor = replay.harness.observations.processors[0]!;
-      const tokenizer = processor.tokenizer;
-      if (tokenizer === undefined) throw new Error('Expected actual selected tokenizer');
-      expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(toolInputEvidence.selectedTemplateSha256);
-      const nativeOptions = { add_generation_prompt: true, enable_thinking: enableThinking };
-      expect(processor.apply_chat_template(templateMessages, nativeOptions)).toBe(expectedPrompt);
-      const expectedIds = tokenizer.encode(expectedPrompt, { add_special_tokens: false });
-      capture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: inputEvidence.modelId,
-          messages,
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
+        expect(capture === undefined ? [] : capturedTextChunks({ capture, type: 'text' }), 'through awaited Worker disposal').toEqual([]);
+      },
+    });
+    await replay.harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
+    const processor = replay.harness.observations.processors[0]!;
+    const tokenizer = processor.tokenizer;
+    if (tokenizer === undefined) throw new Error('Expected actual selected tokenizer');
+    expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(toolInputEvidence.selectedTemplateSha256);
+    const nativeOptions = { add_generation_prompt: true, enable_thinking: enableThinking };
+    expect(processor.apply_chat_template(templateMessages, nativeOptions)).toBe(expectedPrompt);
+    const expectedIds = tokenizer.encode(expectedPrompt, { add_special_tokens: false });
+    capture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: inputEvidence.modelId,
+        messages,
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: INPUT_BOUNDARY });
-      const chunks = capturedTextChunks({ capture, type: 'text' });
-      expect(chunks, 'Input-only reasoning control must not release output').toEqual([]);
-      replay.verifyNativeInput();
-      expect(replay.inputs).toEqual([expectedIds]);
-      expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
-      expect(replay.harness.observations.forbiddenTransport).toEqual([]);
-      expect(replay.harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
-      expect(capture === undefined ? [] : capturedTextChunks({ capture, type: 'text' }), 'through awaited Worker disposal').toEqual([]);
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: INPUT_BOUNDARY });
+    const chunks = capturedTextChunks({ capture, type: 'text' });
+    expect(chunks, 'Input-only reasoning control must not release output').toEqual([]);
+    replay.verifyNativeInput();
+    expect(replay.inputs).toEqual([expectedIds]);
+    expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
+    expect(replay.harness.observations.forbiddenTransport).toEqual([]);
+    expect(replay.harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('reasoning: preserves the recorded none-effort request and callbacks', async () => {
@@ -1187,40 +1205,41 @@ Template probe user message.<turn|>
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 1,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: "none",
-        },
-      };
-      replay.beginNativeRequest({ caseId: "reasoning-none", parameters: parameters });
-      const capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-          tools: [],
-          parameters: parameters,
-          signal: signal,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(capture);
-      await capture.completion;
-      replay.endNativeRequest();
-      expectPartialTextCapture({ capture, type: 'text', text: 'Please' });
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 1,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: "none",
+      },
+    };
+    replay.beginNativeRequest({ caseId: "reasoning-none", parameters: parameters });
+    const capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/gemma-4-E2B-it-ONNX",
+        messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+        tools: [],
+        parameters: parameters,
+        signal: signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    replay.endNativeRequest();
+    expectPartialTextCapture({ capture, type: 'text', text: 'Please' });
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded low-effort request and its bounded native channel prefix', async () => {
@@ -1231,40 +1250,41 @@ Template probe user message.<turn|>
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 1,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: "low",
-        },
-      };
-      replay.beginNativeRequest({ caseId: "reasoning-low", parameters: parameters });
-      const capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-          tools: [],
-          parameters: parameters,
-          signal: signal,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(capture);
-      await capture.completion;
-      replay.endNativeRequest();
-      expectEmptyInterruptedCapture({ capture });
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 1,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: "low",
+      },
+    };
+    replay.beginNativeRequest({ caseId: "reasoning-low", parameters: parameters });
+    const capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/gemma-4-E2B-it-ONNX",
+        messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+        tools: [],
+        parameters: parameters,
+        signal: signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    replay.endNativeRequest();
+    expectEmptyInterruptedCapture({ capture });
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded medium-effort request and its bounded native channel prefix', async () => {
@@ -1275,40 +1295,41 @@ Template probe user message.<turn|>
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 1,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: "medium",
-        },
-      };
-      replay.beginNativeRequest({ caseId: "reasoning-medium", parameters: parameters });
-      const capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-          tools: [],
-          parameters: parameters,
-          signal: signal,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(capture);
-      await capture.completion;
-      replay.endNativeRequest();
-      expectEmptyInterruptedCapture({ capture });
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 1,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: "medium",
+      },
+    };
+    replay.beginNativeRequest({ caseId: "reasoning-medium", parameters: parameters });
+    const capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/gemma-4-E2B-it-ONNX",
+        messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+        tools: [],
+        parameters: parameters,
+        signal: signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    replay.endNativeRequest();
+    expectEmptyInterruptedCapture({ capture });
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded high-effort request and its bounded native channel prefix', async () => {
@@ -1319,40 +1340,41 @@ Template probe user message.<turn|>
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 1,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: "high",
-        },
-      };
-      replay.beginNativeRequest({ caseId: "reasoning-high", parameters: parameters });
-      const capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-          tools: [],
-          parameters: parameters,
-          signal: signal,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(capture);
-      await capture.completion;
-      replay.endNativeRequest();
-      expectEmptyInterruptedCapture({ capture });
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 1,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: "high",
+      },
+    };
+    replay.beginNativeRequest({ caseId: "reasoning-high", parameters: parameters });
+    const capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/gemma-4-E2B-it-ONNX",
+        messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+        tools: [],
+        parameters: parameters,
+        signal: signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    replay.endNativeRequest();
+    expectEmptyInterruptedCapture({ capture });
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -1371,40 +1393,42 @@ Partial`,
         throw new Error('Synthetic native failure after partial thought');
       },
     });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    try {
-      capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: 'onnx-community/gemma-4-E2B-it-ONNX',
-          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic failed thought control.' })],
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 128,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: 'high' },
-          },
-          signal: undefined,
-          readBinaryObject: undefined,
-          debug: undefined,
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
+      },
+    });
+    capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: 'onnx-community/gemma-4-E2B-it-ONNX',
+        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic failed thought control.' })],
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 128,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: 'high' },
         },
-      });
-      await capture.completion;
-      const observed = capture.snapshot();
-      expect(observed.parts).toEqual([expect.objectContaining({ type: 'reasoning', index: 0, completeness: 'partial' })]);
-      expect(capturedTextChunks({ capture, type: 'reasoning' }).join('')).toBe('Partial');
-      expect(observed.result).toMatchObject({ type: 'error', error: { message: 'Synthetic native failure after partial thought' } });
-      expect(capturedToolCalls({ capture })).toEqual([]);
-      expect(inputs).toHaveLength(1);
-      expect(inputs[0]!.pastIsNull).toBe(true);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-    } finally {
-      await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
-    }
+        signal: undefined,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    await capture.completion;
+    const observed = capture.snapshot();
+    expect(observed.parts).toEqual([expect.objectContaining({ type: 'reasoning', index: 0, completeness: 'partial' })]);
+    expect(capturedTextChunks({ capture, type: 'reasoning' }).join('')).toBe('Partial');
+    expect(observed.result).toMatchObject({ type: 'error', error: { message: 'Synthetic native failure after partial thought' } });
+    expect(capturedToolCalls({ capture })).toEqual([]);
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]!.pastIsNull).toBe(true);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
   }, 30_000);
 
   it.each(['enabled', 'disabled'] as const)('maps native thought to inline thinking and the original next input with tools %s', async toolMode => {
@@ -1441,89 +1465,91 @@ Reason<channel|>Answer<turn|>`,
         });
       },
     });
-    try {
-      const tools: CapturedChatRequest['tools'] = toolMode === 'disabled' ? [] : [{
-        name: 'probe',
-        description: 'Must not execute.',
-        parameters: { type: 'object', properties: {}, additionalProperties: false },
-      }];
-      const parameters = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 128,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: { effort: 'high' as const },
-      };
-      const capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: 'onnx-community/gemma-4-E2B-it-ONNX',
-          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' })],
-          tools,
-          parameters,
-          signal: undefined,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(capture);
-      await capture.completion;
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.parts).toEqual([
-        expect.objectContaining({ type: 'reasoning', index: 0, completeness: 'complete' }),
-        expect.objectContaining({ type: 'text', index: 1, completeness: 'complete' }),
-      ]);
-      expect(capturedTextChunks({ capture, type: 'reasoning' }).join('')).toBe('Reason');
-      expect(capturedTextChunks({ capture, type: 'text' }).join('')).toBe('Answer');
-      expect(observed.result).toEqual({ type: 'finished', next: 'user' });
-      expect(capturedToolCalls({ capture })).toEqual([]);
-      expect(executions).toEqual([]);
-      const nextCapture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: 'onnx-community/gemma-4-E2B-it-ONNX',
-          messages: [
-            textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' }),
-            {
-              id: toMessageId({ raw: 'message_1' }),
-              role: 'assistant',
-              parts: [
-                { type: 'reasoning', text: 'Reason', completeness: 'complete' },
-                { type: 'text', text: 'Answer', completeness: 'complete' },
-              ],
-            },
-            textMessage({ id: 'message_2', role: 'user', text: 'Continue.' }),
-          ],
-          tools,
-          parameters,
-          signal: undefined,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(nextCapture);
-      await nextCapture.completion;
-      expectDeliveredErrorCapture({ capture: nextCapture, message: 'Synthetic next-input boundary; no continuation output' });
-      expect(nativeInputs).toHaveLength(2);
-      expect(expectedNextInputs).toHaveLength(1);
-      const input = nativeInputs[1]!.tensors.input_ids;
-      if (!input.isTensor) throw new Error('Expected detached real next-input tensor');
-      expect(Array.from(input.data, Number)).toEqual(expectedNextInputs[0]);
-      expect(nativeInputs.map(input => input.pastIsNull), 'Gemma is stateless; this is input fidelity, not owned KV reuse').toEqual([true, true]);
-      expect(harness.observations.inferenceCalls).toHaveLength(2);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-      expect(executions).toEqual([]);
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+        expect(executions).toEqual([]);
+      },
+    });
+    const tools: CapturedChatRequest['tools'] = toolMode === 'disabled' ? [] : [{
+      name: 'probe',
+      description: 'Must not execute.',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    }];
+    const parameters = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 128,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: { effort: 'high' as const },
+    };
+    const capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: 'onnx-community/gemma-4-E2B-it-ONNX',
+        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' })],
+        tools,
+        parameters,
+        signal: undefined,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(observed.parts).toEqual([
+      expect.objectContaining({ type: 'reasoning', index: 0, completeness: 'complete' }),
+      expect.objectContaining({ type: 'text', index: 1, completeness: 'complete' }),
+    ]);
+    expect(capturedTextChunks({ capture, type: 'reasoning' }).join('')).toBe('Reason');
+    expect(capturedTextChunks({ capture, type: 'text' }).join('')).toBe('Answer');
+    expect(observed.result).toEqual({ type: 'finished', next: 'user' });
+    expect(capturedToolCalls({ capture })).toEqual([]);
+    expect(executions).toEqual([]);
+    const nextCapture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: 'onnx-community/gemma-4-E2B-it-ONNX',
+        messages: [
+          textMessage({ id: 'message_0', role: 'user', text: 'Synthetic thinking control.' }),
+          {
+            id: toMessageId({ raw: 'message_1' }),
+            role: 'assistant',
+            parts: [
+              { type: 'reasoning', text: 'Reason', completeness: 'complete' },
+              { type: 'text', text: 'Answer', completeness: 'complete' },
+            ],
+          },
+          textMessage({ id: 'message_2', role: 'user', text: 'Continue.' }),
+        ],
+        tools,
+        parameters,
+        signal: undefined,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(nextCapture);
+    await nextCapture.completion;
+    expectDeliveredErrorCapture({ capture: nextCapture, message: 'Synthetic next-input boundary; no continuation output' });
+    expect(nativeInputs).toHaveLength(2);
+    expect(expectedNextInputs).toHaveLength(1);
+    const input = nativeInputs[1]!.tensors.input_ids;
+    if (!input.isTensor) throw new Error('Expected detached real next-input tensor');
+    expect(Array.from(input.data, Number)).toEqual(expectedNextInputs[0]);
+    expect(nativeInputs.map(input => input.pastIsNull), 'Gemma is stateless; this is input fidelity, not owned KV reuse').toEqual([true, true]);
+    expect(harness.observations.inferenceCalls).toHaveLength(2);
   }, 30_000);
 });
 
 describe('Gemma4 E2B Provider / tools', () => {
   it('preserves a public tool definition in the native Gemma input instead of silently dropping it', async () => {
     const captures: ProviderChatCapture[] = [];
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
     const scenario = inputEvidence.cases.find(candidate => candidate.tools.length === 1);
     if (!scenario) throw new Error('Missing selected original Gemma tools-generation observation');
@@ -1537,72 +1563,73 @@ describe('Gemma4 E2B Provider / tools', () => {
       execute,
     };
     const replay = await createGemmaInputReplay();
-    try {
-      capture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: inputEvidence.modelId,
-          messages: recordedTextMessages({ messages: scenario.messages }),
-          tools: [{
-            name: tool.name,
-            description: tool.description,
-            parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
-          }],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
-          },
-          signal: undefined,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(capture);
-      await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: INPUT_BOUNDARY });
-      const chunks = capturedTextChunks({ capture, type: 'text' });
-      expect(chunks, 'Input-only test must not emit generated content').toEqual([]);
-      expect(execute).not.toHaveBeenCalled();
-      expect(replay.harness.observations.processors).toHaveLength(1);
-      const processor = replay.harness.observations.processors[0];
-      if (!processor) throw new Error('Actual Gemma processor was not loaded');
-      // The old native capture has an open JSON schema. Public Naidan Tools
-      // use additionalProperties:false. Verify this exact public shape against
-      // the captured rendering rather than assuming the two are equivalent.
-      const publicToolDefinition = [{
-        type: 'function',
-        function: {
-          name: 'lookup_weather',
-          description: 'Return deterministic weather fixture data.',
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
+        expect(capture === undefined ? [] : capturedTextChunks({ capture, type: 'text' }), 'through awaited Worker disposal').toEqual([]);
+      },
+    });
+    capture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: inputEvidence.modelId,
+        messages: recordedTextMessages({ messages: scenario.messages }),
+        tools: [{
+          name: tool.name,
+          description: tool.description,
           parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
+        }],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
+          },
         },
-      }];
-      const nativePrompt = z.string().parse(processor.apply_chat_template(scenario.messages, {
-        add_generation_prompt: true,
-        tools: publicToolDefinition,
-      }));
-      expect(nativePrompt).toBe(scenario.renderedText);
-      const nativeInputs: unknown = await processor(nativePrompt, null, null, { add_special_tokens: false });
-      const nativeIds = z.object({ input_ids: z.instanceof(replay.harness.runtime.Tensor) }).parse(nativeInputs).input_ids;
-      expect(Array.from(nativeIds.data, Number)).toEqual(scenario.inputTokenIds);
-      expect(replay.harness.observations.forbiddenTransport).toEqual([]);
-      expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
-      expect(replay.harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
-      // This RED is an input contract, independent of callback settlement and
-      // natural tool choice. No captured output is released to cross the gap.
-      replay.verifyNativeInput();
-      expect(replay.inputs).toEqual([scenario.inputTokenIds]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
-      expect(capture === undefined ? [] : capturedTextChunks({ capture, type: 'text' }), 'through awaited Worker disposal').toEqual([]);
-    }
+        signal: undefined,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: INPUT_BOUNDARY });
+    const chunks = capturedTextChunks({ capture, type: 'text' });
+    expect(chunks, 'Input-only test must not emit generated content').toEqual([]);
+    expect(execute).not.toHaveBeenCalled();
+    expect(replay.harness.observations.processors).toHaveLength(1);
+    const processor = replay.harness.observations.processors[0];
+    if (!processor) throw new Error('Actual Gemma processor was not loaded');
+    // The old native capture has an open JSON schema. Public Naidan Tools
+    // use additionalProperties:false. Verify this exact public shape against
+    // the captured rendering rather than assuming the two are equivalent.
+    const publicToolDefinition = [{
+      type: 'function',
+      function: {
+        name: 'lookup_weather',
+        description: 'Return deterministic weather fixture data.',
+        parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
+      },
+    }];
+    const nativePrompt = z.string().parse(processor.apply_chat_template(scenario.messages, {
+      add_generation_prompt: true,
+      tools: publicToolDefinition,
+    }));
+    expect(nativePrompt).toBe(scenario.renderedText);
+    const nativeInputs: unknown = await processor(nativePrompt, null, null, { add_special_tokens: false });
+    const nativeIds = z.object({ input_ids: z.instanceof(replay.harness.runtime.Tensor) }).parse(nativeInputs).input_ids;
+    expect(Array.from(nativeIds.data, Number)).toEqual(scenario.inputTokenIds);
+    expect(replay.harness.observations.forbiddenTransport).toEqual([]);
+    expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
+    expect(replay.harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
+    // This RED is an input contract, independent of callback settlement and
+    // natural tool choice. No captured output is released to cross the gap.
+    replay.verifyNativeInput();
+    expect(replay.inputs).toEqual([scenario.inputTokenIds]);
   }, 30_000);
 
   it('retains structured tool-call and result association instead of flattening them into ordinary conversation text', async () => {
@@ -1652,115 +1679,117 @@ describe('Gemma4 E2B Provider / tools', () => {
       },
     ];
     const replay = await createGemmaInputReplay();
-    try {
-      expect(publicMessages.map(message => message.role)).toEqual(['user', 'assistant', 'tool']);
-      await replay.harness.service.loadDownloadedModel({ modelId: scenario.modelId });
-      expect(replay.harness.observations.processors).toHaveLength(1);
-      const processor = replay.harness.observations.processors[0];
-      if (!processor) throw new Error('Actual Gemma processor was not loaded');
-      const tokenizer = processor.tokenizer;
-      if (!tokenizer) throw new Error('Actual Gemma tokenizer was not loaded');
-      expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
-        .toBe(scenario.selectedTemplateSha256);
-      const strictTools = scenario.tools.map(tool => ({
-        ...tool,
-        function: { ...tool.function, parameters: { ...tool.function.parameters, additionalProperties: false } },
-      }));
-      expect(processor.apply_chat_template(scenario.messages, { add_generation_prompt: true, tools: scenario.tools }))
-        .toBe(scenario.renderedText);
-      expect(processor.apply_chat_template(scenario.messages, { add_generation_prompt: true, tools: strictTools }))
-        .toBe(scenario.renderedText);
-      const originalInputs: unknown = await processor(scenario.renderedText, null, null, { add_special_tokens: false });
-      const originalIds = z.object({ input_ids: z.instanceof(replay.harness.runtime.Tensor) }).parse(originalInputs).input_ids;
-      expect(Array.from(originalIds.data, Number)).toEqual(scenario.inputTokenIds);
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
+      },
+    });
+    expect(publicMessages.map(message => message.role)).toEqual(['user', 'assistant', 'tool']);
+    await replay.harness.service.loadDownloadedModel({ modelId: scenario.modelId });
+    expect(replay.harness.observations.processors).toHaveLength(1);
+    const processor = replay.harness.observations.processors[0];
+    if (!processor) throw new Error('Actual Gemma processor was not loaded');
+    const tokenizer = processor.tokenizer;
+    if (!tokenizer) throw new Error('Actual Gemma tokenizer was not loaded');
+    expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex'))
+      .toBe(scenario.selectedTemplateSha256);
+    const strictTools = scenario.tools.map(tool => ({
+      ...tool,
+      function: { ...tool.function, parameters: { ...tool.function.parameters, additionalProperties: false } },
+    }));
+    expect(processor.apply_chat_template(scenario.messages, { add_generation_prompt: true, tools: scenario.tools }))
+      .toBe(scenario.renderedText);
+    expect(processor.apply_chat_template(scenario.messages, { add_generation_prompt: true, tools: strictTools }))
+      .toBe(scenario.renderedText);
+    const originalInputs: unknown = await processor(scenario.renderedText, null, null, { add_special_tokens: false });
+    const originalIds = z.object({ input_ids: z.instanceof(replay.harness.runtime.Tensor) }).parse(originalInputs).input_ids;
+    expect(Array.from(originalIds.data, Number)).toEqual(scenario.inputTokenIds);
 
-      // Original JSON-string arguments are pasted inside another pair of braces.
-      // Preserve that capture above, but use an independently specified native
-      // mapping below for the structured-input contract. It is a CURRENT oracle,
-      // not a claim of captured successful mapped input or natural generation.
-      const nativeMappedMessages = [
-        scenario.messages[0],
-        {
-          role: 'assistant',
-          content: '',
-          tool_calls: [{
-            id: 'call_template_probe_1',
-            type: 'function',
-            function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
-          }],
-        },
-        scenario.messages[2],
-      ];
-      const originalCallBody = 'call:lookup_weather{{"city":"Tokyo"}}';
-      expect(scenario.renderedText.split(originalCallBody)).toHaveLength(2);
-      const mappedPrompt = scenario.renderedText.replace(originalCallBody, 'call:lookup_weather{city:<|"|>Tokyo<|"|>}');
-      expect(processor.apply_chat_template(nativeMappedMessages, { add_generation_prompt: true, tools: strictTools }))
-        .toBe(mappedPrompt);
-      // Association is observable: changing only the result ID must not silently
-      // keep attributing that result to lookup_weather.
-      const responseName = 'response:lookup_weather';
-      expect(mappedPrompt.split(responseName)).toHaveLength(2);
-      const unmatchedMessages = [
-        nativeMappedMessages[0]!, nativeMappedMessages[1]!,
-        { ...scenario.messages[2], tool_call_id: 'call_unmatched_probe' },
-      ];
-      // Current native get('name') returns null; default('unknown') does not
-      // replace it. An unmatched result is rejected, not attributed to the old
-      // call. This records a native diagnostic, not a desired public error text.
-      expect(() => processor.apply_chat_template(unmatchedMessages, { add_generation_prompt: true, tools: strictTools }))
-        .toThrow('Cannot perform operation on null values');
-      expect(mappedPrompt.split(scenario.messages[2].content)).toHaveLength(2);
-      expect(processor.apply_chat_template([
-        nativeMappedMessages[0]!, nativeMappedMessages[1]!,
-        { ...scenario.messages[2], content: 'Changed synthetic result.' },
-      ], { add_generation_prompt: true, tools: strictTools }))
-        .toBe(mappedPrompt.replace(scenario.messages[2].content, 'Changed synthetic result.'));
-      const mappedInputs: unknown = await processor(mappedPrompt, null, null, { add_special_tokens: false });
-      const mappedIds = z.object({ input_ids: z.instanceof(replay.harness.runtime.Tensor) }).parse(mappedInputs).input_ids;
-      const expectedIds = Array.from(mappedIds.data, Number);
+    // Original JSON-string arguments are pasted inside another pair of braces.
+    // Preserve that capture above, but use an independently specified native
+    // mapping below for the structured-input contract. It is a CURRENT oracle,
+    // not a claim of captured successful mapped input or natural generation.
+    const nativeMappedMessages = [
+      scenario.messages[0],
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          id: 'call_template_probe_1',
+          type: 'function',
+          function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
+        }],
+      },
+      scenario.messages[2],
+    ];
+    const originalCallBody = 'call:lookup_weather{{"city":"Tokyo"}}';
+    expect(scenario.renderedText.split(originalCallBody)).toHaveLength(2);
+    const mappedPrompt = scenario.renderedText.replace(originalCallBody, 'call:lookup_weather{city:<|"|>Tokyo<|"|>}');
+    expect(processor.apply_chat_template(nativeMappedMessages, { add_generation_prompt: true, tools: strictTools }))
+      .toBe(mappedPrompt);
+    // Association is observable: changing only the result ID must not silently
+    // keep attributing that result to lookup_weather.
+    const responseName = 'response:lookup_weather';
+    expect(mappedPrompt.split(responseName)).toHaveLength(2);
+    const unmatchedMessages = [
+      nativeMappedMessages[0]!, nativeMappedMessages[1]!,
+      { ...scenario.messages[2], tool_call_id: 'call_unmatched_probe' },
+    ];
+    // Current native get('name') returns null; default('unknown') does not
+    // replace it. An unmatched result is rejected, not attributed to the old
+    // call. This records a native diagnostic, not a desired public error text.
+    expect(() => processor.apply_chat_template(unmatchedMessages, { add_generation_prompt: true, tools: strictTools }))
+      .toThrow('Cannot perform operation on null values');
+    expect(mappedPrompt.split(scenario.messages[2].content)).toHaveLength(2);
+    expect(processor.apply_chat_template([
+      nativeMappedMessages[0]!, nativeMappedMessages[1]!,
+      { ...scenario.messages[2], content: 'Changed synthetic result.' },
+    ], { add_generation_prompt: true, tools: strictTools }))
+      .toBe(mappedPrompt.replace(scenario.messages[2].content, 'Changed synthetic result.'));
+    const mappedInputs: unknown = await processor(mappedPrompt, null, null, { add_special_tokens: false });
+    const mappedIds = z.object({ input_ids: z.instanceof(replay.harness.runtime.Tensor) }).parse(mappedInputs).input_ids;
+    const expectedIds = Array.from(mappedIds.data, Number);
 
-      capture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: scenario.modelId,
-          messages: publicMessages,
-          tools: [publicTool],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    capture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: scenario.modelId,
+        messages: publicMessages,
+        tools: [publicTool],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          signal: undefined,
-          readBinaryObject: undefined,
-          debug: undefined,
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      expectDeliveredErrorCapture({ capture, message: INPUT_BOUNDARY });
-      const chunks = capturedTextChunks({ capture, type: 'text' });
-      expect(chunks).toEqual([]);
-      expect(execute).not.toHaveBeenCalled();
-      expect(capturedToolCalls({ capture })).toEqual([]);
-      expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
-      expect(replay.harness.observations.localImageFetchCalls).toEqual([]);
-      expect(replay.harness.observations.forbiddenTransport).toEqual([]);
-      expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
-      expect(replay.harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-      // Native role/ID/call delimiters are material here: replacing them with
-      // plain assistant/user summaries is not merely a strict-schema difference.
-      // Compare only after control and safety checks; no generated token is used.
-      replay.verifyNativeInput();
-      expect(replay.inputs).toEqual([expectedIds]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
-    }
+        signal: undefined,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    expectDeliveredErrorCapture({ capture, message: INPUT_BOUNDARY });
+    const chunks = capturedTextChunks({ capture, type: 'text' });
+    expect(chunks).toEqual([]);
+    expect(execute).not.toHaveBeenCalled();
+    expect(capturedToolCalls({ capture })).toEqual([]);
+    expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
+    expect(replay.harness.observations.localImageFetchCalls).toEqual([]);
+    expect(replay.harness.observations.forbiddenTransport).toEqual([]);
+    expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
+    expect(replay.harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    // Native role/ID/call delimiters are material here: replacing them with
+    // plain assistant/user summaries is not merely a strict-schema difference.
+    // Compare only after control and safety checks; no generated token is used.
+    replay.verifyNativeInput();
+    expect(replay.inputs).toEqual([expectedIds]);
   }, 30_000);
 
   it('executes a native-format synthetic tool call once and supplies its structured result to the next real processor input', async () => {
@@ -1819,50 +1848,52 @@ describe('Gemma4 E2B Provider / tools', () => {
       reasoning: { effort: undefined },
     };
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    try {
-      turn = await runProviderReplayTurn({
-        provider: harness.provider,
-        request: {
-          model: inputEvidence.modelId,
-          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic weather tool for Tokyo.' })],
-          parameters,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-        tools: [tool],
-        abortController: new AbortController(),
-        onChange: undefined,
-      });
-      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
-      expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
-      expect(turn.generated[0]).toMatchObject({
-        role: 'assistant',
-        parts: [
-          { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
-        ],
-      });
-      expect(turn.generated[1]).toMatchObject({
-        role: 'tool',
-        parts: [
-          { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic weather result: clear.' } } },
-        ],
-      });
-      expect(turn.generated[2]).toMatchObject({
-        role: 'assistant',
-        parts: [
-          { type: 'text', text: 'Synthetic final answer.', completeness: 'complete' },
-        ],
-      });
-      expect(turns).toBe(2);
-      expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
-      expect(harness.observations.workers).toHaveLength(1);
-      expect(harness.observations.inferenceCalls).toHaveLength(2);
-      expect(harness.observations.processors).toHaveLength(1);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await harness.close();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+      },
+    });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    turn = await runProviderReplayTurn({
+      provider: harness.provider,
+      request: {
+        model: inputEvidence.modelId,
+        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic weather tool for Tokyo.' })],
+        parameters,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+      tools: [tool],
+      abortController: new AbortController(),
+      onChange: undefined,
+    });
+    expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+    expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
+    expect(turn.generated[0]).toMatchObject({
+      role: 'assistant',
+      parts: [
+        { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+      ],
+    });
+    expect(turn.generated[1]).toMatchObject({
+      role: 'tool',
+      parts: [
+        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic weather result: clear.' } } },
+      ],
+    });
+    expect(turn.generated[2]).toMatchObject({
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Synthetic final answer.', completeness: 'complete' },
+      ],
+    });
+    expect(turns).toBe(2);
+    expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
+    expect(harness.observations.workers).toHaveLength(1);
+    expect(harness.observations.inferenceCalls).toHaveLength(2);
+    expect(harness.observations.processors).toHaveLength(1);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('interrupts an unfinished second native tool call without executing the earlier complete call', async () => {
@@ -1880,43 +1911,45 @@ describe('Gemma4 E2B Provider / tools', () => {
       }),
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    try {
-      turn = await runProviderReplayTurn({
-        provider: harness.provider,
-        request: {
-          model: inputEvidence.modelId,
-          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 128,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
-          readBinaryObject: undefined,
-          debug: undefined,
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+      },
+    });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    turn = await runProviderReplayTurn({
+      provider: harness.provider,
+      request: {
+        model: inputEvidence.modelId,
+        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 128,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-        tools: [tool],
-        abortController: new AbortController(),
-        onChange: undefined,
-      });
-      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'interrupted', reason: 'unknown' } });
-      expect(turn.generated).toHaveLength(1);
-      expect(turn.generated[0]).toMatchObject({
-        role: 'assistant',
-        interruption: undefined,
-        parts: [
-          { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
-        ],
-      });
-      expect(execute).not.toHaveBeenCalled();
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-    } finally {
-      await harness.close();
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+      tools: [tool],
+      abortController: new AbortController(),
+      onChange: undefined,
+    });
+    expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'interrupted', reason: 'unknown' } });
+    expect(turn.generated).toHaveLength(1);
+    expect(turn.generated[0]).toMatchObject({
+      role: 'assistant',
+      interruption: undefined,
+      parts: [
+        { type: 'tool_call', toolCall: { function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' } } },
+      ],
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
   }, 30_000);
 
   it.each([
@@ -1941,46 +1974,48 @@ describe('Gemma4 E2B Provider / tools', () => {
       }),
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    try {
-      turn = await runProviderReplayTurn({
-        provider: harness.provider,
-        request: {
-          model: inputEvidence.modelId,
-          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 128,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
-          readBinaryObject: undefined,
-          debug: undefined,
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+      },
+    });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    turn = await runProviderReplayTurn({
+      provider: harness.provider,
+      request: {
+        model: inputEvidence.modelId,
+        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 128,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-        tools: [tool],
-        abortController: new AbortController(),
-        onChange: undefined,
-      });
-      if (settlement === 'rejected') {
-        expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: expect.stringMatching(/Gemma.*(?:tool.*protocol|template)/i) } });
-      } else {
-        expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'interrupted', reason: 'unknown' } });
-      }
-      expect(turn.generated).toHaveLength(1);
-      expect(turn.generated[0]).toMatchObject({
-        role: 'assistant',
-        parts: [
-          { type: 'tool_call', toolCall: { function: { name: 'capture_value', arguments: '{}' } } },
-        ],
-      });
-      expect(execute).not.toHaveBeenCalled();
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-    } finally {
-      await harness.close();
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+      tools: [tool],
+      abortController: new AbortController(),
+      onChange: undefined,
+    });
+    if (settlement === 'rejected') {
+      expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: expect.stringMatching(/Gemma.*(?:tool.*protocol|template)/i) } });
+    } else {
+      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'interrupted', reason: 'unknown' } });
     }
+    expect(turn.generated).toHaveLength(1);
+    expect(turn.generated[0]).toMatchObject({
+      role: 'assistant',
+      parts: [
+        { type: 'tool_call', toolCall: { function: { name: 'capture_value', arguments: '{}' } } },
+      ],
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
   }, 30_000);
 
   it('reports an unknown native tool name without executing a registered tool and continues with the actual error result input', async () => {
@@ -2010,54 +2045,56 @@ describe('Gemma4 E2B Provider / tools', () => {
       },
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    try {
-      turn = await runProviderReplayTurn({
-        provider: harness.provider,
-        request: {
-          model: inputEvidence.modelId,
-          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 128,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
-          readBinaryObject: undefined,
-          debug: undefined,
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+      },
+    });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    turn = await runProviderReplayTurn({
+      provider: harness.provider,
+      request: {
+        model: inputEvidence.modelId,
+        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 128,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-        tools: [tool],
-        abortController: new AbortController(),
-        onChange: undefined,
-      });
-      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
-      expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
-      expect(turn.generated[0]).toMatchObject({
-        role: 'assistant',
-        parts: [
-          { type: 'tool_call', toolCall: { function: { name: 'unknown_tool', arguments: '{"value":1}' } } },
-        ],
-      });
-      expect(turn.generated[1]).toMatchObject({
-        role: 'tool',
-        parts: [
-          { type: 'tool_result', result: { status: 'error' } },
-        ],
-      });
-      expect(turn.generated[2]).toMatchObject({
-        role: 'assistant',
-        parts: [
-          { type: 'text', text: 'Synthetic unavailable tool answer.', completeness: 'complete' },
-        ],
-      });
-      expect(execute).not.toHaveBeenCalled();
-      expect(harness.observations.inferenceCalls).toHaveLength(2);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-    } finally {
-      await harness.close();
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+      tools: [tool],
+      abortController: new AbortController(),
+      onChange: undefined,
+    });
+    expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+    expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
+    expect(turn.generated[0]).toMatchObject({
+      role: 'assistant',
+      parts: [
+        { type: 'tool_call', toolCall: { function: { name: 'unknown_tool', arguments: '{"value":1}' } } },
+      ],
+    });
+    expect(turn.generated[1]).toMatchObject({
+      role: 'tool',
+      parts: [
+        { type: 'tool_result', result: { status: 'error' } },
+      ],
+    });
+    expect(turn.generated[2]).toMatchObject({
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Synthetic unavailable tool answer.', completeness: 'complete' },
+      ],
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(harness.observations.inferenceCalls).toHaveLength(2);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
   }, 30_000);
 
   it('rejects a lossy tool result after its one actual execution and before the next native inference', async () => {
@@ -2075,49 +2112,51 @@ describe('Gemma4 E2B Provider / tools', () => {
       }),
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    try {
-      turn = await runProviderReplayTurn({
-        provider: harness.provider,
-        request: {
-          model: inputEvidence.modelId,
-          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 128,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
-          readBinaryObject: undefined,
-          debug: undefined,
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+      },
+    });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    turn = await runProviderReplayTurn({
+      provider: harness.provider,
+      request: {
+        model: inputEvidence.modelId,
+        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 128,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-        tools: [tool],
-        abortController: new AbortController(),
-        onChange: undefined,
-      });
-      expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: expect.stringContaining('quote delimiter') } });
-      expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
-      expect(turn.generated[0]).toMatchObject({
-        role: 'assistant',
-        parts: [
-          { type: 'tool_call', toolCall: { function: { name: 'capture_value', arguments: '{"value":1}' } } },
-        ],
-      });
-      expect(turn.generated[1]).toMatchObject({
-        role: 'tool',
-        parts: [
-          { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result<|"|>delimiter' } } },
-        ],
-      });
-      expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [] });
-      expect(execute).toHaveBeenCalledOnce();
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-    } finally {
-      await harness.close();
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+      tools: [tool],
+      abortController: new AbortController(),
+      onChange: undefined,
+    });
+    expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: expect.stringContaining('quote delimiter') } });
+    expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
+    expect(turn.generated[0]).toMatchObject({
+      role: 'assistant',
+      parts: [
+        { type: 'tool_call', toolCall: { function: { name: 'capture_value', arguments: '{"value":1}' } } },
+      ],
+    });
+    expect(turn.generated[1]).toMatchObject({
+      role: 'tool',
+      parts: [
+        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result<|"|>delimiter' } } },
+      ],
+    });
+    expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [] });
+    expect(execute).toHaveBeenCalledOnce();
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
   }, 30_000);
 
   it.each([
@@ -2162,63 +2201,65 @@ describe('Gemma4 E2B Provider / tools', () => {
       execute,
     }];
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    try {
-      replay.beginNativeRequest({ caseId, parameters });
-      turn = await runProviderReplayTurn({
-        provider: replay.provider,
-        request: {
-          model: 'onnx-community/gemma-4-E2B-it-ONNX',
-          messages: [textMessage({ id: 'message_0', role: 'user', text: prompt })],
-          parameters,
-          readBinaryObject: undefined,
-          debug: undefined,
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await replay.close();
+      },
+    });
+    replay.beginNativeRequest({ caseId, parameters });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    turn = await runProviderReplayTurn({
+      provider: replay.provider,
+      request: {
+        model: 'onnx-community/gemma-4-E2B-it-ONNX',
+        messages: [textMessage({ id: 'message_0', role: 'user', text: prompt })],
+        parameters,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+      tools,
+      abortController: new AbortController(),
+      onChange: undefined,
+    });
+    replay.endNativeRequest();
+    expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+    expect(turn.generated.map(node => node.role)).toEqual(['assistant', 'tool', 'assistant']);
+    const [callAssistant, toolResult, finalAssistant] = turn.generated;
+    expect(callAssistant).toMatchObject({
+      role: 'assistant',
+      parts: [{
+        type: 'tool_call',
+        toolCall: {
+          type: 'function',
+          function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
         },
-        tools,
-        abortController: new AbortController(),
-        onChange: undefined,
-      });
-      replay.endNativeRequest();
-      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
-      expect(turn.generated.map(node => node.role)).toEqual(['assistant', 'tool', 'assistant']);
-      const [callAssistant, toolResult, finalAssistant] = turn.generated;
-      expect(callAssistant).toMatchObject({
-        role: 'assistant',
-        parts: [{
-          type: 'tool_call',
-          toolCall: {
-            type: 'function',
-            function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-          },
-        }],
-      });
-      if (callAssistant?.role !== 'assistant') throw new Error('Expected the tool-calling assistant');
-      const callPart = callAssistant.parts.find(part => part.type === 'tool_call');
-      if (callPart?.type !== 'tool_call') throw new Error('Expected the recorded structured tool call');
-      expect(toolResult).toMatchObject({
-        role: 'tool',
-        parts: [{
-          type: 'tool_result',
-          result: {
-            toolCallId: callPart.toolCall.id,
-            status: 'success',
-            content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-          },
-        }],
-      });
-      expect(finalAssistant).toMatchObject({
-        role: 'assistant',
-        parts: [{ type: 'text', text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' }],
-      });
-      expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
-      expect(execute).toHaveBeenCalledOnce();
-      expect(executedSignals).toHaveLength(1);
-      expect(executedSignals[0]).toBeInstanceOf(AbortSignal);
-      expect(executedSignals[0]?.aborted).toBe(false);
-      expect(turn.toolEvents).toEqual([]);
-      replay.assertComplete({ requests: 1, nativeCalls: 2 });
-    } finally {
-      await replay.close();
-    }
+      }],
+    });
+    if (callAssistant?.role !== 'assistant') throw new Error('Expected the tool-calling assistant');
+    const callPart = callAssistant.parts.find(part => part.type === 'tool_call');
+    if (callPart?.type !== 'tool_call') throw new Error('Expected the recorded structured tool call');
+    expect(toolResult).toMatchObject({
+      role: 'tool',
+      parts: [{
+        type: 'tool_result',
+        result: {
+          toolCallId: callPart.toolCall.id,
+          status: 'success',
+          content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+        },
+      }],
+    });
+    expect(finalAssistant).toMatchObject({
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'The weather in Tokyo is clear with a temperature of 20°C.', completeness: 'complete' }],
+    });
+    expect(executedArgs).toEqual([{ city: 'Tokyo' }]);
+    expect(execute).toHaveBeenCalledOnce();
+    expect(executedSignals).toHaveLength(1);
+    expect(executedSignals[0]).toBeInstanceOf(AbortSignal);
+    expect(executedSignals[0]?.aborted).toBe(false);
+    expect(turn.toolEvents).toEqual([]);
+    replay.assertComplete({ requests: 1, nativeCalls: 2 });
   }, 30_000);
 
   it('tools: preserves structured caller history and the recorded response', async () => {
@@ -2229,89 +2270,90 @@ describe('Gemma4 E2B Provider / tools', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 128,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: undefined,
-        },
-      };
-      const executedSignals: Array<AbortSignal | undefined> = [];
-      const executedArgs: unknown[] = [];
-      const execute = vi.fn<Tool['execute']>(async ({ args, signal }) => {
-        executedArgs.push(structuredClone(args));
-        executedSignals.push(signal);
-        return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
-      });
-      const tools: NonNullable<CapturedChatRequest['tools']> = [{
-        name: "lookup_weather",
-        description: "Return deterministic weather fixture data.",
-        parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
-      }];
-      replay.beginNativeRequest({ caseId: "structured-tool-history", parameters: parameters });
-      const capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            textMessage({ id: 'message_0', role: 'user', text: "Use the weather tool for Tokyo." }),
-            {
-              id: toMessageId({ raw: 'message_1' }),
-              role: 'assistant',
-              parts: [
-                { type: 'text', text: '', completeness: 'complete' },
-                {
-                  type: 'tool_call',
-                  toolCall: {
-                    id: toToolCallId({ raw: "call_model_support_probe_1" }),
-                    type: 'function',
-                    function: { name: 'lookup_weather', arguments: "{\"city\":\"Tokyo\"}" },
-                  },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 128,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: undefined,
+      },
+    };
+    const executedSignals: Array<AbortSignal | undefined> = [];
+    const executedArgs: unknown[] = [];
+    const execute = vi.fn<Tool['execute']>(async ({ args, signal }) => {
+      executedArgs.push(structuredClone(args));
+      executedSignals.push(signal);
+      return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
+    });
+    const tools: NonNullable<CapturedChatRequest['tools']> = [{
+      name: "lookup_weather",
+      description: "Return deterministic weather fixture data.",
+      parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
+    }];
+    replay.beginNativeRequest({ caseId: "structured-tool-history", parameters: parameters });
+    const capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/gemma-4-E2B-it-ONNX",
+        messages: [
+          textMessage({ id: 'message_0', role: 'user', text: "Use the weather tool for Tokyo." }),
+          {
+            id: toMessageId({ raw: 'message_1' }),
+            role: 'assistant',
+            parts: [
+              { type: 'text', text: '', completeness: 'complete' },
+              {
+                type: 'tool_call',
+                toolCall: {
+                  id: toToolCallId({ raw: "call_model_support_probe_1" }),
+                  type: 'function',
+                  function: { name: 'lookup_weather', arguments: "{\"city\":\"Tokyo\"}" },
                 },
-              ],
-            },
-            {
-              id: toMessageId({ raw: 'message_2' }),
-              role: 'tool',
-              parts: [
-                {
-                  type: 'tool_result',
-                  result: {
-                    toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }),
-                    status: 'success',
-                    content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" },
-                  },
+              },
+            ],
+          },
+          {
+            id: toMessageId({ raw: 'message_2' }),
+            role: 'tool',
+            parts: [
+              {
+                type: 'tool_result',
+                result: {
+                  toolCallId: toToolCallId({ raw: "call_model_support_probe_1" }),
+                  status: 'success',
+                  content: { type: 'text', text: "{\"temperatureC\":20,\"condition\":\"clear\"}" },
                 },
-              ],
-            },
-          ],
-          tools: tools,
-          parameters: parameters,
-          signal: signal,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(capture);
-      await capture.completion;
-      replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.parts).toEqual([expect.objectContaining({ type: 'text', completeness: 'complete' })]);
-      expect(capturedTextChunks({ capture, type: 'text' }).join('')).toBe("The weather in Tokyo is clear with a temperature of 20°C.");
-      expect(observed.result).toEqual({ type: 'finished', next: 'user' });
-      expect(capturedToolCalls({ capture })).toEqual([]);
-      expect(execute).not.toHaveBeenCalled();
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+              },
+            ],
+          },
+        ],
+        tools: tools,
+        parameters: parameters,
+        signal: signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    replay.endNativeRequest();
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(observed.parts).toEqual([expect.objectContaining({ type: 'text', completeness: 'complete' })]);
+    expect(capturedTextChunks({ capture, type: 'text' }).join('')).toBe("The weather in Tokyo is clear with a temperature of 20°C.");
+    expect(observed.result).toEqual({ type: 'finished', next: 'user' });
+    expect(capturedToolCalls({ capture })).toEqual([]);
+    expect(execute).not.toHaveBeenCalled();
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -2354,55 +2396,57 @@ Use the synthetic tool.<turn|>
       },
     };
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    try {
-      turn = await runProviderReplayTurn({
-        provider: harness.provider,
-        request: {
-          model: 'onnx-community/gemma-4-E2B-it-ONNX',
-          messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 128,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
-          readBinaryObject: undefined,
-          debug: undefined,
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+      },
+    });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    turn = await runProviderReplayTurn({
+      provider: harness.provider,
+      request: {
+        model: 'onnx-community/gemma-4-E2B-it-ONNX',
+        messages: [textMessage({ id: 'message_0', role: 'user', text: 'Use the synthetic tool.' })],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 128,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-        tools: [tool],
-        abortController: new AbortController(),
-        onChange: undefined,
-      });
-      expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: 'Canonical tool-thought input observed; no continuation output' } });
-      expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
-      expect(turn.generated[0]).toMatchObject({
-        role: 'assistant',
-        parts: [
-          { type: 'reasoning', text: ` Reason${' '}`, completeness: 'complete' },
-          { type: 'tool_call', toolCall: { function: { name: 'probe', arguments: '{"value":"Tokyo"}' } } },
-        ],
-      });
-      expect(turn.generated[1]).toMatchObject({
-        role: 'tool',
-        parts: [
-          { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result.' } } },
-        ],
-      });
-      expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [] });
-      expect(executions).toEqual([{ value: 'Tokyo' }]);
-      expect(inputs).toHaveLength(2);
-      expect(expectedInputs).toHaveLength(1);
-      const input = inputs[1]!.tensors.input_ids;
-      if (!input.isTensor) throw new Error('Expected detached canonical continuation Tensor');
-      expect(Array.from(input.data, Number)).toEqual(expectedInputs[0]);
-      expect(inputs.map(item => item.pastIsNull)).toEqual([true, true]);
-      expect(harness.observations.inferenceCalls).toHaveLength(2);
-    } finally {
-      await harness.close();
-    }
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+      tools: [tool],
+      abortController: new AbortController(),
+      onChange: undefined,
+    });
+    expect(turn.outcome).toMatchObject({ status: 'rejected', error: { message: 'Canonical tool-thought input observed; no continuation output' } });
+    expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
+    expect(turn.generated[0]).toMatchObject({
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: ` Reason${' '}`, completeness: 'complete' },
+        { type: 'tool_call', toolCall: { function: { name: 'probe', arguments: '{"value":"Tokyo"}' } } },
+      ],
+    });
+    expect(turn.generated[1]).toMatchObject({
+      role: 'tool',
+      parts: [
+        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result.' } } },
+      ],
+    });
+    expect(turn.generated[2]).toMatchObject({ role: 'assistant', parts: [] });
+    expect(executions).toEqual([{ value: 'Tokyo' }]);
+    expect(inputs).toHaveLength(2);
+    expect(expectedInputs).toHaveLength(1);
+    const input = inputs[1]!.tensors.input_ids;
+    if (!input.isTensor) throw new Error('Expected detached canonical continuation Tensor');
+    expect(Array.from(input.data, Number)).toEqual(expectedInputs[0]);
+    expect(inputs.map(item => item.pastIsNull)).toEqual([true, true]);
+    expect(harness.observations.inferenceCalls).toHaveLength(2);
   }, 30_000);
 
   it('preserves quoted tool data and rebuilds delivered ordered parts through shared history', async () => {
@@ -2436,94 +2480,97 @@ Use the quoted value.
       },
     }];
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let rebuiltCapture: ProviderChatCapture | undefined;
-    try {
-      const user = textMessage({ id: 'synthetic_user', role: 'user', text: 'Synthetic native quote control.' });
-      turn = await runProviderReplayTurn({
-        provider: harness.provider,
-        request: {
-          model: 'onnx-community/gemma-4-E2B-it-ONNX',
-          messages: [user],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 128,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
-          readBinaryObject: undefined,
-          debug: undefined,
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures: [rebuiltCapture], close: () => harness.close() });
+      },
+    });
+    const user = textMessage({ id: 'synthetic_user', role: 'user', text: 'Synthetic native quote control.' });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    turn = await runProviderReplayTurn({
+      provider: harness.provider,
+      request: {
+        model: 'onnx-community/gemma-4-E2B-it-ONNX',
+        messages: [user],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 128,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-        tools,
-        abortController: new AbortController(),
-        onChange: undefined,
-      });
-      expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
-      expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
-      expect(turn.generated[0]).toMatchObject({
-        role: 'assistant',
-        parts: [
-          { type: 'reasoning', text: 'Use the quoted value.', completeness: 'complete' },
-          { type: 'tool_call', toolCall: { function: { name: 'probe', arguments: '{"value":"<bos><pad>"}' } } },
-        ],
-      });
-      expect(turn.generated[1]).toMatchObject({
-        role: 'tool',
-        parts: [
-          { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result.' } } },
-        ],
-      });
-      expect(turn.generated[2]).toMatchObject({
-        role: 'assistant',
-        parts: [
-          { type: 'text', text: 'Synthetic completion.', completeness: 'complete' },
-        ],
-      });
-      expect(executions).toEqual([{ value: '<bos><pad>' }]);
-      const history = [
-        user,
-        createChatMessageSnapshot({ node: turn.generated[0]! }),
-        createChatMessageSnapshot({ node: turn.generated[1]! }),
-      ];
-      const publicTools: NonNullable<CapturedChatRequest['tools']> = [{
-        name: 'probe',
-        description: 'Preserve native quoted strings.',
-        parameters: { type: 'object', properties: { value: { type: 'string' } }, required: ['value'], additionalProperties: false },
-      }];
-      rebuiltCapture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: 'onnx-community/gemma-4-E2B-it-ONNX',
-          messages: history,
-          tools: publicTools,
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 128,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: { effort: undefined },
-          },
-          signal: undefined,
-          readBinaryObject: undefined,
-          debug: undefined,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+      tools,
+      abortController: new AbortController(),
+      onChange: undefined,
+    });
+    expect(turn.outcome).toEqual({ status: 'fulfilled', result: { type: 'finished', next: 'user' } });
+    expect(turn.generated.map(message => message.role)).toEqual(['assistant', 'tool', 'assistant']);
+    expect(turn.generated[0]).toMatchObject({
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', text: 'Use the quoted value.', completeness: 'complete' },
+        { type: 'tool_call', toolCall: { function: { name: 'probe', arguments: '{"value":"<bos><pad>"}' } } },
+      ],
+    });
+    expect(turn.generated[1]).toMatchObject({
+      role: 'tool',
+      parts: [
+        { type: 'tool_result', result: { status: 'success', content: { type: 'text', text: 'Synthetic result.' } } },
+      ],
+    });
+    expect(turn.generated[2]).toMatchObject({
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Synthetic completion.', completeness: 'complete' },
+      ],
+    });
+    expect(executions).toEqual([{ value: '<bos><pad>' }]);
+    const history = [
+      user,
+      createChatMessageSnapshot({ node: turn.generated[0]! }),
+      createChatMessageSnapshot({ node: turn.generated[1]! }),
+    ];
+    const publicTools: NonNullable<CapturedChatRequest['tools']> = [{
+      name: 'probe',
+      description: 'Preserve native quoted strings.',
+      parameters: { type: 'object', properties: { value: { type: 'string' } }, required: ['value'], additionalProperties: false },
+    }];
+    rebuiltCapture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: 'onnx-community/gemma-4-E2B-it-ONNX',
+        messages: history,
+        tools: publicTools,
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 128,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: { effort: undefined },
         },
-      });
-      await rebuiltCapture.completion;
-      expectDeliveredErrorCapture({ capture: rebuiltCapture, message: 'Rebuilt tool-history input observed; no synthetic continuation output' });
-      expect(nativeInputs).toHaveLength(3);
-      const live = nativeInputs[1]!.tensors.input_ids;
-      const rebuilt = nativeInputs[2]!.tensors.input_ids;
-      if (!live.isTensor || !rebuilt.isTensor) throw new Error('Expected detached native history inputs');
-      expect(rebuilt.data, 'shared history reconstruction must preserve the actual live tool-continuation tokenizer input').toEqual(live.data);
-      expect(nativeInputs.map(input => input.pastIsNull)).toEqual([true, true, true]);
-      expect(executions).toEqual([{ value: '<bos><pad>' }]);
-    } finally {
-      await closeProviderReplayCaptures({ captures: [rebuiltCapture], close: () => harness.close() });
-    }
+        signal: undefined,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    await rebuiltCapture.completion;
+    expectDeliveredErrorCapture({ capture: rebuiltCapture, message: 'Rebuilt tool-history input observed; no synthetic continuation output' });
+    expect(nativeInputs).toHaveLength(3);
+    const live = nativeInputs[1]!.tensors.input_ids;
+    const rebuilt = nativeInputs[2]!.tensors.input_ids;
+    if (!live.isTensor || !rebuilt.isTensor) throw new Error('Expected detached native history inputs');
+    expect(rebuilt.data, 'shared history reconstruction must preserve the actual live tool-continuation tokenizer input').toEqual(live.data);
+    expect(nativeInputs.map(input => input.pastIsNull)).toEqual([true, true, true]);
+    expect(executions).toEqual([{ value: '<bos><pad>' }]);
   }, 30_000);
 
   it.each([
@@ -2574,48 +2621,48 @@ describe('Gemma4 E2B Provider / images', () => {
         expectedRgba: Uint8ClampedArray.of(0, 0, 0, 255),
         expectedPixels: new Float32Array(2520 * 768),
       });
-      try {
-        capture = captureProviderChat({
-          provider: control.harness.provider,
-          request: {
-            model: "onnx-community/gemma-4-E2B-it-ONNX",
-            messages: [{
-              id: toMessageId({ raw: 'message_0' }),
-              role: 'user',
-              parts: [
-                { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-                { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
-              ],
-            }],
-            tools: [],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 1,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: {
-                effort: undefined,
-              },
+      await using _cleanupResource = createAsyncTestDisposable({
+        dispose: async () => {
+          await closeProviderReplayCaptures({ captures, close: () => control.harness.close() });
+        },
+      });
+      capture = captureProviderChat({
+        provider: control.harness.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [{
+            id: toMessageId({ raw: 'message_0' }),
+            role: 'user',
+            parts: [
+              { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+            ],
+          }],
+          tools: [],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
             },
-            signal: undefined,
-            readBinaryObject: undefined,
-            debug: undefined,
           },
-        });
-        captures.push(capture);
-        await capture.completion;
-        expectDeliveredErrorCapture({ capture, message: IMAGE_INPUT_BOUNDARY });
-        const chunks = capturedTextChunks({ capture, type: 'text' });
-        expect(chunks.join('')).toBe('');
-        expect(chunks).toEqual([]);
-        expect(capturedToolCalls({ capture })).toEqual([]);
-        control.verifyNativeInput();
-      } finally {
-        await closeProviderReplayCaptures({ captures, close: () => control.harness.close() });
-
-      }
+          signal: undefined,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: IMAGE_INPUT_BOUNDARY });
+      const chunks = capturedTextChunks({ capture, type: 'text' });
+      expect(chunks.join('')).toBe('');
+      expect(chunks).toEqual([]);
+      expect(capturedToolCalls({ capture })).toEqual([]);
+      control.verifyNativeInput();
     }
   }, 30_000);
 
@@ -2632,53 +2679,53 @@ describe('Gemma4 E2B Provider / images', () => {
         expectedRgba: Uint8ClampedArray.of(255, 255, 255, 255),
         expectedPixels,
       });
-      try {
-        capture = captureProviderChat({
-          provider: control.harness.provider,
-          request: {
-            model: "onnx-community/gemma-4-E2B-it-ONNX",
-            messages: [{
-              id: toMessageId({ raw: 'message_0' }),
-              role: 'user',
-              parts: [
-                { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-                {
-                  type: 'attachment',
-                  attachment: createReplayImageAttachment({
-                    dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
-                  }),
-                },
-              ],
-            }],
-            tools: [],
-            parameters: {
-              temperature: 0,
-              topP: 1,
-              maxCompletionTokens: 1,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: {
-                effort: undefined,
+      await using _cleanupResource = createAsyncTestDisposable({
+        dispose: async () => {
+          await closeProviderReplayCaptures({ captures, close: () => control.harness.close() });
+        },
+      });
+      capture = captureProviderChat({
+        provider: control.harness.provider,
+        request: {
+          model: "onnx-community/gemma-4-E2B-it-ONNX",
+          messages: [{
+            id: toMessageId({ raw: 'message_0' }),
+            role: 'user',
+            parts: [
+              { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+              {
+                type: 'attachment',
+                attachment: createReplayImageAttachment({
+                  dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGP4/x8AAwAB//wl3FEAAAAASUVORK5CYII=',
+                }),
               },
+            ],
+          }],
+          tools: [],
+          parameters: {
+            temperature: 0,
+            topP: 1,
+            maxCompletionTokens: 1,
+            presencePenalty: undefined,
+            frequencyPenalty: undefined,
+            stop: undefined,
+            reasoning: {
+              effort: undefined,
             },
-            signal: undefined,
-            readBinaryObject: undefined,
-            debug: undefined,
           },
-        });
-        captures.push(capture);
-        await capture.completion;
-        expectDeliveredErrorCapture({ capture, message: IMAGE_INPUT_BOUNDARY });
-        const chunks = capturedTextChunks({ capture, type: 'text' });
-        expect(chunks.join('')).toBe('');
-        expect(chunks).toEqual([]);
-        expect(capturedToolCalls({ capture })).toEqual([]);
-        control.verifyNativeInput();
-      } finally {
-        await closeProviderReplayCaptures({ captures, close: () => control.harness.close() });
-
-      }
+          signal: undefined,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      expectDeliveredErrorCapture({ capture, message: IMAGE_INPUT_BOUNDARY });
+      const chunks = capturedTextChunks({ capture, type: 'text' });
+      expect(chunks.join('')).toBe('');
+      expect(chunks).toEqual([]);
+      expect(capturedToolCalls({ capture })).toEqual([]);
+      control.verifyNativeInput();
     }
   }, 30_000);
 
@@ -2694,52 +2741,53 @@ describe('Gemma4 E2B Provider / images', () => {
       },
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const signal = new AbortController().signal;
-      const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 1,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: undefined,
-        },
-      };
-      replay.beginNativeRequest({ caseId: "image", parameters: parameters });
-      const capture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [{
-            id: toMessageId({ raw: 'message_0' }),
-            role: 'user',
-            parts: [
-              { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
-              {
-                type: 'attachment',
-                attachment: createReplayImageAttachment({
-                  dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
-                }),
-              },
-            ],
-          }],
-          tools: [],
-          parameters: parameters,
-          signal: signal,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(capture);
-      await capture.completion;
-      replay.endNativeRequest();
-      expectPartialTextCapture({ capture, type: 'text', text: 'The' });
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const signal = new AbortController().signal;
+    const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 1,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: undefined,
+      },
+    };
+    replay.beginNativeRequest({ caseId: "image", parameters: parameters });
+    const capture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/gemma-4-E2B-it-ONNX",
+        messages: [{
+          id: toMessageId({ raw: 'message_0' }),
+          role: 'user',
+          parts: [
+            { type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' },
+            {
+              type: 'attachment',
+              attachment: createReplayImageAttachment({
+                dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+              }),
+            },
+          ],
+        }],
+        tools: [],
+        parameters: parameters,
+        signal: signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    replay.endNativeRequest();
+    expectPartialTextCapture({ capture, type: 'text', text: 'The' });
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -2898,15 +2946,56 @@ describe('Gemma4 E2B Provider / sequences', () => {
         return next(context);
       },
     });
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
+    firstCapture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: generationEvidence.identity.modelId,
+        messages: recordedTextMessages({ messages: generationEvidence.scenario.messages }),
+        tools: [],
+        parameters: {
+          ...generationEvidence.scenario.lmParameters,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
+          },
+        },
+        signal: undefined,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(firstCapture);
+    await firstCapture.completion;
+    const firstChunks = capturedTextChunks({ capture: firstCapture, type: 'text' });
+    expectPartialTextCapture({ capture: firstCapture, type: 'text', text: generationEvidence.expectedProviderSemantic.visibleContent });
+    // Immutable at settlement: late first callbacks cannot rewrite the next
+    // request. There is no timer, callback drain, or artificial callback ACK.
+    const firstTextAtSettlement = firstChunks.join('');
+    const ortCountAfterFirst = harness.observations.ortCalls.length;
+    expect(harness.observations.processors).toHaveLength(1);
+    const processorAfterFirst = harness.observations.processors[0];
+    let secondOutcome: { status: 'fulfilled' } | { status: 'rejected', error: unknown };
     try {
-      firstCapture = captureProviderChat({
+      secondCapture = captureProviderChat({
         provider: harness.provider,
         request: {
           model: generationEvidence.identity.modelId,
-          messages: recordedTextMessages({ messages: generationEvidence.scenario.messages }),
+          messages: [
+            ...recordedTextMessages({ messages: generationEvidence.scenario.messages }),
+            textMessage({ id: 'message_1', role: 'assistant', text: firstTextAtSettlement }),
+            textMessage({ id: 'message_2', role: 'user', text: 'Continue with one short sentence.' }),
+          ],
           tools: [],
           parameters: {
-            ...generationEvidence.scenario.lmParameters,
+            ...continuity.scenario.lmParameters,
             presencePenalty: undefined,
             frequencyPenalty: undefined,
             stop: undefined,
@@ -2919,82 +3008,43 @@ describe('Gemma4 E2B Provider / sequences', () => {
           debug: undefined,
         },
       });
-      captures.push(firstCapture);
-      await firstCapture.completion;
-      const firstChunks = capturedTextChunks({ capture: firstCapture, type: 'text' });
-      expectPartialTextCapture({ capture: firstCapture, type: 'text', text: generationEvidence.expectedProviderSemantic.visibleContent });
-      // Immutable at settlement: late first callbacks cannot rewrite the next
-      // request. There is no timer, callback drain, or artificial callback ACK.
-      const firstTextAtSettlement = firstChunks.join('');
-      const ortCountAfterFirst = harness.observations.ortCalls.length;
-      expect(harness.observations.processors).toHaveLength(1);
-      const processorAfterFirst = harness.observations.processors[0];
-      let secondOutcome: { status: 'fulfilled' } | { status: 'rejected', error: unknown };
-      try {
-        secondCapture = captureProviderChat({
-          provider: harness.provider,
-          request: {
-            model: generationEvidence.identity.modelId,
-            messages: [
-              ...recordedTextMessages({ messages: generationEvidence.scenario.messages }),
-              textMessage({ id: 'message_1', role: 'assistant', text: firstTextAtSettlement }),
-              textMessage({ id: 'message_2', role: 'user', text: 'Continue with one short sentence.' }),
-            ],
-            tools: [],
-            parameters: {
-              ...continuity.scenario.lmParameters,
-              presencePenalty: undefined,
-              frequencyPenalty: undefined,
-              stop: undefined,
-              reasoning: {
-                effort: undefined,
-              },
-            },
-            signal: undefined,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(secondCapture);
-        await secondCapture.completion;
-        secondOutcome = { status: 'fulfilled' };
-      } catch (error) {
-        secondOutcome = { status: 'rejected', error };
-      }
-      // The collector's completion and detached snapshot own settlement;
-      // cleanup below separately checks for later delivered callbacks.
-      const secondObserved = secondCapture?.snapshot();
-      expect(secondObserved?.settlement).toEqual({ status: 'fulfilled' });
-      expect(secondObserved?.result).toEqual({ type: 'finished', next: 'user' });
-      const secondTextAtSettlement = secondCapture === undefined ? undefined : capturedTextChunks({ capture: secondCapture, type: 'text' }).join('');
-      expect(contexts).toHaveLength(2);
-      expect(contexts[1]!.model).toBe(contexts[0]!.model);
-      expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
-      expect(contexts.map(context => context.options.past_key_values)).toEqual([null, null]);
-      expect(harness.observations.inferenceCalls).toHaveLength(2);
-      expect(invocations).toEqual([]);
-      expect(ortCountAfterFirst).toBe(4);
-      expect(harness.observations.ortCalls).toHaveLength(ortCountAfterFirst);
-      expect(harness.observations.workers).toHaveLength(1);
-      expect(harness.observations.processors).toHaveLength(1);
-      expect(harness.observations.processors[0]).toBe(processorAfterFirst);
-      expect(contexts[1]!.tokenizer).toBe(processorAfterFirst?.tokenizer);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.localImageFetchCalls).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-      // Report the real rejection as well as both immutable callback snapshots.
-      // This is a downstream consequence of the synchronous-native/Comlink
-      // settlement counterexample, not a second independent generation defect.
-      expect({ firstTextAtSettlement, secondOutcome, secondTextAtSettlement, released }).toEqual({
-        firstTextAtSettlement: generationEvidence.expectedProviderSemantic.visibleContent,
-        secondOutcome: { status: 'fulfilled' },
-        secondTextAtSettlement: continuity.expectedProviderSemantic.visibleContent,
-        released: [16, 12],
-      });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      captures.push(secondCapture);
+      await secondCapture.completion;
+      secondOutcome = { status: 'fulfilled' };
+    } catch (error) {
+      secondOutcome = { status: 'rejected', error };
     }
+    // The collector's completion and detached snapshot own settlement;
+    // cleanup below separately checks for later delivered callbacks.
+    const secondObserved = secondCapture?.snapshot();
+    expect(secondObserved?.settlement).toEqual({ status: 'fulfilled' });
+    expect(secondObserved?.result).toEqual({ type: 'finished', next: 'user' });
+    const secondTextAtSettlement = secondCapture === undefined ? undefined : capturedTextChunks({ capture: secondCapture, type: 'text' }).join('');
+    expect(contexts).toHaveLength(2);
+    expect(contexts[1]!.model).toBe(contexts[0]!.model);
+    expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
+    expect(contexts.map(context => context.options.past_key_values)).toEqual([null, null]);
+    expect(harness.observations.inferenceCalls).toHaveLength(2);
+    expect(invocations).toEqual([]);
+    expect(ortCountAfterFirst).toBe(4);
+    expect(harness.observations.ortCalls).toHaveLength(ortCountAfterFirst);
+    expect(harness.observations.workers).toHaveLength(1);
+    expect(harness.observations.processors).toHaveLength(1);
+    expect(harness.observations.processors[0]).toBe(processorAfterFirst);
+    expect(contexts[1]!.tokenizer).toBe(processorAfterFirst?.tokenizer);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.localImageFetchCalls).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    // Report the real rejection as well as both immutable callback snapshots.
+    // This is a downstream consequence of the synchronous-native/Comlink
+    // settlement counterexample, not a second independent generation defect.
+    expect({ firstTextAtSettlement, secondOutcome, secondTextAtSettlement, released }).toEqual({
+      firstTextAtSettlement: generationEvidence.expectedProviderSemantic.visibleContent,
+      secondOutcome: { status: 'fulfilled' },
+      secondTextAtSettlement: continuity.expectedProviderSemantic.visibleContent,
+      released: [16, 12],
+    });
   }, 30_000);
 
   it('sequences: builds continuation from actually delivered first-request settlement', async () => {
@@ -3005,74 +3055,75 @@ describe('Gemma4 E2B Provider / sequences', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const firstSignal = new AbortController().signal;
-      const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 16,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: undefined,
-        },
-      };
-      replay.beginNativeRequest({ caseId: "first-turn", parameters: firstParameters });
-      const firstCapture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
-          tools: [],
-          parameters: firstParameters,
-          signal: firstSignal,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(firstCapture);
-      await firstCapture.completion;
-      replay.endNativeRequest();
-      const firstText = "Please provide the **context** or **purpose** of the \"template probe user";
-      expectPartialTextCapture({ capture: firstCapture, type: 'text', text: firstText });
-      const nextSignal = new AbortController().signal;
-      const nextParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 16,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: {
-          effort: undefined,
-        },
-      };
-      replay.beginNativeRequest({ caseId: "continuity", parameters: nextParameters });
-      const nextCapture = captureProviderChat({
-        provider: replay.provider,
-        request: {
-          model: "onnx-community/gemma-4-E2B-it-ONNX",
-          messages: [
-            textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." }),
-            textMessage({ id: 'message_1', role: 'assistant', text: firstText }),
-            textMessage({ id: 'message_2', role: 'user', text: "Continue the synthetic conversation with a short response." }),
-          ],
-          tools: [],
-          parameters: nextParameters,
-          signal: nextSignal,
-          readBinaryObject: undefined,
-          debug: undefined,
-        },
-      });
-      captures.push(nextCapture);
-      await nextCapture.completion;
-      replay.endNativeRequest();
-      expectPartialTextCapture({ capture: nextCapture, type: 'text', text: "Please provide the **previous part of the conversation** or the **topic** you" });
-      replay.assertComplete({ requests: 2, nativeCalls: 2 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const firstSignal = new AbortController().signal;
+    const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 16,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: undefined,
+      },
+    };
+    replay.beginNativeRequest({ caseId: "first-turn", parameters: firstParameters });
+    const firstCapture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/gemma-4-E2B-it-ONNX",
+        messages: [textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." })],
+        tools: [],
+        parameters: firstParameters,
+        signal: firstSignal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(firstCapture);
+    await firstCapture.completion;
+    replay.endNativeRequest();
+    const firstText = "Please provide the **context** or **purpose** of the \"template probe user";
+    expectPartialTextCapture({ capture: firstCapture, type: 'text', text: firstText });
+    const nextSignal = new AbortController().signal;
+    const nextParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 16,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: {
+        effort: undefined,
+      },
+    };
+    replay.beginNativeRequest({ caseId: "continuity", parameters: nextParameters });
+    const nextCapture = captureProviderChat({
+      provider: replay.provider,
+      request: {
+        model: "onnx-community/gemma-4-E2B-it-ONNX",
+        messages: [
+          textMessage({ id: 'message_0', role: 'user', text: "Template probe user message." }),
+          textMessage({ id: 'message_1', role: 'assistant', text: firstText }),
+          textMessage({ id: 'message_2', role: 'user', text: "Continue the synthetic conversation with a short response." }),
+        ],
+        tools: [],
+        parameters: nextParameters,
+        signal: nextSignal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(nextCapture);
+    await nextCapture.completion;
+    replay.endNativeRequest();
+    expectPartialTextCapture({ capture: nextCapture, type: 'text', text: "Please provide the **previous part of the conversation** or the **topic** you" });
+    replay.assertComplete({ requests: 2, nativeCalls: 2 });
   }, 30_000);
 
   it('preserves thirteen requests including natural tools and actual image processor tensors in one Load', async () => {

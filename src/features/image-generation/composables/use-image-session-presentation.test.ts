@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from 'vitest';
 import { computed, effectScope, ref } from 'vue';
-import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view';
+import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view.test-support';
 import { useImageSessionPresentation } from './use-image-session-presentation';
 const scopes: ReturnType<typeof effectScope>[] = [];
 

@@ -2,13 +2,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { toToolCallId } from '@/01-models/ids';
-import { runProviderConversationForTest } from '@/features/lm/provider-test-support';
+import { runProviderConversationForTest } from '@/features/lm/provider.test-support';
 import type { InferenceMessage } from './types';
 import type { TransformersJsInferenceScope } from './inference-operation';
 import type { ToolCall } from '@/01-models/types';
 import type { Tool } from '@/01-models/tool';
 import { createTransformersJsProvider, type TransformersJsProviderService } from './provider-hosted';
 import { runProviderTestInferenceOperation } from './provider-inference-test-scope';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const ordinaryService = vi.hoisted(() => ({
   getState: vi.fn(() => {
@@ -34,11 +35,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  try {
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      vi.unstubAllGlobals();
+    },
+  });
+  expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 
 // Deliberately a service-boundary unit fixture. Real service/Worker isolation

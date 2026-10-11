@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { DOMWrapper, mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageGenerationViewer from './ImageGenerationViewer.vue';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 let wrapper: VueWrapper<InstanceType<typeof ImageGenerationViewer>> | undefined;
 
 beforeEach(async () => {
@@ -76,30 +77,31 @@ it('does not consume Escape already handled by a control or by an IME', async ()
 
 it('traps focus across editable details and links, then restores the opener on close', async () => {
   const opener = document.createElement('button'); document.body.append(opener); opener.focus();
-  try {
-    wrapper = mount(ImageGenerationViewer, {
-      props: { count: 1, index: 0, downloadEnabled: false },
-      slots: { details: '<div><input disabled><input hidden><a href="#details" data-testid="details-link">Details</a><textarea data-testid="details-last"/><details><summary>Collapsed</summary><input data-testid="hidden-input"></details></div>' },
-    });
-    const element = document.querySelector<HTMLElement>('[data-testid="image-viewer"]')!;
-    const dialog = new DOMWrapper(element);
-    expect(document.activeElement).toBe(element);
-    await dialog.get('[data-testid="image-viewer-details-toggle"]').trigger('click');
-    // Use the real Teleport: the test-utils Teleport stub remounts its slot.
-    expect(element.isConnected).toBe(true);
-    await dialog.trigger('keydown', { key: 'Tab' });
-    const first = dialog.findAll<HTMLButtonElement>('button').find(button => !button.element.disabled)!;
-    expect(document.activeElement).toBe(first.element);
-    first.element.focus(); await first.trigger('keydown', { key: 'Tab', shiftKey: true });
-    expect(document.activeElement?.tagName).toBe('SUMMARY');
-    expect(document.activeElement).not.toBe(dialog.get('[data-testid="hidden-input"]').element);
-    await dialog.get('summary').trigger('keydown', { key: 'Tab' });
-    expect(document.activeElement).toBe(first.element);
-    wrapper.unmount(); wrapper = undefined;
-    expect(document.activeElement).toBe(opener);
-  } finally {
-    opener.remove();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      opener.remove();
+    },
+  });
+  wrapper = mount(ImageGenerationViewer, {
+    props: { count: 1, index: 0, downloadEnabled: false },
+    slots: { details: '<div><input disabled><input hidden><a href="#details" data-testid="details-link">Details</a><textarea data-testid="details-last"/><details><summary>Collapsed</summary><input data-testid="hidden-input"></details></div>' },
+  });
+  const element = document.querySelector<HTMLElement>('[data-testid="image-viewer"]')!;
+  const dialog = new DOMWrapper(element);
+  expect(document.activeElement).toBe(element);
+  await dialog.get('[data-testid="image-viewer-details-toggle"]').trigger('click');
+  // Use the real Teleport: the test-utils Teleport stub remounts its slot.
+  expect(element.isConnected).toBe(true);
+  await dialog.trigger('keydown', { key: 'Tab' });
+  const first = dialog.findAll<HTMLButtonElement>('button').find(button => !button.element.disabled)!;
+  expect(document.activeElement).toBe(first.element);
+  first.element.focus(); await first.trigger('keydown', { key: 'Tab', shiftKey: true });
+  expect(document.activeElement?.tagName).toBe('SUMMARY');
+  expect(document.activeElement).not.toBe(dialog.get('[data-testid="hidden-input"]').element);
+  await dialog.get('summary').trigger('keydown', { key: 'Tab' });
+  expect(document.activeElement).toBe(first.element);
+  wrapper.unmount(); wrapper = undefined;
+  expect(document.activeElement).toBe(opener);
 });
 
 it('changes wheel zoom only over the image stage, never over scrollable metadata', async () => {

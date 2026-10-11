@@ -1,4 +1,4 @@
-import { runProviderConversationForTest } from './provider-test-support';
+import { runProviderConversationForTest } from './provider.test-support';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OllamaProvider } from '@/features/lm/ollama';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';

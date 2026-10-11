@@ -8,6 +8,7 @@ import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { toMessageId } from '@/01-models/ids';
 import { collectChatGeneration } from '@/logic/collect-chat-generation';
 import type { InferenceMessage } from './types';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function createClientFixture() {
   return {
@@ -50,21 +51,22 @@ describe('Transformers.js service runtime serialization', () => {
       await release.promise;
     });
     const operations: Promise<unknown>[] = [];
-    try {
-      await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-      const unloading = owner.service.unloadModel();
-      operations.push(expect(unloading).rejects.toMatchObject({ name: 'AbortError' }));
-      await entered.promise;
-      await owner.service.interrupt();
-      release.resolve(); await Promise.all(operations);
-      expect(client.dispose).not.toHaveBeenCalled();
-      expect(factory).toHaveBeenCalledTimes(1);
-      expect(owner.service.getState()).toMatchObject({ status: 'idle', activeModelId: undefined });
-    } finally {
-      release.resolve();
-      await Promise.allSettled(operations);
-      await owner.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve();
+        await Promise.allSettled(operations);
+        await owner.dispose();
+      },
+    });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
+    const unloading = owner.service.unloadModel();
+    operations.push(expect(unloading).rejects.toMatchObject({ name: 'AbortError' }));
+    await entered.promise;
+    await owner.service.interrupt();
+    release.resolve(); await Promise.all(operations);
+    expect(client.dispose).not.toHaveBeenCalled();
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(owner.service.getState()).toMatchObject({ status: 'idle', activeModelId: undefined });
   });
 
   it('allows an independent service to finish while another service holds its own runtime', async () => {
@@ -79,21 +81,22 @@ describe('Transformers.js service runtime serialization', () => {
     });
     const operations: Promise<unknown>[] = [];
     let firstFinished = false;
-    try {
-      await first.service.loadDownloadedModel({ modelId: 'fixture/first' });
-      await second.service.loadDownloadedModel({ modelId: 'fixture/second' });
-      operations.push(first.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }).then(() => {
-        firstFinished = true;
-      }));
-      await entered.promise;
-      await second.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() });
-      expect(secondClient.generateText).toHaveBeenCalledTimes(1);
-      expect(firstFinished).toBe(false);
-      expect(firstClient.interrupt).not.toHaveBeenCalled();
-    } finally {
-      release.resolve(); await Promise.allSettled(operations);
-      await Promise.all([first.dispose(), second.dispose()]);
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve(); await Promise.allSettled(operations);
+        await Promise.all([first.dispose(), second.dispose()]);
+      },
+    });
+    await first.service.loadDownloadedModel({ modelId: 'fixture/first' });
+    await second.service.loadDownloadedModel({ modelId: 'fixture/second' });
+    operations.push(first.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }).then(() => {
+      firstFinished = true;
+    }));
+    await entered.promise;
+    await second.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() });
+    expect(secondClient.generateText).toHaveBeenCalledTimes(1);
+    expect(firstFinished).toBe(false);
+    expect(firstClient.interrupt).not.toHaveBeenCalled();
   });
 
   it('preserves an ordinary generation error and starts the next queued request afterward', async () => {
@@ -106,19 +109,20 @@ describe('Transformers.js service runtime serialization', () => {
       entered.resolve(); await release.promise; throw failure;
     });
     const operations: Promise<unknown>[] = [];
-    try {
-      await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-      const first = owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() });
-      operations.push(expect(first).rejects.toBe(failure));
-      await entered.promise;
-      operations.push(owner.service.generateText({ messages: [{ role: 'user', content: 'Next request.' }], onChunk: vi.fn(), onToolCalls: vi.fn() }));
-      expect(client.generateText).toHaveBeenCalledTimes(1);
-      release.resolve(); await Promise.all(operations);
-      expect(client.generateText).toHaveBeenCalledTimes(2);
-      expect(client.dispose).not.toHaveBeenCalled();
-    } finally {
-      release.resolve(); await Promise.allSettled(operations); await owner.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve(); await Promise.allSettled(operations); await owner.dispose();
+      },
+    });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
+    const first = owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() });
+    operations.push(expect(first).rejects.toBe(failure));
+    await entered.promise;
+    operations.push(owner.service.generateText({ messages: [{ role: 'user', content: 'Next request.' }], onChunk: vi.fn(), onToolCalls: vi.fn() }));
+    expect(client.generateText).toHaveBeenCalledTimes(1);
+    release.resolve(); await Promise.all(operations);
+    expect(client.generateText).toHaveBeenCalledTimes(2);
+    expect(client.dispose).not.toHaveBeenCalled();
   });
 
   it('snapshots Provider messages and parameters before a different chat finishes', async () => {
@@ -132,33 +136,34 @@ describe('Transformers.js service runtime serialization', () => {
       await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
     });
     const operations: Promise<unknown>[] = [];
-    try {
-      const first = new AbortController();
-      operations.push(collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages: [], parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: first.signal }), abortController: first }));
-      await entered.promise;
-      const body = { type: 'text' as const, text: 'Accepted Provider input.', completeness: 'complete' as const };
-      const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [body] }];
-      const parameters: LmParameters = {
-        ...EMPTY_LM_PARAMETERS,
-        temperature: 0.25,
-        topP: undefined,
-        maxCompletionTokens: undefined,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        reasoning: { effort: undefined },
-        stop: ['accepted-stop'],
-      };
-      const second = new AbortController();
-      operations.push(collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages, parameters, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: second.signal }), abortController: second }));
-      body.text = 'Changed while queued.';
-      parameters.stop!.push('changed-stop');
-      release.resolve(); await Promise.all(operations);
-      expect(client.generateMessage.mock.calls[1]![0].messages).toEqual([{ role: 'user', content: 'Accepted Provider input.' }]);
-      expect(client.generateMessage.mock.calls[1]![0].params?.stop).toEqual(['accepted-stop']);
-      expect(client.loadDownloadedModel).toHaveBeenCalledTimes(1);
-    } finally {
-      release.resolve(); await Promise.allSettled(operations); await owner.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve(); await Promise.allSettled(operations); await owner.dispose();
+      },
+    });
+    const first = new AbortController();
+    operations.push(collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages: [], parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: first.signal }), abortController: first }));
+    await entered.promise;
+    const body = { type: 'text' as const, text: 'Accepted Provider input.', completeness: 'complete' as const };
+    const messages: ChatMessage[] = [{ id: toMessageId({ raw: 'u' }), role: 'user', parts: [body] }];
+    const parameters: LmParameters = {
+      ...EMPTY_LM_PARAMETERS,
+      temperature: 0.25,
+      topP: undefined,
+      maxCompletionTokens: undefined,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      reasoning: { effort: undefined },
+      stop: ['accepted-stop'],
+    };
+    const second = new AbortController();
+    operations.push(collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages, parameters, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: second.signal }), abortController: second }));
+    body.text = 'Changed while queued.';
+    parameters.stop!.push('changed-stop');
+    release.resolve(); await Promise.all(operations);
+    expect(client.generateMessage.mock.calls[1]![0].messages).toEqual([{ role: 'user', content: 'Accepted Provider input.' }]);
+    expect(client.generateMessage.mock.calls[1]![0].params?.stop).toEqual(['accepted-stop']);
+    expect(client.loadDownloadedModel).toHaveBeenCalledTimes(1);
   });
 
   it('snapshots a queued generation input before its caller can mutate it', async () => {
@@ -170,44 +175,46 @@ describe('Transformers.js service runtime serialization', () => {
       entered.resolve(); await release.promise;
     });
     const operations: Promise<unknown>[] = [];
-    try {
-      await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-      operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
-      await entered.promise;
-      const messages: InferenceMessage[] = [{ role: 'user', content: 'Accepted input.' }];
-      const params: LmParameters = {
-        ...EMPTY_LM_PARAMETERS,
-        temperature: 0.25,
-        stop: ['accepted-stop'],
-        topP: undefined,
-        maxCompletionTokens: undefined,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        reasoning: { effort: undefined },
-      };
-      operations.push(owner.service.generateText({ messages, params, onChunk: vi.fn(), onToolCalls: vi.fn() }));
-      messages[0]!.content = 'Changed after admission.';
-      params.temperature = 0.75;
-      params.stop!.push('changed-stop');
-      release.resolve();
-      await Promise.all(operations);
-      expect(client.generateText.mock.calls[1]![0].messages).toEqual([{ role: 'user', content: 'Accepted input.' }]);
-      expect(client.generateText.mock.calls[1]![0].params).toMatchObject({ temperature: 0.25, stop: ['accepted-stop'] });
-    } finally {
-      release.resolve(); await Promise.allSettled(operations); await owner.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve(); await Promise.allSettled(operations); await owner.dispose();
+      },
+    });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
+    operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
+    await entered.promise;
+    const messages: InferenceMessage[] = [{ role: 'user', content: 'Accepted input.' }];
+    const params: LmParameters = {
+      ...EMPTY_LM_PARAMETERS,
+      temperature: 0.25,
+      stop: ['accepted-stop'],
+      topP: undefined,
+      maxCompletionTokens: undefined,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      reasoning: { effort: undefined },
+    };
+    operations.push(owner.service.generateText({ messages, params, onChunk: vi.fn(), onToolCalls: vi.fn() }));
+    messages[0]!.content = 'Changed after admission.';
+    params.temperature = 0.75;
+    params.stop!.push('changed-stop');
+    release.resolve();
+    await Promise.all(operations);
+    expect(client.generateText.mock.calls[1]![0].messages).toEqual([{ role: 'user', content: 'Accepted input.' }]);
+    expect(client.generateText.mock.calls[1]![0].params).toMatchObject({ temperature: 0.25, stop: ['accepted-stop'] });
   });
 
   it('rejects a direct generation accepted without a ready model without creating a client', async () => {
     const client = createClientFixture();
     const factory = vi.fn(() => client);
     const owner = createTransformersJsService({ createWorkerClient: factory });
-    try {
-      await expect(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() })).rejects.toThrow('Model not loaded');
-      expect(factory).not.toHaveBeenCalled();
-    } finally {
-      await owner.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await owner.dispose();
+      },
+    });
+    await expect(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() })).rejects.toThrow('Model not loaded');
+    expect(factory).not.toHaveBeenCalled();
   });
 
   it('does not send a queued direct generation to a different model selected ahead of it', async () => {
@@ -219,20 +226,21 @@ describe('Transformers.js service runtime serialization', () => {
       entered.resolve(); await release.promise;
     });
     const operations: Promise<unknown>[] = [];
-    try {
-      await owner.service.loadDownloadedModel({ modelId: 'fixture/first' });
-      operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
-      await entered.promise;
-      operations.push(owner.service.loadDownloadedModel({ modelId: 'fixture/second' }));
-      const rejected = expect(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() })).rejects.toThrow('no longer loaded');
-      operations.push(rejected);
-      release.resolve();
-      await Promise.all(operations);
-      expect(client.generateText).toHaveBeenCalledTimes(1);
-      expect(client.loadDownloadedModel.mock.calls.map(([args]) => args.modelId)).toEqual(['fixture/first', 'fixture/second']);
-    } finally {
-      release.resolve(); await Promise.allSettled(operations); await owner.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve(); await Promise.allSettled(operations); await owner.dispose();
+      },
+    });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/first' });
+    operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
+    await entered.promise;
+    operations.push(owner.service.loadDownloadedModel({ modelId: 'fixture/second' }));
+    const rejected = expect(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() })).rejects.toThrow('no longer loaded');
+    operations.push(rejected);
+    release.resolve();
+    await Promise.all(operations);
+    expect(client.generateText).toHaveBeenCalledTimes(1);
+    expect(client.loadDownloadedModel.mock.calls.map(([args]) => args.modelId)).toEqual(['fixture/first', 'fixture/second']);
   });
 
   it('invalidates ready state when canceled while fatal recovery is retiring its old client', async () => {
@@ -249,24 +257,25 @@ describe('Transformers.js service runtime serialization', () => {
     const owner = createTransformersJsService({ createWorkerClient: factory });
     const provider = createTransformersJsProvider({ service: owner.service });
     const operations: Promise<unknown>[] = [];
-    try {
-      await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-      const generation = collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages: [], parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: abort.signal }), abortController: abort });
-      operations.push(generation);
-      await disposalStarted.promise;
-      abort.abort();
-      releaseDisposal.resolve();
-      await expect(generation).resolves.toMatchObject({ result: { type: 'interrupted', reason: 'aborted' } });
-      const next = new AbortController();
-      const ready = await collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages: [], parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: next.signal }), abortController: next });
-      expect(ready.result).toEqual({ type: 'finished', next: 'user' });
-      expect(replacement.loadDownloadedModel).toHaveBeenCalledTimes(1);
-      expect(replacement.generateMessage).toHaveBeenCalledTimes(1);
-      expect(replacement.loadDownloadedModel.mock.invocationCallOrder[0]).toBeLessThan(replacement.generateMessage.mock.invocationCallOrder[0]!);
-      expect(factory).toHaveBeenCalledTimes(2);
-    } finally {
-      releaseDisposal.resolve(); await Promise.allSettled(operations); await owner.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        releaseDisposal.resolve(); await Promise.allSettled(operations); await owner.dispose();
+      },
+    });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
+    const generation = collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages: [], parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: abort.signal }), abortController: abort });
+    operations.push(generation);
+    await disposalStarted.promise;
+    abort.abort();
+    releaseDisposal.resolve();
+    await expect(generation).resolves.toMatchObject({ result: { type: 'interrupted', reason: 'aborted' } });
+    const next = new AbortController();
+    const ready = await collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages: [], parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: next.signal }), abortController: next });
+    expect(ready.result).toEqual({ type: 'finished', next: 'user' });
+    expect(replacement.loadDownloadedModel).toHaveBeenCalledTimes(1);
+    expect(replacement.generateMessage).toHaveBeenCalledTimes(1);
+    expect(replacement.loadDownloadedModel.mock.invocationCallOrder[0]).toBeLessThan(replacement.generateMessage.mock.invocationCallOrder[0]!);
+    expect(factory).toHaveBeenCalledTimes(2);
   });
 
   it('forbids replacement and subsequent Load after fatal recovery cannot dispose its old client', async () => {
@@ -277,15 +286,16 @@ describe('Transformers.js service runtime serialization', () => {
     original.dispose.mockRejectedValue(failure);
     const factory = vi.fn<() => TransformersJsWorkerClient>().mockReturnValueOnce(original).mockReturnValue(replacement);
     const owner = createTransformersJsService({ createWorkerClient: factory });
-    try {
-      await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-      await expect(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() })).rejects.toBe(failure);
-      await expect(owner.service.loadDownloadedModel({ modelId: 'fixture/next' })).rejects.toBe(failure);
-      expect(factory).toHaveBeenCalledTimes(1);
-      expect(replacement.loadDownloadedModel).not.toHaveBeenCalled();
-    } finally {
-      await owner.dispose().catch(() => undefined);
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await owner.dispose().catch(() => undefined);
+      },
+    });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
+    await expect(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() })).rejects.toBe(failure);
+    await expect(owner.service.loadDownloadedModel({ modelId: 'fixture/next' })).rejects.toBe(failure);
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(replacement.loadDownloadedModel).not.toHaveBeenCalled();
   });
 
   it('dispatches generation FIFO only after the preceding client operation settles', async () => {
@@ -302,23 +312,24 @@ describe('Transformers.js service runtime serialization', () => {
       }
     });
     const operations: Promise<unknown>[] = [];
-    try {
-      await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-      operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn(), continuationOwner: 'first' }));
-      await entered.promise;
-      operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn(), continuationOwner: 'second' }));
-      operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn(), continuationOwner: 'third' }));
-      await Promise.resolve();
-      expect(starts).toEqual(['first']);
-      release.resolve();
-      await Promise.all(operations);
-      expect(starts).toEqual(['first', 'second', 'third']);
-      expect(client.interrupt).not.toHaveBeenCalled();
-    } finally {
-      release.resolve();
-      await Promise.allSettled(operations);
-      await owner.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve();
+        await Promise.allSettled(operations);
+        await owner.dispose();
+      },
+    });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
+    operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn(), continuationOwner: 'first' }));
+    await entered.promise;
+    operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn(), continuationOwner: 'second' }));
+    operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn(), continuationOwner: 'third' }));
+    await Promise.resolve();
+    expect(starts).toEqual(['first']);
+    release.resolve();
+    await Promise.all(operations);
+    expect(starts).toEqual(['first', 'second', 'third']);
+    expect(client.interrupt).not.toHaveBeenCalled();
   });
 
   it('cancels a waiting generation without interrupting the running owner', async () => {
@@ -332,26 +343,27 @@ describe('Transformers.js service runtime serialization', () => {
       await release.promise;
     });
     const operations: Promise<unknown>[] = [];
-    try {
-      await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-      operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
-      await entered.promise;
-      const waiting = owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn(), signal: abort.signal });
-      // Own either outcome immediately; the abort result is checked separately
-      // from whether the active client's interrupt authority was exercised.
-      const waitingOutcome = waiting.then(() => ({ kind: 'fulfilled' as const }), error => ({ kind: 'rejected' as const, error }));
-      operations.push(waitingOutcome);
-      abort.abort();
-      await expect(waitingOutcome).resolves.toMatchObject({ kind: 'rejected', error: { name: 'AbortError' } });
-      expect(client.interrupt).not.toHaveBeenCalled();
-      expect(client.generateText).toHaveBeenCalledTimes(1);
-      release.resolve();
-      await operations[0];
-    } finally {
-      release.resolve();
-      await Promise.allSettled(operations);
-      await owner.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve();
+        await Promise.allSettled(operations);
+        await owner.dispose();
+      },
+    });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
+    operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
+    await entered.promise;
+    const waiting = owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn(), signal: abort.signal });
+    // Own either outcome immediately; the abort result is checked separately
+    // from whether the active client's interrupt authority was exercised.
+    const waitingOutcome = waiting.then(() => ({ kind: 'fulfilled' as const }), error => ({ kind: 'rejected' as const, error }));
+    operations.push(waitingOutcome);
+    abort.abort();
+    await expect(waitingOutcome).resolves.toMatchObject({ kind: 'rejected', error: { name: 'AbortError' } });
+    expect(client.interrupt).not.toHaveBeenCalled();
+    expect(client.generateText).toHaveBeenCalledTimes(1);
+    release.resolve();
+    await operations[0];
   });
 
   it('starts only one same-model Load when two callers arrive before client acquisition yields', async () => {
@@ -365,20 +377,21 @@ describe('Transformers.js service runtime serialization', () => {
       return { device: 'webgpu' };
     });
     const operations: Promise<unknown>[] = [];
-    try {
-      operations.push(owner.service.loadDownloadedModel({ modelId: 'fixture/model' }));
-      operations.push(owner.service.loadDownloadedModel({ modelId: 'fixture/model' }));
-      await entered.promise;
-      expect(client.loadDownloadedModel).toHaveBeenCalledTimes(1);
-      release.resolve();
-      await Promise.all(operations);
-      expect(client.loadDownloadedModel).toHaveBeenCalledTimes(1);
-      expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/model' });
-    } finally {
-      release.resolve();
-      await Promise.allSettled(operations);
-      await owner.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve();
+        await Promise.allSettled(operations);
+        await owner.dispose();
+      },
+    });
+    operations.push(owner.service.loadDownloadedModel({ modelId: 'fixture/model' }));
+    operations.push(owner.service.loadDownloadedModel({ modelId: 'fixture/model' }));
+    await entered.promise;
+    expect(client.loadDownloadedModel).toHaveBeenCalledTimes(1);
+    release.resolve();
+    await Promise.all(operations);
+    expect(client.loadDownloadedModel).toHaveBeenCalledTimes(1);
+    expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/model' });
   });
 
   it('does not unload a model until its active generation has settled', async () => {
@@ -391,21 +404,22 @@ describe('Transformers.js service runtime serialization', () => {
       await release.promise;
     });
     const operations: Promise<unknown>[] = [];
-    try {
-      await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
-      operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
-      await entered.promise;
-      operations.push(owner.service.unloadModel());
-      await Promise.resolve();
-      expect(client.unloadModel).not.toHaveBeenCalled();
-      release.resolve();
-      await Promise.all(operations);
-      expect(client.unloadModel).toHaveBeenCalledTimes(1);
-      expect(owner.service.getState()).toMatchObject({ status: 'idle', activeModelId: undefined });
-    } finally {
-      release.resolve();
-      await Promise.allSettled(operations);
-      await owner.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve();
+        await Promise.allSettled(operations);
+        await owner.dispose();
+      },
+    });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
+    operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
+    await entered.promise;
+    operations.push(owner.service.unloadModel());
+    await Promise.resolve();
+    expect(client.unloadModel).not.toHaveBeenCalled();
+    release.resolve();
+    await Promise.all(operations);
+    expect(client.unloadModel).toHaveBeenCalledTimes(1);
+    expect(owner.service.getState()).toMatchObject({ status: 'idle', activeModelId: undefined });
   });
 });

@@ -8,7 +8,7 @@ import { useImagePreferences } from './use-image-preferences';
 import { useImageLibrary } from './use-image-library';
 import { scanImageRepositories } from './logic/model-candidates';
 import type { LocalImageRepository } from './logic/repository-store';
-import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTextTensors } from './test-utils/weights';
+import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTextTensors } from './test-utils/weights.test-support';
 
 const scopes: ReturnType<typeof effectScope>[] = [];
 

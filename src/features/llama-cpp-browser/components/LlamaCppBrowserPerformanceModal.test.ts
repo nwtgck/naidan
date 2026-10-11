@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { shallowRef } from 'vue';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
-import { performancePlan, performanceReport } from '@/features/llama-cpp-browser/test-utils/performance';
+import { performancePlan, performanceReport } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
 import LlamaCppBrowserPerformanceModal from './LlamaCppBrowserPerformanceModal.vue';
 
 const mocks = vi.hoisted(() => ({

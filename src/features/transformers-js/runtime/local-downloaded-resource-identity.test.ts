@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createDownloadedModelReadOnlyCache } from './downloaded-model-cache';
 import { createRequiredDownloadedResourceOperation } from './required-downloaded-resource-operation';
 import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const workerLocationUrl = 'https://app.example.test/assets/worker.js';
 const requiredPath = 'onnx/model_q4f16.onnx';
@@ -44,41 +45,44 @@ afterEach(() => {
 
 it('reads the selected user model through the upstream /models/user/ cache spelling', async () => {
   const { fs, operation } = await setup({ modelId: 'user/uploaded' });
-  try {
-    // hub.buildResourcePaths treats user/uploaded as a valid repository-shaped
-    // identifier and prefixes env.localModelPath (/models/) for its local lookup.
-    const response = await operation.cache.match('/models/user/uploaded/onnx/model_q4f16.onnx');
-    expect(response).toBeDefined();
-    expect(fs.activity.some(entry => entry.operation === 'stat' && entry.path === storedPath)).toBe(true);
-    expect(await response!.arrayBuffer()).toEqual(body.buffer);
-    expect(operation.assertHealthy).not.toThrow();
-    expect(fs.activity.filter(entry => entry.operation !== 'stat').map(entry => entry.operation)).toEqual(['body-read']);
-  } finally {
-    await operation.close();
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      await operation.close();
+    },
+  });
+  // hub.buildResourcePaths treats user/uploaded as a valid repository-shaped
+  // identifier and prefixes env.localModelPath (/models/) for its local lookup.
+  const response = await operation.cache.match('/models/user/uploaded/onnx/model_q4f16.onnx');
+  expect(response).toBeDefined();
+  expect(fs.activity.some(entry => entry.operation === 'stat' && entry.path === storedPath)).toBe(true);
+  expect(await response!.arrayBuffer()).toEqual(body.buffer);
+  expect(operation.assertHealthy).not.toThrow();
+  expect(fs.activity.filter(entry => entry.operation !== 'stat').map(entry => entry.operation)).toEqual(['body-read']);
 });
 
 it('reads the selected local model through its existing OPFS user-directory alias', async () => {
   const { fs, operation } = await setup({ modelId: 'local/uploaded' });
-  try {
-    const response = await operation.cache.match('/models/local/uploaded/onnx/model_q4f16.onnx');
-    expect(response).toBeDefined();
-    expect(fs.activity.some(entry => entry.operation === 'stat' && entry.path === storedPath)).toBe(true);
-    expect(await response!.arrayBuffer()).toEqual(body.buffer);
-    expect(operation.assertHealthy).not.toThrow();
-    expect(fs.activity.filter(entry => entry.operation !== 'stat').map(entry => entry.operation)).toEqual(['body-read']);
-  } finally {
-    await operation.close();
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      await operation.close();
+    },
+  });
+  const response = await operation.cache.match('/models/local/uploaded/onnx/model_q4f16.onnx');
+  expect(response).toBeDefined();
+  expect(fs.activity.some(entry => entry.operation === 'stat' && entry.path === storedPath)).toBe(true);
+  expect(await response!.arrayBuffer()).toEqual(body.buffer);
+  expect(operation.assertHealthy).not.toThrow();
+  expect(fs.activity.filter(entry => entry.operation !== 'stat').map(entry => entry.operation)).toEqual(['body-read']);
 });
 
 it('does not admit another local model through an equivalent path spelling', async () => {
   const { fs, operation } = await setup({ modelId: 'user/another' });
-  try {
-    await expect(operation.cache.match('/models/user/uploaded/onnx/model_q4f16.onnx')).resolves.toBeUndefined();
-    expect(fs.activity).toEqual([]);
-    expect(operation.assertHealthy).not.toThrow();
-  } finally {
-    await operation.close();
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      await operation.close();
+    },
+  });
+  await expect(operation.cache.match('/models/user/uploaded/onnx/model_q4f16.onnx')).resolves.toBeUndefined();
+  expect(fs.activity).toEqual([]);
+  expect(operation.assertHealthy).not.toThrow();
 });

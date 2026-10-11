@@ -5,6 +5,7 @@ import { memoryDirectory, ggufBytes } from '@/features/llama-cpp-browser/hugging
 import { listStoredModels, planStoredModelRemoval, removeStoredModel, storedModelDirectory } from '@/features/llama-cpp-browser/runtime/model-store';
 import { scanDeletionTree } from '@/features/llama-cpp-browser/runtime/deletion-plan';
 import { createDownloadWriter } from '@/features/llama-cpp-browser/hugging-face/writer';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 let root: ReturnType<typeof memoryDirectory>;
 let service: ReturnType<typeof createTransformersJsService>;
@@ -17,11 +18,12 @@ async function file({ path, content }: { path: string; content: Uint8Array }): P
   let folder = root;
   for (const part of parts) folder = await folder.getDirectoryHandle(part, { create: true });
   const access = await (await folder.getFileHandle(name, { create: true })).createSyncAccessHandle();
-  try {
-    access.write(content, { at: 0 });
-  } finally {
-    access.close();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      access.close();
+    },
+  });
+  access.write(content, { at: 0 });
 }
 
 async function textFile({ path }: { path: string }): Promise<void> {

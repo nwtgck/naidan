@@ -4,6 +4,7 @@ import type { GenerationInvocationObservation } from '@/features/transformers-js
 import { getProductionTransformersArtifact, importProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 import { createGenerationCapture, generationCaptureContextSchema, generationCaptureTakeResultSchema, GENERATION_CAPTURE_IMAGE_SIZE_FIELD_BYTES, GENERATION_CAPTURE_IMAGE_SIZE_SERIALIZED_FIELD_BYTES, GENERATION_CAPTURE_IMAGE_SIZE_TOTAL_BYTES } from './generation-capture';
 import { productionLoadIdentitySchema } from './load-identity';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 type Runtime = typeof import('@huggingface/transformers');
 let runtime: Runtime;
@@ -22,19 +23,21 @@ beforeAll(async () => {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'process')!;
   const originalProcess = globalThis.process;
   Object.defineProperty(globalThis, 'process', { configurable: true, writable: true, value: { ...originalProcess, release: { ...originalProcess.release, name: 'browser-test' } } });
-  try {
-    runtime = await importProductionTransformersArtifact({ moduleUrl: `${artifact.moduleUrl}?capture=tensor-layout` }) as Runtime;
-  } finally {
-    Object.defineProperty(globalThis, 'process', descriptor);
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      Object.defineProperty(globalThis, 'process', descriptor);
+    },
+  });
+  runtime = await importProductionTransformersArtifact({ moduleUrl: `${artifact.moduleUrl}?capture=tensor-layout` }) as Runtime;
 }, 30_000);
 
 afterAll(() => {
-  try {
-    expect(fetch).not.toHaveBeenCalled();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      vi.unstubAllGlobals();
+    },
+  });
+  expect(fetch).not.toHaveBeenCalled();
 });
 
 const run = { runId: 'synthetic-run', workerEpoch: 1 };

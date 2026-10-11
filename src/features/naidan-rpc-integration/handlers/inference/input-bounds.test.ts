@@ -9,6 +9,7 @@ import { transportPair } from '@/features/naidan-rpc/test-transport';
 import { naidanPeerContract } from '@/features/naidan-rpc-integration/contract';
 import { createNaidanPeerImplementation } from '@/features/naidan-rpc-integration/implementation';
 import { receiveTranscript } from '@/features/naidan-rpc-integration/codecs/chat-wire';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Structural dimension fixture, not compressed pixels or a decoder test.
 function png({ width, height }: { width: number, height: number }) {
@@ -105,41 +106,42 @@ it.each(['depth', 'repeated-image'] as const)('rejects %s over real typed RPC wi
     signal: lifetime.signal,
   });
   const caller = new NaidanRpcPeer({ transport: pair.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: lifetime.signal });
-  try {
-    const bytes = png({ width: 2048, height: 2048 });
-    const input = (() => {
-      switch (attack) {
-      case 'depth': return {
-        model: 'local/model',
-        // A hostile peer can send byte documents without our outbound helper.
-        transcript: bytesSource({ bytes: new TextEncoder().encode('{"child":'.repeat(256) + 'null' + '}'.repeat(256)) }),
-        images: [],
-      };
-      case 'repeated-image': return {
-        model: 'local/model',
-        transcript: transcript({ attachments: Array(32).fill(0) }),
-        images: [{ mimeType: 'image/png' as const, byteLength: bytes.length, data: bytesSource({ bytes }) }],
-      };
-      default: { const exhaustive: never = attack; throw new Error(String(exhaustive)); }
-      }
-    })();
-    const client = caller.client({ contract: naidanPeerContract });
-    const rejected = client.generateChat({ input, on: { progress: undefined }, signal: lifetime.signal, timeoutMs: undefined });
-    const closed = rejected.closed.catch(error => error);
-    const output = await rejected.result;
-    await expect(collectBytes({ readable: output.events, limit: 8192, signal: lifetime.signal })).rejects.toBeDefined();
-    await closed;
-    expect(engine.generate).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(budget.reserved).toBe(0));
-    const accepted = client.generateChat({
-      input: { model: 'local/model', transcript: transcript({ attachments: [] }), images: [] },
-      on: { progress: undefined },
-      signal: lifetime.signal,
-      timeoutMs: undefined,
-    });
-    await collectBytes({ readable: (await accepted.result).events, limit: 8192, signal: lifetime.signal }); await accepted.closed;
-    expect(engine.generate).toHaveBeenCalledOnce(); expect(budget.reserved).toBe(0);
-  } finally {
-    lifetime.abort(); pair.close(); await Promise.all([provider.retire(), caller.retire()]);
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      lifetime.abort(); pair.close(); await Promise.all([provider.retire(), caller.retire()]);
+    },
+  });
+  const bytes = png({ width: 2048, height: 2048 });
+  const input = (() => {
+    switch (attack) {
+    case 'depth': return {
+      model: 'local/model',
+      // A hostile peer can send byte documents without our outbound helper.
+      transcript: bytesSource({ bytes: new TextEncoder().encode('{"child":'.repeat(256) + 'null' + '}'.repeat(256)) }),
+      images: [],
+    };
+    case 'repeated-image': return {
+      model: 'local/model',
+      transcript: transcript({ attachments: Array(32).fill(0) }),
+      images: [{ mimeType: 'image/png' as const, byteLength: bytes.length, data: bytesSource({ bytes }) }],
+    };
+    default: { const exhaustive: never = attack; throw new Error(String(exhaustive)); }
+    }
+  })();
+  const client = caller.client({ contract: naidanPeerContract });
+  const rejected = client.generateChat({ input, on: { progress: undefined }, signal: lifetime.signal, timeoutMs: undefined });
+  const closed = rejected.closed.catch(error => error);
+  const output = await rejected.result;
+  await expect(collectBytes({ readable: output.events, limit: 8192, signal: lifetime.signal })).rejects.toBeDefined();
+  await closed;
+  expect(engine.generate).not.toHaveBeenCalled();
+  await vi.waitFor(() => expect(budget.reserved).toBe(0));
+  const accepted = client.generateChat({
+    input: { model: 'local/model', transcript: transcript({ attachments: [] }), images: [] },
+    on: { progress: undefined },
+    signal: lifetime.signal,
+    timeoutMs: undefined,
+  });
+  await collectBytes({ readable: (await accepted.result).events, limit: 8192, signal: lifetime.signal }); await accepted.closed;
+  expect(engine.generate).toHaveBeenCalledOnce(); expect(budget.reserved).toBe(0);
 });

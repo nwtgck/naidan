@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { hostModelHandles, type HostModelDirectoryHandle } from '@/00-storage/service/host-model-handles';
-import { MemoryDirectory, MemoryFile } from '@/features/stable-diffusion-cpp-browser/test-utils/storage';
+import { MemoryDirectory, MemoryFile } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
 import { listHostImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
 import { prepareModelRemoval } from '@/features/llama-cpp-browser/runtime/model-store';
 import { createDownloadWriter } from './writer';

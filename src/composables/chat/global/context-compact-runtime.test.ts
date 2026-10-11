@@ -1,6 +1,7 @@
 import { toChatId } from '@/01-models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createContextCompactRuntime } from './context-compact-runtime';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe('createContextCompactRuntime', () => {
   beforeEach(() => {
@@ -9,75 +10,77 @@ describe('createContextCompactRuntime', () => {
 
   it('clears completed progress after a short delay', async () => {
     vi.useFakeTimers();
-    try {
-      const runtime = createContextCompactRuntime();
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        vi.useRealTimers();
+      },
+    });
+    const runtime = createContextCompactRuntime();
 
-      runtime.setProgress({
-        chatId: toChatId({ raw: 'chat-compact' }),
-        progress: {
-          phase: 'complete',
-          requestPreview: undefined,
-          outputPreview: '# Compact Context',
-        },
-      });
-
-      expect(runtime.getProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
+    runtime.setProgress({
+      chatId: toChatId({ raw: 'chat-compact' }),
+      progress: {
         phase: 'complete',
         requestPreview: undefined,
         outputPreview: '# Compact Context',
-      });
+      },
+    });
 
-      await vi.advanceTimersByTimeAsync(399);
+    expect(runtime.getProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
+      phase: 'complete',
+      requestPreview: undefined,
+      outputPreview: '# Compact Context',
+    });
 
-      expect(runtime.getProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
-        phase: 'complete',
-        requestPreview: undefined,
-        outputPreview: '# Compact Context',
-      });
+    await vi.advanceTimersByTimeAsync(399);
 
-      await vi.advanceTimersByTimeAsync(1);
+    expect(runtime.getProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
+      phase: 'complete',
+      requestPreview: undefined,
+      outputPreview: '# Compact Context',
+    });
 
-      expect(runtime.getProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
-        phase: 'idle',
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(runtime.getProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
+      phase: 'idle',
+    });
   });
 
   it('replaces the reset timer when a new progress update arrives', async () => {
     vi.useFakeTimers();
-    try {
-      const runtime = createContextCompactRuntime();
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        vi.useRealTimers();
+      },
+    });
+    const runtime = createContextCompactRuntime();
 
-      runtime.setProgress({
-        chatId: toChatId({ raw: 'chat-compact' }),
-        progress: {
-          phase: 'complete',
-          requestPreview: undefined,
-          outputPreview: '# First',
-        },
-      });
-      runtime.setProgress({
-        chatId: toChatId({ raw: 'chat-compact' }),
-        progress: {
-          phase: 'building_request',
-          compactedMessageCount: 4,
-          suffixMessageCount: 2,
-          requestPreview: 'preview',
-        },
-      });
-
-      await vi.advanceTimersByTimeAsync(400);
-
-      expect(runtime.getProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
+    runtime.setProgress({
+      chatId: toChatId({ raw: 'chat-compact' }),
+      progress: {
+        phase: 'complete',
+        requestPreview: undefined,
+        outputPreview: '# First',
+      },
+    });
+    runtime.setProgress({
+      chatId: toChatId({ raw: 'chat-compact' }),
+      progress: {
         phase: 'building_request',
         compactedMessageCount: 4,
         suffixMessageCount: 2,
         requestPreview: 'preview',
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(400);
+
+    expect(runtime.getProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
+      phase: 'building_request',
+      compactedMessageCount: 4,
+      suffixMessageCount: 2,
+      requestPreview: 'preview',
+    });
   });
 });

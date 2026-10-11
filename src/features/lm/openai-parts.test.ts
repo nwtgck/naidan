@@ -6,7 +6,7 @@ import type { AssistantMessageNode } from '@/01-models/types';
 import type { LmProvider, ToolCallDraft } from '@/01-models/lm';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { z } from 'zod';
-import { runProviderConversationForTest } from './provider-test-support';
+import { runProviderConversationForTest } from './provider.test-support';
 import type { LmFetch } from './fetch';
 
 function node(): AssistantMessageNode {

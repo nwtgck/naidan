@@ -11,17 +11,19 @@ import type {
   ITransformersJsWorker,
   TransformersJsProductionInvestigationProgressCallback,
 } from "@/features/transformers-js/types";
+import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 async function releaseRemote({ remote, ports }: {
   remote: { [Comlink.releaseProxy]: () => void | Promise<void> },
   ports: MessageChannel,
 }): Promise<void> {
-  try {
-    await remote[Comlink.releaseProxy]();
-  } finally {
-    ports.port1.close();
-    ports.port2.close();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      ports.port1.close();
+      ports.port2.close();
+    },
+  });
+  await remote[Comlink.releaseProxy]();
 }
 
 describe("Transformers.js Comlink transport contracts", () => {
@@ -98,40 +100,41 @@ describe("Transformers.js Comlink transport contracts", () => {
     const onAttemptEvent = vi.fn();
     const onAttemptCheckpoint = vi.fn();
 
-    try {
-      const planningResult = await remote.runPartialInvestigation(
-        { runId: "host-run", modelId: "org/model", externalNetworkPolicy: "allow", executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true } },
-        Comlink.proxy(onEvent),
-        Comlink.proxy(onRunCheckpoint),
-        Comlink.proxy(async () => {
-          throw new Error('Fresh metadata was not requested by this transport fixture');
-        }),
-      );
-      await remote.runCandidateAttempt(
-        {} as never,
-        {} as never,
-        {} as never,
-        {} as never,
-        {} as never,
-        Comlink.proxy(onEvent),
-        Comlink.proxy(onAttemptEvent),
-        Comlink.proxy(onAttemptCheckpoint),
-      );
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await releaseRemote({ remote, ports });
+      },
+    });
+    const planningResult = await remote.runPartialInvestigation(
+      { runId: "host-run", modelId: "org/model", externalNetworkPolicy: "allow", executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true } },
+      Comlink.proxy(onEvent),
+      Comlink.proxy(onRunCheckpoint),
+      Comlink.proxy(async () => {
+        throw new Error('Fresh metadata was not requested by this transport fixture');
+      }),
+    );
+    await remote.runCandidateAttempt(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      Comlink.proxy(onEvent),
+      Comlink.proxy(onAttemptEvent),
+      Comlink.proxy(onAttemptCheckpoint),
+    );
 
-      expect(planningResult).toEqual({ modelId: "org/model" });
-      await vi.waitFor(() => {
-        expect(onEvent).toHaveBeenCalledTimes(2);
-        expect(onRunCheckpoint).toHaveBeenCalledTimes(1);
-        expect(onAttemptEvent).toHaveBeenCalledTimes(1);
-        expect(onAttemptCheckpoint).toHaveBeenCalledTimes(1);
-      });
-      expect(onEvent).toHaveBeenCalledWith({ event: planningEvent });
-      expect(onRunCheckpoint).toHaveBeenCalledWith({ run: { modelId: "org/model" } });
-      expect(onAttemptEvent).toHaveBeenCalledWith({ event: attemptEvent });
-      expect(onAttemptCheckpoint).toHaveBeenCalledWith({ attempt: attemptCheckpoint });
-    } finally {
-      await releaseRemote({ remote, ports });
-    }
+    expect(planningResult).toEqual({ modelId: "org/model" });
+    await vi.waitFor(() => {
+      expect(onEvent).toHaveBeenCalledTimes(2);
+      expect(onRunCheckpoint).toHaveBeenCalledTimes(1);
+      expect(onAttemptEvent).toHaveBeenCalledTimes(1);
+      expect(onAttemptCheckpoint).toHaveBeenCalledTimes(1);
+    });
+    expect(onEvent).toHaveBeenCalledWith({ event: planningEvent });
+    expect(onRunCheckpoint).toHaveBeenCalledWith({ run: { modelId: "org/model" } });
+    expect(onAttemptEvent).toHaveBeenCalledWith({ event: attemptEvent });
+    expect(onAttemptCheckpoint).toHaveBeenCalledWith({ attempt: attemptCheckpoint });
   });
 
   it("transports the Production investigation progress callback as a top-level Comlink proxy argument", async () => {
@@ -147,22 +150,23 @@ describe("Transformers.js Comlink transport contracts", () => {
     const remote = Comlink.wrap<ProductionRemote>(ports.port2 as unknown as Comlink.Endpoint);
     const progressCallback = vi.fn<TransformersJsProductionInvestigationProgressCallback>();
 
-    try {
-      const result = await remote.runModelSupportInvestigationScenario(
-        { modelId: "org/model" } as never,
-        Comlink.proxy(progressCallback),
-        Comlink.proxy(vi.fn()),
-      );
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await releaseRemote({ remote, ports });
+      },
+    });
+    const result = await remote.runModelSupportInvestigationScenario(
+      { modelId: "org/model" } as never,
+      Comlink.proxy(progressCallback),
+      Comlink.proxy(vi.fn()),
+    );
 
-      expect(result).toEqual({ modelId: "org/model" });
-      await vi.waitFor(() => {
-        expect(progressCallback).toHaveBeenCalledTimes(1);
-      });
-      expect(progressCallback).toHaveBeenCalledWith({
-        event: { kind: "stage", status: "model-support-production-model-load" },
-      });
-    } finally {
-      await releaseRemote({ remote, ports });
-    }
+    expect(result).toEqual({ modelId: "org/model" });
+    await vi.waitFor(() => {
+      expect(progressCallback).toHaveBeenCalledTimes(1);
+    });
+    expect(progressCallback).toHaveBeenCalledWith({
+      event: { kind: "stage", status: "model-support-production-model-load" },
+    });
   });
 });

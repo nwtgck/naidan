@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { readFile } from 'node:fs/promises';
 import { expect, it, vi } from 'vitest';
-import { createHttpRelay } from './test-support/http-relay';
+import { createHttpRelay } from './test-support/http-relay.test-support';
 import { openPipingRpc } from './piping';
 import { createNaidanPipingIdentity } from '@/features/naidan-piping-duplex';
 import type { NaidanPipingIdentity, NaidanPipingPeerVerifier } from '@/features/naidan-piping-duplex';

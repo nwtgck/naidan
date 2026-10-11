@@ -3,23 +3,25 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { NaidanPeerManager } from './manager';
 import type { RpcLink, RpcManagerDependencies } from './manager';
 import { acquireRpcOwner } from './owner';
-import { createWebLocksFixture } from './test-support/web-locks';
+import { createWebLocksFixture } from './test-support/web-locks.test-support';
 import { encodePeerKey } from './identity';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
 import { createInferenceBudget } from '@/features/naidan-rpc-integration/handlers/inference/budget';
 import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const registryAccess: NaidanRpcRegistryAccess = { providerGeneration: 1, registryId: undefined, persistence: 'durable' };
 
 const cleanups: (() => Promise<void>)[] = [];
 
 afterEach(async () => {
-  try {
-    for (const cleanup of cleanups.splice(0)) await cleanup();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      vi.unstubAllGlobals();
+    },
+  });
+  for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
 function endpoint() {

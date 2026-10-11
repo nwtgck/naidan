@@ -2,6 +2,7 @@
 import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 import { getProductionTransformersArtifact, importProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 import { observeNativeStreamer, type NativeStreamRecorder } from './native-streamer-capture';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 type Runtime = typeof import('@huggingface/transformers');
 let runtime: Runtime;
@@ -17,19 +18,21 @@ beforeAll(async () => {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'process')!;
   const originalProcess = globalThis.process;
   Object.defineProperty(globalThis, 'process', { configurable: true, writable: true, value: { ...originalProcess, release: { ...originalProcess.release, name: 'browser-test' } } });
-  try {
-    runtime = await importProductionTransformersArtifact({ moduleUrl: `${artifact.moduleUrl}?capture=native-streamer` }) as Runtime;
-  } finally {
-    Object.defineProperty(globalThis, 'process', descriptor);
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      Object.defineProperty(globalThis, 'process', descriptor);
+    },
+  });
+  runtime = await importProductionTransformersArtifact({ moduleUrl: `${artifact.moduleUrl}?capture=native-streamer` }) as Runtime;
 }, 30_000);
 
 afterAll(() => {
-  try {
-    expect(forbiddenFetch).not.toHaveBeenCalled();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      vi.unstubAllGlobals();
+    },
+  });
+  expect(forbiddenFetch).not.toHaveBeenCalled();
 });
 
 function recorder() {

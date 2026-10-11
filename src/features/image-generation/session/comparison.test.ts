@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { toImageGenerationSessionId } from '@/01-models/ids';
-import { generationAssetFixture, generationRunFixture } from '@/00-storage/service/image-generation/test-support';
+import { generationAssetFixture, generationRunFixture } from '@/00-storage/service/image-generation/index.test-support';
 import { compareImageGenerationImages } from './comparison';
 
 it('compares each actual output seed rather than a shared base seed', () => {

@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { flushPromises, mount } from '@vue/test-utils';
 import { EMPTY_LM_PARAMETERS, type EndpointType, type Settings } from '@/01-models/types';
 import ConnectionTab from './ConnectionTab.vue';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -318,23 +319,24 @@ describe('ConnectionTab Ollama management integration', () => {
   it.each([false, true])('propagates standalone=%s to both chat and title endpoint choices without hiding features', async standalone => {
     vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', standalone);
     const wrapper = mount(ConnectionTab, { props: { modelValue: createSettings({ endpointType: 'ollama' }), availableModels: [], isFetchingModels: false, hasUnsavedChanges: false }, global: { stubs: globalStubs } });
-    try {
-      await flushPromises();
-      const transformers = wrapper.findAll('select option[value="transformers_js"]');
-      const llama = wrapper.findAll('select option[value="llama_cpp_browser"]');
-      expect(transformers).toHaveLength(2);
-      expect(llama).toHaveLength(2);
-      for (const option of transformers) {
-        expect(option.element).toBeInstanceOf(HTMLOptionElement);
-        expect(option.attributes('disabled') !== undefined).toBe(standalone);
-        expect(option.text()).toContain('Transformers.js');
-      }
-      for (const option of llama) {
-        expect(option.attributes('disabled')).toBeUndefined();
-        expect(option.text()).toContain('llama.cpp');
-      }
-    } finally {
-      wrapper.unmount(); vi.unstubAllGlobals();
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        wrapper.unmount(); vi.unstubAllGlobals();
+      },
+    });
+    await flushPromises();
+    const transformers = wrapper.findAll('select option[value="transformers_js"]');
+    const llama = wrapper.findAll('select option[value="llama_cpp_browser"]');
+    expect(transformers).toHaveLength(2);
+    expect(llama).toHaveLength(2);
+    for (const option of transformers) {
+      expect(option.element).toBeInstanceOf(HTMLOptionElement);
+      expect(option.attributes('disabled') !== undefined).toBe(standalone);
+      expect(option.text()).toContain('Transformers.js');
+    }
+    for (const option of llama) {
+      expect(option.attributes('disabled')).toBeUndefined();
+      expect(option.text()).toContain('llama.cpp');
     }
   });
 });
@@ -343,17 +345,18 @@ describe('Naidan RPC endpoint availability', () => {
   it('offers RPC for global chat and title only while the feature is enabled', async () => {
     const settings = createSettings({ endpointType: 'ollama' });
     const wrapper = mount(ConnectionTab, { props: { modelValue: settings, availableModels: [], isFetchingModels: false, hasUnsavedChanges: false }, global: { stubs: globalStubs } });
-    try {
-      await flushPromises();
-      for (const name of ['setting-provider-select', 'setting-title-endpoint-type-select']) {
-        expect(wrapper.get(`[data-testid="${name}"]`).find('option[value="naidan_rpc"]').exists()).toBe(false);
-      }
-      await wrapper.setProps({ modelValue: { ...settings, experimental: { ...settings.experimental, naidanRpc: 'enabled' } } });
-      for (const name of ['setting-provider-select', 'setting-title-endpoint-type-select']) {
-        expect(wrapper.get(`[data-testid="${name}"]`).get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', false);
-      }
-    } finally {
-      wrapper.unmount();
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        wrapper.unmount();
+      },
+    });
+    await flushPromises();
+    for (const name of ['setting-provider-select', 'setting-title-endpoint-type-select']) {
+      expect(wrapper.get(`[data-testid="${name}"]`).find('option[value="naidan_rpc"]').exists()).toBe(false);
+    }
+    await wrapper.setProps({ modelValue: { ...settings, experimental: { ...settings.experimental, naidanRpc: 'enabled' } } });
+    for (const name of ['setting-provider-select', 'setting-title-endpoint-type-select']) {
+      expect(wrapper.get(`[data-testid="${name}"]`).get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', false);
     }
   });
 
@@ -362,17 +365,18 @@ describe('Naidan RPC endpoint availability', () => {
     if (typeof settings.titleGeneration !== 'object') throw new Error('Expected title settings');
     settings.titleGeneration.endpoint = { type: 'naidan_rpc', registrationId: undefined };
     const wrapper = mount(ConnectionTab, { props: { modelValue: settings, availableModels: [], isFetchingModels: false, hasUnsavedChanges: false }, global: { stubs: globalStubs } });
-    try {
-      await flushPromises();
-      for (const name of ['setting-provider-select', 'setting-title-endpoint-type-select']) {
-        const select = wrapper.get(`[data-testid="${name}"]`);
-        expect(select.element).toHaveProperty('value', 'naidan_rpc');
-        expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', true);
-      }
-      expect(settings.endpoint.type).toBe('naidan_rpc');
-      expect(wrapper.emitted('update:modelValue')).toBeUndefined();
-    } finally {
-      wrapper.unmount();
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        wrapper.unmount();
+      },
+    });
+    await flushPromises();
+    for (const name of ['setting-provider-select', 'setting-title-endpoint-type-select']) {
+      const select = wrapper.get(`[data-testid="${name}"]`);
+      expect(select.element).toHaveProperty('value', 'naidan_rpc');
+      expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', true);
     }
+    expect(settings.endpoint.type).toBe('naidan_rpc');
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
   });
 });

@@ -4,7 +4,7 @@ import { renderChatMetadataMarkdown } from './naidan-sysfs/render/metadata-markd
 import { renderLeafMetadataMarkdown } from './naidan-sysfs/render/leaf-metadata-markdown';
 import { renderMessageMarkdown } from './naidan-sysfs/render/message-markdown';
 import { NAIDAN_SYSFS_VERSION_TEXT } from './naidan-sysfs/constants';
-import { createMountedNaidanSysfsWesh, executeInWesh, mainChatContent, mainChatMetadata, siblingChatMetadata } from './naidan-sysfs.test-helpers';
+import { createMountedNaidanSysfsWesh, executeInWesh, mainChatContent, mainChatMetadata, siblingChatMetadata } from './naidan-sysfs.test-support';
 import type { Wesh } from './index';
 import { toMessageId } from '@/01-models/ids';
 

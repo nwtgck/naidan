@@ -2,7 +2,7 @@ import { downloadReadableStream } from '@/utils/stream-download';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useFileExplorerDirectoryDownload } from './useFileExplorerDirectoryDownload';
 
 const mockAddToast = vi.fn();

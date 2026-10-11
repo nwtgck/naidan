@@ -13,6 +13,7 @@ import type { GenerationStrategy } from '@/features/transformers-js/generation-s
 import type { NativeProtocolStreamer as NativeStreamerType } from '@/features/transformers-js/models/native-protocol-streamer';
 // eslint-disable-next-line no-restricted-imports -- Types for the original runtime loaded only inside this offline model fixture.
 import type * as Tjs from '@huggingface/transformers';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 type Context = Parameters<GenerationStrategy['generate']>[0];
 const modelId = "HuggingFaceTB/SmolLM2-135M-Instruct";
@@ -67,27 +68,28 @@ describe("SmolLM2 135M original tokenizer and structured standard generation", (
         signal: controller.signal,
         generate: async ({ onEvent }) => {
           const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
-          try {
-            const strategy = selectGenerationStrategy({ modelType: "llama", activeModelId: modelId }); expect(strategy.kind).toBe('standard');
-            await strategy.generate({
-              model,
-              tokenizer,
-              messages: input.messages,
-              params: undefined,
-              tools: undefined,
-              onChunk,
-              onToolCalls,
-              onRawChunk: () => {},
-              debugLog: () => {},
-              observationSink: undefined,
-              generationCapture: undefined,
-              runtimeState: { activeModelId: modelId, gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, qwen3_5SequenceCache: undefined, generationStateOwner: {} },
-              stoppingCriteria: { reset: () => {}, interrupt: () => {} },
-              onGenerationEvent: ({ event }) => queue.enqueue({ event }),
-            });
-          } finally {
-            await queue.finish();
-          }
+          await using _cleanupResource = createAsyncTestDisposable({
+            dispose: async () => {
+              await queue.finish();
+            },
+          });
+          const strategy = selectGenerationStrategy({ modelType: "llama", activeModelId: modelId }); expect(strategy.kind).toBe('standard');
+          await strategy.generate({
+            model,
+            tokenizer,
+            messages: input.messages,
+            params: undefined,
+            tools: undefined,
+            onChunk,
+            onToolCalls,
+            onRawChunk: () => {},
+            debugLog: () => {},
+            observationSink: undefined,
+            generationCapture: undefined,
+            runtimeState: { activeModelId: modelId, gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, qwen3_5SequenceCache: undefined, generationStateOwner: {} },
+            stoppingCriteria: { reset: () => {}, interrupt: () => {} },
+            onGenerationEvent: ({ event }) => queue.enqueue({ event }),
+          });
         },
       }),
     });

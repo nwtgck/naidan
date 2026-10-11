@@ -7,6 +7,7 @@ import type { DownloadSizeWorkerApi } from './types';
 import type { TransformersJsProgressCallback } from '@/features/transformers-js/types';
 import type { ITransformersJsDownloadWorker } from '@/features/transformers-js/types';
 import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({ prepare: vi.fn(), accept: vi.fn() }));
 vi.mock('../logic/prepare-production-runtime-artifacts', () => ({
@@ -218,38 +219,39 @@ it('commits real prefetch bytes and markers in original order while the independ
   const tracker = createDownloadProgressTracker();
   const { runProductionDownloadPreparation } = await import('@/features/transformers-js/download-verification/logic/run-production-download-preparation');
   const running = runProductionDownloadPreparation({ modelId: 'fixture/model', revision, candidateOrder: [{ device: 'wasm', dtype: 'q4' }], onDownloadProgress: ({ event }) => tracker.observe({ event }) });
-  try {
-    await Promise.race([Promise.all([optionalStarted.promise, firstBodyStarted.promise]), running.then(() => {
-      throw new Error('Premature orchestration settlement');
-    })]);
-    expect(tracker.snapshot().overallProgress).toBeUndefined();
-    expect(sizeRequests).toHaveLength(1);
-    expect(artifactRequests).toEqual([urls[0]]);
-    expect(mocks.accept).not.toHaveBeenCalled();
-    releaseBody.resolve();
-    expect(await running).toMatchObject({ status: 'accepted' });
-    expect(artifactRequests).toEqual(urls);
-    expect(probeAborted).toBe(false);
-    const root = `models/huggingface.co/fixture/model/resolve/${revision}/onnx/`;
-    expect([...fs.files].map(([path, bytes]) => ({ path, bytes: [...bytes] })).sort((a, b) => a.path.localeCompare(b.path))).toEqual([
-      { path: `${root}.a.complete`, bytes: [] }, { path: `${root}.b.complete`, bytes: [] },
-      { path: `${root}a`, bytes: [1, 2, 3, 4] }, { path: `${root}b`, bytes: [5, 6, 7, 8] },
-    ]);
-    expect(tracker.snapshot()).toMatchObject({ overallProgress: 95, receivedBytes: 8, completedFileCount: 2 });
-    expect(mocks.accept).toHaveBeenCalledOnce();
-    expect(unexpectedRuntime).not.toHaveBeenCalled();
-    const final = tracker.snapshot();
-    await vi.advanceTimersByTimeAsync(2_000);
-    optionalResponse.resolve(new Response(new ReadableStream({
-      cancel() {
-        lateCanceled.resolve();
-      },
-    })));
-    await lateCanceled.promise;
-    expect(tracker.snapshot()).toEqual(final);
-    expect(sizeWorker?.terminated).toBe(true);
-  } finally {
-    releaseBody.resolve(); optionalResponse.resolve(Response.json([]));
-    await running; await client.dispose();
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      releaseBody.resolve(); optionalResponse.resolve(Response.json([]));
+      await running; await client.dispose();
+    },
+  });
+  await Promise.race([Promise.all([optionalStarted.promise, firstBodyStarted.promise]), running.then(() => {
+    throw new Error('Premature orchestration settlement');
+  })]);
+  expect(tracker.snapshot().overallProgress).toBeUndefined();
+  expect(sizeRequests).toHaveLength(1);
+  expect(artifactRequests).toEqual([urls[0]]);
+  expect(mocks.accept).not.toHaveBeenCalled();
+  releaseBody.resolve();
+  expect(await running).toMatchObject({ status: 'accepted' });
+  expect(artifactRequests).toEqual(urls);
+  expect(probeAborted).toBe(false);
+  const root = `models/huggingface.co/fixture/model/resolve/${revision}/onnx/`;
+  expect([...fs.files].map(([path, bytes]) => ({ path, bytes: [...bytes] })).sort((a, b) => a.path.localeCompare(b.path))).toEqual([
+    { path: `${root}.a.complete`, bytes: [] }, { path: `${root}.b.complete`, bytes: [] },
+    { path: `${root}a`, bytes: [1, 2, 3, 4] }, { path: `${root}b`, bytes: [5, 6, 7, 8] },
+  ]);
+  expect(tracker.snapshot()).toMatchObject({ overallProgress: 95, receivedBytes: 8, completedFileCount: 2 });
+  expect(mocks.accept).toHaveBeenCalledOnce();
+  expect(unexpectedRuntime).not.toHaveBeenCalled();
+  const final = tracker.snapshot();
+  await vi.advanceTimersByTimeAsync(2_000);
+  optionalResponse.resolve(new Response(new ReadableStream({
+    cancel() {
+      lateCanceled.resolve();
+    },
+  })));
+  await lateCanceled.promise;
+  expect(tracker.snapshot()).toEqual(final);
+  expect(sizeWorker?.terminated).toBe(true);
 });

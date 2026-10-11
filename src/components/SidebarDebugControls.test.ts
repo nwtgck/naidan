@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import SidebarDebugControls from './SidebarDebugControls.vue';
 vi.mock('@/composables/useLayout', () => ({ useLayout: () => ({ isDebugOpen: ref(false), toggleDebug: vi.fn(), toggleWeshTerminal: vi.fn() }) }));
 vi.mock('@/composables/useGlobalEvents', () => ({ useGlobalEvents: () => ({ errorCount: ref(0) }) }));

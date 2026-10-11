@@ -6,6 +6,7 @@ import type { ITransformersJsDownloadWorker, ProgressInfo, TransformersJsPrefetc
 import type { WorkerServerApi } from '@/utils/worker-transport';
 import type { TransformersJsDownloadWorkerClient } from './client-hosted';
 import { createDownloadProgressTracker } from '@/features/transformers-js/download-progress';
+import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const revision = 'a'.repeat(40);
 const baseUrl = `https://huggingface.co/fixture/progress/resolve/${revision}/`;
@@ -117,16 +118,17 @@ async function createTransferFixture() {
 }
 
 afterEach(async () => {
-  try {
-    await Promise.all(ownedClients.splice(0).map(client => client.dispose()));
-    for (const worker of ownedWorkers.splice(0)) worker.terminate();
-  } finally {
-    vi.doUnmock('@huggingface/transformers');
-    vi.doUnmock('@/utils/worker-transport');
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-    vi.resetModules();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      vi.doUnmock('@huggingface/transformers');
+      vi.doUnmock('@/utils/worker-transport');
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    },
+  });
+  await Promise.all(ownedClients.splice(0).map(client => client.dispose()));
+  for (const worker of ownedWorkers.splice(0)) worker.terminate();
 });
 
 // Actual Download client/Comlink/native MessagePorts/entry/staging writer. The
@@ -493,22 +495,23 @@ describe('Download progress observation does not control transfer', () => {
     }, () => {
       settled = true;
     });
-    try {
-      await markerEntered.promise;
-      expect(settled).toBe(false);
-      expect(h.fs.files.has(modelMarker)).toBe(false);
-      releaseMarker.resolve();
-      const result = await running;
-      expect(coreResult({ result })).toEqual(expectedResult);
-      expect(result.files[0]?.timing).toEqual({ version: 1, clockId: expect.any(String), status: 'measured', saveMethod: 'staging-copy', admissionMs: 0, responseWaitMs: 2_000, streamMs: 10_000, eofToVerifiedMs: 5_000 });
-      expect(result.timing).toEqual({ version: 1, clockId: expect.any(String), status: 'measured', callMs: 15_000, finalizationMs: 0, droppedFiles: 0 });
-      expect(h.requests).toEqual(urls.map(url => ({ url, method: 'GET' })));
-      expect(fileSnapshot({ fs: h.fs })).toEqual(committedFiles);
-    } finally {
-      releaseMarker.resolve();
-      releaseObserver.resolve();
-      await running;
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        releaseMarker.resolve();
+        releaseObserver.resolve();
+        await running;
+      },
+    });
+    await markerEntered.promise;
+    expect(settled).toBe(false);
+    expect(h.fs.files.has(modelMarker)).toBe(false);
+    releaseMarker.resolve();
+    const result = await running;
+    expect(coreResult({ result })).toEqual(expectedResult);
+    expect(result.files[0]?.timing).toEqual({ version: 1, clockId: expect.any(String), status: 'measured', saveMethod: 'staging-copy', admissionMs: 0, responseWaitMs: 2_000, streamMs: 10_000, eofToVerifiedMs: 5_000 });
+    expect(result.timing).toEqual({ version: 1, clockId: expect.any(String), status: 'measured', callMs: 15_000, finalizationMs: 0, droppedFiles: 0 });
+    expect(h.requests).toEqual(urls.map(url => ({ url, method: 'GET' })));
+    expect(fileSnapshot({ fs: h.fs })).toEqual(committedFiles);
   });
 
   it('preserves real bytes, markers and result when optional clock identity generation throws', async () => {
@@ -802,19 +805,20 @@ describe('Download progress observation does not control transfer', () => {
         return releaseObserver.promise;
       },
     });
-    try {
-      expect(coreResult({ result: await result })).toEqual(expectedResult);
-      expect(notifications).toBeGreaterThan(0);
-      // At most one ordinary callback may remain awaiting its remote ACK;
-      // final result reconciliation can additionally publish one per-file
-      // terminal value without waiting for that unresponsive observer.
-      expect(notifications).toBeLessThanOrEqual(urls.length + 1);
-      expect(fileSnapshot({ fs: h.fs })).toEqual(committedFiles);
-      expect(h.requests).toEqual(urls.map(url => ({ url, method: 'GET' })));
-    } finally {
-      releaseObserver.resolve();
-      await result;
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        releaseObserver.resolve();
+        await result;
+      },
+    });
+    expect(coreResult({ result: await result })).toEqual(expectedResult);
+    expect(notifications).toBeGreaterThan(0);
+    // At most one ordinary callback may remain awaiting its remote ACK;
+    // final result reconciliation can additionally publish one per-file
+    // terminal value without waiting for that unresponsive observer.
+    expect(notifications).toBeLessThanOrEqual(urls.length + 1);
+    expect(fileSnapshot({ fs: h.fs })).toEqual(committedFiles);
+    expect(h.requests).toEqual(urls.map(url => ({ url, method: 'GET' })));
   });
 
   it('preserves a genuine storage failure beside a completed second file when the observer throws', async () => {
@@ -953,19 +957,20 @@ describe('Download progress observation does not control transfer', () => {
         return held.promise;
       },
     });
-    try {
-      expect(coreResult({ result: await running })).toEqual(coreResult({ result: baselineResult }));
-      expect(fileSnapshot({ fs: observed.fs })).toEqual(committedFiles.filter(file => file.path === dataPath || file.path === dataMarker));
-      expect(baseline.requests).toEqual(urls.map(url => ({ url, method: 'GET' })));
-      expect(observed.requests).toEqual(baseline.requests);
-      expect(notifications.filter(info => info.status === 'error')).toEqual([
-        { status: 'error', file: 'onnx/model_q4.onnx', loaded: 4, total: 8 },
-      ]);
-      expect(notifications.length).toBeLessThanOrEqual(urls.length + 1);
-    } finally {
-      held.resolve();
-      await running;
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        held.resolve();
+        await running;
+      },
+    });
+    expect(coreResult({ result: await running })).toEqual(coreResult({ result: baselineResult }));
+    expect(fileSnapshot({ fs: observed.fs })).toEqual(committedFiles.filter(file => file.path === dataPath || file.path === dataMarker));
+    expect(baseline.requests).toEqual(urls.map(url => ({ url, method: 'GET' })));
+    expect(observed.requests).toEqual(baseline.requests);
+    expect(notifications.filter(info => info.status === 'error')).toEqual([
+      { status: 'error', file: 'onnx/model_q4.onnx', loaded: 4, total: 8 },
+    ]);
+    expect(notifications.length).toBeLessThanOrEqual(urls.length + 1);
   });
 
   it('reconciles the bytes received before a stream error without awaiting a held observer', async () => {
@@ -989,26 +994,27 @@ describe('Download progress observation does not control transfer', () => {
         return held.promise;
       },
     });
-    try {
-      expect(await running).toMatchObject({
-        complete: false,
-        downloadedCount: 1,
-        failedCount: 1,
-        files: [
-          { status: 'failed', path: modelPath, failureStage: 'write', error: { message: 'Synthetic response interruption' }, transferObservation: { receivedBytes: 2, expectedBytes: 4 } },
-          expectedResult.files[1],
-        ],
-      });
-      expect(fileSnapshot({ fs: h.fs })).toEqual(committedFiles.filter(file => file.path === dataPath || file.path === dataMarker));
-      expect(h.requests).toEqual(urls.map(url => ({ url, method: 'GET' })));
-      expect(notifications.filter(info => info.status === 'error')).toEqual([
-        { status: 'error', file: 'onnx/model_q4.onnx', loaded: 2, total: 4 },
-      ]);
-      expect(notifications.length).toBeLessThanOrEqual(urls.length + 1);
-    } finally {
-      held.resolve();
-      await running;
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        held.resolve();
+        await running;
+      },
+    });
+    expect(await running).toMatchObject({
+      complete: false,
+      downloadedCount: 1,
+      failedCount: 1,
+      files: [
+        { status: 'failed', path: modelPath, failureStage: 'write', error: { message: 'Synthetic response interruption' }, transferObservation: { receivedBytes: 2, expectedBytes: 4 } },
+        expectedResult.files[1],
+      ],
+    });
+    expect(fileSnapshot({ fs: h.fs })).toEqual(committedFiles.filter(file => file.path === dataPath || file.path === dataMarker));
+    expect(h.requests).toEqual(urls.map(url => ({ url, method: 'GET' })));
+    expect(notifications.filter(info => info.status === 'error')).toEqual([
+      { status: 'error', file: 'onnx/model_q4.onnx', loaded: 2, total: 4 },
+    ]);
+    expect(notifications.length).toBeLessThanOrEqual(urls.length + 1);
   });
 
   it('reuses a complete artifact but restarts an unmarked partial artifact from byte zero with or without observation', async () => {

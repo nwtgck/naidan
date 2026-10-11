@@ -7,6 +7,7 @@ import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '.
 import { downloadStream, downloadReadableStream, downloadBlob, downloadFile, TEST_ONLY } from './stream-download';
 import { DOWNLOAD_HEARTBEAT_MS, DOWNLOAD_CLAIM_TIMEOUT_MS, DOWNLOAD_VERSION, DOWNLOAD_FRAGMENT_PATH, downloadPrepareSchema } from './download/protocol';
 import { installStreamDownloadWorker, type DownloadMessageEvent, type DownloadFetchEvent, type DownloadWorkerScope } from './download/service-worker';
+import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 let onMessage: (event: DownloadMessageEvent) => void;
 let onFetch: (event: DownloadFetchEvent) => void;
@@ -668,22 +669,23 @@ describe('buffered compatibility data and ownership', () => {
     const wire = new MessageChannel();
     const sender = serveByteStream({ port: wire.port1, openStream: async () => output.stream, signal: undefined });
     const receiver = receiveByteStream({ port: wire.port2 });
-    try {
-      // Consume first, rather than awaiting the bounded ZIP producer's result.
-      await downloadReadableStream({ stream: receiver.stream, filename: 'directory.zip', size: undefined, signal: undefined });
-      await produced;
-      await sender.completed;
-      const archive = await JSZip.loadAsync(await savedBlob().arrayBuffer());
-      expect(await archive.file('テスト/data.bin')?.async('uint8array')).toEqual(bytes);
-      expect(navigate).not.toHaveBeenCalled();
-      expect(click).toHaveBeenCalledOnce();
-    } finally {
-      sender.abort({ reason: new Error('test cleanup') });
-      receiver.abort({ reason: new Error('test cleanup') });
-      await output.abort({ reason: new Error('test cleanup') });
-      await produced.catch(() => undefined);
-      await directory.dispose();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        sender.abort({ reason: new Error('test cleanup') });
+        receiver.abort({ reason: new Error('test cleanup') });
+        await output.abort({ reason: new Error('test cleanup') });
+        await produced.catch(() => undefined);
+        await directory.dispose();
+      },
+    });
+    // Consume first, rather than awaiting the bounded ZIP producer's result.
+    await downloadReadableStream({ stream: receiver.stream, filename: 'directory.zip', size: undefined, signal: undefined });
+    await produced;
+    await sender.completed;
+    const archive = await JSZip.loadAsync(await savedBlob().arrayBuffer());
+    expect(await archive.file('テスト/data.bin')?.async('uint8array')).toEqual(bytes);
+    expect(navigate).not.toHaveBeenCalled();
+    expect(click).toHaveBeenCalledOnce();
   });
 
   it('rejects non-byte output without starting a download', async () => {
@@ -706,18 +708,19 @@ describe('buffered compatibility data and ownership', () => {
       cancel,
     }, { highWaterMark: 0 });
     let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const operation = downloadReadableStream({ stream, filename: 'invalid-size', size: 1, signal: undefined });
-      await expect(Promise.race([operation, new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error('Blocked behind producer cleanup')), 200);
-      })])).rejects.toThrow('exceeds its declared size');
-      expect(cancel).toHaveBeenCalledOnce();
-      expect(stream.locked).toBe(false);
-      expect(createObjectURL).not.toHaveBeenCalled();
-    } finally {
-      clearTimeout(timer);
-      cleanup.resolve();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        clearTimeout(timer);
+        cleanup.resolve();
+      },
+    });
+    const operation = downloadReadableStream({ stream, filename: 'invalid-size', size: 1, signal: undefined });
+    await expect(Promise.race([operation, new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('Blocked behind producer cleanup')), 200);
+    })])).rejects.toThrow('exceeds its declared size');
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(stream.locked).toBe(false);
+    expect(createObjectURL).not.toHaveBeenCalled();
   });
 
   it('defers object-URL cleanup for the standalone fallback', async () => {

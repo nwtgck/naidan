@@ -4,10 +4,11 @@ import type { ChatGenerationItem, ToolCallDraft } from '@/01-models/lm';
 import { toMessageId } from '@/01-models/ids';
 import { consumeChatGeneration } from '@/logic/consume-chat-generation';
 import { createLlamaCppGeneration, createScopedGeneration } from './provider-generation';
-import { chatRequest, deliverNativeResult, finalText } from './test-utils/chat';
+import { chatRequest, deliverNativeResult, finalText } from './test-utils/chat.test-support';
 import type { GenerationCallback, GenerationEvent, GenerationResult } from './types';
 import { LlamaCppBrowserError } from './types';
 import type { LlamaCppBrowserService } from './service-contract';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function observation({ items, controller }: { items: AsyncIterable<ChatGenerationItem>, controller: AbortController }) {
   const node: AssistantMessageNode = { id: toMessageId({ raw: 'new' }), role: 'assistant', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
@@ -229,11 +230,12 @@ describe('local operation and child lifetime', () => {
     let stopped = false;let generationSignal: AbortSignal | undefined;
     const native: LlamaCppBrowserService['generate'] = async ({ onEvent, signal }) => {
       generationSignal = signal;
-      try {
-        for (let i = 0; i < 40; i++) await onEvent({ event: { type: 'text', text: 'A' } });return finalText({ text: 'A'.repeat(40) });
-      } finally {
-        stopped = true;
-      }
+      using _cleanupResource = createTestDisposable({
+        dispose: () => {
+          stopped = true;
+        },
+      });
+      for (let i = 0; i < 40; i++) await onEvent({ event: { type: 'text', text: 'A' } });return finalText({ text: 'A'.repeat(40) });
     };
     const scoped = createScopedGeneration({ scope: { generate: native, signal: new AbortController().signal } });
     const reader = scoped.chat(chatRequest())[Symbol.asyncIterator]();const item = await reader.next();expect(item.done).toBe(false);expect(stopped).toBe(false);

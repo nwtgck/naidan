@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDownloadedModelReadOnlyCache } from './downloaded-model-cache';
 import { getProductionTransformersArtifact, importProductionTransformersArtifact } from './fixtures/production-transformers-artifact';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 type FileNode = { bytes: string };
 interface DirectoryNode {
@@ -259,27 +260,28 @@ describe('createDownloadedModelReadOnlyCache', () => {
       useCustomCache: transformers.env.useCustomCache,
       customCache: transformers.env.customCache,
     };
-    try {
-      transformers.env.allowLocalModels = true;
-      transformers.env.allowRemoteModels = false;
-      transformers.env.useCustomCache = true;
-      transformers.env.customCache = createDownloadedModelReadOnlyCache({
-        modelId: 'LiquidAI/LFM2.5-230M-ONNX',
-        revision,
-      });
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        transformers.env.allowLocalModels = previous.allowLocalModels;
+        transformers.env.allowRemoteModels = previous.allowRemoteModels;
+        transformers.env.useCustomCache = previous.useCustomCache;
+        transformers.env.customCache = previous.customCache;
+      },
+    });
+    transformers.env.allowLocalModels = true;
+    transformers.env.allowRemoteModels = false;
+    transformers.env.useCustomCache = true;
+    transformers.env.customCache = createDownloadedModelReadOnlyCache({
+      modelId: 'LiquidAI/LFM2.5-230M-ONNX',
+      revision,
+    });
 
-      await expect(transformers.ModelRegistry.get_tokenizer_files(
-        'LiquidAI/LFM2.5-230M-ONNX',
-      )).resolves.toEqual(['tokenizer.json', 'tokenizer_config.json']);
-      await expect(transformers.ModelRegistry.get_processor_files(
-        'LiquidAI/LFM2.5-230M-ONNX',
-      )).resolves.toEqual(['preprocessor_config.json']);
-    } finally {
-      transformers.env.allowLocalModels = previous.allowLocalModels;
-      transformers.env.allowRemoteModels = previous.allowRemoteModels;
-      transformers.env.useCustomCache = previous.useCustomCache;
-      transformers.env.customCache = previous.customCache;
-    }
+    await expect(transformers.ModelRegistry.get_tokenizer_files(
+      'LiquidAI/LFM2.5-230M-ONNX',
+    )).resolves.toEqual(['tokenizer.json', 'tokenizer_config.json']);
+    await expect(transformers.ModelRegistry.get_processor_files(
+      'LiquidAI/LFM2.5-230M-ONNX',
+    )).resolves.toEqual(['preprocessor_config.json']);
   });
 
   it('does not alias unrelated main-revision files to the immutable cache', async () => {

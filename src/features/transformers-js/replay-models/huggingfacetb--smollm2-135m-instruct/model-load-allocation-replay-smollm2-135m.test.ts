@@ -5,6 +5,7 @@ import { createProviderReplayTestRuntime } from '@/features/transformers-js/repl
 import { z } from 'zod';
 import { createModelLoadAllocationRuntime, trapLargeModelAllocation, modelLoadAllocationEvidenceSchema } from '@/features/transformers-js/replay-models/support/model-load-allocation-runtime';
 import { getProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
 const resources = [{ path: 'onnx/model_q4f16.onnx', bytes: 117691126 }];
@@ -48,24 +49,25 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
     });
     const failure = new RangeError('Controlled allocation refusal before native allocation');
     const trap = trapLargeModelAllocation({ failure });
-    try {
-      await expect(h.load()).rejects.toBe(failure);
-      expect(trap.requests).toEqual([{ bytes: target.bytes, boundary: 'readResponse' }]);
-      expect(targetPulls).toBe(0);
-      expect(h.raw.sessions).not.toHaveBeenCalled();
-      expect(h.diagnostics().events.filter(event => event.kind === 'allocation-failed')).toEqual([
-        expect.objectContaining({ resource: target.path, requestedBytes: target.bytes, errorName: 'RangeError' }),
-      ]);
-      expect(h.raw.transport).not.toHaveBeenCalled();
-      expect(h.raw.mutations).not.toHaveBeenCalled();
-      expect(h.raw.unknownRequests).toEqual([]);
-    } finally {
-      try {
-        await h.close();
-      } finally {
-        trap.restore();
-      }
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        try {
+          await h.close();
+        } finally {
+          trap.restore();
+        }
+      },
+    });
+    await expect(h.load()).rejects.toBe(failure);
+    expect(trap.requests).toEqual([{ bytes: target.bytes, boundary: 'readResponse' }]);
+    expect(targetPulls).toBe(0);
+    expect(h.raw.sessions).not.toHaveBeenCalled();
+    expect(h.diagnostics().events.filter(event => event.kind === 'allocation-failed')).toEqual([
+      expect.objectContaining({ resource: target.path, requestedBytes: target.bytes, errorName: 'RangeError' }),
+    ]);
+    expect(h.raw.transport).not.toHaveBeenCalled();
+    expect(h.raw.mutations).not.toHaveBeenCalled();
+    expect(h.raw.unknownRequests).toEqual([]);
   }, 60000);
 
   it('stops an entirely unsaved local Load before weights, ORT or any implicit Download', async () => {
@@ -83,18 +85,19 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
       },
     });
     const download = vi.spyOn(h.service, 'downloadModel');
-    try {
-      await expect(h.service.loadDownloadedModel({ modelId })).rejects.toThrow('Downloaded model is incomplete; no locally complete namespace was planned');
-      expect(h.observations.fs.files.size).toBe(0);
-      expect(h.observations.fs.activity).toEqual([]);
-      expect(h.observations.modelLoadCalls).toEqual([]);
-      expect(h.observations.ortCalls).toEqual([]);
-      expect(h.observations.inferenceCalls).toEqual([]);
-      expect(h.observations.forbiddenTransport).toEqual([]);
-      expect(download).not.toHaveBeenCalled();
-    } finally {
-      download.mockRestore(); await h.close();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        download.mockRestore(); await h.close();
+      },
+    });
+    await expect(h.service.loadDownloadedModel({ modelId })).rejects.toThrow('Downloaded model is incomplete; no locally complete namespace was planned');
+    expect(h.observations.fs.files.size).toBe(0);
+    expect(h.observations.fs.activity).toEqual([]);
+    expect(h.observations.modelLoadCalls).toEqual([]);
+    expect(h.observations.ortCalls).toEqual([]);
+    expect(h.observations.inferenceCalls).toEqual([]);
+    expect(h.observations.forbiddenTransport).toEqual([]);
+    expect(download).not.toHaveBeenCalled();
   }, 60000);
 
   it('copies an explicitly tiny two-chunk body into the spied session boundary', async () => {
@@ -129,40 +132,41 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
       expect((await h.registry()).filter(path => path.startsWith('onnx/')).sort()).toEqual(resources.map(item => item.path).sort());
       return h.load();
     })();
-    try {
-      await Promise.race([entered.promise, loading.then(() => {
-        throw new Error('Load settled before the gated reader');
-      })]);
-      expect(h.raw.sessions).not.toHaveBeenCalled();
-      release.resolve();
-      const model = await loading;
-      expect(h.raw.sessions).toHaveBeenCalledTimes(1);
-      const call = h.raw.sessions.mock.calls[0];
-      if (call === undefined) throw new Error('Missing ORT boundary');
-      const core = z.instanceof(Uint8Array).parse(call[0]);
-      const external = z.object({ externalData: z.array(z.object({ path: z.string(), data: z.instanceof(Uint8Array) })).optional() }).passthrough().parse(call[1]).externalData ?? [];
-      const bindings = new Map([[resources[0]!.path, core], ...external.map(item => [`onnx/${item.path}`, item.data] as const)]);
-      expect([...bindings.keys()].sort()).toEqual(resources.map(item => item.path).sort());
-      for (const parts of chunks) for (const part of parts) part.fill(255);
-      for (const item of resources) {
-        expect([...(bindings.get(item.path) ?? [])]).toEqual(expected.get(item.path));
-        expect(pulls.filter(path => path === item.path)).toHaveLength(2);
-      }
-      const events = h.diagnostics().events;
-      const allocations = events.filter(event => event.kind === 'allocation-succeeded');
-      expect(allocations.map(event => [event.resource, event.requestedBytes]).sort()).toEqual(resources.map(item => [item.path, 6]).sort());
-      const returned = events.filter(event => event.kind === 'read-returned');
-      expect(returned.map(event => event.resource).sort()).toEqual(resources.map(item => item.path).sort());
-      const entering = events.find(event => event.kind === 'session-entering');
-      expect(entering).toBeDefined();
-      expect(returned.every(event => event.sequence < entering!.sequence)).toBe(true);
-      expect(h.raw.transport).not.toHaveBeenCalled();
-      expect(h.raw.mutations).not.toHaveBeenCalled();
-      await model.dispose();
-    } finally {
-      release.resolve();
-      await loading.catch(() => undefined);
-      await h.close();
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve();
+        await loading.catch(() => undefined);
+        await h.close();
+      },
+    });
+    await Promise.race([entered.promise, loading.then(() => {
+      throw new Error('Load settled before the gated reader');
+    })]);
+    expect(h.raw.sessions).not.toHaveBeenCalled();
+    release.resolve();
+    const model = await loading;
+    expect(h.raw.sessions).toHaveBeenCalledTimes(1);
+    const call = h.raw.sessions.mock.calls[0];
+    if (call === undefined) throw new Error('Missing ORT boundary');
+    const core = z.instanceof(Uint8Array).parse(call[0]);
+    const external = z.object({ externalData: z.array(z.object({ path: z.string(), data: z.instanceof(Uint8Array) })).optional() }).passthrough().parse(call[1]).externalData ?? [];
+    const bindings = new Map([[resources[0]!.path, core], ...external.map(item => [`onnx/${item.path}`, item.data] as const)]);
+    expect([...bindings.keys()].sort()).toEqual(resources.map(item => item.path).sort());
+    for (const parts of chunks) for (const part of parts) part.fill(255);
+    for (const item of resources) {
+      expect([...(bindings.get(item.path) ?? [])]).toEqual(expected.get(item.path));
+      expect(pulls.filter(path => path === item.path)).toHaveLength(2);
     }
+    const events = h.diagnostics().events;
+    const allocations = events.filter(event => event.kind === 'allocation-succeeded');
+    expect(allocations.map(event => [event.resource, event.requestedBytes]).sort()).toEqual(resources.map(item => [item.path, 6]).sort());
+    const returned = events.filter(event => event.kind === 'read-returned');
+    expect(returned.map(event => event.resource).sort()).toEqual(resources.map(item => item.path).sort());
+    const entering = events.find(event => event.kind === 'session-entering');
+    expect(entering).toBeDefined();
+    expect(returned.every(event => event.sequence < entering!.sequence)).toBe(true);
+    expect(h.raw.transport).not.toHaveBeenCalled();
+    expect(h.raw.mutations).not.toHaveBeenCalled();
+    await model.dispose();
   }, 60000);
 });

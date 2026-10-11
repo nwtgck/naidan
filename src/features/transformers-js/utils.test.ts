@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { REJECTED_RESOURCE_RESPONSE_CLEANUP_TIMEOUT_MS, writeIncompleteOpfsFile, writeToOpfs, writeToOpfsWithStaging } from './utils';
 import { withOpfsFileLease } from './runtime/opfs-access';
+import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 class MemoryFileHandle {
   readonly kind = 'file' as const;
@@ -174,27 +175,28 @@ describe('OPFS writes', () => {
       },
     }));
     vi.useFakeTimers();
-    try {
-      const operation = withOpfsFileLease({
-        path,
-        mode: 'exclusive',
-        availability: 'wait',
-        signal: undefined,
-        run: async ({ lease }) =>
-          await writeIncompleteOpfsFile({ path, response, lease }),
-      });
-      const outcome = operation.catch(error => error);
-      await canceled.promise;
-      expect(file.createWritableCalls).toBe(0);
-      expect(directory.files.has('.model.onnx.complete')).toBe(false);
-      await vi.advanceTimersByTimeAsync(REJECTED_RESOURCE_RESPONSE_CLEANUP_TIMEOUT_MS);
-      expect(await outcome).toBe(failure);
-      expect([...directory.files.keys()]).toEqual([]);
-      expect(vi.getTimerCount()).toBe(0);
-    } finally {
-      never.resolve();
-      vi.useRealTimers();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        never.resolve();
+        vi.useRealTimers();
+      },
+    });
+    const operation = withOpfsFileLease({
+      path,
+      mode: 'exclusive',
+      availability: 'wait',
+      signal: undefined,
+      run: async ({ lease }) =>
+        await writeIncompleteOpfsFile({ path, response, lease }),
+    });
+    const outcome = operation.catch(error => error);
+    await canceled.promise;
+    expect(file.createWritableCalls).toBe(0);
+    expect(directory.files.has('.model.onnx.complete')).toBe(false);
+    await vi.advanceTimersByTimeAsync(REJECTED_RESOURCE_RESPONSE_CLEANUP_TIMEOUT_MS);
+    expect(await outcome).toBe(failure);
+    expect([...directory.files.keys()]).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('awaits the owned writable abort after pipe setup fails before releasing the lease', async () => {
@@ -221,31 +223,33 @@ describe('OPFS writes', () => {
       signal: undefined,
       run: async ({ lease }) => {
         leaseActive = true;
-        try {
-          return await writeIncompleteOpfsFile({ path, response, lease });
-        } finally {
-          leaseActive = false;
-        }
+        using _cleanupResource = createTestDisposable({
+          dispose: () => {
+            leaseActive = false;
+          },
+        });
+        return await writeIncompleteOpfsFile({ path, response, lease });
       },
     });
     const outcome = operation.catch(error => error).finally(() => {
       settled = true;
     });
-    try {
-      await abortEntered.promise;
-      expect(settled).toBe(false);
-      expect(leaseActive).toBe(true);
-      expect(directory.files.has('model.onnx')).toBe(true);
-      expect(directory.files.has('.model.onnx.complete')).toBe(false);
-      releaseAbort.resolve();
-      expect(await outcome).toBeInstanceOf(TypeError);
-      expect(leaseActive).toBe(false);
-      expect([...directory.files.keys()]).toEqual([]);
-    } finally {
-      releaseAbort.resolve();
-      reader.releaseLock();
-      await outcome;
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        releaseAbort.resolve();
+        reader.releaseLock();
+        await outcome;
+      },
+    });
+    await abortEntered.promise;
+    expect(settled).toBe(false);
+    expect(leaseActive).toBe(true);
+    expect(directory.files.has('model.onnx')).toBe(true);
+    expect(directory.files.has('.model.onnx.complete')).toBe(false);
+    releaseAbort.resolve();
+    expect(await outcome).toBeInstanceOf(TypeError);
+    expect(leaseActive).toBe(false);
+    expect([...directory.files.keys()]).toEqual([]);
   });
 
   it('keeps the normal cache write path to one final write and creates the completion marker', async () => {
@@ -318,28 +322,29 @@ describe('OPFS writes', () => {
   it('bounds only rejected-response cleanup when cancellation never settles without publishing a file', async () => {
     vi.useFakeTimers();
     const cancellation = Promise.withResolvers<void>();
-    try {
-      const cancel = vi.fn(() => cancellation.promise);
-      const response = new Response(new ReadableStream({ cancel }, { highWaterMark: 0 }), { status: 206 });
-      let settled = false;
-      const outcome = writeToOpfs({ path: 'models/rejected.onnx', response }).then(
-        () => {
-          settled = true; return undefined;
-        },
-        (error: unknown) => {
-          settled = true; return error;
-        },
-      );
-      await vi.advanceTimersByTimeAsync(REJECTED_RESOURCE_RESPONSE_CLEANUP_TIMEOUT_MS - 1);
-      expect(settled).toBe(false);
-      await vi.advanceTimersByTimeAsync(1);
-      expect(await outcome).toMatchObject({ message: expect.stringContaining('HTTP 206') });
-      expect(cancel).toHaveBeenCalledOnce();
-      expect(navigator.storage.getDirectory).not.toHaveBeenCalled();
-    } finally {
-      cancellation.resolve();
-      vi.useRealTimers();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        cancellation.resolve();
+        vi.useRealTimers();
+      },
+    });
+    const cancel = vi.fn(() => cancellation.promise);
+    const response = new Response(new ReadableStream({ cancel }, { highWaterMark: 0 }), { status: 206 });
+    let settled = false;
+    const outcome = writeToOpfs({ path: 'models/rejected.onnx', response }).then(
+      () => {
+        settled = true; return undefined;
+      },
+      (error: unknown) => {
+        settled = true; return error;
+      },
+    );
+    await vi.advanceTimersByTimeAsync(REJECTED_RESOURCE_RESPONSE_CLEANUP_TIMEOUT_MS - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await outcome).toMatchObject({ message: expect.stringContaining('HTTP 206') });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(navigator.storage.getDirectory).not.toHaveBeenCalled();
   });
 
   it('rejects an unsupported OPFS writer instead of reporting an unsaved response as successful', async () => {

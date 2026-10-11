@@ -8,8 +8,8 @@ import { ref, nextTick, computed } from 'vue';
 import { ImageIcon, SendIcon } from 'lucide-vue-next';
 
 
-import { setupScrollToMock } from '@/utils/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { setupScrollToMock } from '@/utils/utils.test-support';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 
 // Mock useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction singleton
@@ -85,7 +85,7 @@ vi.mock('@/composables/useAppPresentation', () => ({
   }),
 }));
 
-vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support', () => ({
   useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: vi.fn(() => mockChatStore),
 }));
 

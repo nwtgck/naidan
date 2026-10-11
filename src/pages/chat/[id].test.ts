@@ -5,7 +5,7 @@ import { nextTick, ref } from 'vue';
 import ChatPage from './[id].vue';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useRouter } from 'vue-router';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 vi.mock('../../composables/chat/ui/useChatNavigation', () => ({
   useChatNavigation: vi.fn(),

@@ -4,9 +4,10 @@ import { effectScope } from 'vue';
 import { useImageLibrary } from './use-image-library';
 import { importImageRepository, listImageRepositories, listHostImageRepositories } from './logic/repository-store';
 import { scanImageRepositories } from './logic/model-candidates';
-import { safetensorsFixture, tensor } from './test-utils/weights';
-import { MemoryDirectory } from './test-utils/storage';
+import { safetensorsFixture, tensor } from './test-utils/weights.test-support';
+import { MemoryDirectory } from './test-utils/storage.test-support';
 import { imageLoraRequests } from './lora-form';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: mocks.get } }));
@@ -27,24 +28,25 @@ it('offers an adapter-only OPFS import and markerless host files separately with
   const list = async () => [...await listImageRepositories({ signal: undefined }), ...await listHostImageRepositories({ directories: [{ id: 'one', name: 'first-root' }, { id: 'two', name: 'second-root' }], signal: undefined })];
   const scope = effectScope();
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importImageRepository, download: vi.fn() } }))!;
-  try {
-    await library.refresh();
-    const saved = library.savedLoras.value;
-    expect(library.failure.value).toBe(''); expect(library.issues.value).toEqual([]);
-    expect(saved).toHaveLength(3); expect(new Set(saved.map(item => item.id)).size).toBe(3);
-    expect(saved.map(item => item.detail)).toEqual(expect.arrayContaining(['OPFS: user/adapters/styles/style.safetensors', 'Host: first-root/owner/adapters/styles/style.safetensors', 'Host: second-root/owner/adapters/styles/style.safetensors']));
-    expect(library.main.value).toBe(''); expect(library.selectedModels()).toBeUndefined();
-    expect(library.benchmarkTargets({ selections: {} })).toEqual([]);
-    library.showAll.value = true; expect(library.models.value).toEqual([]);
-    const selected = saved[0]!;
-    const requests = imageLoraRequests({ selections: [{ file: selected.file, path: selected.path, sourceLabel: selected.detail, strength: 0.7, enabled: true }] });
-    expect(requests[0]?.file).toBe(selected.file); expect(requests[0]?.path).toBe('styles/style.safetensors');
-    expect(requests[0]).not.toHaveProperty('sourceLabel');
-    await library.refresh();
-    expect(requests[0]?.file).toBe(selected.file);
-    expect(library.savedLoras.value.find(item => item.id === selected.id)?.file).not.toBe(selected.file);
-    expect([...folder.children.keys()]).toEqual([file.name]);
-  } finally {
-    scope.stop();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      scope.stop();
+    },
+  });
+  await library.refresh();
+  const saved = library.savedLoras.value;
+  expect(library.failure.value).toBe(''); expect(library.issues.value).toEqual([]);
+  expect(saved).toHaveLength(3); expect(new Set(saved.map(item => item.id)).size).toBe(3);
+  expect(saved.map(item => item.detail)).toEqual(expect.arrayContaining(['OPFS: user/adapters/styles/style.safetensors', 'Host: first-root/owner/adapters/styles/style.safetensors', 'Host: second-root/owner/adapters/styles/style.safetensors']));
+  expect(library.main.value).toBe(''); expect(library.selectedModels()).toBeUndefined();
+  expect(library.benchmarkTargets({ selections: {} })).toEqual([]);
+  library.showAll.value = true; expect(library.models.value).toEqual([]);
+  const selected = saved[0]!;
+  const requests = imageLoraRequests({ selections: [{ file: selected.file, path: selected.path, sourceLabel: selected.detail, strength: 0.7, enabled: true }] });
+  expect(requests[0]?.file).toBe(selected.file); expect(requests[0]?.path).toBe('styles/style.safetensors');
+  expect(requests[0]).not.toHaveProperty('sourceLabel');
+  await library.refresh();
+  expect(requests[0]?.file).toBe(selected.file);
+  expect(library.savedLoras.value.find(item => item.id === selected.id)?.file).not.toBe(selected.file);
+  expect([...folder.children.keys()]).toEqual([file.name]);
 });

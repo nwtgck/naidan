@@ -2,7 +2,7 @@ import { isModelLaunchTargetReady } from '@/features/llama-cpp-browser/model-lau
 import type { ChatModelLaunch } from '@/01-models/llama-cpp-browser-model-launch';
 import LlamaCppBrowserModelLaunchCard from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelLaunchCard.vue';
 import { createRouter, createMemoryHistory } from 'vue-router';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { lazyStrings } from '@/strings';
 import { computed, effectScope, ref, shallowRef } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';

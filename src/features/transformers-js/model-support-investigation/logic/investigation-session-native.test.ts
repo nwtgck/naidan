@@ -18,6 +18,7 @@ import { createProductionProviderCaptureEvidence, readProductionProviderCaptureE
 import { configurationForPreset } from './investigation-config';
 import { createInvestigationSessionView, recallInvestigationSession, TEST_ONLY, type InvestigationSessionSnapshot } from './investigation-session';
 import { measureInvestigationProviderRetention } from './investigation-provider-retention';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Only the model output is synthetic. Session retention, immutable sidecars,
 // request codecs, Comlink, Evidence Worker and ZIP implementations are real.
@@ -159,28 +160,29 @@ describe('Session native evidence retention and actual Evidence Worker export', 
     const channel = new MessageChannel();
     exposeWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ api: createModelSupportInvestigationEvidenceWorker(), endpoint: channel.port1 });
     const remote = wrapWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ endpoint: channel.port2 });
-    try {
-      for (const retained of [snapshot, structuredClone(snapshot)]) {
-        const archive = await remote.createPartialEvidence({
-          request: createModelSupportInvestigationEvidenceWorkerRequest({ run: retained.runs[0]![1], recovery: retained.recoveries[0]![1] }),
-          nativeEvidence: retained.nativeEvidence[0]![1],
-        });
-        const zip = await JSZip.loadAsync(await archive.blob.arrayBuffer());
-        const readme = await zip.file('SUMMARY.md')!.async('string');
-        expect(readme).toContain('Public Provider requests are recorded');
-        expect(readme).not.toContain('Production Lane was not run.');
-        expect(await zip.file('production-provider/capture.json')!.async('string')).toBe(expectedProvider);
-        expect(await zip.file('generation-native/capture.json')!.async('string')).toBe(nativeEvidence.json);
-        expect(await zip.file('generation-native/tensors/000001.bin')!.async('uint8array')).toEqual(Uint8Array.of(5, 6));
-      }
-      pendingRelease.resolve();
-      expect(await retirement).toEqual({ status: 'complete' });
-      expect(await reopened.ready).toEqual({ status: 'complete' });
-    } finally {
-      pendingRelease.resolve();
-      await releaseWorkerRemote({ remote });
-      channel.port1.close(); channel.port2.close();
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        pendingRelease.resolve();
+        await releaseWorkerRemote({ remote });
+        channel.port1.close(); channel.port2.close();
+      },
+    });
+    for (const retained of [snapshot, structuredClone(snapshot)]) {
+      const archive = await remote.createPartialEvidence({
+        request: createModelSupportInvestigationEvidenceWorkerRequest({ run: retained.runs[0]![1], recovery: retained.recoveries[0]![1] }),
+        nativeEvidence: retained.nativeEvidence[0]![1],
+      });
+      const zip = await JSZip.loadAsync(await archive.blob.arrayBuffer());
+      const readme = await zip.file('SUMMARY.md')!.async('string');
+      expect(readme).toContain('Public Provider requests are recorded');
+      expect(readme).not.toContain('Production Lane was not run.');
+      expect(await zip.file('production-provider/capture.json')!.async('string')).toBe(expectedProvider);
+      expect(await zip.file('generation-native/capture.json')!.async('string')).toBe(nativeEvidence.json);
+      expect(await zip.file('generation-native/tensors/000001.bin')!.async('uint8array')).toEqual(Uint8Array.of(5, 6));
     }
+    pendingRelease.resolve();
+    expect(await retirement).toEqual({ status: 'complete' });
+    expect(await reopened.ready).toEqual({ status: 'complete' });
   });
 
   it('replaces the same batch reservation history and preserves independent model ordinals in batch export', async () => {

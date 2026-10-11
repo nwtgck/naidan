@@ -5,7 +5,7 @@ import { useImageLibrary } from './use-image-library';
 import { imageModelRecipes, selectedRecipeFiles } from './model-recipes';
 import { scanImageRepositories } from './logic/model-candidates';
 import type { LocalImageRepository } from './logic/repository-store';
-import { safetensorsFixture, sdCheckpointTensors, sdVaeTensors, fluxVaeTensors } from './test-utils/weights';
+import { safetensorsFixture, sdCheckpointTensors, sdVaeTensors, fluxVaeTensors } from './test-utils/weights.test-support';
 
 const scopes: ReturnType<typeof effectScope>[] = [];
 

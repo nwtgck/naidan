@@ -4,7 +4,7 @@ import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
 import { storageService } from '@/00-storage/service';
 import { toBinaryObjectId } from '@/01-models/ids';
 import type { BinaryObjectPreviewItem } from '@/composables/useImagePreview';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 vi.mock('@/00-storage/service', () => ({ storageService: { getFile: vi.fn() } }));
 const wrappers: ReturnType<typeof mount>[] = [];

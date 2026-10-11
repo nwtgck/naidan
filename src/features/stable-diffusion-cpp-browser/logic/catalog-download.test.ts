@@ -9,7 +9,7 @@ function downloadImageRecipe({ files, signal, onProgress }: ImageRecipeDownloadR
 }
 
 import { listImageRepositories } from './repository-store';
-import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage';
+import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
 import type { ImageRecipeFile } from '@/features/stable-diffusion-cpp-browser/model-recipes';
 import type { PrivacyFetchStreamResponse } from '@/features/privacy-fetch';
 const calls = vi.hoisted(() => ({ fetch: vi.fn() }));

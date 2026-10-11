@@ -1,7 +1,7 @@
 import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
 import { chatRuntimeStore } from '@/composables/chat/global/chat-core-singletons';
 import { storageService } from '@/00-storage/service';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { Chat, ChatGroup } from '@/01-models/types';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

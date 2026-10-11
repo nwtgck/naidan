@@ -19,6 +19,7 @@ import { createModelSupportInvestigationEvidenceWorkerRequest, readModelSupportI
 import { createModelSupportInvestigationBatchEvidenceWorkerRequest, readModelSupportInvestigationBatchEvidenceWorkerRequest } from './batch-request';
 import { createModelSupportInvestigationEvidenceWorker } from './impl';
 import type { IModelSupportInvestigationEvidenceWorker } from './types';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Synthetic transport controls, not model outputs or claims of a native Load.
 // The actual strict encoders, Comlink structured clone, ZIP writer and independent
@@ -169,45 +170,46 @@ describe('Provider and native Evidence Worker transport', () => {
     const channel = new MessageChannel();
     exposeWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ api: createModelSupportInvestigationEvidenceWorker(), endpoint: channel.port1 });
     const remote = wrapWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ endpoint: channel.port2 });
-    try {
-      const input = { request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery }), nativeEvidence };
-      const first = await remote.createPartialEvidence(input);
-      const reopened = structuredClone({ run, recovery, nativeEvidence });
-      const repeatedInput = { request: createModelSupportInvestigationEvidenceWorkerRequest(reopened), nativeEvidence: reopened.nativeEvidence };
-      const second = await remote.createPartialEvidence(repeatedInput);
-      const output = new MessageChannel();
-      const received = receiveByteStream({ port: output.port1 });
-      const metadata = await remote.streamEvidence(workerTransfer({
-        value: {
-          input: { kind: 'partial', ...repeatedInput },
-          port: output.port2,
-        },
-        transferables: [output.port2],
-      }));
-      // Buffer only in this verification sink to run an independent ZIP reader.
-      const streamed = { blob: await new Response(received.stream).blob(), fileName: metadata.fileName };
-      await received.completed;
-      expect(streamed.fileName).toBe(first.fileName);
-      for (const archive of [first, second, streamed]) {
-        const zip = await JSZip.loadAsync(await archive.blob.arrayBuffer());
-        expect(await zip.file('production-provider/capture.json')!.async('string')).toBe(expectedProvider);
-        const summaryJson = await zip.file('production-provider/summary.json')!.async('string');
-        expect(summaryJson).toBe(expectedSummary);
-        const restoredSummary = readProductionProviderInvestigationSummaryEvidence({ json: summaryJson, runId: run.runId, modelId: run.modelId });
-        expect(Object.hasOwn(restoredSummary, 'stopReason')).toBe(true);
-        expect(Object.hasOwn(restoredSummary.requests[0]!, 'notStartedReason')).toBe(true);
-        expect(JSON.parse(await zip.file('run.json')!.async('string')).productionProviderInvestigation).toEqual({ format: 'production-provider-investigation-summary-reference-v1', path: 'production-provider/summary.json' });
-        expect(await zip.file('generation-native/capture.json')!.async('string')).toBe(nativeEvidence.json);
-        expect(await zip.file('generation-native/tensors/000001.bin')!.async('uint8array')).toEqual(Uint8Array.of(5, 6));
-        const capture = readProductionProviderCaptureEvidence({ json: await zip.file('production-provider/capture.json')!.async('string'), runId: run.runId, modelId: run.modelId });
-        expect(Object.hasOwn(capture.requests[0]!.input!.parameters, 'stop')).toBe(true);
-      }
-      expect(new Uint8Array(await nativeEvidence.binaries[0]!.blob.arrayBuffer())).toEqual(Uint8Array.of(5, 6));
-    } finally {
-      await releaseWorkerRemote({ remote });
-      channel.port1.close();
-      channel.port2.close();
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await releaseWorkerRemote({ remote });
+        channel.port1.close();
+        channel.port2.close();
+      },
+    });
+    const input = { request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery }), nativeEvidence };
+    const first = await remote.createPartialEvidence(input);
+    const reopened = structuredClone({ run, recovery, nativeEvidence });
+    const repeatedInput = { request: createModelSupportInvestigationEvidenceWorkerRequest(reopened), nativeEvidence: reopened.nativeEvidence };
+    const second = await remote.createPartialEvidence(repeatedInput);
+    const output = new MessageChannel();
+    const received = receiveByteStream({ port: output.port1 });
+    const metadata = await remote.streamEvidence(workerTransfer({
+      value: {
+        input: { kind: 'partial', ...repeatedInput },
+        port: output.port2,
+      },
+      transferables: [output.port2],
+    }));
+    // Buffer only in this verification sink to run an independent ZIP reader.
+    const streamed = { blob: await new Response(received.stream).blob(), fileName: metadata.fileName };
+    await received.completed;
+    expect(streamed.fileName).toBe(first.fileName);
+    for (const archive of [first, second, streamed]) {
+      const zip = await JSZip.loadAsync(await archive.blob.arrayBuffer());
+      expect(await zip.file('production-provider/capture.json')!.async('string')).toBe(expectedProvider);
+      const summaryJson = await zip.file('production-provider/summary.json')!.async('string');
+      expect(summaryJson).toBe(expectedSummary);
+      const restoredSummary = readProductionProviderInvestigationSummaryEvidence({ json: summaryJson, runId: run.runId, modelId: run.modelId });
+      expect(Object.hasOwn(restoredSummary, 'stopReason')).toBe(true);
+      expect(Object.hasOwn(restoredSummary.requests[0]!, 'notStartedReason')).toBe(true);
+      expect(JSON.parse(await zip.file('run.json')!.async('string')).productionProviderInvestigation).toEqual({ format: 'production-provider-investigation-summary-reference-v1', path: 'production-provider/summary.json' });
+      expect(await zip.file('generation-native/capture.json')!.async('string')).toBe(nativeEvidence.json);
+      expect(await zip.file('generation-native/tensors/000001.bin')!.async('uint8array')).toEqual(Uint8Array.of(5, 6));
+      const capture = readProductionProviderCaptureEvidence({ json: await zip.file('production-provider/capture.json')!.async('string'), runId: run.runId, modelId: run.modelId });
+      expect(Object.hasOwn(capture.requests[0]!.input!.parameters, 'stop')).toBe(true);
     }
+    expect(new Uint8Array(await nativeEvidence.binaries[0]!.blob.arrayBuffer())).toEqual(Uint8Array.of(5, 6));
   });
 
   it('round-trips batch sidecars by run identity through Comlink and re-exports without recollection', async () => {
@@ -224,27 +226,28 @@ describe('Provider and native Evidence Worker transport', () => {
     const channel = new MessageChannel();
     exposeWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ api: createModelSupportInvestigationEvidenceWorker(), endpoint: channel.port1 });
     const remote = wrapWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ endpoint: channel.port2 });
-    try {
-      for (const retainedItems of [items, structuredClone(items)]) {
-        const archive = await remote.createBatchEvidence({
-          request: createModelSupportInvestigationBatchEvidenceWorkerRequest({ batchId: 'paired-batch', items: retainedItems }),
-          nativeEvidence: retainedItems.map(item => item.nativeEvidence),
-        });
-        const zip = await JSZip.loadAsync(await archive.blob.arrayBuffer());
-        for (const [index, item] of retainedItems.entries()) {
-          const prefix = `models/${String(index + 1).padStart(3, '0')}-fixture-model/`;
-          expect(await zip.file(prefix + 'generation-native/capture.json')!.async('string')).toBe(item.nativeEvidence.json);
-          expect(await zip.file(prefix + 'generation-native/tensors/000001.bin')!.async('uint8array')).toEqual(Uint8Array.of(5, 6));
-          const capture = readProductionProviderCaptureEvidence({ json: await zip.file(prefix + 'production-provider/capture.json')!.async('string'), runId: item.run.runId, modelId: item.run.modelId });
-          expect(Object.hasOwn(capture.requests[0]!.trace, 'failure')).toBe(true);
-          const summary = readProductionProviderInvestigationSummaryEvidence({ json: await zip.file(prefix + 'production-provider/summary.json')!.async('string'), runId: item.run.runId, modelId: item.run.modelId });
-          expect(Object.hasOwn(summary.providerProgress, 'activeRequest')).toBe(true);
-        }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await releaseWorkerRemote({ remote });
+        channel.port1.close();
+        channel.port2.close();
+      },
+    });
+    for (const retainedItems of [items, structuredClone(items)]) {
+      const archive = await remote.createBatchEvidence({
+        request: createModelSupportInvestigationBatchEvidenceWorkerRequest({ batchId: 'paired-batch', items: retainedItems }),
+        nativeEvidence: retainedItems.map(item => item.nativeEvidence),
+      });
+      const zip = await JSZip.loadAsync(await archive.blob.arrayBuffer());
+      for (const [index, item] of retainedItems.entries()) {
+        const prefix = `models/${String(index + 1).padStart(3, '0')}-fixture-model/`;
+        expect(await zip.file(prefix + 'generation-native/capture.json')!.async('string')).toBe(item.nativeEvidence.json);
+        expect(await zip.file(prefix + 'generation-native/tensors/000001.bin')!.async('uint8array')).toEqual(Uint8Array.of(5, 6));
+        const capture = readProductionProviderCaptureEvidence({ json: await zip.file(prefix + 'production-provider/capture.json')!.async('string'), runId: item.run.runId, modelId: item.run.modelId });
+        expect(Object.hasOwn(capture.requests[0]!.trace, 'failure')).toBe(true);
+        const summary = readProductionProviderInvestigationSummaryEvidence({ json: await zip.file(prefix + 'production-provider/summary.json')!.async('string'), runId: item.run.runId, modelId: item.run.modelId });
+        expect(Object.hasOwn(summary.providerProgress, 'activeRequest')).toBe(true);
       }
-    } finally {
-      await releaseWorkerRemote({ remote });
-      channel.port1.close();
-      channel.port2.close();
     }
   });
 

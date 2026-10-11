@@ -8,6 +8,7 @@ import { toMessageId, toToolCallId } from '@/01-models/ids';
 import { createChatMessageSnapshot } from '@/01-models/chat-message';
 import { generateChatTurn } from './generate-chat-turn';
 import { createChatGenerationStream } from './create-chat-generation-stream';
+import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function fixture({ provider, tools }: { provider: LmProvider, tools: Tool[] }) {
   const history: MessageNode[] = [];
@@ -100,11 +101,12 @@ describe('chat runtime operation ownership', () => {
     });
     const hook = vi.fn<NonNullable<LmProvider['runChatOperation']>>(async ({ operation, signal }) => {
       open = true; trace.push('open');
-      try {
-        await operation({ chat: scoped, signal: signal ?? new AbortController().signal });
-      } finally {
-        open = false; trace.push('close');
-      }
+      using _cleanupResource = createTestDisposable({
+        dispose: () => {
+          open = false; trace.push('close');
+        },
+      });
+      await operation({ chat: scoped, signal: signal ?? new AbortController().signal });
     });
     const direct = vi.fn<LmProvider['chat']>(response);
     const f = fixture({
@@ -112,14 +114,15 @@ describe('chat runtime operation ownership', () => {
       tools: [{ name: 'f', description: 'fixture', parametersSchema: z.object({}), execute }],
     });
     const pending = f.run();
-    try {
-      await held.promise; expect(open).toBe(true); expect(trace).toEqual(['open', 'generate:0', 'tool']);
-      release.resolve(); expect(await pending).toEqual({ type: 'finished', next: 'user' });
-      expect(trace).toEqual(['open', 'generate:0', 'tool', 'generate:2', 'close']);
-      expect(hook).toHaveBeenCalledOnce(); expect(direct).not.toHaveBeenCalled(); expect(execute).toHaveBeenCalledOnce();
-    } finally {
-      release.resolve(); await pending;
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve(); await pending;
+      },
+    });
+    await held.promise; expect(open).toBe(true); expect(trace).toEqual(['open', 'generate:0', 'tool']);
+    release.resolve(); expect(await pending).toEqual({ type: 'finished', next: 'user' });
+    expect(trace).toEqual(['open', 'generate:0', 'tool', 'generate:2', 'close']);
+    expect(hook).toHaveBeenCalledOnce(); expect(direct).not.toHaveBeenCalled(); expect(execute).toHaveBeenCalledOnce();
   });
 
   it('freezes parameter and tool declaration values before waiting for admission', async () => {

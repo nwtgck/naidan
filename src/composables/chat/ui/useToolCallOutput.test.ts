@@ -5,7 +5,7 @@ const { mockGetVolatileToolOutput } = vi.hoisted(() => ({
   mockGetVolatileToolOutput: vi.fn(),
 }));
 
-vi.mock('@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+vi.mock('@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support', () => ({
   useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     getVolatileToolOutput: mockGetVolatileToolOutput,
   }),

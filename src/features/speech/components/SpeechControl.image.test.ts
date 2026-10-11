@@ -1,6 +1,6 @@
 import { toMessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
 import SpeechControl from './SpeechControl.vue';
 import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_PROCESSED } from '@/utils/image-generation';

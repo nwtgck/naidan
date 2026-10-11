@@ -16,6 +16,7 @@ import { resolvePublicHuggingFaceRevision } from '@/features/transformers-js/dow
 import { reuseDownloadedProductionRevision } from '@/features/transformers-js/download-verification/logic/reuse-downloaded-production-revision';
 import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
 import { writeToOpfs } from '@/features/transformers-js/utils';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Only metadata/transfer preparation and native model work are synthetic. The
 // candidate orchestration, acceptance helper, client, session and Comlink are real.
@@ -315,7 +316,8 @@ it('continues normal candidate fallback only after successful physical retiremen
 
 it.each(['accepted', 'rejected'] as const)('closes same-service queued and future operations after %s acceptance cannot retire', async outcome => {
   firstOutcome = outcome;
-  barrier = { entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() };
+  const testBarrier = { entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() };
+  barrier = testBarrier;
   const cause = new Error('out of memory: synthetic physical failure');
   retirementFailure = { error: cause };
   const createWorkerClient = vi.fn(() => {
@@ -324,45 +326,47 @@ it.each(['accepted', 'rejected'] as const)('closes same-service queued and futur
   const owner = createTransformersJsService({ createWorkerClient });
   const running = owner.service.downloadModel({ modelId });
   const settled = running.then(() => undefined, (error: unknown) => error);
-  try {
-    await barrier.entered.promise;
-    const queued = owner.service.downloadModel({ modelId }).then(() => undefined, (error: unknown) => error);
-    barrier.release.resolve();
-    const error = await settled;
-    expect(error).toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
-    expect(await queued).toBe(error);
-    await expect(owner.service.resetCache()).rejects.toBe(error);
-    await expect(owner.service.downloadModel({ modelId })).rejects.toBe(error);
-    await vi.waitFor(() => {
-      expect(owner.service.getDownloadTimingSnapshot().records).toEqual([expect.objectContaining({ outcome: 'failed', observations: [expect.objectContaining({ loadOutcome: outcome, cleanupOutcome: 'failed', hostSettlement: 'rejected' })] })]);
-    });
-    await expect(owner.service.restart()).rejects.toBe(error);
-    expect(createWorkerClient).not.toHaveBeenCalled();
-    expect(prepareProductionModelCandidate).toHaveBeenCalledOnce();
-    expect(workers).toHaveLength(1);
-    expect(workers[0]!.terminate).toHaveBeenCalledOnce();
-  } finally {
-    barrier.release.resolve();
-    await settled;
-    await owner.dispose().catch(() => undefined);
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      testBarrier.release.resolve();
+      await settled;
+      await owner.dispose().catch(() => undefined);
+    },
+  });
+  await testBarrier.entered.promise;
+  const queued = owner.service.downloadModel({ modelId }).then(() => undefined, (error: unknown) => error);
+  testBarrier.release.resolve();
+  const error = await settled;
+  expect(error).toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
+  expect(await queued).toBe(error);
+  await expect(owner.service.resetCache()).rejects.toBe(error);
+  await expect(owner.service.downloadModel({ modelId })).rejects.toBe(error);
+  await vi.waitFor(() => {
+    expect(owner.service.getDownloadTimingSnapshot().records).toEqual([expect.objectContaining({ outcome: 'failed', observations: [expect.objectContaining({ loadOutcome: outcome, cleanupOutcome: 'failed', hostSettlement: 'rejected' })] })]);
+  });
+  await expect(owner.service.restart()).rejects.toBe(error);
+  expect(createWorkerClient).not.toHaveBeenCalled();
+  expect(prepareProductionModelCandidate).toHaveBeenCalledOnce();
+  expect(workers).toHaveLength(1);
+  expect(workers[0]!.terminate).toHaveBeenCalledOnce();
 });
 
 it('keeps a failed acceptance owner separate from another service', async () => {
   retirementFailure = { error: new Error('Synthetic physical failure') };
   const first = createTransformersJsService({ createWorkerClient: idleProductionClient });
   const second = createTransformersJsService({ createWorkerClient: idleProductionClient });
-  try {
-    await expect(first.service.downloadModel({ modelId })).rejects.toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
-    await second.service.downloadModel({ modelId });
-    expect(workers).toHaveLength(2);
-    expect(workers[1]!.requests).toEqual([{ modelId, revision, candidate: { device: 'webgpu', dtype: 'q4f16' } }]);
-    expect(workers[1]!.terminate).toHaveBeenCalledOnce();
-    expect(second.service.getDownloadTimingSnapshot().records[0]?.outcome).toBe('completed');
-  } finally {
-    await first.dispose().catch(() => undefined);
-    await second.dispose();
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      await first.dispose().catch(() => undefined);
+      await second.dispose();
+    },
+  });
+  await expect(first.service.downloadModel({ modelId })).rejects.toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
+  await second.service.downloadModel({ modelId });
+  expect(workers).toHaveLength(2);
+  expect(workers[1]!.requests).toEqual([{ modelId, revision, candidate: { device: 'webgpu', dtype: 'q4f16' } }]);
+  expect(workers[1]!.terminate).toHaveBeenCalledOnce();
+  expect(second.service.getDownloadTimingSnapshot().records[0]?.outcome).toBe('completed');
 });
 
 it('registers early cached revision acceptance in the same physical-retirement owner', async () => {
@@ -378,76 +382,81 @@ it('registers early cached revision acceptance in the same physical-retirement o
   vi.mocked(reuseDownloadedProductionRevision).mockImplementationOnce(actual.reuseDownloadedProductionRevision);
   const createWorkerClient = vi.fn(idleProductionClient);
   const owner = createTransformersJsService({ createWorkerClient });
-  try {
-    await expect(owner.service.downloadModel({ modelId })).rejects.toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
-    await expect(owner.service.restart()).rejects.toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
-    expect(createWorkerClient).not.toHaveBeenCalled();
-    expect(prepareProductionRuntimeArtifacts).not.toHaveBeenCalled();
-    expect(prepareProductionModelCandidate).not.toHaveBeenCalled();
-    expect(workers).toHaveLength(1);
-    expect(workers[0]!.revisionRequests).toEqual([{ modelId, revision }]);
-    expect(workers[0]!.requests).toEqual([]);
-  } finally {
-    await owner.dispose().catch(() => undefined);
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      await owner.dispose().catch(() => undefined);
+    },
+  });
+  await expect(owner.service.downloadModel({ modelId })).rejects.toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
+  await expect(owner.service.restart()).rejects.toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
+  expect(createWorkerClient).not.toHaveBeenCalled();
+  expect(prepareProductionRuntimeArtifacts).not.toHaveBeenCalled();
+  expect(prepareProductionModelCandidate).not.toHaveBeenCalled();
+  expect(workers).toHaveLength(1);
+  expect(workers[0]!.revisionRequests).toEqual([{ modelId, revision }]);
+  expect(workers[0]!.requests).toEqual([]);
 });
 
 it('shares physical retirement with restart during a held acceptance and never replaces it', async () => {
-  barrier = { entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() };
+  const testBarrier = { entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() };
+  barrier = testBarrier;
   const cause = new Error('Synthetic held acceptance termination failure');
   retirementFailure = { error: cause };
   const createWorkerClient = vi.fn(idleProductionClient);
   const owner = createTransformersJsService({ createWorkerClient });
   const running = owner.service.downloadModel({ modelId }).then(() => undefined, (error: unknown) => error);
-  try {
-    await barrier.entered.promise;
-    const retirement = owner.service.restart();
-    const error = await retirement.then(() => undefined, (error: unknown) => error);
-    expect(error).toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
-    if (!(error instanceof DownloadAcceptanceWorkerRetirementError)) throw new Error('Missing retirement error');
-    expect(error.cause).toBe(cause);
-    expect(error.verificationOutcome).toEqual({ status: 'not-settled' });
-    expect(error.interruption?.reason).toBe(await running);
-    await preparations[0];
-    await expect(owner.service.downloadModel({ modelId })).rejects.toThrow();
-    await expect(owner.service.restart()).rejects.toThrow();
-    expect(createWorkerClient).not.toHaveBeenCalled();
-    expect(workers).toHaveLength(1);
-    expect(workers[0]!.terminate).toHaveBeenCalledOnce();
-  } finally {
-    barrier.release.resolve();
-    await running;
-    await owner.dispose().catch(() => undefined);
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      testBarrier.release.resolve();
+      await running;
+      await owner.dispose().catch(() => undefined);
+    },
+  });
+  await testBarrier.entered.promise;
+  const retirement = owner.service.restart();
+  const error = await retirement.then(() => undefined, (error: unknown) => error);
+  expect(error).toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
+  if (!(error instanceof DownloadAcceptanceWorkerRetirementError)) throw new Error('Missing retirement error');
+  expect(error.cause).toBe(cause);
+  expect(error.verificationOutcome).toEqual({ status: 'not-settled' });
+  expect(error.interruption?.reason).toBe(await running);
+  await preparations[0];
+  await expect(owner.service.downloadModel({ modelId })).rejects.toThrow();
+  await expect(owner.service.restart()).rejects.toThrow();
+  expect(createWorkerClient).not.toHaveBeenCalled();
+  expect(workers).toHaveLength(1);
+  expect(workers[0]!.terminate).toHaveBeenCalledOnce();
 });
 
 it('shares physical retirement with dispose during a held acceptance and never replaces it', async () => {
-  barrier = { entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() };
+  const testBarrier = { entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() };
+  barrier = testBarrier;
   const cause = new Error('Synthetic held acceptance termination failure');
   retirementFailure = { error: cause };
   const createWorkerClient = vi.fn(idleProductionClient);
   const owner = createTransformersJsService({ createWorkerClient });
   const running = owner.service.downloadModel({ modelId }).then(() => undefined, (error: unknown) => error);
-  try {
-    await barrier.entered.promise;
-    const retirement = owner.dispose();
-    const error = await retirement.then(() => undefined, (error: unknown) => error);
-    expect(error).toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
-    if (!(error instanceof DownloadAcceptanceWorkerRetirementError)) throw new Error('Missing retirement error');
-    expect(error.cause).toBe(cause);
-    expect(error.verificationOutcome).toEqual({ status: 'not-settled' });
-    expect(error.interruption?.reason).toBe(await running);
-    await preparations[0];
-    await expect(owner.service.downloadModel({ modelId })).rejects.toThrow();
-    await expect(owner.service.restart()).rejects.toThrow();
-    expect(createWorkerClient).not.toHaveBeenCalled();
-    expect(workers).toHaveLength(1);
-    expect(workers[0]!.terminate).toHaveBeenCalledOnce();
-  } finally {
-    barrier.release.resolve();
-    await running;
-    await owner.dispose().catch(() => undefined);
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      testBarrier.release.resolve();
+      await running;
+      await owner.dispose().catch(() => undefined);
+    },
+  });
+  await testBarrier.entered.promise;
+  const retirement = owner.dispose();
+  const error = await retirement.then(() => undefined, (error: unknown) => error);
+  expect(error).toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
+  if (!(error instanceof DownloadAcceptanceWorkerRetirementError)) throw new Error('Missing retirement error');
+  expect(error.cause).toBe(cause);
+  expect(error.verificationOutcome).toEqual({ status: 'not-settled' });
+  expect(error.interruption?.reason).toBe(await running);
+  await preparations[0];
+  await expect(owner.service.downloadModel({ modelId })).rejects.toThrow();
+  await expect(owner.service.restart()).rejects.toThrow();
+  expect(createWorkerClient).not.toHaveBeenCalled();
+  expect(workers).toHaveLength(1);
+  expect(workers[0]!.terminate).toHaveBeenCalledOnce();
 });
 
 it('blocks an old Download acceptance factory after held preparation outlives a successful restart', async () => {
@@ -461,20 +470,21 @@ it('blocks an old Download acceptance factory after held preparation outlives a 
   const createWorkerClient = vi.fn(idleProductionClient);
   const owner = createTransformersJsService({ createWorkerClient });
   const running = owner.service.downloadModel({ modelId }).then(() => undefined, (error: unknown) => error);
-  try {
-    await entered.promise;
-    await owner.service.restart();
-    release.resolve();
-    const preparation = await preparations[0];
-    expect(preparation).toMatchObject({ status: 'rejected', error: { name: 'ProductionWorkerLifecycleError', reason: 'restarted' } });
-    expect(await running).toMatchObject({ name: 'ProductionWorkerLifecycleError', reason: 'restarted' });
-    expect(workers).toHaveLength(0);
-    expect(createWorkerClient).toHaveBeenCalledOnce();
-    // The new lane remains usable; old factory rejection is not a global latch.
-    await owner.service.resetCache();
-  } finally {
-    release.resolve();
-    await running;
-    await owner.dispose();
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      release.resolve();
+      await running;
+      await owner.dispose();
+    },
+  });
+  await entered.promise;
+  await owner.service.restart();
+  release.resolve();
+  const preparation = await preparations[0];
+  expect(preparation).toMatchObject({ status: 'rejected', error: { name: 'ProductionWorkerLifecycleError', reason: 'restarted' } });
+  expect(await running).toMatchObject({ name: 'ProductionWorkerLifecycleError', reason: 'restarted' });
+  expect(workers).toHaveLength(0);
+  expect(createWorkerClient).toHaveBeenCalledOnce();
+  // The new lane remains usable; old factory rejection is not a global latch.
+  await owner.service.resetCache();
 });

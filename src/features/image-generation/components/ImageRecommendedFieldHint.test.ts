@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { TEST_ONLY as recommendations } from '@/features/stable-diffusion-cpp-browser/recommendations';
 import { parametersFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import { applyImageRecommendedField, imageRecommendedHint } from '@/features/image-generation/recommended-fields';
 import ImageRecommendedFieldHint from './ImageRecommendedFieldHint.vue';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 let wrapper: VueWrapper | undefined;
 
 beforeEach(async () => {
@@ -47,20 +48,21 @@ it('changes only the requested field, keeping prompt, size and deliberate other 
 
 it('moves keyboard focus into the hint and returns it on Escape or applying the value', async () => {
   const input = document.createElement('input'); input.id = 'steps'; document.body.append(input);
-  try {
-    const view = openHint(), trigger = view.get('[data-testid="recommended-field-hint"]');
-    await trigger.trigger('click');
-    expect(document.activeElement).toBe(view.get('[data-testid="recommended-field-apply"]').element);
-    await view.get('[data-testid="recommended-field-apply"]').trigger('keydown', { key: 'Escape' });
-    expect(document.activeElement).toBe(trigger.element);
-    await trigger.trigger('keydown', { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(view.get('[data-testid="recommended-field-apply"]').element);
-    await view.get('[data-testid="recommended-field-apply"]').trigger('click');
-    expect(document.activeElement).toBe(input);
-    expect(view.emitted('apply')).toHaveLength(1);
-  } finally {
-    input.remove();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      input.remove();
+    },
+  });
+  const view = openHint(), trigger = view.get('[data-testid="recommended-field-hint"]');
+  await trigger.trigger('click');
+  expect(document.activeElement).toBe(view.get('[data-testid="recommended-field-apply"]').element);
+  await view.get('[data-testid="recommended-field-apply"]').trigger('keydown', { key: 'Escape' });
+  expect(document.activeElement).toBe(trigger.element);
+  await trigger.trigger('keydown', { key: 'ArrowDown' });
+  expect(document.activeElement).toBe(view.get('[data-testid="recommended-field-apply"]').element);
+  await view.get('[data-testid="recommended-field-apply"]').trigger('click');
+  expect(document.activeElement).toBe(input);
+  expect(view.emitted('apply')).toHaveLength(1);
 });
 
 it.each(['width', 'height'] as const)('offers the browser %s starting size without changing the other dimension', async field => {

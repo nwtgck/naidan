@@ -4,7 +4,7 @@ import DeveloperTab from './DeveloperTab.vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { useConfirm } from '@/composables/useConfirm';
 import { useSampleChat } from '@/composables/useSampleChat';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 vi.mock('../composables/useConfirm', () => ({
   useConfirm: vi.fn(),

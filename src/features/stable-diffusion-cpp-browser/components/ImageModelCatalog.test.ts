@@ -1,13 +1,14 @@
 import { createDisabledImageLibrary } from '@/features/stable-diffusion-cpp-browser/library-standalone';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { computed, effectScope, ref } from 'vue';
 import type { HostModelDirectoryChoice, ImageDownloadQueueEntry } from '@/features/stable-diffusion-cpp-browser/library-view';
 import ImageModelCatalog from './ImageModelCatalog.vue';
 import { imageCatalogLoras } from '@/features/stable-diffusion-cpp-browser/lora-catalog';
 import { useImageLibrary } from '@/features/stable-diffusion-cpp-browser/use-image-library';
 import { downloadImageRecipe, type ImageRecipeDownloadRequest } from '@/features/stable-diffusion-cpp-browser/logic/catalog-download';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 let wrapper: VueWrapper | undefined;
 
 beforeEach(async () => {
@@ -30,19 +31,20 @@ it.each(['directory API', 'mutation lock'] as const)('disables OPFS acquisition 
       download,
     },
   }))!;
-  try {
-    wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: library } });
-    const button = wrapper.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
-    expect(button.element.disabled).toBe(true);
-    expect(wrapper.get<HTMLOptionElement>('option[value="opfs"]').element.disabled).toBe(true);
-    expect(wrapper.get('[data-testid="image-opfs-download-unavailable"]').text()).toContain('Browser storage (OPFS)');
-    await button.trigger('click');
-    expect(download).not.toHaveBeenCalled(); expect(network).not.toHaveBeenCalled();
-    expect(library.downloadState.value).toBe('idle');
-    expect(library.failure.value).toBe('');
-  } finally {
-    scope.stop();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      scope.stop();
+    },
+  });
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: library } });
+  const button = wrapper.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
+  expect(button.element.disabled).toBe(true);
+  expect(wrapper.get<HTMLOptionElement>('option[value="opfs"]').element.disabled).toBe(true);
+  expect(wrapper.get('[data-testid="image-opfs-download-unavailable"]').text()).toContain('Browser storage (OPFS)');
+  await button.trigger('click');
+  expect(download).not.toHaveBeenCalled(); expect(network).not.toHaveBeenCalled();
+  expect(library.downloadState.value).toBe('idle');
+  expect(library.failure.value).toBe('');
 });
 
 afterEach(() => {

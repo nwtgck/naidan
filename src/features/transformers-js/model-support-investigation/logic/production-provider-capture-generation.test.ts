@@ -6,6 +6,7 @@ import { toMessageId, toToolCallId } from '@/01-models/ids';
 import { generateProductionProviderCapture } from './production-provider-capture-generation';
 import { captureScenarioInput, captureProviderMessages, captureSettledAssistantParts } from './production-provider-capture-plan';
 import { createProductionProviderPartsTrace } from './production-provider-trace';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const limits = { maximumEvents: 100, maximumCharacters: 10000 };
 const done: ChatGenerationItem = { type: 'result', result: { type: 'finished', next: 'user' } };
@@ -34,11 +35,12 @@ function fixture({ chat }: { chat: LmProvider['chat'] }) {
   const operation = vi.fn<NonNullable<LmProvider['runChatOperation']>>(async ({ signal, operation }) => {
     if (!signal) throw new Error('Expected explicit capture signal');
     owned = true;
-    try {
-      await operation({ chat: calls, signal });
-    } finally {
-      owned = false;
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        owned = false;
+      },
+    });
+    await operation({ chat: calls, signal });
   });
   const provider: LmProvider = {
     chat: () => {

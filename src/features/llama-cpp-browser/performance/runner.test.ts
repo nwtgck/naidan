@@ -2,10 +2,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LlamaCppBrowserService, LlamaCppPerformanceScope } from '@/features/llama-cpp-browser/service-contract';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
-import { performanceEnvironment, performancePlan, performanceReport } from '@/features/llama-cpp-browser/test-utils/performance';
+import { performanceEnvironment, performancePlan, performanceReport } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
 import { createPerformanceRunner } from './runner';
 import { snapshotSchema } from './types';
 import { summarizePerformance } from './summary';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function setup({ models = 1, diagnostics = 'none' }: { models?: number, diagnostics?: 'none' | 'placement' } = {}) {
   const plan = performancePlan({ models, diagnostics });
@@ -24,11 +25,12 @@ function setup({ models = 1, diagnostics = 'none' }: { models?: number, diagnost
     listModels: vi.fn<LlamaCppBrowserService['listModels']>(async () => plan.models),
     runPerformanceOperation: vi.fn<LlamaCppBrowserService['runPerformanceOperation']>(async ({ options, signal, operation }) => {
       order.push('acquire');
-      try {
-        await operation({ scope: { options, signal: signal ?? new AbortController().signal, generate } });
-      } finally {
-        order.push('release');
-      }
+      using _cleanupResource = createTestDisposable({
+        dispose: () => {
+          order.push('release');
+        },
+      });
+      await operation({ scope: { options, signal: signal ?? new AbortController().signal, generate } });
     }),
   };
   const waitUntilVisible = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
@@ -214,11 +216,12 @@ describe('measurement ownership and surviving failure evidence', () => {
     const test = setup({ models: 2 });
     test.service.runPerformanceOperation.mockImplementation(async ({ options, operation }) => {
       const owner = new AbortController();
-      try {
-        await operation({ scope: { options, signal: owner.signal, generate: test.generate } });
-      } finally {
-        owner.abort();
-      }
+      using _cleanupResource = createTestDisposable({
+        dispose: () => {
+          owner.abort();
+        },
+      });
+      await operation({ scope: { options, signal: owner.signal, generate: test.generate } });
     });
     await test.start();
     expect(test.runner.snapshot()?.status).toBe('completed');

@@ -11,6 +11,7 @@ import { createInitialInvestigationCheckpoint } from './investigation-recovery';
 import { openEvidenceArchive } from './evidence-archive';
 import { verifyGeneratedEvidenceArchive } from './verify-evidence-archive';
 import { createOrdinaryDownloadTimingEvidenceFile, ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES, readOrdinaryDownloadTimingEvidenceFile } from './ordinary-download-timing-evidence';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Synthetic lifecycle scalars, not browser performance measurements.
 function snapshot() {
@@ -46,22 +47,24 @@ describe('ordinary Download timing evidence', () => {
     const channel = new MessageChannel();
     exposeWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ api: createModelSupportInvestigationEvidenceWorker(), endpoint: channel.port1 });
     const remote = wrapWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ endpoint: channel.port2 });
-    try {
-      const result = await remote.createRetainedDownloadTimingEvidence({ request: createOrdinaryDownloadTimingEvidenceFile({ snapshot: snapshot(), association: { kind: 'retained-export', exportId: 'transport-export', investigation: 'not-run' } }) });
-      const archive = await openEvidenceArchive({ blob: result.blob });
-      try {
-        const file = await archive.reader.read({ path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, maximumBytes: ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES });
-        const document = await readOrdinaryDownloadTimingEvidenceFile({ file: file! });
-        expect(document.snapshot).toEqual(snapshot());
-        expect(document.association).toEqual({ kind: 'retained-export', exportId: 'transport-export', investigation: 'not-run' });
-      } finally {
+    await using _cleanupResource2 = createAsyncTestDisposable({
+      dispose: async () => {
+        await releaseWorkerRemote({ remote });
+        channel.port1.close();
+        channel.port2.close();
+      },
+    });
+    const result = await remote.createRetainedDownloadTimingEvidence({ request: createOrdinaryDownloadTimingEvidenceFile({ snapshot: snapshot(), association: { kind: 'retained-export', exportId: 'transport-export', investigation: 'not-run' } }) });
+    const archive = await openEvidenceArchive({ blob: result.blob });
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
         await archive.close();
-      }
-    } finally {
-      await releaseWorkerRemote({ remote });
-      channel.port1.close();
-      channel.port2.close();
-    }
+      },
+    });
+    const file = await archive.reader.read({ path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, maximumBytes: ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES });
+    const document = await readOrdinaryDownloadTimingEvidenceFile({ file: file! });
+    expect(document.snapshot).toEqual(snapshot());
+    expect(document.association).toEqual({ kind: 'retained-export', exportId: 'transport-export', investigation: 'not-run' });
   });
 
   it('exports only the immutable retained observation through the real Worker implementation and shared ZIP', async () => {
@@ -70,18 +73,19 @@ describe('ordinary Download timing evidence', () => {
     source.records[0]!.outcome = 'completed';
     const result = await createModelSupportInvestigationEvidenceWorker().createRetainedDownloadTimingEvidence({ request });
     const archive = await openEvidenceArchive({ blob: result.blob });
-    try {
-      expect(archive.reader.paths).toEqual([ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH]);
-      const file = await archive.reader.read({ path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH });
-      const document = await readOrdinaryDownloadTimingEvidenceFile({ file: file! });
-      expect(document.association).toEqual({ kind: 'retained-export', exportId: 'export-1', investigation: 'not-run' });
-      expect(document.snapshot).toEqual(snapshot());
-      expect(document.snapshot.records[0]?.outcome).toBe('failed');
-      expect(archive.reader.paths).not.toContain('run.json');
-      expect(archive.reader.paths).not.toContain('download-lane/cache-acceptance.json');
-    } finally {
-      await archive.close();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await archive.close();
+      },
+    });
+    expect(archive.reader.paths).toEqual([ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH]);
+    const file = await archive.reader.read({ path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH });
+    const document = await readOrdinaryDownloadTimingEvidenceFile({ file: file! });
+    expect(document.association).toEqual({ kind: 'retained-export', exportId: 'export-1', investigation: 'not-run' });
+    expect(document.snapshot).toEqual(snapshot());
+    expect(document.snapshot.records[0]?.outcome).toBe('failed');
+    expect(archive.reader.paths).not.toContain('run.json');
+    expect(archive.reader.paths).not.toContain('download-lane/cache-acceptance.json');
   });
 
   it.each(['partial', 'final', 'batch'] as const)('preserves the previous operation independently of the current %s investigation', async mode => {
@@ -98,21 +102,22 @@ describe('ordinary Download timing evidence', () => {
       : await worker.createPartialEvidence({ request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery }), ordinaryDownloadTiming });
     if (mode !== 'batch') await verifyGeneratedEvidenceArchive({ blob: result.blob });
     const archive = await openEvidenceArchive({ blob: result.blob });
-    try {
-      expect(archive.reader.paths.filter(path => path.endsWith('ordinary-download-timing.json'))).toEqual([ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH]);
-      const file = await archive.reader.read({ path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH });
-      const document = await readOrdinaryDownloadTimingEvidenceFile({ file: file! });
-      expect(document.association).toEqual(association);
-      expect(document.snapshot).toEqual(source);
-      expect(document.snapshot.records[0]?.modelId).toBe('org/previous');
-      const runPath = archive.reader.paths.find(path => path.endsWith('run.json'))!;
-      const packagedRun = JSON.parse(await (await archive.reader.read({ path: runPath }))!.text());
-      expect(packagedRun.runId).toBe('current-run');
-      expect(packagedRun.modelId).toBe('org/current');
-      expect(packagedRun.status).toBe(run.status);
-    } finally {
-      await archive.close();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await archive.close();
+      },
+    });
+    expect(archive.reader.paths.filter(path => path.endsWith('ordinary-download-timing.json'))).toEqual([ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH]);
+    const file = await archive.reader.read({ path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH });
+    const document = await readOrdinaryDownloadTimingEvidenceFile({ file: file! });
+    expect(document.association).toEqual(association);
+    expect(document.snapshot).toEqual(source);
+    expect(document.snapshot.records[0]?.modelId).toBe('org/previous');
+    const runPath = archive.reader.paths.find(path => path.endsWith('run.json'))!;
+    const packagedRun = JSON.parse(await (await archive.reader.read({ path: runPath }))!.text());
+    expect(packagedRun.runId).toBe('current-run');
+    expect(packagedRun.modelId).toBe('org/current');
+    expect(packagedRun.status).toBe(run.status);
   });
 
   it('refuses a foreign association before producing an investigation archive', async () => {

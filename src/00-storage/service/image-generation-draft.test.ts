@@ -3,7 +3,7 @@ import { idToRaw, toImageGenerationSessionId, toHostModelDirectoryId } from '@/0
 import { imageGenerationDraftToDto, imageGenerationDraftToDomain } from '@/00-storage/mapper/image-generation';
 import { ExperimentalImageGenerationDraftSchemaDto, ExperimentalImageGenerationRunSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import * as service from './image-generation';
-import { createImageGenerationStorageHarness, generationDraftFixture, generationSessionFixture } from './image-generation/test-support';
+import { createImageGenerationStorageHarness, generationDraftFixture, generationSessionFixture } from './image-generation/index.test-support';
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
 
 beforeEach(() => {

@@ -3,7 +3,7 @@ import { toChatId } from '@/01-models/ids';
 import { generateId } from '@/01-models/id';
 import type { MessageId } from '@/01-models/ids';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import MessageThinking from './MessageThinking.vue';

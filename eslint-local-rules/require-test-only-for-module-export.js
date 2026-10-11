@@ -341,10 +341,11 @@ export default {
   ignores: [
     'src/**/*.d.ts',
     'src/**/*.test.ts',
+    'src/**/*.test-support.ts',
     'src/**/*.spec.ts',
     'src/FailedOnlyReporter.ts',
     'src/test-mocks/**',
-    'src/test-setup.ts',
+    'src/test-setup.test-support.ts',
     'src/test-tmp/**',
     'src/strings/catalogs/**',
     'src/strings/messages/**',

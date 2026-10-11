@@ -1,9 +1,10 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest';
-import { keyPair, useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
+import { keyPair, useOfflineScope } from '@/features/naidan-piping-duplex/index.test-support';
 import { OrderedRecords, TEST_ONLY } from '@/features/naidan-piping-duplex/ordered-records';
 import { BoundedBody } from '@/features/naidan-piping-duplex/finite-transfer';
 import { BATCH_BYTES, batchHeader } from '@/features/naidan-piping-duplex/batch-wire';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 useOfflineScope();
 const signal = new AbortController().signal;
@@ -25,17 +26,18 @@ async function read({ rx, bytes, chunkBytes = 10000 }: { rx: OrderedRecords; byt
     },
   });
   const reader = stream.getReader(), received: Uint8Array[] = [];
-  try {
-    await rx.receive({
-      body: new BoundedBody({ reader, maximum: BATCH_BYTES, signal }),
-      signal,
-      onRecord: async ({ plaintext }) => {
-        received.push(plaintext.slice());
-      },
-    }); return received;
-  } finally {
-    await reader.cancel().catch(() => {}); reader.releaseLock();
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      await reader.cancel().catch(() => {}); reader.releaseLock();
+    },
+  });
+  await rx.receive({
+    body: new BoundedBody({ reader, maximum: BATCH_BYTES, signal }),
+    signal,
+    onRecord: async ({ plaintext }) => {
+      received.push(plaintext.slice());
+    },
+  }); return received;
 }
 
 it('encrypts authenticated prefixes and reads records across arbitrarily small chunks', async () => {

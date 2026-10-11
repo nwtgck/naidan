@@ -6,11 +6,11 @@ import { ref, reactive, nextTick, computed } from 'vue';
 import ChatPane from './ChatPane.vue';
 import ModelSelector from './ModelSelector.vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 
-import { setupScrollToMock } from '@/utils/test-utils';
+import { setupScrollToMock } from '@/utils/utils.test-support';
 import type { Attachment, LmParameters } from '@/01-models/types';
 
 
@@ -34,7 +34,7 @@ const mockResolvedSettings = ref<any>(null);
 const mockInheritedSettings = ref<any>(null);
 const mockActiveMessages = ref<any[]>([]);
 
-vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support', () => ({
   useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: mockCurrentChat,
     chatGroups: mockChatGroups,
@@ -396,7 +396,7 @@ describe('ChatPane Group Inheritance UI', () => {
   it('should pass inherited reasoning effort to sendMessage when not overridden at chat level', async () => {
     const mockSendMessage = vi.fn().mockResolvedValue(true);
     // Use an inline spy to verify sendMessage arguments
-    vi.spyOn(await import('@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction'), 'useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction').mockReturnValue({
+    vi.spyOn(await import('@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support'), 'useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction').mockReturnValue({
       currentChat: mockCurrentChat,
       chatGroups: mockChatGroups,
       resolvedSettings: mockResolvedSettings,

@@ -7,6 +7,7 @@ import {
   createModelArtifactRequestBarrier,
   huggingFaceResolveArtifactRequest,
 } from '@/features/transformers-js/download-verification/model-artifact-request-worker/request-barrier';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 interface ActualTransformersWebEnv {
   allowLocalModels: boolean;
@@ -126,23 +127,24 @@ async function observeActualRequests({ dtype }: { dtype: 'q4f16' | 'q4' }): Prom
     error => ({ status: 'rejected' as const, error }),
   );
 
-  try {
-    const requests = await barrier.waitForQuiescence();
-    return {
-      artifactPaths: [...new Set(requests.map(request => request.path))].sort((a, b) => a.localeCompare(b)),
-      nonArtifactPaths: [...new Set(nonArtifactPaths)].sort((a, b) => a.localeCompare(b)),
-    };
-  } finally {
-    const reason = new Error('Artifact observation complete; no model bytes transferred');
-    barrier.stop({ reason });
-    try {
-      const result = await outcome;
-      expect(result.status).toBe('rejected');
-      if (result.status === 'rejected') expect(result.error).toBe(reason);
-    } finally {
-      barrier.dispose();
-    }
-  }
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      const reason = new Error('Artifact observation complete; no model bytes transferred');
+      barrier.stop({ reason });
+      try {
+        const result = await outcome;
+        expect(result.status).toBe('rejected');
+        if (result.status === 'rejected') expect(result.error).toBe(reason);
+      } finally {
+        barrier.dispose();
+      }
+    },
+  });
+  const requests = await barrier.waitForQuiescence();
+  return {
+    artifactPaths: [...new Set(requests.map(request => request.path))].sort((a, b) => a.localeCompare(b)),
+    nonArtifactPaths: [...new Set(nonArtifactPaths)].sort((a, b) => a.localeCompare(b)),
+  };
 }
 
 describe('actual Transformers.js web bundle artifact requests for LFM2.5-230M', () => {

@@ -2,13 +2,13 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { effectScope, ref, type Ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import { toHostModelDirectoryId } from '@/01-models/ids';
 import { useImageLibrary } from './use-image-library';
 import { imageModelRecipes } from './model-recipes';
 import type { ImageRecipeDownloadRequest } from './logic/catalog-download';
-import { MemoryDirectory, MemoryFile } from './test-utils/storage';
+import { MemoryDirectory, MemoryFile } from './test-utils/storage.test-support';
 import ImageModelCatalog from './components/ImageModelCatalog.vue';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), delete: vi.fn(), download: vi.fn(), inspect: vi.fn() }));

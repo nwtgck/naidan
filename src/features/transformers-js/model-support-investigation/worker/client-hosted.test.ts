@@ -18,6 +18,7 @@ import type { WorkerServerApi } from '@/utils/worker-transport';
 import type {
   ITransformersJsWorker,
 } from "@/features/transformers-js/types";
+import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({
   releaseProxy: Symbol("releaseProxy"),
@@ -540,31 +541,32 @@ describe("createModelSupportInvestigationWorkerClient", () => {
         return client.runPartialInvestigation({ modelId: target, configuration: configurationForPreset({ preset: 'download-focused' }), replayMetadataBudgetBytes: 1024, onEvent: vi.fn(), onCheckpoint: checkpoints });
       },
     });
-    try {
-      await firstStarted.promise;
-      await vi.advanceTimersByTimeAsync(FRESH_METADATA_TIMEOUT_MS);
-      const results = await flow;
-      expect(results.map(result => result.target)).toEqual(['org/first', 'org/second']);
-      expect(results[0]?.run?.freshMetadata).toMatchObject({ status: 'timeout', receivedBytes: 3, requests: firstSummary.requests });
-      expect(results[1]?.run?.freshMetadata).toMatchObject({ modelId: 'org/second', status: 'prepared' });
-      expect(firstFresh).toHaveBeenCalledOnce();
-      expect(secondFresh).toHaveBeenCalledOnce();
-      expect(mocks.workerInstances).toHaveLength(4);
-      expect(mocks.workerInstances.every(worker => worker.terminate.mock.calls.length === 1)).toBe(true);
-      const checkpointCount = checkpoints.mock.calls.length;
-      lateObservation!({ summary: completedLateSummary });
-      lateResult.resolve({ summary: completedLateSummary, files: [] });
-      await Promise.resolve();
-      expect(checkpoints).toHaveBeenCalledTimes(checkpointCount);
-      expect(results[0]?.run?.freshMetadata?.status).toBe('timeout');
-      expect(mocks.completeRuntimeEvidence).not.toHaveBeenCalled();
-      expect(mocks.runProductionScenario).not.toHaveBeenCalled();
-    } finally {
-      for (const client of clients) await client.dispose();
-      lateResult.resolve({ summary: firstSummary, files: [] });
-      await flow;
-      vi.useRealTimers();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        for (const client of clients) await client.dispose();
+        lateResult.resolve({ summary: firstSummary, files: [] });
+        await flow;
+        vi.useRealTimers();
+      },
+    });
+    await firstStarted.promise;
+    await vi.advanceTimersByTimeAsync(FRESH_METADATA_TIMEOUT_MS);
+    const results = await flow;
+    expect(results.map(result => result.target)).toEqual(['org/first', 'org/second']);
+    expect(results[0]?.run?.freshMetadata).toMatchObject({ status: 'timeout', receivedBytes: 3, requests: firstSummary.requests });
+    expect(results[1]?.run?.freshMetadata).toMatchObject({ modelId: 'org/second', status: 'prepared' });
+    expect(firstFresh).toHaveBeenCalledOnce();
+    expect(secondFresh).toHaveBeenCalledOnce();
+    expect(mocks.workerInstances).toHaveLength(4);
+    expect(mocks.workerInstances.every(worker => worker.terminate.mock.calls.length === 1)).toBe(true);
+    const checkpointCount = checkpoints.mock.calls.length;
+    lateObservation!({ summary: completedLateSummary });
+    lateResult.resolve({ summary: completedLateSummary, files: [] });
+    await Promise.resolve();
+    expect(checkpoints).toHaveBeenCalledTimes(checkpointCount);
+    expect(results[0]?.run?.freshMetadata?.status).toBe('timeout');
+    expect(mocks.completeRuntimeEvidence).not.toHaveBeenCalled();
+    expect(mocks.runProductionScenario).not.toHaveBeenCalled();
   });
 
   it('freezes interrupted fresh acquisition and its HTTP evidence when the user stops the current model', async () => {
@@ -601,30 +603,31 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const client = createModelSupportInvestigationWorkerClient();
     const outcome = client.runPartialInvestigation({ modelId: 'org/model', configuration: configurationForPreset({ preset: 'download-focused' }), onEvent: vi.fn(), onCheckpoint })
       .then(() => undefined, (error: unknown) => error);
-    try {
-      await started.promise;
-      await client.interrupt();
-      expect(await outcome).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
-      expect(onCheckpoint).toHaveBeenLastCalledWith({
-        checkpoint: expect.objectContaining({
-          recovery: expect.objectContaining({ status: 'interrupted' }),
-          run: expect.objectContaining({ freshMetadata: expect.objectContaining({ status: 'interrupted', receivedBytes: 3, requests: summary.requests }) }),
-        }),
-      });
-      expect(mocks.workerInstances).toHaveLength(2);
-      expect(mocks.workerInstances.every(worker => worker.terminate.mock.calls.length === 1)).toBe(true);
-      const checkpointCount = onCheckpoint.mock.calls.length;
-      publishLate!({ summary: completed });
-      held.resolve({ summary: completed, files: [] });
-      await Promise.resolve();
-      expect(onCheckpoint).toHaveBeenCalledTimes(checkpointCount);
-      expect(mocks.completeRuntimeEvidence).not.toHaveBeenCalled();
-      expect(mocks.runProductionScenario).not.toHaveBeenCalled();
-    } finally {
-      held.resolve({ summary: completed, files: [] });
-      await client.dispose();
-      await outcome;
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        held.resolve({ summary: completed, files: [] });
+        await client.dispose();
+        await outcome;
+      },
+    });
+    await started.promise;
+    await client.interrupt();
+    expect(await outcome).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
+    expect(onCheckpoint).toHaveBeenLastCalledWith({
+      checkpoint: expect.objectContaining({
+        recovery: expect.objectContaining({ status: 'interrupted' }),
+        run: expect.objectContaining({ freshMetadata: expect.objectContaining({ status: 'interrupted', receivedBytes: 3, requests: summary.requests }) }),
+      }),
+    });
+    expect(mocks.workerInstances).toHaveLength(2);
+    expect(mocks.workerInstances.every(worker => worker.terminate.mock.calls.length === 1)).toBe(true);
+    const checkpointCount = onCheckpoint.mock.calls.length;
+    publishLate!({ summary: completed });
+    held.resolve({ summary: completed, files: [] });
+    await Promise.resolve();
+    expect(onCheckpoint).toHaveBeenCalledTimes(checkpointCount);
+    expect(mocks.completeRuntimeEvidence).not.toHaveBeenCalled();
+    expect(mocks.runProductionScenario).not.toHaveBeenCalled();
   });
 
   it('rejects a fresh-acquisition request from offline planning before creating a network Worker', async () => {
@@ -670,49 +673,50 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
   it("terminates planning when a heavy planning boundary never completes", async () => {
     vi.useFakeTimers();
-    try {
-      const planningRemote = remote({
-        runPartialInvestigation: vi.fn((_modelId, onEvent) => {
-          onEvent({
-            event: {
-              stepId: "template-behavior",
-              status: "running",
-              detail: "Inspecting tokenizer template behavior",
-            },
-          });
-          return new Promise<ModelSupportInvestigationPlanningWorkerRun>(() => undefined);
-        }),
-      });
-      mocks.wrap.mockReturnValueOnce(planningRemote);
-      const onEvent = vi.fn();
-      const onCheckpoint = vi.fn();
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        vi.useRealTimers();
+      },
+    });
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn((_modelId, onEvent) => {
+        onEvent({
+          event: {
+            stepId: "template-behavior",
+            status: "running",
+            detail: "Inspecting tokenizer template behavior",
+          },
+        });
+        return new Promise<ModelSupportInvestigationPlanningWorkerRun>(() => undefined);
+      }),
+    });
+    mocks.wrap.mockReturnValueOnce(planningRemote);
+    const onEvent = vi.fn();
+    const onCheckpoint = vi.fn();
 
-      const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
-      const client = createModelSupportInvestigationWorkerClient({ planningTimeoutMs: 10 });
-      const operation = client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent, onCheckpoint });
-      const rejection = expect(operation).rejects.toMatchObject({
-        name: "PlanningTimeoutError",
-        stage: "template-behavior",
-      });
-      await vi.advanceTimersByTimeAsync(10);
-      await rejection;
-      expect(mocks.workerInstances[0]?.terminate).toHaveBeenCalledTimes(1);
-      expect(planningRemote[mocks.releaseProxy]).not.toHaveBeenCalled();
-      expect(onEvent).toHaveBeenCalledWith({
-        event: expect.objectContaining({
-          stepId: "template-behavior",
-          status: "failed",
-          detail: "Investigation planning timed out at template-behavior",
-        }),
-      });
-      expect(onCheckpoint).toHaveBeenLastCalledWith({
-        checkpoint: expect.objectContaining({
-          recovery: expect.objectContaining({ status: "interrupted" }),
-        }),
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient({ planningTimeoutMs: 10 });
+    const operation = client.runPartialInvestigation({ modelId: "org/model", configuration: createDefaultInvestigationConfiguration(), onEvent, onCheckpoint });
+    const rejection = expect(operation).rejects.toMatchObject({
+      name: "PlanningTimeoutError",
+      stage: "template-behavior",
+    });
+    await vi.advanceTimersByTimeAsync(10);
+    await rejection;
+    expect(mocks.workerInstances[0]?.terminate).toHaveBeenCalledTimes(1);
+    expect(planningRemote[mocks.releaseProxy]).not.toHaveBeenCalled();
+    expect(onEvent).toHaveBeenCalledWith({
+      event: expect.objectContaining({
+        stepId: "template-behavior",
+        status: "failed",
+        detail: "Investigation planning timed out at template-behavior",
+      }),
+    });
+    expect(onCheckpoint).toHaveBeenLastCalledWith({
+      checkpoint: expect.objectContaining({
+        recovery: expect.objectContaining({ status: "interrupted" }),
+      }),
+    });
   });
 
   it("interrupts a hung planning Worker immediately and freezes an interrupted checkpoint", async () => {
@@ -859,33 +863,34 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
   it('keeps replay sidecars through completed checkpoints and bounds a hung planning release', async () => {
     vi.useFakeTimers();
-    try {
-      const blob = new Blob(['{}']);
-      const sidecars = [{ path: 'config.json', blob }];
-      const planning = planningRun();
-      const planningRemote = remote({
-        runPartialInvestigation: vi.fn(async (request, _onEvent, onRunCheckpoint) => {
-          expect(request.replayMetadataBudgetBytes).toBe(123);
-          onRunCheckpoint({ run: planning, replayMetadata: sidecars });
-          return planning;
-        }),
-      });
-      planningRemote[mocks.releaseProxy] = vi.fn(() => new Promise<void>(() => undefined));
-      mocks.wrap.mockReturnValueOnce(planningRemote);
-      const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
-      const client = createModelSupportInvestigationWorkerClient();
-      const onCheckpoint = vi.fn();
-      const pending = client.runPartialInvestigation({ modelId: 'org/model', configuration: configurationForPreset({ preset: 'download-focused' }), replayMetadataBudgetBytes: 123, onEvent: vi.fn(), onCheckpoint });
-      await vi.advanceTimersByTimeAsync(251);
-      await pending;
-      const finalCheckpoint = onCheckpoint.mock.calls.at(-1)![0].checkpoint;
-      expect(finalCheckpoint.recovery.status).toBe('completed');
-      expect(finalCheckpoint.replayMetadata).toEqual(sidecars);
-      expect(finalCheckpoint.run).not.toHaveProperty('blob');
-      expect(mocks.workerInstances[0]!.terminate).toHaveBeenCalledOnce();
-    } finally {
-      vi.useRealTimers();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        vi.useRealTimers();
+      },
+    });
+    const blob = new Blob(['{}']);
+    const sidecars = [{ path: 'config.json', blob }];
+    const planning = planningRun();
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn(async (request, _onEvent, onRunCheckpoint) => {
+        expect(request.replayMetadataBudgetBytes).toBe(123);
+        onRunCheckpoint({ run: planning, replayMetadata: sidecars });
+        return planning;
+      }),
+    });
+    planningRemote[mocks.releaseProxy] = vi.fn(() => new Promise<void>(() => undefined));
+    mocks.wrap.mockReturnValueOnce(planningRemote);
+    const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
+    const client = createModelSupportInvestigationWorkerClient();
+    const onCheckpoint = vi.fn();
+    const pending = client.runPartialInvestigation({ modelId: 'org/model', configuration: configurationForPreset({ preset: 'download-focused' }), replayMetadataBudgetBytes: 123, onEvent: vi.fn(), onCheckpoint });
+    await vi.advanceTimersByTimeAsync(251);
+    await pending;
+    const finalCheckpoint = onCheckpoint.mock.calls.at(-1)![0].checkpoint;
+    expect(finalCheckpoint.recovery.status).toBe('completed');
+    expect(finalCheckpoint.replayMetadata).toEqual(sidecars);
+    expect(finalCheckpoint.run).not.toHaveProperty('blob');
+    expect(mocks.workerInstances[0]!.terminate).toHaveBeenCalledOnce();
   });
 
   it('keeps completed replay sidecars after interrupt and rejects late Worker checkpoints', async () => {
@@ -1366,47 +1371,48 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       productionLaneTimeoutMs: undefined,
     });
     const outcome = operation.then(run => ({ run, error: undefined }), error => ({ run: undefined, error }));
-    try {
-      await vi.waitFor(() => expect(mocks.workerInstances).toHaveLength(2));
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await client.dispose(); await outcome;
+      },
+    });
+    await vi.waitFor(() => expect(mocks.workerInstances).toHaveLength(2));
+    expect(production.loadDownloadedModel).not.toHaveBeenCalled();
+    expect(production.generateText).not.toHaveBeenCalled();
+    const worker = mocks.workerInstances[1]!;
+    switch (startupOutcome) {
+    case 'ready':
+      worker.startup.start();
+      await worker.startup.ready;
+      expect((await outcome).run?.productionProviderCapture?.run.status).toBe('completed');
+      expect(production.loadDownloadedModel).toHaveBeenCalledOnce();
+      expect(production.generateText).toHaveBeenCalledTimes(13);
+      break;
+    case 'failed':
+      // The ordinary service eagerly replaces a failed client. Its idle replacement
+      // must complete the real startup handshake before collection can inspect it.
+      mocks.productionAutoReady = true;
+      worker.dispatchEvent(new MessageEvent('message', { data: { ...PRODUCTION_WORKER_READY, status: 'failed', message: 'Fixture entry evaluation failed' } }));
+      expect((await outcome).run?.productionProviderInvestigation?.requests[0]?.outcome).toBe('rejected');
       expect(production.loadDownloadedModel).not.toHaveBeenCalled();
       expect(production.generateText).not.toHaveBeenCalled();
-      const worker = mocks.workerInstances[1]!;
-      switch (startupOutcome) {
-      case 'ready':
-        worker.startup.start();
-        await worker.startup.ready;
-        expect((await outcome).run?.productionProviderCapture?.run.status).toBe('completed');
-        expect(production.loadDownloadedModel).toHaveBeenCalledOnce();
-        expect(production.generateText).toHaveBeenCalledTimes(13);
-        break;
-      case 'failed':
-        // The ordinary service eagerly replaces a failed client. Its idle replacement
-        // must complete the real startup handshake before collection can inspect it.
-        mocks.productionAutoReady = true;
-        worker.dispatchEvent(new MessageEvent('message', { data: { ...PRODUCTION_WORKER_READY, status: 'failed', message: 'Fixture entry evaluation failed' } }));
-        expect((await outcome).run?.productionProviderInvestigation?.requests[0]?.outcome).toBe('rejected');
-        expect(production.loadDownloadedModel).not.toHaveBeenCalled();
-        expect(production.generateText).not.toHaveBeenCalled();
-        break;
-      case 'disposed':
-        await client.dispose();
-        expect((await outcome).error).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
-        expect(production.loadDownloadedModel).not.toHaveBeenCalled();
-        expect(production.generateText).not.toHaveBeenCalled();
-        break;
-      default: {
-        const exhaustive: never = startupOutcome;
-        throw new Error(`Unhandled startup outcome: ${exhaustive}`);
-      }
-      }
-      const checkpoints = onCheckpoint.mock.calls.length;
-      worker.dispatchEvent(new MessageEvent('message', { data: worker.startup.readyMessage }));
-      await Promise.resolve();
-      expect(onCheckpoint).toHaveBeenCalledTimes(checkpoints);
-      expect(worker.terminate).toHaveBeenCalledOnce();
-    } finally {
-      await client.dispose(); await outcome;
+      break;
+    case 'disposed':
+      await client.dispose();
+      expect((await outcome).error).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
+      expect(production.loadDownloadedModel).not.toHaveBeenCalled();
+      expect(production.generateText).not.toHaveBeenCalled();
+      break;
+    default: {
+      const exhaustive: never = startupOutcome;
+      throw new Error(`Unhandled startup outcome: ${exhaustive}`);
     }
+    }
+    const checkpoints = onCheckpoint.mock.calls.length;
+    worker.dispatchEvent(new MessageEvent('message', { data: worker.startup.readyMessage }));
+    await Promise.resolve();
+    expect(onCheckpoint).toHaveBeenCalledTimes(checkpoints);
+    expect(worker.terminate).toHaveBeenCalledOnce();
   });
 
   it("does not misclassify a Production worker-start timeout as a candidate load failure", async () => {
@@ -1420,20 +1426,21 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       onCheckpoint: vi.fn(),
       productionLaneTimeoutMs: 10,
     });
-    try {
-      await vi.waitFor(() => expect(mocks.workerInstances).toHaveLength(2));
-      await vi.advanceTimersByTimeAsync(10);
-      const result = await operation;
-      expect(result.productionProviderInvestigation?.stopReason).toBe('run-deadline');
-      expect(result.productionProviderCapture?.requests[0]?.status).toBe('awaiting-settlement');
-      expect(result.loadAttempts).toEqual([]);
-      expect(result.productionLane.partialObservation).toBeUndefined();
-      expect(production.loadDownloadedModel).not.toHaveBeenCalled();
-      expect(production.generateText).not.toHaveBeenCalled();
-      expect(mocks.workerInstances[1]?.terminate).toHaveBeenCalledOnce();
-    } finally {
-      await client.dispose(); vi.useRealTimers();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await client.dispose(); vi.useRealTimers();
+      },
+    });
+    await vi.waitFor(() => expect(mocks.workerInstances).toHaveLength(2));
+    await vi.advanceTimersByTimeAsync(10);
+    const result = await operation;
+    expect(result.productionProviderInvestigation?.stopReason).toBe('run-deadline');
+    expect(result.productionProviderCapture?.requests[0]?.status).toBe('awaiting-settlement');
+    expect(result.loadAttempts).toEqual([]);
+    expect(result.productionLane.partialObservation).toBeUndefined();
+    expect(production.loadDownloadedModel).not.toHaveBeenCalled();
+    expect(production.generateText).not.toHaveBeenCalled();
+    expect(mocks.workerInstances[1]?.terminate).toHaveBeenCalledOnce();
   });
 
   it("terminates a timed-out Production Worker without waiting for Comlink disposal", async () => {
@@ -1450,18 +1457,19 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       onCheckpoint: vi.fn(),
       productionLaneTimeoutMs: 10,
     });
-    try {
-      await entered.promise;
-      await vi.advanceTimersByTimeAsync(10);
-      const result = await operation;
-      expect(result.productionProviderInvestigation?.stopReason).toBe('run-deadline');
-      expect(result.productionProviderCapture?.requests[0]?.status).toBe('awaiting-settlement');
-      expect(mocks.workerInstances[1]?.terminate).toHaveBeenCalledOnce();
-      expect(production[mocks.releaseProxy]).not.toHaveBeenCalled();
-      expect(production.takeGenerationCapture).not.toHaveBeenCalled();
-    } finally {
-      await client.dispose(); vi.useRealTimers();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await client.dispose(); vi.useRealTimers();
+      },
+    });
+    await entered.promise;
+    await vi.advanceTimersByTimeAsync(10);
+    const result = await operation;
+    expect(result.productionProviderInvestigation?.stopReason).toBe('run-deadline');
+    expect(result.productionProviderCapture?.requests[0]?.status).toBe('awaiting-settlement');
+    expect(mocks.workerInstances[1]?.terminate).toHaveBeenCalledOnce();
+    expect(production[mocks.releaseProxy]).not.toHaveBeenCalled();
+    expect(production.takeGenerationCapture).not.toHaveBeenCalled();
   });
 
   it("terminates an active Production Worker when the investigation client is disposed", async () => {
@@ -1579,60 +1587,61 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
   it("terminates a timed-out candidate Worker and continues with the next eligible candidate", async () => {
     vi.useFakeTimers();
-    try {
-      const planningRemote = remote({
-        runPartialInvestigation: vi.fn(async () => planningRun()),
-      });
-      const timedOutAttemptRemote = remote({
-        runCandidateAttempt: vi.fn((_runtimeTarget, _declarations, _templateBehavior, _candidate, _executionOptions, _onEvent, onAttemptEvent) => {
-          onAttemptEvent({
-            event: {
-              stage: "model-load",
-              status: "running",
-              detail: "webgpu-q4f16: model-load",
-              at: "2026-08-06T00:00:02.000Z",
-            },
-          });
-          return new Promise<ModelSupportInvestigationLoadAttempt>(() => undefined);
-        }),
-      });
-      const successfulAttemptRemote = remote({
-        runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4", status: "passed" })),
-      });
-      mocks.wrap
-        .mockReturnValueOnce(planningRemote)
-        .mockReturnValueOnce(timedOutAttemptRemote)
-        .mockReturnValueOnce(successfulAttemptRemote);
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        vi.useRealTimers();
+      },
+    });
+    const planningRemote = remote({
+      runPartialInvestigation: vi.fn(async () => planningRun()),
+    });
+    const timedOutAttemptRemote = remote({
+      runCandidateAttempt: vi.fn((_runtimeTarget, _declarations, _templateBehavior, _candidate, _executionOptions, _onEvent, onAttemptEvent) => {
+        onAttemptEvent({
+          event: {
+            stage: "model-load",
+            status: "running",
+            detail: "webgpu-q4f16: model-load",
+            at: "2026-08-06T00:00:02.000Z",
+          },
+        });
+        return new Promise<ModelSupportInvestigationLoadAttempt>(() => undefined);
+      }),
+    });
+    const successfulAttemptRemote = remote({
+      runCandidateAttempt: vi.fn(async () => attempt({ candidateId: "webgpu-q4", status: "passed" })),
+    });
+    mocks.wrap
+      .mockReturnValueOnce(planningRemote)
+      .mockReturnValueOnce(timedOutAttemptRemote)
+      .mockReturnValueOnce(successfulAttemptRemote);
 
-      const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
-      const client = createModelSupportInvestigationWorkerClient({ candidateAttemptTimeoutMs: 10 });
-      const operation = client.runPartialInvestigation({ modelId: "org/model", configuration: modelLoadOnlyConfiguration(), onEvent: vi.fn(), onCheckpoint: vi.fn() });
-      await vi.advanceTimersByTimeAsync(10);
-      const result = await operation;
+    const { createModelSupportInvestigationWorkerClient } = await import("./client-hosted");
+    const client = createModelSupportInvestigationWorkerClient({ candidateAttemptTimeoutMs: 10 });
+    const operation = client.runPartialInvestigation({ modelId: "org/model", configuration: modelLoadOnlyConfiguration(), onEvent: vi.fn(), onCheckpoint: vi.fn() });
+    await vi.advanceTimersByTimeAsync(10);
+    const result = await operation;
 
-      expect(result.loadAttempts).toHaveLength(2);
-      expect(result.loadAttempts[0]).toMatchObject({
-        candidateId: "webgpu-q4f16",
-        status: "failed",
-        failureStage: "model-load",
-        error: {
-          name: "CandidateAttemptTimeoutError",
-        },
-      });
-      expect(result.loadAttempts[0]?.events).toEqual(expect.arrayContaining([
-        expect.objectContaining({ stage: "model-load", status: "running" }),
-        expect.objectContaining({ stage: "model-load", status: "failed" }),
-      ]));
-      expect(result.loadAttempts[1]?.status).toBe("passed");
-      expect(mocks.workerInstances).toHaveLength(3);
-      expect(mocks.workerInstances[1]?.terminate).toHaveBeenCalledTimes(1);
-      expect(timedOutAttemptRemote[mocks.releaseProxy]).not.toHaveBeenCalled();
-      expect(successfulAttemptRemote[mocks.releaseProxy]).toHaveBeenCalledTimes(1);
+    expect(result.loadAttempts).toHaveLength(2);
+    expect(result.loadAttempts[0]).toMatchObject({
+      candidateId: "webgpu-q4f16",
+      status: "failed",
+      failureStage: "model-load",
+      error: {
+        name: "CandidateAttemptTimeoutError",
+      },
+    });
+    expect(result.loadAttempts[0]?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ stage: "model-load", status: "running" }),
+      expect.objectContaining({ stage: "model-load", status: "failed" }),
+    ]));
+    expect(result.loadAttempts[1]?.status).toBe("passed");
+    expect(mocks.workerInstances).toHaveLength(3);
+    expect(mocks.workerInstances[1]?.terminate).toHaveBeenCalledTimes(1);
+    expect(timedOutAttemptRemote[mocks.releaseProxy]).not.toHaveBeenCalled();
+    expect(successfulAttemptRemote[mocks.releaseProxy]).toHaveBeenCalledTimes(1);
 
-      await client.dispose();
-    } finally {
-      vi.useRealTimers();
-    }
+    await client.dispose();
   });
 
   it("publishes an interrupted parent checkpoint when the planning Worker exits abruptly", async () => {
@@ -1963,29 +1972,30 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
     const client = createModelSupportInvestigationWorkerClient();
     const outcome = client.runPartialInvestigation({ modelId: 'org/model', configuration: modelLoadOnlyConfiguration(), onEvent, onCheckpoint }).catch(error => error);
-    try {
-      await vi.waitFor(() => expect(mocks.completeRuntimeEvidence).toHaveBeenCalledOnce());
-      await client.dispose();
-      expect(runtimeSignal?.aborted).toBe(true);
-      expect(await outcome).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
-      expect(onCheckpoint).toHaveBeenLastCalledWith({
-        checkpoint: expect.objectContaining({
-          recovery: expect.objectContaining({ status: 'interrupted' }),
-          replayMetadata: sidecars,
-        }),
-      });
-      const events = onEvent.mock.calls.length;
-      const checkpoints = onCheckpoint.mock.calls.length;
-      lateProgress?.({ progress: { phase: 'runtime', revision: 'd'.repeat(40), candidate: undefined, info: { status: 'ready' } } });
-      await client.dispose();
-      expect(onEvent).toHaveBeenCalledTimes(events);
-      expect(onCheckpoint).toHaveBeenCalledTimes(checkpoints);
-      expect(mocks.runProductionScenario).not.toHaveBeenCalled();
-    } finally {
-      // Also close the pre-fix failing test's deliberately held operation.
-      await client.interrupt();
-      await outcome;
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        // Also close the pre-fix failing test's deliberately held operation.
+        await client.interrupt();
+        await outcome;
+      },
+    });
+    await vi.waitFor(() => expect(mocks.completeRuntimeEvidence).toHaveBeenCalledOnce());
+    await client.dispose();
+    expect(runtimeSignal?.aborted).toBe(true);
+    expect(await outcome).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
+    expect(onCheckpoint).toHaveBeenLastCalledWith({
+      checkpoint: expect.objectContaining({
+        recovery: expect.objectContaining({ status: 'interrupted' }),
+        replayMetadata: sidecars,
+      }),
+    });
+    const events = onEvent.mock.calls.length;
+    const checkpoints = onCheckpoint.mock.calls.length;
+    lateProgress?.({ progress: { phase: 'runtime', revision: 'd'.repeat(40), candidate: undefined, info: { status: 'ready' } } });
+    await client.dispose();
+    expect(onEvent).toHaveBeenCalledTimes(events);
+    expect(onCheckpoint).toHaveBeenCalledTimes(checkpoints);
+    expect(mocks.runProductionScenario).not.toHaveBeenCalled();
   });
 
   it("aborts runtime-complete preparation and freezes an interrupted checkpoint when stopped", async () => {

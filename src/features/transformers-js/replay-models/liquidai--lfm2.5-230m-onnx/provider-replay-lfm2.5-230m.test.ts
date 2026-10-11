@@ -20,6 +20,7 @@ import inputJson from './provider-template-inputs.evidence.json';
 import { readModelFixture } from '@/features/transformers-js/replay-models/support/model-runtime-fixture';
 import { createSyntheticModelBody, inspectSyntheticOrtSession } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
+import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const MODEL_ID = 'LiquidAI/LFM2.5-230M-ONNX';
 const REVISION = 'c6f46e4e3f885ebcad164d14059a49f90e27eb4d';
@@ -235,97 +236,98 @@ Template probe user message.<|im_end|>
 <|im_start|>assistant
 `;
     const replay = await createLfm230InputReplay();
-    try {
-      const firstInputPriorCalls = replay.templateSpy.mock.calls.length;
-      const firstInputPriorInferences = replay.harness.observations.inferenceCalls.length;
-      const firstInputCapture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX',
-          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const firstInputPriorCalls = replay.templateSpy.mock.calls.length;
+    const firstInputPriorInferences = replay.harness.observations.inferenceCalls.length;
+    const firstInputCapture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: 'LiquidAI/LFM2.5-230M-ONNX',
+        messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          signal: new AbortController().signal,
-          readBinaryObject: undefined,
-          debug: undefined,
         },
-      });
-      captures.push(firstInputCapture);
-      await firstInputCapture.completion;
-      expect(firstInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
-      const firstInputChunks = firstInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      const firstInputToolCalls = firstInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-      expect(firstInputCapture.snapshot().parts).toEqual([]);
+        signal: new AbortController().signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(firstInputCapture);
+    await firstInputCapture.completion;
+    expect(firstInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
+    const firstInputChunks = firstInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
+    const firstInputToolCalls = firstInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+    expect(firstInputCapture.snapshot().parts).toEqual([]);
 
-      expect(firstInputChunks).toEqual([]);
-      expect(firstInputToolCalls).toEqual([]);
+    expect(firstInputChunks).toEqual([]);
+    expect(firstInputToolCalls).toEqual([]);
 
-      const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: scenario.messages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: expectedPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: scenario.addGenerationPrompt,
-      })).toBe(expectedPrompt);
-      const changed = scenario.messages.map(message => ({ ...message }));
-      const last = changed.at(-1);
-      if (!last) throw new Error('Expected source final user message');
-      const original = last.content;
-      expect(original).not.toBe('');
-      expect(expectedPrompt.split(original)).toHaveLength(2);
-      last.content = 'Changed synthetic final user input.';
-      const changedPrompt = expectedPrompt.replace(original, last.content);
+    const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: scenario.messages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: expectedPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: scenario.addGenerationPrompt,
+    })).toBe(expectedPrompt);
+    const changed = scenario.messages.map(message => ({ ...message }));
+    const last = changed.at(-1);
+    if (!last) throw new Error('Expected source final user message');
+    const original = last.content;
+    expect(original).not.toBe('');
+    expect(expectedPrompt.split(original)).toHaveLength(2);
+    last.content = 'Changed synthetic final user input.';
+    const changedPrompt = expectedPrompt.replace(original, last.content);
 
-      const changedInputPriorCalls = replay.templateSpy.mock.calls.length;
-      const changedInputPriorInferences = replay.harness.observations.inferenceCalls.length;
-      const changedInputCapture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX',
-          messages: changed.map(({ role, content, ...unhandled }, index) => {
-            unhandled satisfies Record<PropertyKey, never>;
-            return exactObject<ChatMessage>()({ id: toMessageId({ raw: `message_${index}` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] });
-          }),
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    const changedInputPriorCalls = replay.templateSpy.mock.calls.length;
+    const changedInputPriorInferences = replay.harness.observations.inferenceCalls.length;
+    const changedInputCapture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: 'LiquidAI/LFM2.5-230M-ONNX',
+        messages: changed.map(({ role, content, ...unhandled }, index) => {
+          unhandled satisfies Record<PropertyKey, never>;
+          return exactObject<ChatMessage>()({ id: toMessageId({ raw: `message_${index}` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] });
+        }),
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          signal: new AbortController().signal,
-          readBinaryObject: undefined,
-          debug: undefined,
         },
-      });
-      captures.push(changedInputCapture);
-      await changedInputCapture.completion;
-      expect(changedInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
-      const changedInputChunks = changedInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      const changedInputToolCalls = changedInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-      expect(changedInputCapture.snapshot().parts).toEqual([]);
+        signal: new AbortController().signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(changedInputCapture);
+    await changedInputCapture.completion;
+    expect(changedInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
+    const changedInputChunks = changedInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
+    const changedInputToolCalls = changedInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+    expect(changedInputCapture.snapshot().parts).toEqual([]);
 
-      expect(changedInputChunks).toEqual([]);
-      expect(changedInputToolCalls).toEqual([]);
+    expect(changedInputChunks).toEqual([]);
+    expect(changedInputToolCalls).toEqual([]);
 
-      verifyLfm230NativeInput({ replay, expectedMessages: changed, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: changedPrompt, priorCalls: changedInputPriorCalls, priorInferences: changedInputPriorInferences });
-      expect(tokenizer.apply_chat_template(changed, { tokenize: false, add_generation_prompt: true })).toBe(changedPrompt);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    verifyLfm230NativeInput({ replay, expectedMessages: changed, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: changedPrompt, priorCalls: changedInputPriorCalls, priorInferences: changedInputPriorInferences });
+    expect(tokenizer.apply_chat_template(changed, { tokenize: false, add_generation_prompt: true })).toBe(changedPrompt);
   }, 30_000);
 
   it("system-user-generation reaches actual inference with the independently specified current prompt", async () => {
@@ -339,97 +341,98 @@ Template probe user message.<|im_end|>
 <|im_start|>assistant
 `;
     const replay = await createLfm230InputReplay();
-    try {
-      const firstInputPriorCalls = replay.templateSpy.mock.calls.length;
-      const firstInputPriorInferences = replay.harness.observations.inferenceCalls.length;
-      const firstInputCapture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX',
-          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const firstInputPriorCalls = replay.templateSpy.mock.calls.length;
+    const firstInputPriorInferences = replay.harness.observations.inferenceCalls.length;
+    const firstInputCapture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: 'LiquidAI/LFM2.5-230M-ONNX',
+        messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          signal: new AbortController().signal,
-          readBinaryObject: undefined,
-          debug: undefined,
         },
-      });
-      captures.push(firstInputCapture);
-      await firstInputCapture.completion;
-      expect(firstInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
-      const firstInputChunks = firstInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      const firstInputToolCalls = firstInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-      expect(firstInputCapture.snapshot().parts).toEqual([]);
+        signal: new AbortController().signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(firstInputCapture);
+    await firstInputCapture.completion;
+    expect(firstInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
+    const firstInputChunks = firstInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
+    const firstInputToolCalls = firstInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+    expect(firstInputCapture.snapshot().parts).toEqual([]);
 
-      expect(firstInputChunks).toEqual([]);
-      expect(firstInputToolCalls).toEqual([]);
+    expect(firstInputChunks).toEqual([]);
+    expect(firstInputToolCalls).toEqual([]);
 
-      const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: scenario.messages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: expectedPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: scenario.addGenerationPrompt,
-      })).toBe(expectedPrompt);
-      const changed = scenario.messages.map(message => ({ ...message }));
-      const last = changed.at(-1);
-      if (!last) throw new Error('Expected source final user message');
-      const original = last.content;
-      expect(original).not.toBe('');
-      expect(expectedPrompt.split(original)).toHaveLength(2);
-      last.content = 'Changed synthetic final user input.';
-      const changedPrompt = expectedPrompt.replace(original, last.content);
+    const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: scenario.messages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: expectedPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: scenario.addGenerationPrompt,
+    })).toBe(expectedPrompt);
+    const changed = scenario.messages.map(message => ({ ...message }));
+    const last = changed.at(-1);
+    if (!last) throw new Error('Expected source final user message');
+    const original = last.content;
+    expect(original).not.toBe('');
+    expect(expectedPrompt.split(original)).toHaveLength(2);
+    last.content = 'Changed synthetic final user input.';
+    const changedPrompt = expectedPrompt.replace(original, last.content);
 
-      const changedInputPriorCalls = replay.templateSpy.mock.calls.length;
-      const changedInputPriorInferences = replay.harness.observations.inferenceCalls.length;
-      const changedInputCapture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX',
-          messages: changed.map(({ role, content, ...unhandled }, index) => {
-            unhandled satisfies Record<PropertyKey, never>;
-            return exactObject<ChatMessage>()({ id: toMessageId({ raw: `message_${index}` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] });
-          }),
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    const changedInputPriorCalls = replay.templateSpy.mock.calls.length;
+    const changedInputPriorInferences = replay.harness.observations.inferenceCalls.length;
+    const changedInputCapture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: 'LiquidAI/LFM2.5-230M-ONNX',
+        messages: changed.map(({ role, content, ...unhandled }, index) => {
+          unhandled satisfies Record<PropertyKey, never>;
+          return exactObject<ChatMessage>()({ id: toMessageId({ raw: `message_${index}` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] });
+        }),
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          signal: new AbortController().signal,
-          readBinaryObject: undefined,
-          debug: undefined,
         },
-      });
-      captures.push(changedInputCapture);
-      await changedInputCapture.completion;
-      expect(changedInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
-      const changedInputChunks = changedInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      const changedInputToolCalls = changedInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-      expect(changedInputCapture.snapshot().parts).toEqual([]);
+        signal: new AbortController().signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(changedInputCapture);
+    await changedInputCapture.completion;
+    expect(changedInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
+    const changedInputChunks = changedInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
+    const changedInputToolCalls = changedInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+    expect(changedInputCapture.snapshot().parts).toEqual([]);
 
-      expect(changedInputChunks).toEqual([]);
-      expect(changedInputToolCalls).toEqual([]);
+    expect(changedInputChunks).toEqual([]);
+    expect(changedInputToolCalls).toEqual([]);
 
-      verifyLfm230NativeInput({ replay, expectedMessages: changed, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: changedPrompt, priorCalls: changedInputPriorCalls, priorInferences: changedInputPriorInferences });
-      expect(tokenizer.apply_chat_template(changed, { tokenize: false, add_generation_prompt: true })).toBe(changedPrompt);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    verifyLfm230NativeInput({ replay, expectedMessages: changed, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: changedPrompt, priorCalls: changedInputPriorCalls, priorInferences: changedInputPriorInferences });
+    expect(tokenizer.apply_chat_template(changed, { tokenize: false, add_generation_prompt: true })).toBe(changedPrompt);
   }, 30_000);
 
   it("multi-turn-generation reaches actual inference with the independently specified current prompt", async () => {
@@ -445,97 +448,98 @@ Template probe second user message.<|im_end|>
 <|im_start|>assistant
 `;
     const replay = await createLfm230InputReplay();
-    try {
-      const firstInputPriorCalls = replay.templateSpy.mock.calls.length;
-      const firstInputPriorInferences = replay.harness.observations.inferenceCalls.length;
-      const firstInputCapture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX',
-          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe first user message.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }],
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const firstInputPriorCalls = replay.templateSpy.mock.calls.length;
+    const firstInputPriorInferences = replay.harness.observations.inferenceCalls.length;
+    const firstInputCapture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: 'LiquidAI/LFM2.5-230M-ONNX',
+        messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe first user message.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }],
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          signal: new AbortController().signal,
-          readBinaryObject: undefined,
-          debug: undefined,
         },
-      });
-      captures.push(firstInputCapture);
-      await firstInputCapture.completion;
-      expect(firstInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
-      const firstInputChunks = firstInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      const firstInputToolCalls = firstInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-      expect(firstInputCapture.snapshot().parts).toEqual([]);
+        signal: new AbortController().signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(firstInputCapture);
+    await firstInputCapture.completion;
+    expect(firstInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
+    const firstInputChunks = firstInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
+    const firstInputToolCalls = firstInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+    expect(firstInputCapture.snapshot().parts).toEqual([]);
 
-      expect(firstInputChunks).toEqual([]);
-      expect(firstInputToolCalls).toEqual([]);
+    expect(firstInputChunks).toEqual([]);
+    expect(firstInputToolCalls).toEqual([]);
 
-      const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: scenario.messages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: expectedPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: scenario.addGenerationPrompt,
-      })).toBe(expectedPrompt);
-      const changed = scenario.messages.map(message => ({ ...message }));
-      const last = changed.at(-1);
-      if (!last) throw new Error('Expected source final user message');
-      const original = last.content;
-      expect(original).not.toBe('');
-      expect(expectedPrompt.split(original)).toHaveLength(2);
-      last.content = 'Changed synthetic final user input.';
-      const changedPrompt = expectedPrompt.replace(original, last.content);
+    const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: scenario.messages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: expectedPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: scenario.addGenerationPrompt,
+    })).toBe(expectedPrompt);
+    const changed = scenario.messages.map(message => ({ ...message }));
+    const last = changed.at(-1);
+    if (!last) throw new Error('Expected source final user message');
+    const original = last.content;
+    expect(original).not.toBe('');
+    expect(expectedPrompt.split(original)).toHaveLength(2);
+    last.content = 'Changed synthetic final user input.';
+    const changedPrompt = expectedPrompt.replace(original, last.content);
 
-      const changedInputPriorCalls = replay.templateSpy.mock.calls.length;
-      const changedInputPriorInferences = replay.harness.observations.inferenceCalls.length;
-      const changedInputCapture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX',
-          messages: changed.map(({ role, content, ...unhandled }, index) => {
-            unhandled satisfies Record<PropertyKey, never>;
-            return exactObject<ChatMessage>()({ id: toMessageId({ raw: `message_${index}` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] });
-          }),
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    const changedInputPriorCalls = replay.templateSpy.mock.calls.length;
+    const changedInputPriorInferences = replay.harness.observations.inferenceCalls.length;
+    const changedInputCapture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: 'LiquidAI/LFM2.5-230M-ONNX',
+        messages: changed.map(({ role, content, ...unhandled }, index) => {
+          unhandled satisfies Record<PropertyKey, never>;
+          return exactObject<ChatMessage>()({ id: toMessageId({ raw: `message_${index}` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] });
+        }),
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          signal: new AbortController().signal,
-          readBinaryObject: undefined,
-          debug: undefined,
         },
-      });
-      captures.push(changedInputCapture);
-      await changedInputCapture.completion;
-      expect(changedInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
-      const changedInputChunks = changedInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      const changedInputToolCalls = changedInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-      expect(changedInputCapture.snapshot().parts).toEqual([]);
+        signal: new AbortController().signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(changedInputCapture);
+    await changedInputCapture.completion;
+    expect(changedInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
+    const changedInputChunks = changedInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
+    const changedInputToolCalls = changedInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+    expect(changedInputCapture.snapshot().parts).toEqual([]);
 
-      expect(changedInputChunks).toEqual([]);
-      expect(changedInputToolCalls).toEqual([]);
+    expect(changedInputChunks).toEqual([]);
+    expect(changedInputToolCalls).toEqual([]);
 
-      verifyLfm230NativeInput({ replay, expectedMessages: changed, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: changedPrompt, priorCalls: changedInputPriorCalls, priorInferences: changedInputPriorInferences });
-      expect(tokenizer.apply_chat_template(changed, { tokenize: false, add_generation_prompt: true })).toBe(changedPrompt);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    verifyLfm230NativeInput({ replay, expectedMessages: changed, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true }, expectedPrompt: changedPrompt, priorCalls: changedInputPriorCalls, priorInferences: changedInputPriorInferences });
+    expect(tokenizer.apply_chat_template(changed, { tokenize: false, add_generation_prompt: true })).toBe(changedPrompt);
   }, 30_000);
 
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
@@ -546,56 +550,57 @@ Template probe second user message.<|im_end|>
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // first-turn: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 16,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "first-turn", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-230M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const textParts = observed.parts.filter(part => part.type === 'text');
-        expect(observed.parts.map(part => part.type)).toEqual(['text']);
-        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
-        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-        expect(observed.result).toEqual({ type: 'finished', next: 'user' });
-        expect(textParts.map(part => part.completeness)).toEqual(['complete']);
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // first-turn: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "first-turn", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-230M-ONNX",
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const textParts = observed.parts.filter(part => part.type === 'text');
+      expect(observed.parts.map(part => part.type)).toEqual(['text']);
+      expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+      const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+      expect(observed.result).toEqual({ type: 'finished', next: 'user' });
+      expect(textParts.map(part => part.completeness)).toEqual(['complete']);
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(textParts.map(part => part.chunks.join(''))).toEqual(["I'm sorry, but I can't help with that."]);
-        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+      expect(textParts.map(part => part.chunks.join(''))).toEqual(["I'm sorry, but I can't help with that."]);
+      expect(order).toEqual(["part", "part-complete", "result", "settled"]);
 
-        expect(calls).toEqual([]);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      expect(calls).toEqual([]);
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -608,56 +613,57 @@ describe('LFM2.5 230M Provider / system', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // system-user: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "system-user", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-230M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const textParts = observed.parts.filter(part => part.type === 'text');
-        expect(observed.parts.map(part => part.type)).toEqual(['text']);
-        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
-        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // system-user: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "system-user", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-230M-ONNX",
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'system', parts: [{ type: 'text', text: "Template probe system instruction.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const textParts = observed.parts.filter(part => part.type === 'text');
+      expect(observed.parts.map(part => part.type)).toEqual(['text']);
+      expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+      const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(textParts.map(part => part.completeness)).toEqual(['partial']);
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(textParts.map(part => part.chunks.join(''))).toEqual(["Here"]);
-        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+      expect(textParts.map(part => part.chunks.join(''))).toEqual(["Here"]);
+      expect(order).toEqual(["part", "part-complete", "result", "settled"]);
 
-        expect(calls).toEqual([]);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      expect(calls).toEqual([]);
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -732,59 +738,60 @@ Original assistant body.<|im_end|>
       ],
       generate,
     });
-    try {
-      const capture = captureProviderChat({
-        provider: harness.provider,
-        request: {
-          model: MODEL_ID,
-          messages: messages.map(({ role, content, ...unhandled }, index) => {
-            unhandled satisfies Record<PropertyKey, never>;
-            return exactObject<ChatMessage>()({ id: toMessageId({ raw: `message_${index}` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] });
-          }),
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    });
+    const capture = captureProviderChat({
+      provider: harness.provider,
+      request: {
+        model: MODEL_ID,
+        messages: messages.map(({ role, content, ...unhandled }, index) => {
+          unhandled satisfies Record<PropertyKey, never>;
+          return exactObject<ChatMessage>()({ id: toMessageId({ raw: `message_${index}` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] });
+        }),
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          readBinaryObject: undefined,
-          debug: undefined,
-          signal: undefined,
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
-      const chunks = capture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      expect(capture.snapshot().parts).toEqual([]);
+        readBinaryObject: undefined,
+        debug: undefined,
+        signal: undefined,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
+    const chunks = capture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
+    expect(capture.snapshot().parts).toEqual([]);
 
-      expect(capture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
+    expect(capture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall)).toEqual([]);
 
-      expect(generate).toHaveBeenCalledOnce();
-      expect(observedInputs).toHaveLength(1);
-      const observedInput = observedInputs[0]!;
-      expect(observedInput.tokenizer.apply_chat_template(messages, { tokenize: false, add_generation_prompt: true }))
-        .toBe(expectedPrompt);
-      // Encode independently specified text, rather than deriving the oracle
-      // from the Production-generated prompt under test.
-      const expectedIds = observedInput.tokenizer.encode(expectedPrompt, { add_special_tokens: false });
-      expect(observedInput.input?.data).toEqual(expectedIds);
-      expect(observedInput.input?.dims).toEqual([1, expectedIds.length]);
-      expect(observedInput.mask).toEqual(expectedIds.map(() => 1));
-      expect(observedInput.past).toBeNull();
-      expect(chunks).toEqual([]);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+    expect(generate).toHaveBeenCalledOnce();
+    expect(observedInputs).toHaveLength(1);
+    const observedInput = observedInputs[0]!;
+    expect(observedInput.tokenizer.apply_chat_template(messages, { tokenize: false, add_generation_prompt: true }))
+      .toBe(expectedPrompt);
+    // Encode independently specified text, rather than deriving the oracle
+    // from the Production-generated prompt under test.
+    const expectedIds = observedInput.tokenizer.encode(expectedPrompt, { add_special_tokens: false });
+    expect(observedInput.input?.data).toEqual(expectedIds);
+    expect(observedInput.input?.dims).toEqual([1, expectedIds.length]);
+    expect(observedInput.mask).toEqual(expectedIds.map(() => 1));
+    expect(observedInput.past).toBeNull();
+    expect(chunks).toEqual([]);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
@@ -795,56 +802,57 @@ Original assistant body.<|im_end|>
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // supplied-history: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "supplied-history", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-230M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe first user message.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const textParts = observed.parts.filter(part => part.type === 'text');
-        expect(observed.parts.map(part => part.type)).toEqual(['text']);
-        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
-        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // supplied-history: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "supplied-history", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-230M-ONNX",
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe first user message.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'text', text: "Template probe assistant response.", completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Template probe second user message.", completeness: 'complete' }] }],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const textParts = observed.parts.filter(part => part.type === 'text');
+      expect(observed.parts.map(part => part.type)).toEqual(['text']);
+      expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+      const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(textParts.map(part => part.completeness)).toEqual(['partial']);
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(textParts.map(part => part.chunks.join(''))).toEqual(["Template"]);
-        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+      expect(textParts.map(part => part.chunks.join(''))).toEqual(["Template"]);
+      expect(order).toEqual(["part", "part-complete", "result", "settled"]);
 
-        expect(calls).toEqual([]);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      expect(calls).toEqual([]);
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -858,155 +866,156 @@ describe('LFM2.5 230M Provider / independent', () => {
     });
     const captures: ProviderChatCapture[] = [];
     let firstAssistant: Extract<ChatMessage, { role: 'assistant' }> | undefined;
-    try {
-      // first-turn: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 16,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "first-turn", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-230M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const textParts = observed.parts.filter(part => part.type === 'text');
-        expect(observed.parts.map(part => part.type)).toEqual(['text']);
-        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
-        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-        expect(observed.result).toEqual({ type: 'finished', next: 'user' });
-        expect(textParts.map(part => part.completeness)).toEqual(['complete']);
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // first-turn: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "first-turn", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-230M-ONNX",
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const textParts = observed.parts.filter(part => part.type === 'text');
+      expect(observed.parts.map(part => part.type)).toEqual(['text']);
+      expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+      const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+      expect(observed.result).toEqual({ type: 'finished', next: 'user' });
+      expect(textParts.map(part => part.completeness)).toEqual(['complete']);
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(textParts.map(part => part.chunks.join(''))).toEqual(["I'm sorry, but I can't help with that."]);
-        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+      expect(textParts.map(part => part.chunks.join(''))).toEqual(["I'm sorry, but I can't help with that."]);
+      expect(order).toEqual(["part", "part-complete", "result", "settled"]);
 
-        expect(calls).toEqual([]);
+      expect(calls).toEqual([]);
 
-        const { partId, type, chunks, completeness, index: _index, ...unhandled } = textParts[0]!;
-        unhandled satisfies Record<PropertyKey, never>;
-        if (completeness === 'pending') throw new Error('Expected a drained first text part');
-        firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
-          id: toMessageId({ raw: 'message_1' }),
-          role: 'assistant',
-          parts: [{ type, text: chunks.join(''), completeness }],
-        });
-      }
-      // continuity: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 16,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "continuity", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-230M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }, firstAssistant!, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const textParts = observed.parts.filter(part => part.type === 'text');
-        expect(observed.parts.map(part => part.type)).toEqual(['text']);
-        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
-        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(textParts.map(part => part.chunks.join(''))).toEqual(["I'm sorry for any confusion, but I'm unable to continue the conversation with"]);
-        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
-
-        expect(calls).toEqual([]);
-      }
-      // independent-next-input: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "independent-next-input", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-230M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "A separate synthetic capture conversation.", completeness: 'complete' }] }],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const textParts = observed.parts.filter(part => part.type === 'text');
-        expect(observed.parts.map(part => part.type)).toEqual(['text']);
-        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
-        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(textParts.map(part => part.chunks.join(''))).toEqual(["I"]);
-        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
-
-        expect(calls).toEqual([]);
-      }
-      replay.assertComplete({ requests: 3, nativeCalls: 3 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      const { partId, type, chunks, completeness, index: _index, ...unhandled } = textParts[0]!;
+      unhandled satisfies Record<PropertyKey, never>;
+      if (completeness === 'pending') throw new Error('Expected a drained first text part');
+      firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
+        id: toMessageId({ raw: 'message_1' }),
+        role: 'assistant',
+        parts: [{ type, text: chunks.join(''), completeness }],
+      });
     }
+    // continuity: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "continuity", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-230M-ONNX",
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }, firstAssistant!, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const textParts = observed.parts.filter(part => part.type === 'text');
+      expect(observed.parts.map(part => part.type)).toEqual(['text']);
+      expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+      const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(textParts.map(part => part.completeness)).toEqual(['partial']);
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+
+      expect(textParts.map(part => part.chunks.join(''))).toEqual(["I'm sorry for any confusion, but I'm unable to continue the conversation with"]);
+      expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
+      expect(calls).toEqual([]);
+    }
+    // independent-next-input: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "independent-next-input", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-230M-ONNX",
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "A separate synthetic capture conversation.", completeness: 'complete' }] }],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const textParts = observed.parts.filter(part => part.type === 'text');
+      expect(observed.parts.map(part => part.type)).toEqual(['text']);
+      expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+      const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(textParts.map(part => part.completeness)).toEqual(['partial']);
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+
+      expect(textParts.map(part => part.chunks.join(''))).toEqual(["I"]);
+      expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
+      expect(calls).toEqual([]);
+    }
+    replay.assertComplete({ requests: 3, nativeCalls: 3 });
   }, 30_000);
 });
 
@@ -1019,56 +1028,57 @@ describe('LFM2.5 230M Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // reasoning-none: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: "none",
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "reasoning-none", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-230M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const textParts = observed.parts.filter(part => part.type === 'text');
-        expect(observed.parts.map(part => part.type)).toEqual(['text']);
-        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
-        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // reasoning-none: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "none",
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "reasoning-none", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-230M-ONNX",
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const textParts = observed.parts.filter(part => part.type === 'text');
+      expect(observed.parts.map(part => part.type)).toEqual(['text']);
+      expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+      const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(textParts.map(part => part.completeness)).toEqual(['partial']);
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(textParts.map(part => part.chunks.join(''))).toEqual(["I"]);
-        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+      expect(textParts.map(part => part.chunks.join(''))).toEqual(["I"]);
+      expect(order).toEqual(["part", "part-complete", "result", "settled"]);
 
-        expect(calls).toEqual([]);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      expect(calls).toEqual([]);
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
@@ -1079,56 +1089,57 @@ describe('LFM2.5 230M Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // reasoning-low: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: "low",
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "reasoning-low", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-230M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const textParts = observed.parts.filter(part => part.type === 'text');
-        expect(observed.parts.map(part => part.type)).toEqual(['text']);
-        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
-        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // reasoning-low: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "low",
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "reasoning-low", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-230M-ONNX",
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const textParts = observed.parts.filter(part => part.type === 'text');
+      expect(observed.parts.map(part => part.type)).toEqual(['text']);
+      expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+      const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(textParts.map(part => part.completeness)).toEqual(['partial']);
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(textParts.map(part => part.chunks.join(''))).toEqual(["I"]);
-        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+      expect(textParts.map(part => part.chunks.join(''))).toEqual(["I"]);
+      expect(order).toEqual(["part", "part-complete", "result", "settled"]);
 
-        expect(calls).toEqual([]);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      expect(calls).toEqual([]);
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
@@ -1139,56 +1150,57 @@ describe('LFM2.5 230M Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // reasoning-medium: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: "medium",
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "reasoning-medium", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-230M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const textParts = observed.parts.filter(part => part.type === 'text');
-        expect(observed.parts.map(part => part.type)).toEqual(['text']);
-        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
-        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // reasoning-medium: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "medium",
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "reasoning-medium", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-230M-ONNX",
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const textParts = observed.parts.filter(part => part.type === 'text');
+      expect(observed.parts.map(part => part.type)).toEqual(['text']);
+      expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+      const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(textParts.map(part => part.completeness)).toEqual(['partial']);
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(textParts.map(part => part.chunks.join(''))).toEqual(["I"]);
-        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+      expect(textParts.map(part => part.chunks.join(''))).toEqual(["I"]);
+      expect(order).toEqual(["part", "part-complete", "result", "settled"]);
 
-        expect(calls).toEqual([]);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      expect(calls).toEqual([]);
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
@@ -1199,56 +1211,57 @@ describe('LFM2.5 230M Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // reasoning-high: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: "high",
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "reasoning-high", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-230M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const textParts = observed.parts.filter(part => part.type === 'text');
-        expect(observed.parts.map(part => part.type)).toEqual(['text']);
-        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
-        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // reasoning-high: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "high",
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "reasoning-high", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-230M-ONNX",
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const textParts = observed.parts.filter(part => part.type === 'text');
+      expect(observed.parts.map(part => part.type)).toEqual(['text']);
+      expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+      const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(textParts.map(part => part.completeness)).toEqual(['partial']);
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(textParts.map(part => part.chunks.join(''))).toEqual(["I"]);
-        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+      expect(textParts.map(part => part.chunks.join(''))).toEqual(["I"]);
+      expect(order).toEqual(["part", "part-complete", "result", "settled"]);
 
-        expect(calls).toEqual([]);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      expect(calls).toEqual([]);
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -1264,108 +1277,109 @@ describe('LFM2.5 230M Provider / tools', () => {
       parametersSchema: z.object({ city: z.string() }),
       execute,
     };
-    try {
-      const strictPrompt = strictToolPrelude + assistantPrefix;
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const strictPrompt = strictToolPrelude + assistantPrefix;
 
-      const firstInputPriorCalls = replay.templateSpy.mock.calls.length;
-      const firstInputPriorInferences = replay.harness.observations.inferenceCalls.length;
-      const firstInputCapture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX',
-          messages: scenario.messages.map(({ role, content, ...unhandled }, index) => {
-            unhandled satisfies Record<PropertyKey, never>;
-            return exactObject<ChatMessage>()({ id: toMessageId({ raw: `message_${index}` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] });
-          }),
-          tools: [{ name: tool.name, description: tool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: tool.parametersSchema })) }],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    const firstInputPriorCalls = replay.templateSpy.mock.calls.length;
+    const firstInputPriorInferences = replay.harness.observations.inferenceCalls.length;
+    const firstInputCapture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: 'LiquidAI/LFM2.5-230M-ONNX',
+        messages: scenario.messages.map(({ role, content, ...unhandled }, index) => {
+          unhandled satisfies Record<PropertyKey, never>;
+          return exactObject<ChatMessage>()({ id: toMessageId({ raw: `message_${index}` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] });
+        }),
+        tools: [{ name: tool.name, description: tool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: tool.parametersSchema })) }],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          signal: new AbortController().signal,
-          readBinaryObject: undefined,
-          debug: undefined,
         },
-      });
-      captures.push(firstInputCapture);
-      await firstInputCapture.completion;
-      expect(firstInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
-      const firstInputChunks = firstInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      const firstInputToolCalls = firstInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-      expect(firstInputCapture.snapshot().parts).toEqual([]);
+        signal: new AbortController().signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(firstInputCapture);
+    await firstInputCapture.completion;
+    expect(firstInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
+    const firstInputChunks = firstInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
+    const firstInputToolCalls = firstInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+    expect(firstInputCapture.snapshot().parts).toEqual([]);
 
-      expect(firstInputChunks).toEqual([]);
-      expect(firstInputToolCalls).toEqual([]);
+    expect(firstInputChunks).toEqual([]);
+    expect(firstInputToolCalls).toEqual([]);
 
-      const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: scenario.messages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true, tools: strictTools }, expectedPrompt: strictPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: scenario.addGenerationPrompt,
-        tools: strictTools,
-      })).toBe(strictPrompt);
-      // The source used an open schema. Public Zod tools intentionally add the
-      // strict property; no old output may be reused across that changed input.
-      const openPrompt = strictPrompt.replace(', "additionalProperties": false', '');
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: scenario.addGenerationPrompt,
-        tools: scenario.tools,
-      })).toBe(openPrompt);
-      expect(tokenizer.encode(openPrompt, { add_special_tokens: false })).not.toEqual(tokenizer.encode(strictPrompt, { add_special_tokens: false }));
-      const changedTool = { ...tool, description: 'Changed synthetic weather description.' };
-      const changedDefinitions = [{ type: 'function', function: { ...strictTools[0]!.function, description: changedTool.description } }];
-      const changedPrompt = strictPrompt.replace(tool.description, changedTool.description);
+    const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: scenario.messages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true, tools: strictTools }, expectedPrompt: strictPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: scenario.addGenerationPrompt,
+      tools: strictTools,
+    })).toBe(strictPrompt);
+    // The source used an open schema. Public Zod tools intentionally add the
+    // strict property; no old output may be reused across that changed input.
+    const openPrompt = strictPrompt.replace(', "additionalProperties": false', '');
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: scenario.addGenerationPrompt,
+      tools: scenario.tools,
+    })).toBe(openPrompt);
+    expect(tokenizer.encode(openPrompt, { add_special_tokens: false })).not.toEqual(tokenizer.encode(strictPrompt, { add_special_tokens: false }));
+    const changedTool = { ...tool, description: 'Changed synthetic weather description.' };
+    const changedDefinitions = [{ type: 'function', function: { ...strictTools[0]!.function, description: changedTool.description } }];
+    const changedPrompt = strictPrompt.replace(tool.description, changedTool.description);
 
-      const changedInputPriorCalls = replay.templateSpy.mock.calls.length;
-      const changedInputPriorInferences = replay.harness.observations.inferenceCalls.length;
-      const changedInputCapture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX',
-          messages: scenario.messages.map(({ role, content, ...unhandled }, index) => {
-            unhandled satisfies Record<PropertyKey, never>;
-            return exactObject<ChatMessage>()({ id: toMessageId({ raw: `message_${index}` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] });
-          }),
-          tools: [{ name: changedTool.name, description: changedTool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: changedTool.parametersSchema })) }],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    const changedInputPriorCalls = replay.templateSpy.mock.calls.length;
+    const changedInputPriorInferences = replay.harness.observations.inferenceCalls.length;
+    const changedInputCapture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: 'LiquidAI/LFM2.5-230M-ONNX',
+        messages: scenario.messages.map(({ role, content, ...unhandled }, index) => {
+          unhandled satisfies Record<PropertyKey, never>;
+          return exactObject<ChatMessage>()({ id: toMessageId({ raw: `message_${index}` }), role, parts: [{ type: 'text', text: content, completeness: 'complete' }] });
+        }),
+        tools: [{ name: changedTool.name, description: changedTool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: changedTool.parametersSchema })) }],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          signal: new AbortController().signal,
-          readBinaryObject: undefined,
-          debug: undefined,
         },
-      });
-      captures.push(changedInputCapture);
-      await changedInputCapture.completion;
-      expect(changedInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
-      const changedInputChunks = changedInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      const changedInputToolCalls = changedInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-      expect(changedInputCapture.snapshot().parts).toEqual([]);
+        signal: new AbortController().signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(changedInputCapture);
+    await changedInputCapture.completion;
+    expect(changedInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
+    const changedInputChunks = changedInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
+    const changedInputToolCalls = changedInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+    expect(changedInputCapture.snapshot().parts).toEqual([]);
 
-      expect(changedInputChunks).toEqual([]);
-      expect(changedInputToolCalls).toEqual([]);
+    expect(changedInputChunks).toEqual([]);
+    expect(changedInputToolCalls).toEqual([]);
 
-      verifyLfm230NativeInput({ replay, expectedMessages: scenario.messages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true, tools: changedDefinitions }, expectedPrompt: changedPrompt, priorCalls: changedInputPriorCalls, priorInferences: changedInputPriorInferences });
-      expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true, tools: changedDefinitions })).toBe(changedPrompt);
-      expect(execute).not.toHaveBeenCalled();
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    verifyLfm230NativeInput({ replay, expectedMessages: scenario.messages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true, tools: changedDefinitions }, expectedPrompt: changedPrompt, priorCalls: changedInputPriorCalls, priorInferences: changedInputPriorInferences });
+    expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true, tools: changedDefinitions })).toBe(changedPrompt);
+    expect(execute).not.toHaveBeenCalled();
   }, 30_000);
 
   it('assistant-tool-call-history separates original false, necessary argument mapping and public true continuation', async () => {
@@ -1390,120 +1404,121 @@ describe('LFM2.5 230M Provider / tools', () => {
         function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
       }],
     }];
-    try {
-      const currentFalsePrompt = strictToolPrelude + assistantCallBody;
-      const currentPublicPrompt = currentFalsePrompt + assistantPrefix;
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const currentFalsePrompt = strictToolPrelude + assistantCallBody;
+    const currentPublicPrompt = currentFalsePrompt + assistantPrefix;
 
-      const firstInputPriorCalls = replay.templateSpy.mock.calls.length;
-      const firstInputPriorInferences = replay.harness.observations.inferenceCalls.length;
-      const firstInputCapture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX',
-          messages: publicMessages,
-          tools: [{ name: tool.name, description: tool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: tool.parametersSchema })) }],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    const firstInputPriorCalls = replay.templateSpy.mock.calls.length;
+    const firstInputPriorInferences = replay.harness.observations.inferenceCalls.length;
+    const firstInputCapture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: 'LiquidAI/LFM2.5-230M-ONNX',
+        messages: publicMessages,
+        tools: [{ name: tool.name, description: tool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: tool.parametersSchema })) }],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          signal: new AbortController().signal,
-          readBinaryObject: undefined,
-          debug: undefined,
         },
-      });
-      captures.push(firstInputCapture);
-      await firstInputCapture.completion;
-      expect(firstInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
-      const firstInputChunks = firstInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      const firstInputToolCalls = firstInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-      expect(firstInputCapture.snapshot().parts).toEqual([]);
+        signal: new AbortController().signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(firstInputCapture);
+    await firstInputCapture.completion;
+    expect(firstInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
+    const firstInputChunks = firstInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
+    const firstInputToolCalls = firstInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+    expect(firstInputCapture.snapshot().parts).toEqual([]);
 
-      expect(firstInputChunks).toEqual([]);
-      expect(firstInputToolCalls).toEqual([]);
+    expect(firstInputChunks).toEqual([]);
+    expect(firstInputToolCalls).toEqual([]);
 
-      const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: mappedMessages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true, tools: strictTools }, expectedPrompt: currentPublicPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
-      // Generation-tag support does not make JSON strings mappings. This is a
-      // CURRENT native argument error, distinct from the original parser error.
-      expect(() => tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: scenario.addGenerationPrompt,
-        tools: scenario.tools,
-      })).toThrow('Cannot call something that is not a function: got UndefinedValue');
-      expect(tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: false,
-        add_generation_prompt: scenario.addGenerationPrompt,
-        tools: scenario.tools,
-      })).toBe(currentFalsePrompt.replace(', "additionalProperties": false', ''));
-      expect(tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: false,
-        add_generation_prompt: false,
-        tools: strictTools,
-      })).toBe(currentFalsePrompt);
-      expect(tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: strictTools,
-      })).toBe(currentPublicPrompt);
-      expect(tokenizer.encode(currentFalsePrompt, { add_special_tokens: false })).not.toEqual(tokenizer.encode(currentPublicPrompt, { add_special_tokens: false }));
-      // A second PUBLIC request verifies the call argument itself is retained,
-      // not merely echoed by a native-only comparison after a dropped call.
-      const changedPublic: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: scenario.messages[0].content, completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'tool_call', toolCall: { id: toToolCallId({ raw: sourceCall.id }), type: 'function', function: { name: sourceCall.function.name, arguments: '{"city":"Osaka"}' } } }] }];
-      const changedMapped = [scenario.messages[0], {
-        role: 'assistant',
-        content: '',
-        tool_calls: [{
-          id: 'call_template_probe_1',
-          type: 'function',
-          function: { name: 'lookup_weather', arguments: { city: 'Osaka' } },
-        }],
-      }];
+    const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: mappedMessages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true, tools: strictTools }, expectedPrompt: currentPublicPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
+    // Generation-tag support does not make JSON strings mappings. This is a
+    // CURRENT native argument error, distinct from the original parser error.
+    expect(() => tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: scenario.addGenerationPrompt,
+      tools: scenario.tools,
+    })).toThrow('Cannot call something that is not a function: got UndefinedValue');
+    expect(tokenizer.apply_chat_template(mappedMessages, {
+      tokenize: false,
+      add_generation_prompt: scenario.addGenerationPrompt,
+      tools: scenario.tools,
+    })).toBe(currentFalsePrompt.replace(', "additionalProperties": false', ''));
+    expect(tokenizer.apply_chat_template(mappedMessages, {
+      tokenize: false,
+      add_generation_prompt: false,
+      tools: strictTools,
+    })).toBe(currentFalsePrompt);
+    expect(tokenizer.apply_chat_template(mappedMessages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: strictTools,
+    })).toBe(currentPublicPrompt);
+    expect(tokenizer.encode(currentFalsePrompt, { add_special_tokens: false })).not.toEqual(tokenizer.encode(currentPublicPrompt, { add_special_tokens: false }));
+    // A second PUBLIC request verifies the call argument itself is retained,
+    // not merely echoed by a native-only comparison after a dropped call.
+    const changedPublic: ChatMessage[] = [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: scenario.messages[0].content, completeness: 'complete' }] }, { id: toMessageId({ raw: 'message_1' }), role: 'assistant', parts: [{ type: 'tool_call', toolCall: { id: toToolCallId({ raw: sourceCall.id }), type: 'function', function: { name: sourceCall.function.name, arguments: '{"city":"Osaka"}' } } }] }];
+    const changedMapped = [scenario.messages[0], {
+      role: 'assistant',
+      content: '',
+      tool_calls: [{
+        id: 'call_template_probe_1',
+        type: 'function',
+        function: { name: 'lookup_weather', arguments: { city: 'Osaka' } },
+      }],
+    }];
 
-      const changedInputPriorCalls = replay.templateSpy.mock.calls.length;
-      const changedInputPriorInferences = replay.harness.observations.inferenceCalls.length;
-      const changedInputCapture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX',
-          messages: changedPublic,
-          tools: [{ name: tool.name, description: tool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: tool.parametersSchema })) }],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    const changedInputPriorCalls = replay.templateSpy.mock.calls.length;
+    const changedInputPriorInferences = replay.harness.observations.inferenceCalls.length;
+    const changedInputCapture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: 'LiquidAI/LFM2.5-230M-ONNX',
+        messages: changedPublic,
+        tools: [{ name: tool.name, description: tool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: tool.parametersSchema })) }],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          signal: new AbortController().signal,
-          readBinaryObject: undefined,
-          debug: undefined,
         },
-      });
-      captures.push(changedInputCapture);
-      await changedInputCapture.completion;
-      expect(changedInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
-      const changedInputChunks = changedInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      const changedInputToolCalls = changedInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-      expect(changedInputCapture.snapshot().parts).toEqual([]);
+        signal: new AbortController().signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(changedInputCapture);
+    await changedInputCapture.completion;
+    expect(changedInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
+    const changedInputChunks = changedInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
+    const changedInputToolCalls = changedInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+    expect(changedInputCapture.snapshot().parts).toEqual([]);
 
-      expect(changedInputChunks).toEqual([]);
-      expect(changedInputToolCalls).toEqual([]);
+    expect(changedInputChunks).toEqual([]);
+    expect(changedInputToolCalls).toEqual([]);
 
-      verifyLfm230NativeInput({ replay, expectedMessages: changedMapped, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true, tools: strictTools }, expectedPrompt: currentPublicPrompt.replace("city='Tokyo'", "city='Osaka'"), priorCalls: changedInputPriorCalls, priorInferences: changedInputPriorInferences });
-      expect(execute).not.toHaveBeenCalled();
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    verifyLfm230NativeInput({ replay, expectedMessages: changedMapped, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true, tools: strictTools }, expectedPrompt: currentPublicPrompt.replace("city='Tokyo'", "city='Osaka'"), priorCalls: changedInputPriorCalls, priorInferences: changedInputPriorInferences });
+    expect(execute).not.toHaveBeenCalled();
   }, 30_000);
 
   it('tool-result-continuation retains the mapped call and result through public input without claiming natural tool execution', async () => {
@@ -1529,114 +1544,115 @@ describe('LFM2.5 230M Provider / tools', () => {
         function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
       }],
     }, sourceResult];
-    try {
-      const strictPrompt = strictToolPrelude + assistantCallBody + `\
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    const strictPrompt = strictToolPrelude + assistantCallBody + `\
 <|im_start|>tool
 {"temperatureC":20,"condition":"clear"}<|im_end|>
 <|im_start|>assistant
 `;
 
-      const firstInputPriorCalls = replay.templateSpy.mock.calls.length;
-      const firstInputPriorInferences = replay.harness.observations.inferenceCalls.length;
-      const firstInputCapture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX',
-          messages: publicMessages,
-          tools: [{ name: tool.name, description: tool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: tool.parametersSchema })) }],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    const firstInputPriorCalls = replay.templateSpy.mock.calls.length;
+    const firstInputPriorInferences = replay.harness.observations.inferenceCalls.length;
+    const firstInputCapture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: 'LiquidAI/LFM2.5-230M-ONNX',
+        messages: publicMessages,
+        tools: [{ name: tool.name, description: tool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: tool.parametersSchema })) }],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          signal: new AbortController().signal,
-          readBinaryObject: undefined,
-          debug: undefined,
         },
-      });
-      captures.push(firstInputCapture);
-      await firstInputCapture.completion;
-      expect(firstInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
-      const firstInputChunks = firstInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      const firstInputToolCalls = firstInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-      expect(firstInputCapture.snapshot().parts).toEqual([]);
+        signal: new AbortController().signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(firstInputCapture);
+    await firstInputCapture.completion;
+    expect(firstInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
+    const firstInputChunks = firstInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
+    const firstInputToolCalls = firstInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+    expect(firstInputCapture.snapshot().parts).toEqual([]);
 
-      expect(firstInputChunks).toEqual([]);
-      expect(firstInputToolCalls).toEqual([]);
+    expect(firstInputChunks).toEqual([]);
+    expect(firstInputToolCalls).toEqual([]);
 
-      const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: mappedMessages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true, tools: strictTools }, expectedPrompt: strictPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
-      expect(() => tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: scenario.addGenerationPrompt,
-        tools: scenario.tools,
-      })).toThrow('Cannot call something that is not a function: got UndefinedValue');
-      expect(tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: false,
-        add_generation_prompt: scenario.addGenerationPrompt,
-        tools: scenario.tools,
-      })).toBe(strictPrompt.replace(', "additionalProperties": false', ''));
-      expect(tokenizer.apply_chat_template(mappedMessages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: strictTools,
-      })).toBe(strictPrompt);
-      const changedResult = { ...sourceResult, content: '{"temperatureC":18,"condition":"rain"}' };
-      const changedPublic: ChatMessage[] = [publicMessages[0]!, publicMessages[1]!, { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: changedResult.tool_call_id }), status: 'success', content: { type: 'text', text: changedResult.content } } }] }];
-      const changedMapped = [mappedMessages[0]!, mappedMessages[1]!, changedResult];
-      expect(strictPrompt.split(sourceResult.content)).toHaveLength(2);
+    const tokenizer = verifyLfm230NativeInput({ replay, expectedMessages: mappedMessages, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true, tools: strictTools }, expectedPrompt: strictPrompt, priorCalls: firstInputPriorCalls, priorInferences: firstInputPriorInferences });
+    expect(() => tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: scenario.addGenerationPrompt,
+      tools: scenario.tools,
+    })).toThrow('Cannot call something that is not a function: got UndefinedValue');
+    expect(tokenizer.apply_chat_template(mappedMessages, {
+      tokenize: false,
+      add_generation_prompt: scenario.addGenerationPrompt,
+      tools: scenario.tools,
+    })).toBe(strictPrompt.replace(', "additionalProperties": false', ''));
+    expect(tokenizer.apply_chat_template(mappedMessages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: strictTools,
+    })).toBe(strictPrompt);
+    const changedResult = { ...sourceResult, content: '{"temperatureC":18,"condition":"rain"}' };
+    const changedPublic: ChatMessage[] = [publicMessages[0]!, publicMessages[1]!, { id: toMessageId({ raw: 'message_2' }), role: 'tool', parts: [{ type: 'tool_result', result: { toolCallId: toToolCallId({ raw: changedResult.tool_call_id }), status: 'success', content: { type: 'text', text: changedResult.content } } }] }];
+    const changedMapped = [mappedMessages[0]!, mappedMessages[1]!, changedResult];
+    expect(strictPrompt.split(sourceResult.content)).toHaveLength(2);
 
-      const changedInputPriorCalls = replay.templateSpy.mock.calls.length;
-      const changedInputPriorInferences = replay.harness.observations.inferenceCalls.length;
-      const changedInputCapture = captureProviderChat({
-        provider: replay.harness.provider,
-        request: {
-          model: 'LiquidAI/LFM2.5-230M-ONNX',
-          messages: changedPublic,
-          tools: [{ name: tool.name, description: tool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: tool.parametersSchema })) }],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    const changedInputPriorCalls = replay.templateSpy.mock.calls.length;
+    const changedInputPriorInferences = replay.harness.observations.inferenceCalls.length;
+    const changedInputCapture = captureProviderChat({
+      provider: replay.harness.provider,
+      request: {
+        model: 'LiquidAI/LFM2.5-230M-ONNX',
+        messages: changedPublic,
+        tools: [{ name: tool.name, description: tool.description, parameters: z.record(z.string(), z.json()).parse(zodToJsonSchema({ schema: tool.parametersSchema })) }],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
-          signal: new AbortController().signal,
-          readBinaryObject: undefined,
-          debug: undefined,
         },
-      });
-      captures.push(changedInputCapture);
-      await changedInputCapture.completion;
-      expect(changedInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
-      const changedInputChunks = changedInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
-      const changedInputToolCalls = changedInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-      expect(changedInputCapture.snapshot().parts).toEqual([]);
+        signal: new AbortController().signal,
+        readBinaryObject: undefined,
+        debug: undefined,
+      },
+    });
+    captures.push(changedInputCapture);
+    await changedInputCapture.completion;
+    expect(changedInputCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: INPUT_BOUNDARY } });
+    const changedInputChunks = changedInputCapture.snapshot().parts.filter(part => part.type === 'text').flatMap(part => part.chunks);
+    const changedInputToolCalls = changedInputCapture.snapshot().parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+    expect(changedInputCapture.snapshot().parts).toEqual([]);
 
-      expect(changedInputChunks).toEqual([]);
-      expect(changedInputToolCalls).toEqual([]);
+    expect(changedInputChunks).toEqual([]);
+    expect(changedInputToolCalls).toEqual([]);
 
-      verifyLfm230NativeInput({ replay, expectedMessages: changedMapped, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true, tools: strictTools }, expectedPrompt: strictPrompt.replace(sourceResult.content, changedResult.content), priorCalls: changedInputPriorCalls, priorInferences: changedInputPriorInferences });
-      // The original template renders tool content, not association IDs. The
-      // raw tokenizer argument check above separately protects the supplied ID.
-      expect(tokenizer.apply_chat_template([mappedMessages[0]!, mappedMessages[1]!, { role: 'tool', content: sourceResult.content }], {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: strictTools,
-      })).toBe(strictPrompt);
-      expect(execute).not.toHaveBeenCalled();
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    verifyLfm230NativeInput({ replay, expectedMessages: changedMapped, expectedTemplateOptions: { add_generation_prompt: true, return_dict: true, tools: strictTools }, expectedPrompt: strictPrompt.replace(sourceResult.content, changedResult.content), priorCalls: changedInputPriorCalls, priorInferences: changedInputPriorInferences });
+    // The original template renders tool content, not association IDs. The
+    // raw tokenizer argument check above separately protects the supplied ID.
+    expect(tokenizer.apply_chat_template([mappedMessages[0]!, mappedMessages[1]!, { role: 'tool', content: sourceResult.content }], {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: strictTools,
+    })).toBe(strictPrompt);
+    expect(execute).not.toHaveBeenCalled();
   }, 30_000);
 
   it('tools: executes the recorded minimal Tokyo call once and continues with its result', async () => {
@@ -1900,49 +1916,50 @@ describe('LFM2.5 230M Provider / images', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // image: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "image", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-230M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' }, { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) }] }],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.parts).toEqual([]);
-        expect(observed.result).toMatchObject({
-          type: 'error',
-          error: { message: 'The standard text strategy cannot preserve an image input.' },
-        });
-        replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 0 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // image: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "image", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-230M-ONNX",
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Describe the single synthetic image in one short phrase.", completeness: 'complete' }, { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=" }) }] }],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(observed.parts).toEqual([]);
+      expect(observed.result).toMatchObject({
+        type: 'error',
+        error: { message: 'The standard text strategy cannot preserve an image input.' },
+      });
+      replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 0 });
   }, 30_000);
 });
 
@@ -2116,110 +2133,111 @@ describe('LFM2.5 230M Provider / sequences', () => {
     });
     const captures: ProviderChatCapture[] = [];
     let firstAssistant: Extract<ChatMessage, { role: 'assistant' }> | undefined;
-    try {
-      // first-turn: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 16,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "first-turn", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-230M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const textParts = observed.parts.filter(part => part.type === 'text');
-        expect(observed.parts.map(part => part.type)).toEqual(['text']);
-        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
-        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-        expect(observed.result).toEqual({ type: 'finished', next: 'user' });
-        expect(textParts.map(part => part.completeness)).toEqual(['complete']);
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    // first-turn: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "first-turn", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-230M-ONNX",
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const textParts = observed.parts.filter(part => part.type === 'text');
+      expect(observed.parts.map(part => part.type)).toEqual(['text']);
+      expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+      const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+      expect(observed.result).toEqual({ type: 'finished', next: 'user' });
+      expect(textParts.map(part => part.completeness)).toEqual(['complete']);
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(textParts.map(part => part.chunks.join(''))).toEqual(["I'm sorry, but I can't help with that."]);
-        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+      expect(textParts.map(part => part.chunks.join(''))).toEqual(["I'm sorry, but I can't help with that."]);
+      expect(order).toEqual(["part", "part-complete", "result", "settled"]);
 
-        expect(calls).toEqual([]);
+      expect(calls).toEqual([]);
 
-        const { partId, type, chunks, completeness, index: _index, ...unhandled } = textParts[0]!;
-        unhandled satisfies Record<PropertyKey, never>;
-        if (completeness === 'pending') throw new Error('Expected a drained first text part');
-        firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
-          id: toMessageId({ raw: 'message_1' }),
-          role: 'assistant',
-          parts: [{ type, text: chunks.join(''), completeness }],
-        });
-      }
-      // continuity: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 16,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "continuity", parameters });
-        const capture = captureProviderChat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-230M-ONNX",
-            messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }, firstAssistant!, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }],
-            parameters,
-            tools: [],
-            signal,
-            readBinaryObject: undefined,
-            debug: undefined,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const textParts = observed.parts.filter(part => part.type === 'text');
-        expect(observed.parts.map(part => part.type)).toEqual(['text']);
-        expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
-        const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(textParts.map(part => part.completeness)).toEqual(['partial']);
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
-
-        expect(textParts.map(part => part.chunks.join(''))).toEqual(["I'm sorry for any confusion, but I'm unable to continue the conversation with"]);
-        expect(order).toEqual(["part", "part-complete", "result", "settled"]);
-
-        expect(calls).toEqual([]);
-      }
-      replay.assertComplete({ requests: 2, nativeCalls: 2 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      const { partId, type, chunks, completeness, index: _index, ...unhandled } = textParts[0]!;
+      unhandled satisfies Record<PropertyKey, never>;
+      if (completeness === 'pending') throw new Error('Expected a drained first text part');
+      firstAssistant = exactObject<Extract<ChatMessage, { role: 'assistant' }>>()({
+        id: toMessageId({ raw: 'message_1' }),
+        role: 'assistant',
+        parts: [{ type, text: chunks.join(''), completeness }],
+      });
     }
+    // continuity: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "continuity", parameters });
+      const capture = captureProviderChat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-230M-ONNX",
+          messages: [{ id: toMessageId({ raw: 'message_0' }), role: 'user', parts: [{ type: 'text', text: "Template probe user message.", completeness: 'complete' }] }, firstAssistant!, { id: toMessageId({ raw: 'message_2' }), role: 'user', parts: [{ type: 'text', text: "Continue the synthetic conversation with a short response.", completeness: 'complete' }] }],
+          parameters,
+          tools: [],
+          signal,
+          readBinaryObject: undefined,
+          debug: undefined,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const textParts = observed.parts.filter(part => part.type === 'text');
+      expect(observed.parts.map(part => part.type)).toEqual(['text']);
+      expect(textParts.map(part => ({ partId: part.partId, index: part.index }))).toEqual([{ partId: expect.any(String), index: 0 }]);
+      const calls = observed.parts.filter(part => part.type === 'tool_call').map(part => part.toolCall);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(textParts.map(part => part.completeness)).toEqual(['partial']);
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+
+      expect(textParts.map(part => part.chunks.join(''))).toEqual(["I'm sorry for any confusion, but I'm unable to continue the conversation with"]);
+      expect(order).toEqual(["part", "part-complete", "result", "settled"]);
+
+      expect(calls).toEqual([]);
+    }
+    replay.assertComplete({ requests: 2, nativeCalls: 2 });
   }, 30_000);
 
   it('preserves thirteen causal requests, native streams and settlements in one Load', async () => {

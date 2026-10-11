@@ -6,6 +6,7 @@ import { generationXmp, jpegWithXmp, webpWithXmp } from './download-xmp';
 import { imageGenerationDownloadBlob } from './download';
 import { snapshotImageGeneration } from './snapshot';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const pngBytes = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=', 'base64'));
 const png = new Blob([pngBytes], { type: 'image/png' });
@@ -42,15 +43,16 @@ function parseWebp({ bytes }: { bytes: Uint8Array<ArrayBuffer> }) {
 
 function decodePacket({ packet }: { packet: Uint8Array }): unknown {
   const dom = new JSDOM();
-  try {
-    const xml = new dom.window.DOMParser().parseFromString(new TextDecoder().decode(packet), 'application/xml');
-    expect(xml.querySelector('parsererror')).toBeNull();
-    const json = xml.getElementsByTagNameNS('https://naidan.app/ns/image-generation/1.0/', 'Generation')[0]?.textContent;
-    if (!json) throw new Error('Missing XMP settings');
-    return JSON.parse(json);
-  } finally {
-    dom.window.close();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      dom.window.close();
+    },
+  });
+  const xml = new dom.window.DOMParser().parseFromString(new TextDecoder().decode(packet), 'application/xml');
+  expect(xml.querySelector('parsererror')).toBeNull();
+  const json = xml.getElementsByTagNameNS('https://naidan.app/ns/image-generation/1.0/', 'Generation')[0]?.textContent;
+  if (!json) throw new Error('Missing XMP settings');
+  return JSON.parse(json);
 }
 
 function request() {

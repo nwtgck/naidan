@@ -8,6 +8,7 @@ import { toToolCallId } from '@/01-models/ids';
 import type { resolvePublicHuggingFaceRevision } from './download-verification/logic/resolve-public-hugging-face-revision';
 import type { reuseDownloadedProductionRevision } from './download-verification/logic/reuse-downloaded-production-revision';
 import type { runProductionDownloadPreparation } from './download-verification/logic/run-production-download-preparation';
+import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const download = vi.hoisted(() => ({
   resolve: vi.fn<typeof resolvePublicHuggingFaceRevision>(),
@@ -63,14 +64,15 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  try {
-    // All fixture clients are local and finite. A deliberately rejected dispose
-    // is already asserted by its test and must not prevent other owner cleanup.
-    await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      vi.unstubAllGlobals();
+    },
+  });
+  // All fixture clients are local and finite. A deliberately rejected dispose
+  // is already asserted by its test and must not prevent other owner cleanup.
+  await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
+  expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 
 // These tests cover the real service with controlled client lifecycles, not
@@ -92,17 +94,18 @@ describe('Transformers.js service instance ownership', () => {
     const next = owner.service.generateText({ messages: accepted, onChunk: vi.fn(), onToolCalls: vi.fn(), continuationOwner: 'reasoning-owner' });
     reasoning.text = 'edited'; reasoning.completeness = 'partial';
     accepted[0]!.content = 'edited';
-    try {
-      expect(client.generateText).toHaveBeenCalledTimes(1);
-      release.resolve(); await Promise.all([first, next]);
-      const sent = client.generateText.mock.calls[1]![0];
-      expect(sent.messages).toEqual([{ role: 'assistant', content: '<think>literal</think>', reasoning: { text: '  R\n', completeness: 'complete' } }]);
-      expect(sent.messages[0]?.reasoning).not.toBe(reasoning);
-      expect(sent.continuationOwner).toBe('reasoning-owner');
-      expect(client.interrupt).not.toHaveBeenCalled();
-    } finally {
-      release.resolve(); await Promise.allSettled([first, next]);
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve(); await Promise.allSettled([first, next]);
+      },
+    });
+    expect(client.generateText).toHaveBeenCalledTimes(1);
+    release.resolve(); await Promise.all([first, next]);
+    const sent = client.generateText.mock.calls[1]![0];
+    expect(sent.messages).toEqual([{ role: 'assistant', content: '<think>literal</think>', reasoning: { text: '  R\n', completeness: 'complete' } }]);
+    expect(sent.messages[0]?.reasoning).not.toBe(reasoning);
+    expect(sent.continuationOwner).toBe('reasoning-owner');
+    expect(client.interrupt).not.toHaveBeenCalled();
   });
 
   it('settles an interrupted Download before admitting the next Load without canceling Download I/O', async () => {
@@ -120,32 +123,33 @@ describe('Transformers.js service instance ownership', () => {
       downloadSettled = true;
     });
     const operations: Promise<unknown>[] = [downloading];
-    try {
-      await entered.promise;
-      await owner.service.interrupt();
-      const nextLoad = owner.service.loadDownloadedModel({ modelId: 'fixture/next' });
-      operations.push(nextLoad);
-      void nextLoad.catch(() => undefined);
-      expect(downloadSettled).toBe(false);
-      expect(client.interrupt).not.toHaveBeenCalled();
-      expect(client.loadDownloadedModel).not.toHaveBeenCalled();
-      release.resolve();
-      expect(await downloading).toMatchObject({ name: 'AbortError' });
-      await nextLoad;
-      expect(client.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith({
-        modelId: 'fixture/next',
-        revisionSelection: { kind: 'discover-cached' },
-        progressCallback: expect.any(Function),
-      });
-      expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/next', loadingModelId: undefined });
-      expect(download.reuse).not.toHaveBeenCalled();
-      expect(download.prepare).not.toHaveBeenCalled();
-      expect(client.interrupt).not.toHaveBeenCalled();
-      expect(client.dispose).not.toHaveBeenCalled();
-    } finally {
-      release.resolve();
-      await Promise.allSettled(operations);
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        release.resolve();
+        await Promise.allSettled(operations);
+      },
+    });
+    await entered.promise;
+    await owner.service.interrupt();
+    const nextLoad = owner.service.loadDownloadedModel({ modelId: 'fixture/next' });
+    operations.push(nextLoad);
+    void nextLoad.catch(() => undefined);
+    expect(downloadSettled).toBe(false);
+    expect(client.interrupt).not.toHaveBeenCalled();
+    expect(client.loadDownloadedModel).not.toHaveBeenCalled();
+    release.resolve();
+    expect(await downloading).toMatchObject({ name: 'AbortError' });
+    await nextLoad;
+    expect(client.loadDownloadedModel).toHaveBeenCalledExactlyOnceWith({
+      modelId: 'fixture/next',
+      revisionSelection: { kind: 'discover-cached' },
+      progressCallback: expect.any(Function),
+    });
+    expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/next', loadingModelId: undefined });
+    expect(download.reuse).not.toHaveBeenCalled();
+    expect(download.prepare).not.toHaveBeenCalled();
+    expect(client.interrupt).not.toHaveBeenCalled();
+    expect(client.dispose).not.toHaveBeenCalled();
   });
 
   it('queues explicit Download and cache reset behind generation without changing Download authority', async () => {
@@ -178,32 +182,33 @@ describe('Transformers.js service instance ownership', () => {
       },
     });
     const operations: Promise<unknown>[] = [];
-    try {
-      await owner.service.loadDownloadedModel({ modelId: 'fixture/loaded' });
-      operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
-      await generationEntered.promise;
-      operations.push(owner.service.downloadModel({ modelId: 'fixture/download' }));
-      operations.push(owner.service.resetCache());
-      expect(download.resolve).not.toHaveBeenCalled();
-      expect(client.resetCache).not.toHaveBeenCalled();
-      expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/loaded' });
-      releaseGeneration.resolve();
-      await downloadEntered.promise;
-      expect(client.resetCache).not.toHaveBeenCalled();
-      releaseDownload.resolve();
-      await Promise.all(operations);
-      expect(order).toEqual(['generation', 'download', 'reset']);
-      expect(download.resolve).toHaveBeenCalledExactlyOnceWith({ modelId: 'fixture/download' });
-      expect(download.prepare).not.toHaveBeenCalled();
-      await owner.service.loadDownloadedModel({ modelId: 'fixture/download' });
-      expect(client.loadDownloadedModel).toHaveBeenLastCalledWith({
-        modelId: 'fixture/download',
-        revisionSelection: { kind: 'discover-cached' },
-        progressCallback: expect.any(Function),
-      });
-    } finally {
-      releaseGeneration.resolve(); releaseDownload.resolve(); await Promise.allSettled(operations);
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        releaseGeneration.resolve(); releaseDownload.resolve(); await Promise.allSettled(operations);
+      },
+    });
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/loaded' });
+    operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
+    await generationEntered.promise;
+    operations.push(owner.service.downloadModel({ modelId: 'fixture/download' }));
+    operations.push(owner.service.resetCache());
+    expect(download.resolve).not.toHaveBeenCalled();
+    expect(client.resetCache).not.toHaveBeenCalled();
+    expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/loaded' });
+    releaseGeneration.resolve();
+    await downloadEntered.promise;
+    expect(client.resetCache).not.toHaveBeenCalled();
+    releaseDownload.resolve();
+    await Promise.all(operations);
+    expect(order).toEqual(['generation', 'download', 'reset']);
+    expect(download.resolve).toHaveBeenCalledExactlyOnceWith({ modelId: 'fixture/download' });
+    expect(download.prepare).not.toHaveBeenCalled();
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/download' });
+    expect(client.loadDownloadedModel).toHaveBeenLastCalledWith({
+      modelId: 'fixture/download',
+      revisionSelection: { kind: 'discover-cached' },
+      progressCallback: expect.any(Function),
+    });
   });
 
   it.each(['absent', 'undefined'] as const)('keeps %s optional tool fields out of ordinary messages sent to every model', async shape => {

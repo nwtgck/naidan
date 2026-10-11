@@ -909,7 +909,7 @@ it('b', () => {});`);
   it.each([
     'src/utils/promise.ts',
     'src/utils/promise.test.ts',
-    'src/test-setup.ts',
+    'src/test-setup.test-support.ts',
     'vite.config.ts',
     'build/transformers-js-fixes/replacements.ts',
     'src/lint-rule-tmp/example.ts',

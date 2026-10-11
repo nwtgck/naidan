@@ -7,6 +7,7 @@ import type { InferenceMessage } from '@/features/transformers-js/types';
 import { createModelSupportWeatherTool, MODEL_SUPPORT_TOOL_DEFINITIONS } from './tool-protocol-fixture';
 import { runProviderTestInferenceOperation } from '@/features/transformers-js/provider-inference-test-scope';
 import { runProviderReplayTurn } from '@/features/transformers-js/replay-models/support/provider-replay-chat';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => {
@@ -22,12 +23,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  try {
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-    expect(navigator.storage.getDirectory).not.toHaveBeenCalled();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      vi.unstubAllGlobals();
+    },
+  });
+  expect(globalThis.fetch).not.toHaveBeenCalled();
+  expect(navigator.storage.getDirectory).not.toHaveBeenCalled();
 });
 
 // This fixture checks public Provider/tool mechanics with a controlled service.

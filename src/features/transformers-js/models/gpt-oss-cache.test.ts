@@ -4,6 +4,7 @@ import type { InferenceMessage } from '@/features/transformers-js/types';
 import { toToolCallId } from '@/01-models/ids';
 import { getProductionTransformersArtifact, importProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 import { prepareGptOssContinuation, retainGptOssContinuation } from './gpt-oss-cache';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 let runtime: typeof import('@huggingface/transformers');
 const fetch = vi.fn(() => {
@@ -15,11 +16,12 @@ beforeAll(async () => {
   const artifact = await getProductionTransformersArtifact();
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'process')!;
   Object.defineProperty(globalThis, 'process', { configurable: true, value: { ...process, release: { ...process.release, name: 'browser-test' } } });
-  try {
-    runtime = await importProductionTransformersArtifact({ moduleUrl: `${artifact.moduleUrl}?gpt-cache=native-prepare` }) as typeof runtime;
-  } finally {
-    Object.defineProperty(globalThis, 'process', descriptor);
-  }
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      Object.defineProperty(globalThis, 'process', descriptor);
+    },
+  });
+  runtime = await importProductionTransformersArtifact({ moduleUrl: `${artifact.moduleUrl}?gpt-cache=native-prepare` }) as typeof runtime;
 }, 30_000);
 
 afterAll(() => {

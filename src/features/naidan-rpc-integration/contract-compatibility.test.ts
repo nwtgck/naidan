@@ -15,6 +15,7 @@ import {
   peerProgressSchema,
 } from './contract';
 import { bytesSource, collectBytes } from './codecs/transfer';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const stops: (() => void)[] = [];
 
@@ -50,14 +51,15 @@ function source<T>({ items }: { items: readonly T[] }): ReadableStream<T> {
 async function collect<T>({ stream }: { stream: ReadableStream<T> }): Promise<T[]> {
   const reader = stream.getReader();
   const items: T[] = [];
-  try {
-    for (;;) {
-      const next = await reader.read();
-      if (next.done) return items;
-      items.push(next.value);
-    }
-  } finally {
-    reader.releaseLock();
+  using _cleanupResource = createTestDisposable({
+    dispose: () => {
+      reader.releaseLock();
+    },
+  });
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) return items;
+    items.push(next.value);
   }
 }
 

@@ -4,6 +4,7 @@ import { PRODUCTION_WORKER_READY, startProductionWorkerRuntime } from './product
 import { createLoadDiagnosticOperation, LOAD_DIAGNOSTIC_CHANNEL, type LoadDiagnosticMessage } from './load-diagnostics';
 
 import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform, productionRuntimeModuleFixtureBytes } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({ wrap: vi.fn(), release: vi.fn() }));
 vi.mock('@/utils/worker-transport', () => ({
@@ -168,23 +169,24 @@ describe('Production Worker startup ownership', () => {
     });
     const first = fixture();
     const second = fixture();
-    try {
-      first.worker.startup.start();
-      await firstEntered.promise;
-      first.session.dispose();
-      mocks.wrap.mockReturnValue({});
-      second.worker.startup.start();
-      await secondEntered.promise;
-      // Both verifiers await this same Promise in registration order. The
-      // second real acknowledgement is a completion fence, not a timed sleep.
-      releaseDigest.resolve(digest);
-      await second.worker.startup.ready;
-      expect(first.worker.postMessage).not.toHaveBeenCalled();
-      expect(platform.createObjectURL).toHaveBeenCalledOnce();
-      expect(platform.blobs.size).toBe(1);
-    } finally {
-      digestSpy.mockRestore();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        digestSpy.mockRestore();
+      },
+    });
+    first.worker.startup.start();
+    await firstEntered.promise;
+    first.session.dispose();
+    mocks.wrap.mockReturnValue({});
+    second.worker.startup.start();
+    await secondEntered.promise;
+    // Both verifiers await this same Promise in registration order. The
+    // second real acknowledgement is a completion fence, not a timed sleep.
+    releaseDigest.resolve(digest);
+    await second.worker.startup.ready;
+    expect(first.worker.postMessage).not.toHaveBeenCalled();
+    expect(platform.createObjectURL).toHaveBeenCalledOnce();
+    expect(platform.blobs.size).toBe(1);
   });
 
   it('rejects ready before a verified runtime module lease exists', async () => {

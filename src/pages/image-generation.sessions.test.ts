@@ -3,11 +3,11 @@ import { computed, defineComponent, h, onScopeDispose } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { routes } from 'vue-router/auto-routes';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { idToRaw } from '@/01-models/ids';
 import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
 import type { ImageGenerationDraft } from '@/features/image-generation/generation-draft';
-import { createImageGenerationStorageHarness, generationSessionFixture, generationDraftFixture } from '@/00-storage/service/image-generation/test-support';
+import { createImageGenerationStorageHarness, generationSessionFixture, generationDraftFixture } from '@/00-storage/service/image-generation/index.test-support';
 import * as persistence from '@/00-storage/service/image-generation';
 import type { storageService } from '@/00-storage/service';
 import { useImageGenerationWorkspaceNavigation } from '@/features/image-generation/session/navigation';
@@ -25,7 +25,7 @@ vi.mock('@/00-storage/service', () => ({ storageService: { getCurrentType: () =>
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.confirm }) }));
 vi.mock('@/features/image-generation/session/query-worker/client', () => ({ createImageGenerationQueryClient: () => ({ query: mocks.query, async dispose() {} }) }));
 vi.mock('@/features/image-generation/use-image-generation', async () => {
-  const { useImageGeneration } = await import('@/features/image-generation/test-utils/unavailable-image-view');
+  const { useImageGeneration } = await import('@/features/image-generation/test-utils/unavailable-image-view.test-support');
   return {
     useImageGeneration(): ImageGenerationView {
       mocks.owners++; onScopeDispose(() => {

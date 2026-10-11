@@ -3,6 +3,7 @@ import {
   ProductionLaneTimeoutError,
   withProductionLaneTimeout,
 } from "./production-lane-timeout";
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe("withProductionLaneTimeout", () => {
   it("returns an operation that finishes before the deadline", async () => {
@@ -16,23 +17,24 @@ describe("withProductionLaneTimeout", () => {
 
   it("rejects with the last Production stage and invokes the timeout callback", async () => {
     vi.useFakeTimers();
-    try {
-      const onTimeout = vi.fn();
-      const assertion = expect(withProductionLaneTimeout({
-        operation: new Promise<string>(() => undefined),
-        timeoutMs: 5,
-        timeoutError: () => new ProductionLaneTimeoutError({ stage: "tool-result-continuation", timeoutMs: 5 }),
-        onTimeout,
-      })).rejects.toMatchObject({
-        name: "ProductionLaneTimeoutError",
-        stage: "tool-result-continuation",
-        timeoutMs: 5,
-      });
-      await vi.advanceTimersByTimeAsync(5);
-      await assertion;
-      expect(onTimeout).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.useRealTimers();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        vi.useRealTimers();
+      },
+    });
+    const onTimeout = vi.fn();
+    const assertion = expect(withProductionLaneTimeout({
+      operation: new Promise<string>(() => undefined),
+      timeoutMs: 5,
+      timeoutError: () => new ProductionLaneTimeoutError({ stage: "tool-result-continuation", timeoutMs: 5 }),
+      onTimeout,
+    })).rejects.toMatchObject({
+      name: "ProductionLaneTimeoutError",
+      stage: "tool-result-continuation",
+      timeoutMs: 5,
+    });
+    await vi.advanceTimersByTimeAsync(5);
+    await assertion;
+    expect(onTimeout).toHaveBeenCalledTimes(1);
   });
 });

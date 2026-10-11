@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { readModelRange, inspectWeightFile, readModelJson } from './model-metadata';
 import { parseModelJson } from './model-json';
 import { relativeCompanionPath, validModelPath } from './model-path';
-import { ggufFixture, safetensorsFixture, sparseFile, tensor } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
+import { ggufFixture, safetensorsFixture, sparseFile, tensor } from '@/features/stable-diffusion-cpp-browser/test-utils/weights.test-support';
 
 it('inspects a 20 GiB GGUF from header ranges without whole-file allocation', async () => {
   const { file, reads } = ggufFixture({ name: 'renamed.data', tensors: [tensor({ name: 'weight', shape: [1] })], metadata: { 'general.architecture': 'qwen3', 'split.no': 0, 'split.count': 1, 'split.tensors.count': 1 }, extraBytes: 20 * 1024 ** 3 });

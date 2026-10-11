@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { build, createServer, normalizePath, preview, type Plugin, type PreviewServer, type ViteDevServer } from 'vite';
 import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './dev-server-isolation';
+import { createAsyncTestDisposable } from '../src/utils/resource-cleanup.test-support';
 
 // Vite injects /@vite/env, then its client alias rewrites that import to the
 // installed env module's /@fs URL. Resolve the package, not a machine's path.
@@ -173,16 +174,17 @@ describe('development isolation through real Vite middleware', () => {
   });
 
   afterAll(async () => {
-    try {
-      http.closeAllConnections();
-      if (http.listening) await new Promise<void>((resolve, reject) => http.close(error => error ? reject(error) : resolve()));
-    } finally {
-      try {
-        await server?.close();
-      } finally {
-        if (root !== undefined) await rm(root, { recursive: true, force: true });
-      }
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        try {
+          await server?.close();
+        } finally {
+          if (root !== undefined) await rm(root, { recursive: true, force: true });
+        }
+      },
+    });
+    http.closeAllConnections();
+    if (http.listening) await new Promise<void>((resolve, reject) => http.close(error => error ? reject(error) : resolve()));
   });
 
   it.each([
@@ -235,25 +237,26 @@ describe('development isolation through real Vite middleware', () => {
       },
     });
     const listener = createHttpServer(baseline.middlewares);
-    try {
-      await new Promise<void>((resolve, reject) => {
-        listener.once('error', reject);
-        listener.listen(0, '127.0.0.1', resolve);
-      });
-      const address = listener.address();
-      if (address === null || typeof address === 'string') throw new Error('Missing baseline listener');
-      await assertResponseUnchanged({
-        actual: await fetch(base + '/dependency.ts'),
-        baseline: await fetch(`http://127.0.0.1:${address.port}/dependency.ts`),
-      });
-    } finally {
-      try {
-        listener.closeAllConnections();
-        if (listener.listening) await new Promise<void>((resolve, reject) => listener.close(error => error ? reject(error) : resolve()));
-      } finally {
-        await baseline.close();
-      }
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        try {
+          listener.closeAllConnections();
+          if (listener.listening) await new Promise<void>((resolve, reject) => listener.close(error => error ? reject(error) : resolve()));
+        } finally {
+          await baseline.close();
+        }
+      },
+    });
+    await new Promise<void>((resolve, reject) => {
+      listener.once('error', reject);
+      listener.listen(0, '127.0.0.1', resolve);
+    });
+    const address = listener.address();
+    if (address === null || typeof address === 'string') throw new Error('Missing baseline listener');
+    await assertResponseUnchanged({
+      actual: await fetch(base + '/dependency.ts'),
+      baseline: await fetch(`http://127.0.0.1:${address.port}/dependency.ts`),
+    });
   });
 });
 
@@ -282,16 +285,17 @@ describe('preview isolation through the real Vite preview server', () => {
   });
 
   afterAll(async () => {
-    try {
-      if (server !== undefined && 'closeAllConnections' in server.httpServer) {
-        server.httpServer.closeAllConnections();
-      }
-    } finally {
-      try {
-        await server?.close();
-      } finally {
-        if (root !== undefined) await rm(root, { recursive: true, force: true });
-      }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        try {
+          await server?.close();
+        } finally {
+          if (root !== undefined) await rm(root, { recursive: true, force: true });
+        }
+      },
+    });
+    if (server !== undefined && 'closeAllConnections' in server.httpServer) {
+      server.httpServer.closeAllConnections();
     }
   });
 
@@ -323,63 +327,65 @@ describe('preview isolation through the real Vite preview server', () => {
         cors: { origin: 'https://fixture.invalid' },
       },
     });
-    try {
-      const address = baseline.httpServer.address();
-      if (address === null || typeof address === 'string') throw new Error('Missing baseline preview listener');
-      await assertResponseUnchanged({
-        actual: await fetch(base + '/worker.js'),
-        baseline: await fetch(`http://127.0.0.1:${address.port}/worker.js`),
-      });
-    } finally {
-      try {
-        if ('closeAllConnections' in baseline.httpServer) {
-          baseline.httpServer.closeAllConnections();
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        try {
+          if ('closeAllConnections' in baseline.httpServer) {
+            baseline.httpServer.closeAllConnections();
+          }
+        } finally {
+          await baseline.close();
         }
-      } finally {
-        await baseline.close();
-      }
-    }
+      },
+    });
+    const address = baseline.httpServer.address();
+    if (address === null || typeof address === 'string') throw new Error('Missing baseline preview listener');
+    await assertResponseUnchanged({
+      actual: await fetch(base + '/worker.js'),
+      baseline: await fetch(`http://127.0.0.1:${address.port}/worker.js`),
+    });
   });
 });
 
 it('does not change production bundle output', async () => {
   const root = await fixture();
-  try {
-    const outputs: string[][] = [];
-    const configurations: Array<{ root: string; outDir: string; pluginNames: string[] }> = [];
-    for (const plugins of [[], [createDevServerIsolationPlugin()]]) {
-      const result = await build({
-        root,
-        configFile: false,
-        logLevel: 'silent',
-        plugins: [...plugins, {
-          name: 'fixture-build-observation',
-          configResolved(config) {
-            configurations.push({
-              root: config.root,
-              outDir: config.build.outDir,
-              pluginNames: config.plugins.map(plugin => plugin.name),
-            });
-          },
-        }],
-        build: {
-          write: false,
-          lib: { entry: path.join(root, 'dependency.ts'), formats: ['es'], fileName: 'fixture' },
+  await using _cleanupResource = createAsyncTestDisposable({
+    dispose: async () => {
+      await rm(root, { recursive: true, force: true });
+    },
+  });
+  const outputs: string[][] = [];
+  const configurations: Array<{ root: string; outDir: string; pluginNames: string[] }> = [];
+  for (const plugins of [[], [createDevServerIsolationPlugin()]]) {
+    const result = await build({
+      root,
+      configFile: false,
+      logLevel: 'silent',
+      plugins: [...plugins, {
+        name: 'fixture-build-observation',
+        configResolved(config) {
+          configurations.push({
+            root: config.root,
+            outDir: config.build.outDir,
+            pluginNames: config.plugins.map(plugin => plugin.name),
+          });
         },
-      });
-      if ('close' in result) throw new Error('Unexpected build watcher');
-      outputs.push((Array.isArray(result) ? result : [result]).flatMap(item => item.output.map(file => JSON.stringify(file))));
-    }
-    expect(outputs[1]).toEqual(outputs[0]);
-    expect(configurations).toHaveLength(2);
-    for (const config of configurations) {
-      expect(config.root).toBe(root);
-      expect(config.outDir).toBe('dist');
-      expect(config.pluginNames.some(name => /gzip|copy-zip|tailwind|vue|transformers-js-fixes/u.test(name))).toBe(false);
-    }
-    expect(configurations[0]!.pluginNames).not.toContain('naidan-dev-server-isolation');
-    expect(configurations[1]!.pluginNames).toContain('naidan-dev-server-isolation');
-  } finally {
-    await rm(root, { recursive: true, force: true });
+      }],
+      build: {
+        write: false,
+        lib: { entry: path.join(root, 'dependency.ts'), formats: ['es'], fileName: 'fixture' },
+      },
+    });
+    if ('close' in result) throw new Error('Unexpected build watcher');
+    outputs.push((Array.isArray(result) ? result : [result]).flatMap(item => item.output.map(file => JSON.stringify(file))));
   }
+  expect(outputs[1]).toEqual(outputs[0]);
+  expect(configurations).toHaveLength(2);
+  for (const config of configurations) {
+    expect(config.root).toBe(root);
+    expect(config.outDir).toBe('dist');
+    expect(config.pluginNames.some(name => /gzip|copy-zip|tailwind|vue|transformers-js-fixes/u.test(name))).toBe(false);
+  }
+  expect(configurations[0]!.pluginNames).not.toContain('naidan-dev-server-isolation');
+  expect(configurations[1]!.pluginNames).toContain('naidan-dev-server-isolation');
 });

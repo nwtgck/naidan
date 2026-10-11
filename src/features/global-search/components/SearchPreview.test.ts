@@ -4,7 +4,7 @@ import { mount } from '@vue/test-utils';
 import SearchPreview from './SearchPreview.vue';
 import { ref } from 'vue';
 import { storageService } from '@/00-storage/service';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 vi.mock('../../../00-storage/service', () => ({
   storageService: {

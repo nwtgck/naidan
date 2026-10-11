@@ -1,7 +1,7 @@
 import { toChatId } from '@/01-models/ids';
 import { generateId } from '@/01-models/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import ToolCallGroupItem from '@/features/tools/components/ToolCallGroupItem.vue';

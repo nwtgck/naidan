@@ -5,7 +5,7 @@ import { EMPTY_LM_PARAMETERS, type LmParameters } from '@/01-models/types';
 import type { LmProvider } from '@/01-models/lm';
 import type { LmFetch } from './fetch';
 import { toMessageId } from '@/01-models/ids';
-import { consumeProviderGenerationForTest } from './provider-test-support';
+import { consumeProviderGenerationForTest } from './provider.test-support';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 
 const fetchMock = vi.fn<LmFetch>();

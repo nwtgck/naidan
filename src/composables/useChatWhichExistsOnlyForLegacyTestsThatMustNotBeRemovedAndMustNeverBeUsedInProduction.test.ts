@@ -3,9 +3,9 @@ import type { LmProvider } from '@/01-models/lm';
 import { getMessageText } from '@/01-models/message-text';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { flushPromises } from '@vue/test-utils';
-import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction, type AddToastOptions } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction, type AddToastOptions } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 import { storageService } from '@/00-storage/service';
 import { OpenAIProvider } from '@/features/lm/openai';
 import { reactive, triggerRef, toRaw } from 'vue';
@@ -14,6 +14,7 @@ import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { TEST_ONLY as CHAT_TREE_TEST_ONLY } from '@/logic/chat-tree';
 import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
+import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const { mocks } = vi.hoisted(() => ({
   mocks: {
@@ -290,36 +291,37 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   it('should clear completed compact progress after a short delay', async () => {
     vi.useFakeTimers();
-    try {
-      __testOnlySetContextCompactProgress({
-        chatId: toChatId({ raw: 'chat-compact' }),
-        progress: {
-          phase: 'complete',
-          requestPreview: undefined,
-          outputPreview: '# Compact Context',
-        },
-      });
-
-      expect(chatStore.getContextCompactProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        vi.useRealTimers();
+      },
+    });
+    __testOnlySetContextCompactProgress({
+      chatId: toChatId({ raw: 'chat-compact' }),
+      progress: {
         phase: 'complete',
         requestPreview: undefined,
         outputPreview: '# Compact Context',
-      });
+      },
+    });
 
-      await vi.advanceTimersByTimeAsync(399);
-      expect(chatStore.getContextCompactProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
-        phase: 'complete',
-        requestPreview: undefined,
-        outputPreview: '# Compact Context',
-      });
+    expect(chatStore.getContextCompactProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
+      phase: 'complete',
+      requestPreview: undefined,
+      outputPreview: '# Compact Context',
+    });
 
-      await vi.advanceTimersByTimeAsync(1);
-      expect(chatStore.getContextCompactProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
-        phase: 'idle',
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+    await vi.advanceTimersByTimeAsync(399);
+    expect(chatStore.getContextCompactProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
+      phase: 'complete',
+      requestPreview: undefined,
+      outputPreview: '# Compact Context',
+    });
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(chatStore.getContextCompactProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
+      phase: 'idle',
+    });
   });
 
   it('should insert forked chat at the correct position (g1, g2, c_new, c1) matching createNewChat', async () => {

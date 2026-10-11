@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { captureAudioSettings, type AudioHistoryEntry } from '@/features/audio-generation/composables/useAudioHistory';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
-import { audioResult } from '@/features/audio-generation/test-utils/wav';
+import { audioResult } from '@/features/audio-generation/test-utils/wav.test-support';
 import AudioHistoryResult from './AudioHistoryResult.vue';
 const text = '  First line\n日本語のテキスト。\nSecond line\twith spacing.  ';
 

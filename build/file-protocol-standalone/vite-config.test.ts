@@ -87,7 +87,7 @@ describe('file protocol standalone Vite mode resolution', () => {
 
   it('keeps test Worker mocks ahead of the non-standalone unavailable fallback', async () => {
     const aliases = await loadAliases('test');
-    const testMockPath = path.resolve(process.cwd(), 'src/test-mocks/standalone-worker.ts');
+    const testMockPath = path.resolve(process.cwd(), 'src/test-mocks/standalone-worker.test-support.ts');
 
     for (const { virtualId } of FILE_PROTOCOL_STANDALONE_WORKERS) {
       expect(findAliasForId({ aliases, id: virtualId })?.replacement).toBe(testMockPath);

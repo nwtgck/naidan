@@ -1,6 +1,6 @@
 import type { StorageService } from '@/00-storage/service';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 
 const chats = new Map<string, any>();
 const mockListModels = vi.fn();

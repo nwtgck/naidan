@@ -5,6 +5,7 @@ import fs from 'fs';
 import * as parser from '@typescript-eslint/parser';
 import { rule } from './require-named-args.js';
 import ruleConfig from './require-named-args.js';
+import { createTestDisposable } from '../src/utils/resource-cleanup.test-support';
 
 describe('require-named-args rule', () => {
   let eslint: ESLint;
@@ -112,14 +113,15 @@ describe('require-named-args rule', () => {
       exclude: [],
     }));
 
-    try {
-      const results = await createTypedEslint({ typedTsconfigPath }).lintFiles([typedTestFilePath]);
-      return results[0]?.messages ?? [];
-    } finally {
-      parser.clearCaches();
-      fs.rmSync(typedTestFilePath, { force: true });
-      fs.rmSync(typedTsconfigPath, { force: true });
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        parser.clearCaches();
+        fs.rmSync(typedTestFilePath, { force: true });
+        fs.rmSync(typedTsconfigPath, { force: true });
+      },
+    });
+    const results = await createTypedEslint({ typedTsconfigPath }).lintFiles([typedTestFilePath]);
+    return results[0]?.messages ?? [];
   }
 
   it('exports a config that applies only to production src files', () => {

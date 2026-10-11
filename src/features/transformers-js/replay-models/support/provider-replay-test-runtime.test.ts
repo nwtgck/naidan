@@ -13,6 +13,7 @@ import { generateProductionProviderCapture } from '@/features/transformers-js/mo
 import { captureProviderChat, type CapturedChatRequest } from './capture-provider-chat';
 import { toMessageId } from '@/01-models/ids';
 import type { ChatMessage } from '@/01-models/types';
+import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const capturedSmolLoadIdentity = {
   status: 'ready',
@@ -85,30 +86,31 @@ describe('Production replay explicit image platform ownership', () => {
       }),
       imagePlatform: { platform, allowedDataUrls },
     });
-    try {
-      const unlisted = 'data:image/png;base64,AAAA';
-      allowedDataUrls.push(unlisted);
-      await expect(fetch('https://huggingface.co/synthetic/model/resolve/main/image.png')).rejects.toThrow('blocked non-runtime');
-      await expect(fetch('http://localhost/not-a-runtime-asset.png')).rejects.toThrow('blocked non-runtime');
-      await expect(fetch('blob:http://localhost/synthetic-image')).rejects.toThrow('blocked non-runtime');
-      await expect(fetch(unlisted)).rejects.toThrow('Unprovided replay transport');
-      await expect(fetch('data:text/plain;base64,AAAA')).rejects.toThrow('Unprovided replay transport');
-      expect(delegated).not.toHaveBeenCalled();
-      expect(harness.observations.localImageFetchCalls).toEqual([]);
-      expect(harness.observations.fetchCalls).toEqual([
-        'https://huggingface.co/synthetic/model/resolve/main/image.png',
-        'http://localhost/not-a-runtime-asset.png', 'blob:http://localhost/synthetic-image',
-        unlisted, 'data:text/plain;base64,AAAA',
-      ]);
-      const response = await fetch(dataUrl);
-      expect(response.status).toBe(200);
-      expect(delegated).toHaveBeenCalledOnce();
-      expect(harness.observations.localImageFetchCalls).toEqual([dataUrl]);
-      expect(harness.observations.forbiddenTransport).toEqual([unlisted, 'data:text/plain;base64,AAAA']);
-    } finally {
-      await harness.close();
-      vi.unstubAllGlobals();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+        vi.unstubAllGlobals();
+      },
+    });
+    const unlisted = 'data:image/png;base64,AAAA';
+    allowedDataUrls.push(unlisted);
+    await expect(fetch('https://huggingface.co/synthetic/model/resolve/main/image.png')).rejects.toThrow('blocked non-runtime');
+    await expect(fetch('http://localhost/not-a-runtime-asset.png')).rejects.toThrow('blocked non-runtime');
+    await expect(fetch('blob:http://localhost/synthetic-image')).rejects.toThrow('blocked non-runtime');
+    await expect(fetch(unlisted)).rejects.toThrow('Unprovided replay transport');
+    await expect(fetch('data:text/plain;base64,AAAA')).rejects.toThrow('Unprovided replay transport');
+    expect(delegated).not.toHaveBeenCalled();
+    expect(harness.observations.localImageFetchCalls).toEqual([]);
+    expect(harness.observations.fetchCalls).toEqual([
+      'https://huggingface.co/synthetic/model/resolve/main/image.png',
+      'http://localhost/not-a-runtime-asset.png', 'blob:http://localhost/synthetic-image',
+      unlisted, 'data:text/plain;base64,AAAA',
+    ]);
+    const response = await fetch(dataUrl);
+    expect(response.status).toBe(200);
+    expect(delegated).toHaveBeenCalledOnce();
+    expect(harness.observations.localImageFetchCalls).toEqual([dataUrl]);
+    expect(harness.observations.forbiddenTransport).toEqual([unlisted, 'data:text/plain;base64,AAAA']);
   }, 30_000);
 
   it('preserves native Request headers, override precedence and abort while forcing redirect error', async () => {
@@ -129,29 +131,30 @@ describe('Production replay explicit image platform ownership', () => {
       }),
       imagePlatform: { platform, allowedDataUrls: [dataUrl] },
     });
-    try {
-      const inherited = new AbortController();
-      const replacement = new AbortController();
-      const request = new Request(dataUrl, { headers: { 'x-image-test': 'original' }, signal: inherited.signal });
-      inherited.abort(new Error('Overridden signal must not win'));
-      const response = await fetch(request, { headers: { 'x-image-test': 'replacement' }, signal: replacement.signal, redirect: 'follow' });
-      expect(response.status).toBe(200);
-      expect(requests[0]?.url).toBe(dataUrl);
-      expect(requests[0]?.method).toBe('GET');
-      expect(requests[0]?.headers.get('x-image-test')).toBe('replacement');
-      expect(requests[0]?.redirect).toBe('error');
-      expect(requests[0]?.signal.aborted).toBe(false);
-      const stopped = new Error('Local image request stopped');
-      replacement.abort(stopped);
-      await expect(fetch(dataUrl, { signal: replacement.signal })).rejects.toThrow(stopped.message);
-      expect(requests[1]?.signal.reason).toBe(stopped);
-      await expect(fetch(dataUrl, { method: 'POST' })).rejects.toThrow('Unsupported local');
-      expect(delegated).toHaveBeenCalledTimes(2);
-      expect(harness.observations.localImageFetchCalls).toEqual([dataUrl, dataUrl]);
-    } finally {
-      await harness.close();
-      vi.unstubAllGlobals();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+        vi.unstubAllGlobals();
+      },
+    });
+    const inherited = new AbortController();
+    const replacement = new AbortController();
+    const request = new Request(dataUrl, { headers: { 'x-image-test': 'original' }, signal: inherited.signal });
+    inherited.abort(new Error('Overridden signal must not win'));
+    const response = await fetch(request, { headers: { 'x-image-test': 'replacement' }, signal: replacement.signal, redirect: 'follow' });
+    expect(response.status).toBe(200);
+    expect(requests[0]?.url).toBe(dataUrl);
+    expect(requests[0]?.method).toBe('GET');
+    expect(requests[0]?.headers.get('x-image-test')).toBe('replacement');
+    expect(requests[0]?.redirect).toBe('error');
+    expect(requests[0]?.signal.aborted).toBe(false);
+    const stopped = new Error('Local image request stopped');
+    replacement.abort(stopped);
+    await expect(fetch(dataUrl, { signal: replacement.signal })).rejects.toThrow(stopped.message);
+    expect(requests[1]?.signal.reason).toBe(stopped);
+    await expect(fetch(dataUrl, { method: 'POST' })).rejects.toThrow('Unsupported local');
+    expect(delegated).toHaveBeenCalledTimes(2);
+    expect(harness.observations.localImageFetchCalls).toEqual([dataUrl, dataUrl]);
   }, 30_000);
 
   it('does not enable local data transport when the image platform option is absent', async () => {
@@ -166,41 +169,38 @@ describe('Production replay explicit image platform ownership', () => {
         throw new Error('No inference in absent image test');
       },
     }));
-    try {
-      expect(globalThis.self.constructor.name).toBe('DedicatedWorkerGlobalScope');
-      const workerScope = Reflect.get(globalThis, 'WorkerGlobalScope');
-      const dedicatedScope = Reflect.get(globalThis, 'DedicatedWorkerGlobalScope');
-      if (typeof workerScope !== 'function' || typeof dedicatedScope !== 'function') throw new Error('Missing owned Worker scope constructors');
-      expect(globalThis.self).toBeInstanceOf(workerScope);
-      expect(globalThis.self).toBeInstanceOf(dedicatedScope);
-      await expect(fetch(dataUrl)).rejects.toThrow('Unprovided replay transport');
-      expect(parentFetch).not.toHaveBeenCalled();
-      expect(harness.observations.localImageFetchCalls).toEqual([]);
-    } finally {
-      await harness.close();
-      expect(globalThis.fetch).toBe(parentFetch);
-      expect(workerKeys.map(key => Object.getOwnPropertyDescriptor(globalThis, key))).toEqual(beforeWorkerGlobals);
-      vi.unstubAllGlobals();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+        expect(globalThis.fetch).toBe(parentFetch);
+        expect(workerKeys.map(key => Object.getOwnPropertyDescriptor(globalThis, key))).toEqual(beforeWorkerGlobals);
+        vi.unstubAllGlobals();
+      },
+    });
+    expect(globalThis.self.constructor.name).toBe('DedicatedWorkerGlobalScope');
+    const workerScope = Reflect.get(globalThis, 'WorkerGlobalScope');
+    const dedicatedScope = Reflect.get(globalThis, 'DedicatedWorkerGlobalScope');
+    if (typeof workerScope !== 'function' || typeof dedicatedScope !== 'function') throw new Error('Missing owned Worker scope constructors');
+    expect(globalThis.self).toBeInstanceOf(workerScope);
+    expect(globalThis.self).toBeInstanceOf(dedicatedScope);
+    await expect(fetch(dataUrl)).rejects.toThrow('Unprovided replay transport');
+    expect(parentFetch).not.toHaveBeenCalled();
+    expect(harness.observations.localImageFetchCalls).toEqual([]);
   }, 30_000);
 
   it('rejects a non-data image capability before changing globals or importing the runtime', async () => {
     const beforeFetch = globalThis.fetch;
-    const importer = vi.spyOn(artifactFixture, 'importProductionTransformersArtifact');
-    try {
-      await expect(createProviderReplayTestRuntime({
-        ...mechanicsArguments({
-          generate: async () => {
-            throw new Error('No inference in invalid capability test');
-          },
-        }),
-        imagePlatform: { platform: createProviderReplayTestImagePlatform(), allowedDataUrls: ['http://localhost/synthetic.png'] },
-      })).rejects.toThrow('exact bounded PNG data URL');
-      expect(importer).not.toHaveBeenCalled();
-      expect(globalThis.fetch).toBe(beforeFetch);
-    } finally {
-      importer.mockRestore();
-    }
+    using importer = vi.spyOn(artifactFixture, 'importProductionTransformersArtifact');
+    await expect(createProviderReplayTestRuntime({
+      ...mechanicsArguments({
+        generate: async () => {
+          throw new Error('No inference in invalid capability test');
+        },
+      }),
+      imagePlatform: { platform: createProviderReplayTestImagePlatform(), allowedDataUrls: ['http://localhost/synthetic.png'] },
+    })).rejects.toThrow('exact bounded PNG data URL');
+    expect(importer).not.toHaveBeenCalled();
+    expect(globalThis.fetch).toBe(beforeFetch);
   });
 
   it('runs actual RawImage decode, RGB conversion and resize through the explicit platform', async () => {
@@ -259,37 +259,29 @@ describe('Production replay explicit image platform ownership', () => {
     const before = keys.map(key => Object.getOwnPropertyDescriptor(globalThis, key));
     const originalImport = artifactFixture.importProductionTransformersArtifact;
     const methods: Array<{ target: object, descriptor: PropertyDescriptor | undefined }> = [];
-    const importer = vi.spyOn(artifactFixture, 'importProductionTransformersArtifact').mockImplementationOnce(async args => {
+    using _importer = vi.spyOn(artifactFixture, 'importProductionTransformersArtifact').mockImplementationOnce(async args => {
       const runtime = await originalImport(args) as typeof import('@huggingface/transformers');
       for (const target of [runtime.AutoTokenizer, runtime.AutoProcessor, runtime.AutoModelForCausalLM, runtime.AutoModelForImageTextToText]) {
         methods.push({ target, descriptor: Object.getOwnPropertyDescriptor(target, 'from_pretrained') });
       }
       return runtime;
     });
-    try {
-      const harness = await createProviderReplayTestRuntime({
-        ...mechanicsArguments({
-          generate: async () => {
-            throw new Error('No inference in unload failure test');
-          },
-        }),
-        imagePlatform: { platform: createProviderReplayTestImagePlatform(), allowedDataUrls: [dataUrl] },
-      });
-      const failure = new Error('Synthetic unload failure with image platform');
-      const unload = vi.spyOn(harness.service, 'unloadModel').mockRejectedValueOnce(failure);
-      try {
-        await expect(harness.close()).rejects.toBe(failure);
-        expect(keys.map(key => Object.getOwnPropertyDescriptor(globalThis, key))).toEqual(before);
-        expect(harness.observations.cleanupErrors).toEqual([]);
-        expect(methods).toHaveLength(4);
-        for (const { target, descriptor } of methods) {
-          expect(Object.getOwnPropertyDescriptor(target, 'from_pretrained')).toEqual(descriptor);
-        }
-      } finally {
-        unload.mockRestore();
-      }
-    } finally {
-      importer.mockRestore();
+    const harness = await createProviderReplayTestRuntime({
+      ...mechanicsArguments({
+        generate: async () => {
+          throw new Error('No inference in unload failure test');
+        },
+      }),
+      imagePlatform: { platform: createProviderReplayTestImagePlatform(), allowedDataUrls: [dataUrl] },
+    });
+    const failure = new Error('Synthetic unload failure with image platform');
+    using _unload = vi.spyOn(harness.service, 'unloadModel').mockRejectedValueOnce(failure);
+    await expect(harness.close()).rejects.toBe(failure);
+    expect(keys.map(key => Object.getOwnPropertyDescriptor(globalThis, key))).toEqual(before);
+    expect(harness.observations.cleanupErrors).toEqual([]);
+    expect(methods).toHaveLength(4);
+    for (const { target, descriptor } of methods) {
+      expect(Object.getOwnPropertyDescriptor(target, 'from_pretrained')).toEqual(descriptor);
     }
   }, 30_000);
 
@@ -305,20 +297,21 @@ describe('Production replay explicit image platform ownership', () => {
       expect(globalThis.self.constructor.name).toBe('DedicatedWorkerGlobalScope');
       throw failure;
     });
-    try {
-      await expect(createProviderReplayTestRuntime({
-        ...mechanicsArguments({
-          generate: async () => {
-            throw new Error('No inference after setup failure');
-          },
-        }),
-        imagePlatform: { platform, allowedDataUrls: [dataUrl] },
-      })).rejects.toBe(failure);
-      expect(keys.map(key => Object.getOwnPropertyDescriptor(globalThis, key))).toEqual(before);
-    } finally {
-      importer.mockRestore();
-      vi.unstubAllGlobals();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        importer.mockRestore();
+        vi.unstubAllGlobals();
+      },
+    });
+    await expect(createProviderReplayTestRuntime({
+      ...mechanicsArguments({
+        generate: async () => {
+          throw new Error('No inference after setup failure');
+        },
+      }),
+      imagePlatform: { platform, allowedDataUrls: [dataUrl] },
+    })).rejects.toBe(failure);
+    expect(keys.map(key => Object.getOwnPropertyDescriptor(globalThis, key))).toEqual(before);
   }, 30_000);
 });
 
@@ -330,15 +323,16 @@ describe('Production replay explicit local cache metadata', () => {
         throw new Error('No inference for invalid setup');
       },
     });
-    try {
-      for (const metadataCache of [['config.json', 'config.json'], ['not-recorded.json'], ['../config.json'], ['/config.json']]) {
-        await expect(createProviderReplayTestRuntime({ ...args, metadataCache })).rejects.toThrow('Unprovided or duplicate replay cache metadata');
-      }
-      await expect(createProviderReplayTestRuntime({ ...args, cacheRevision: '../foreign' })).rejects.toThrow('Replay cache namespace');
-      expect(startup).not.toHaveBeenCalled();
-    } finally {
-      startup.mockRestore();
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        startup.mockRestore();
+      },
+    });
+    for (const metadataCache of [['config.json', 'config.json'], ['not-recorded.json'], ['../config.json'], ['/config.json']]) {
+      await expect(createProviderReplayTestRuntime({ ...args, metadataCache })).rejects.toThrow('Unprovided or duplicate replay cache metadata');
     }
+    await expect(createProviderReplayTestRuntime({ ...args, cacheRevision: '../foreign' })).rejects.toThrow('Replay cache namespace');
+    expect(startup).not.toHaveBeenCalled();
   });
 });
 
@@ -355,36 +349,37 @@ describe('Production replay construction ownership', () => {
       }
       return runtime;
     });
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        importer.mockRestore();
+        parentSpy.mockRestore();
+      },
+    });
+    const harness = await createProviderReplayTestRuntime(mechanicsArguments({
+      generate: async () => {
+        throw new Error('No inference in wrapper ownership control');
+      },
+    }));
     try {
-      const harness = await createProviderReplayTestRuntime(mechanicsArguments({
-        generate: async () => {
-          throw new Error('No inference in wrapper ownership control');
-        },
-      }));
-      try {
-        expect(methods).toHaveLength(4);
-        expect(methods[0]!.descriptor).toBeDefined();
-        expect(methods[2]!.descriptor).toBeUndefined();
-        for (const { target } of methods) {
-          expect(vi.isMockFunction(Reflect.get(target, 'from_pretrained'))).toBe(false);
-          expect(Object.hasOwn(target, 'from_pretrained')).toBe(true);
-        }
-        await harness.service.loadDownloadedModel({ modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct' });
-        expect(harness.service.getState().status).toBe('ready');
-        expect(harness.observations.modelLoadCalls).toEqual(['AutoModelForCausalLM']);
-      } finally {
-        await harness.close();
+      expect(methods).toHaveLength(4);
+      expect(methods[0]!.descriptor).toBeDefined();
+      expect(methods[2]!.descriptor).toBeUndefined();
+      for (const { target } of methods) {
+        expect(vi.isMockFunction(Reflect.get(target, 'from_pretrained'))).toBe(false);
+        expect(Object.hasOwn(target, 'from_pretrained')).toBe(true);
       }
-      for (const { target, descriptor } of methods) {
-        expect(Object.getOwnPropertyDescriptor(target, 'from_pretrained')).toEqual(descriptor);
-      }
-      expect(parent.call).toBe(parentSpy);
-      expect(parent.call()).toBe('parent');
-      expect(parentSpy).toHaveBeenCalledExactlyOnceWith();
+      await harness.service.loadDownloadedModel({ modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct' });
+      expect(harness.service.getState().status).toBe('ready');
+      expect(harness.observations.modelLoadCalls).toEqual(['AutoModelForCausalLM']);
     } finally {
-      importer.mockRestore();
-      parentSpy.mockRestore();
+      await harness.close();
     }
+    for (const { target, descriptor } of methods) {
+      expect(Object.getOwnPropertyDescriptor(target, 'from_pretrained')).toEqual(descriptor);
+    }
+    expect(parent.call).toBe(parentSpy);
+    expect(parent.call()).toBe('parent');
+    expect(parentSpy).toHaveBeenCalledExactlyOnceWith();
   }, 30_000);
 
   it('keeps the setup error and restores parent globals even when a spy restoration throws', async () => {
@@ -407,20 +402,21 @@ describe('Production replay construction ownership', () => {
       ownedSpy.mockRestore = throwingRestore;
       throw primary;
     });
-    try {
-      await expect(createProviderReplayTestRuntime(mechanicsArguments({
-        generate: async () => {
-          throw new Error('Not reached');
-        },
-      }))).rejects.toBe(primary);
-      expect(throwingRestore).toHaveBeenCalledOnce();
-      expect(globalThis.fetch).toBe(parentFetch);
-      expect(parentFetch).not.toHaveBeenCalled();
-    } finally {
-      restoreOwnedSpy?.();
-      importer.mockRestore();
-      vi.unstubAllGlobals();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        restoreOwnedSpy?.();
+        importer.mockRestore();
+        vi.unstubAllGlobals();
+      },
+    });
+    await expect(createProviderReplayTestRuntime(mechanicsArguments({
+      generate: async () => {
+        throw new Error('Not reached');
+      },
+    }))).rejects.toBe(primary);
+    expect(throwingRestore).toHaveBeenCalledOnce();
+    expect(globalThis.fetch).toBe(parentFetch);
+    expect(parentFetch).not.toHaveBeenCalled();
   }, 30_000);
 
   it('rolls back globals, object-URL platform and the ORT spy after artifact import fails', async () => {
@@ -438,26 +434,27 @@ describe('Production replay construction ownership', () => {
     };
     const failure = new Error('Synthetic native artifact import failure');
     const importer = vi.spyOn(artifactFixture, 'importProductionTransformersArtifact').mockRejectedValueOnce(failure);
-    try {
-      await expect(createProviderReplayTestRuntime(mechanicsArguments({
-        generate: async () => {
-          throw new Error('Not reached');
-        },
-      }))).rejects.toBe(failure);
-      expect(ort.InferenceSession.create).toBe(factory);
-      expect(globalThis.fetch).toBe(before.fetch);
-      expect(globalThis.navigator).toBe(before.navigator);
-      expect(globalThis.Blob).toBe(before.Blob);
-      expect(globalThis.crypto).toBe(before.crypto);
-      expect(URL.createObjectURL).toBe(before.createObjectURL);
-      expect(URL.revokeObjectURL).toBe(before.revokeObjectURL);
-      expect(Object.getOwnPropertyDescriptor(globalThis, 'self')).toEqual(before.self);
-    } finally {
-      importer.mockRestore();
-      // Also clean the pre-fix failure so it cannot contaminate another case.
-      if (vi.isMockFunction(ort.InferenceSession.create)) ort.InferenceSession.create.mockRestore();
-      vi.unstubAllGlobals();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        importer.mockRestore();
+        // Also clean the pre-fix failure so it cannot contaminate another case.
+        if (vi.isMockFunction(ort.InferenceSession.create)) ort.InferenceSession.create.mockRestore();
+        vi.unstubAllGlobals();
+      },
+    });
+    await expect(createProviderReplayTestRuntime(mechanicsArguments({
+      generate: async () => {
+        throw new Error('Not reached');
+      },
+    }))).rejects.toBe(failure);
+    expect(ort.InferenceSession.create).toBe(factory);
+    expect(globalThis.fetch).toBe(before.fetch);
+    expect(globalThis.navigator).toBe(before.navigator);
+    expect(globalThis.Blob).toBe(before.Blob);
+    expect(globalThis.crypto).toBe(before.crypto);
+    expect(URL.createObjectURL).toBe(before.createObjectURL);
+    expect(URL.revokeObjectURL).toBe(before.revokeObjectURL);
+    expect(Object.getOwnPropertyDescriptor(globalThis, 'self')).toEqual(before.self);
   }, 30_000);
 
   it('removes owned module mocks when Provider import fails after their registration', async () => {
@@ -475,31 +472,32 @@ describe('Production replay construction ownership', () => {
     vi.doMock('@/features/transformers-js/provider-hosted', () => {
       throw failure;
     });
-    try {
-      // Vitest wraps a rejected module factory, preserving its cause. That
-      // upstream wrapper must not be replaced by a cleanup error either.
-      await expect(createProviderReplayTestRuntime(mechanicsArguments({
-        generate: async () => {
-          throw new Error('Not reached');
-        },
-      }))).rejects.toMatchObject({ cause: failure });
-      const actual = await vi.importActual<typeof import('@/utils/worker-transport')>('@/utils/worker-transport');
-      const imported = await import('@/utils/worker-transport');
-      expect(imported.exposeWorkerRemote).toBe(actual.exposeWorkerRemote);
-      expect(globalThis.fetch).toBe(beforeFetch);
-      expect(methods).toHaveLength(4);
-      for (const { target, descriptor } of methods) {
-        expect(Object.getOwnPropertyDescriptor(target, 'from_pretrained')).toEqual(descriptor);
-      }
-    } finally {
-      importer.mockRestore();
-      vi.doUnmock('@/features/transformers-js/provider-hosted');
-      vi.doUnmock('@huggingface/transformers');
-      vi.doUnmock('@/utils/worker-transport');
-      vi.doUnmock('@/features/transformers-js/runtime/import-production-runtime-module');
-      vi.restoreAllMocks();
-      vi.unstubAllGlobals();
-      vi.resetModules();
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        importer.mockRestore();
+        vi.doUnmock('@/features/transformers-js/provider-hosted');
+        vi.doUnmock('@huggingface/transformers');
+        vi.doUnmock('@/utils/worker-transport');
+        vi.doUnmock('@/features/transformers-js/runtime/import-production-runtime-module');
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+        vi.resetModules();
+      },
+    });
+    // Vitest wraps a rejected module factory, preserving its cause. That
+    // upstream wrapper must not be replaced by a cleanup error either.
+    await expect(createProviderReplayTestRuntime(mechanicsArguments({
+      generate: async () => {
+        throw new Error('Not reached');
+      },
+    }))).rejects.toMatchObject({ cause: failure });
+    const actual = await vi.importActual<typeof import('@/utils/worker-transport')>('@/utils/worker-transport');
+    const imported = await import('@/utils/worker-transport');
+    expect(imported.exposeWorkerRemote).toBe(actual.exposeWorkerRemote);
+    expect(globalThis.fetch).toBe(beforeFetch);
+    expect(methods).toHaveLength(4);
+    for (const { target, descriptor } of methods) {
+      expect(Object.getOwnPropertyDescriptor(target, 'from_pretrained')).toEqual(descriptor);
     }
   }, 30_000);
 });
@@ -512,31 +510,32 @@ describe('Production replay native inference boundary', () => {
       throw new Error('Synthetic inference inspection');
     });
     const harness = await createProviderReplayTestRuntime(mechanicsArguments({ generate }));
-    try {
-      const observed = await captureMechanicsChat({
-        provider: harness.provider,
-        messages: [textMessage({ id: 'probe', role: 'user', text: 'Synthetic mechanics probe' })],
-        parameters: undefined,
-      });
-      expect(observed.result).toMatchObject({ type: 'error', error: { message: 'Synthetic inference inspection' } });
-      if (!invocation) throw new Error('Actual inference was not reached');
-      const captured = invocation;
-      const tensor = captured.options.attention_mask;
-      if (!(tensor instanceof harness.runtime.Tensor)) throw new Error('Expected actual tokenizer attention mask');
-      generate.mockClear();
-      await expect(async () => captured.model.generate({
-        ...captured.options,
-        attention_mask: {
-          type: tensor.type,
-          dims: [...tensor.dims],
-          data: tensor.data,
-          location: tensor.location,
-        },
-      })).rejects.toThrow('Replay requires actual Tensor: attention_mask');
-      expect(generate).not.toHaveBeenCalled();
-    } finally {
-      await harness.close();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+      },
+    });
+    const observed = await captureMechanicsChat({
+      provider: harness.provider,
+      messages: [textMessage({ id: 'probe', role: 'user', text: 'Synthetic mechanics probe' })],
+      parameters: undefined,
+    });
+    expect(observed.result).toMatchObject({ type: 'error', error: { message: 'Synthetic inference inspection' } });
+    if (!invocation) throw new Error('Actual inference was not reached');
+    const captured = invocation;
+    const tensor = captured.options.attention_mask;
+    if (!(tensor instanceof harness.runtime.Tensor)) throw new Error('Expected actual tokenizer attention mask');
+    generate.mockClear();
+    await expect(async () => captured.model.generate({
+      ...captured.options,
+      attention_mask: {
+        type: tensor.type,
+        dims: [...tensor.dims],
+        data: tensor.data,
+        location: tensor.location,
+      },
+    })).rejects.toThrow('Replay requires actual Tensor: attention_mask');
+    expect(generate).not.toHaveBeenCalled();
   }, 30_000);
 
   it('rejects a same-shape input object before calling the injected inference callback', async () => {
@@ -546,31 +545,32 @@ describe('Production replay native inference boundary', () => {
       throw new Error('Synthetic inference inspection');
     });
     const harness = await createProviderReplayTestRuntime(mechanicsArguments({ generate }));
-    try {
-      const observed = await captureMechanicsChat({
-        provider: harness.provider,
-        messages: [textMessage({ id: 'probe', role: 'user', text: 'Synthetic mechanics probe' })],
-        parameters: undefined,
-      });
-      expect(observed.result).toMatchObject({ type: 'error', error: { message: 'Synthetic inference inspection' } });
-      if (!invocation) throw new Error('Actual inference was not reached');
-      const captured = invocation;
-      const tensor = captured.options.input_ids;
-      if (!(tensor instanceof harness.runtime.Tensor)) throw new Error('Expected actual tokenizer tensor');
-      generate.mockClear();
-      await expect(async () => captured.model.generate({
-        ...captured.options,
-        input_ids: {
-          type: tensor.type,
-          dims: [...tensor.dims],
-          data: tensor.data,
-          location: tensor.location,
-        },
-      })).rejects.toThrow('Replay requires actual Tensor: input_ids');
-      expect(generate).not.toHaveBeenCalled();
-    } finally {
-      await harness.close();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+      },
+    });
+    const observed = await captureMechanicsChat({
+      provider: harness.provider,
+      messages: [textMessage({ id: 'probe', role: 'user', text: 'Synthetic mechanics probe' })],
+      parameters: undefined,
+    });
+    expect(observed.result).toMatchObject({ type: 'error', error: { message: 'Synthetic inference inspection' } });
+    if (!invocation) throw new Error('Actual inference was not reached');
+    const captured = invocation;
+    const tensor = captured.options.input_ids;
+    if (!(tensor instanceof harness.runtime.Tensor)) throw new Error('Expected actual tokenizer tensor');
+    generate.mockClear();
+    await expect(async () => captured.model.generate({
+      ...captured.options,
+      input_ids: {
+        type: tensor.type,
+        dims: [...tensor.dims],
+        data: tensor.data,
+        location: tensor.location,
+      },
+    })).rejects.toThrow('Replay requires actual Tensor: input_ids');
+    expect(generate).not.toHaveBeenCalled();
   }, 30_000);
 });
 
@@ -595,21 +595,22 @@ describe('Production replay Worker construction boundary', () => {
     });
     const once = () => calls.push('once');
     const aborted = () => calls.push('aborted');
-    try {
-      worker.endpoint.addEventListener('message', once, options);
-      worker.channel.port2.dispatchEvent(new MessageEvent('message', { data: 'first' }));
-      worker.channel.port2.dispatchEvent(new MessageEvent('message', { data: 'second' }));
-      const abortOptions = Object.create({ signal: controller.signal }) as AddEventListenerOptions;
-      worker.endpoint.addEventListener('message', aborted, abortOptions);
-      controller.abort();
-      worker.channel.port2.dispatchEvent(new MessageEvent('message', { data: 'after-abort' }));
-      expect(captureReads).toBe(1);
-      expect(calls).toEqual(['once']);
-      expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(once);
-      expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(aborted);
-    } finally {
-      worker.terminate();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        worker.terminate();
+      },
+    });
+    worker.endpoint.addEventListener('message', once, options);
+    worker.channel.port2.dispatchEvent(new MessageEvent('message', { data: 'first' }));
+    worker.channel.port2.dispatchEvent(new MessageEvent('message', { data: 'second' }));
+    const abortOptions = Object.create({ signal: controller.signal }) as AddEventListenerOptions;
+    worker.endpoint.addEventListener('message', aborted, abortOptions);
+    controller.abort();
+    worker.channel.port2.dispatchEvent(new MessageEvent('message', { data: 'after-abort' }));
+    expect(captureReads).toBe(1);
+    expect(calls).toEqual(['once']);
+    expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(once);
+    expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(aborted);
   });
 
   it('releases owned endpoint listeners by capture identity and prevents late registration after termination', async () => {
@@ -622,23 +623,24 @@ describe('Production replay Worker construction boundary', () => {
     await started.promise;
     const listener = () => {};
     const mutableOptions = { capture: false };
-    try {
-      worker.endpoint.addEventListener('message', listener, mutableOptions);
-      worker.endpoint.addEventListener('message', listener, true);
-      worker.endpoint.removeEventListener('message', listener, true);
-      expect(getEventListeners(worker.channel.port2, 'message').filter(item => item === listener)).toHaveLength(1);
-      // The native registration captured false, regardless of later mutation.
-      mutableOptions.capture = true;
-      worker.terminate();
-      worker.terminate();
-      expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(listener);
-      worker.endpoint.addEventListener('message', listener);
-      expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(listener);
-      expect(worker.hostMessages).toEqual([]);
-      expect(worker.workerMessages).toEqual([]);
-    } finally {
-      worker.terminate();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        worker.terminate();
+      },
+    });
+    worker.endpoint.addEventListener('message', listener, mutableOptions);
+    worker.endpoint.addEventListener('message', listener, true);
+    worker.endpoint.removeEventListener('message', listener, true);
+    expect(getEventListeners(worker.channel.port2, 'message').filter(item => item === listener)).toHaveLength(1);
+    // The native registration captured false, regardless of later mutation.
+    mutableOptions.capture = true;
+    worker.terminate();
+    worker.terminate();
+    expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(listener);
+    worker.endpoint.addEventListener('message', listener);
+    expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(listener);
+    expect(worker.hostMessages).toEqual([]);
+    expect(worker.workerMessages).toEqual([]);
   });
 
   it('preserves native clone errors but discards valid sends after physical termination', async () => {
@@ -669,19 +671,20 @@ describe('Production replay Worker construction boundary', () => {
         completed.resolve();
       },
     });
-    try {
-      await entered.promise;
-      worker.terminate();
-      continueStartup.resolve();
-      await completed.promise;
-      expect(worker.terminated).toBe(true);
-      expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(listener);
-      expect(worker.hostMessages).toEqual([]);
-      expect(worker.workerMessages).toEqual([]);
-    } finally {
-      continueStartup.resolve();
-      worker.terminate();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        continueStartup.resolve();
+        worker.terminate();
+      },
+    });
+    await entered.promise;
+    worker.terminate();
+    continueStartup.resolve();
+    await completed.promise;
+    expect(worker.terminated).toBe(true);
+    expect(getEventListeners(worker.channel.port2, 'message')).not.toContain(listener);
+    expect(worker.hostMessages).toEqual([]);
+    expect(worker.workerMessages).toEqual([]);
   });
 
   it('delivers the original asynchronous startup error before cleanup', async () => {
@@ -693,13 +696,14 @@ describe('Production replay Worker construction boundary', () => {
       },
     });
     worker.addEventListener('error', event => delivered.resolve((event as MessageEvent).data));
-    try {
-      expect(await delivered.promise).toBe(failure);
-      expect(worker.hostMessages).toEqual([]);
-      expect(worker.workerMessages).toEqual([]);
-    } finally {
-      worker.terminate();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        worker.terminate();
+      },
+    });
+    expect(await delivered.promise).toBe(failure);
+    expect(worker.hostMessages).toEqual([]);
+    expect(worker.workerMessages).toEqual([]);
   });
 
   it('rejects a foreign first entry before creating channels or scheduling Production startup', async () => {
@@ -711,17 +715,18 @@ describe('Production replay Worker construction boundary', () => {
     expect(() => new Worker(new URL('../../worker/entry.ts', import.meta.url), { type: 'module' })).toThrow('Unexpected replay Worker script');
     expect(onConstructed).not.toHaveBeenCalled();
     const worker = new Worker(scriptUrl, { type: 'module' });
-    try {
-      await started.promise; // Observe the explicit startup event, not an RPC/callback drain.
-      expect(start).toHaveBeenCalledOnce();
-      expect(onConstructed).toHaveBeenCalledOnce();
-      expect(worker.workerMessages).toEqual([]); // The factory never invents ready.
-      expect(() => new Worker(scriptUrl, { type: 'module' })).toThrow('unexpected restart or Download');
-      expect(onConstructed).toHaveBeenCalledOnce();
-      expect(start).toHaveBeenCalledOnce();
-    } finally {
-      worker.terminate();
-    }
+    using _cleanupResource = createTestDisposable({
+      dispose: () => {
+        worker.terminate();
+      },
+    });
+    await started.promise; // Observe the explicit startup event, not an RPC/callback drain.
+    expect(start).toHaveBeenCalledOnce();
+    expect(onConstructed).toHaveBeenCalledOnce();
+    expect(worker.workerMessages).toEqual([]); // The factory never invents ready.
+    expect(() => new Worker(scriptUrl, { type: 'module' })).toThrow('unexpected restart or Download');
+    expect(onConstructed).toHaveBeenCalledOnce();
+    expect(start).toHaveBeenCalledOnce();
   });
 
   it('rejects classic mode for the exact Production bootstrap before startup', () => {
@@ -778,35 +783,36 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
       requestId: 'synthetic-production-settlement',
       limits: { maximumEvents: 64, maximumCharacters: 4096 },
     });
-    try {
-      const result = await generateProductionProviderCapture({
-        provider: traced.provider,
-        modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
-        input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }),
-        abortController: new AbortController(),
-        trace,
-      });
-      trace.settle({ outcome: 'fulfilled', error: undefined });
-      expect(result).toEqual(baselineSnapshot.result);
-      expect(trace.snapshot().settled?.outcome).toEqual({ status: 'fulfilled' });
-      expect(trace.snapshot().settled?.events.at(-1)).toMatchObject({
-        kind: 'generation_interrupted',
-        reason: 'unknown',
-        phase: 'before-settlement',
-      });
-      const applied = trace.snapshot().settled?.events.filter(event => event.kind === 'part_text').at(-1);
-      expect(applied).toMatchObject({ kind: 'part_text', partType: 'text', text: 'Synthetic output.', completeness: 'partial' });
-      expect(baselineSnapshot.parts).toEqual([{
-        type: 'text',
-        partId: 'part_0',
-        index: 0,
-        chunks: ['', 'S', 'ynthetic ', 'output.'],
-        completeness: 'partial',
-      }]);
-      expect(trace.snapshot().lateEvents).toEqual([]);
-    } finally {
-      await traced.close();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await traced.close();
+      },
+    });
+    const result = await generateProductionProviderCapture({
+      provider: traced.provider,
+      modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
+      input: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }),
+      abortController: new AbortController(),
+      trace,
+    });
+    trace.settle({ outcome: 'fulfilled', error: undefined });
+    expect(result).toEqual(baselineSnapshot.result);
+    expect(trace.snapshot().settled?.outcome).toEqual({ status: 'fulfilled' });
+    expect(trace.snapshot().settled?.events.at(-1)).toMatchObject({
+      kind: 'generation_interrupted',
+      reason: 'unknown',
+      phase: 'before-settlement',
+    });
+    const applied = trace.snapshot().settled?.events.filter(event => event.kind === 'part_text').at(-1);
+    expect(applied).toMatchObject({ kind: 'part_text', partType: 'text', text: 'Synthetic output.', completeness: 'partial' });
+    expect(baselineSnapshot.parts).toEqual([{
+      type: 'text',
+      partId: 'part_0',
+      index: 0,
+      chunks: ['', 'S', 'ynthetic ', 'output.'],
+      completeness: 'partial',
+    }]);
+    expect(trace.snapshot().lateEvents).toEqual([]);
   }, 30_000);
 
   it('preserves real Comlink settlement and immediate next inputs inside the investigation Provider owner', async () => {
@@ -895,63 +901,64 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
       },
       traceLimits: { maximumEvents: 64, maximumCharacters: 4096 },
     });
-    try {
-      const snapshot = await owner.run();
-      expect(snapshot.run).toEqual({ status: 'completed' });
-      expect(snapshot.requests.map(request => request.status)).toEqual(['settled', 'settled', 'settled']);
-      expect(comparableRequests({ requests: snapshot.requests })).toEqual(expectedRequests);
-      expect(capturedNative.inputs).toEqual(baselineNative.inputs);
-      expect(capturedNative.inputs.map(input => input.maxNewTokens)).toEqual([16, 16, 1]);
-      expect(captures).toHaveLength(1);
-      const recorded = await captures[0]!.takeGenerationCapture();
-      if (recorded.status !== 'captured') throw new Error(`Expected captured generation, received ${recorded.status}`);
-      const identities = snapshot.requests.map((request, index) => ({
-        runId: 'synthetic-owner-comlink',
-        workerEpoch: 1,
-        requestId: request.requestId,
-        generationCallId: index + 1,
-      }));
-      expect(recorded.capture.calls).toEqual(identities.map(context => ({ context, loadIdentity: capturedSmolLoadIdentity, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'available', restoration: 'restored' } }] })));
-      expect(captures[0]!.getCaptureLifetime().issuedCalls).toEqual(identities);
-      expect(captures[0]!.getCaptureLifetime().incompleteReasons).toEqual([]);
-      expect(recorded.capture.incompleteReasons).toEqual([]);
-      expect(recorded.capture.events.filter(event => event.kind === 'native-call')).toEqual(identities.flatMap(identity => [
-        { kind: 'native-call', identity: { ...identity, nativeInvocationOrdinal: 1 }, phase: 'entering' },
-        { kind: 'native-call', identity: { ...identity, nativeInvocationOrdinal: 1 }, phase: 'fulfilled' },
-      ]));
-      const nativeInputs = recorded.capture.events.filter(event => event.kind === 'inputs').filter(event => event.phase === 'native-kwargs');
-      expect(nativeInputs.map(event => event.values.find(value => value.name === 'input_ids')?.snapshot)).toEqual(baselineNative.inputs.map(input => {
-        const bytes = new Uint8Array(BigInt64Array.from(input.ids.map(BigInt)).buffer);
-        return { status: 'captured', dtype: 'int64', dims: [1, input.ids.length], byteLength: bytes.byteLength, bytes };
-      }));
-      expect(recorded.capture.events.filter(event => event.kind === 'settings').map(event => event.value.kwargs.maxNewTokens)).toEqual([
-        { status: 'value', value: 16 }, { status: 'value', value: 16 }, { status: 'value', value: 1 },
-      ]);
-      expect(recorded.capture.events.filter(event => event.kind === 'sequence')).toEqual(identities.map((identity, index) => {
-        const bytes = baselineNative.outputs[index]!;
-        return {
-          kind: 'sequence',
-          identity: { ...identity, nativeInvocationOrdinal: 1 },
-          resultShape: 'tensor',
-          snapshot: { status: 'captured', dtype: 'int64', dims: [1, bytes.byteLength / 8], byteLength: bytes.byteLength, bytes },
-        };
-      }));
-      expect(recorded.capture.unobserved).toEqual(['native-stop-cause', 'native-forward-input', 'kv-bytes']);
-      expect(owner.snapshot().requests.map(request => request.trace.settled)).toEqual(snapshot.requests.map(request => request.trace.settled));
-      await expect(captures[0]!.takeGenerationCapture()).resolves.toEqual({ status: 'already-taken' });
-      expect(captured.observations.workers).toHaveLength(1);
-      expect(captured.service.getState().status).toBe('idle');
-      expect(captured.observations.forbiddenTransport).toEqual([]);
-      expect(captured.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-      // Equality demonstrates non-repair and owner isolation, not successful
-      // delivery. The independent full-output contract below must stay RED.
-    } finally {
-      try {
-        await owner.dispose();
-      } finally {
-        await captured.close();
-      }
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        try {
+          await owner.dispose();
+        } finally {
+          await captured.close();
+        }
+      },
+    });
+    const snapshot = await owner.run();
+    expect(snapshot.run).toEqual({ status: 'completed' });
+    expect(snapshot.requests.map(request => request.status)).toEqual(['settled', 'settled', 'settled']);
+    expect(comparableRequests({ requests: snapshot.requests })).toEqual(expectedRequests);
+    expect(capturedNative.inputs).toEqual(baselineNative.inputs);
+    expect(capturedNative.inputs.map(input => input.maxNewTokens)).toEqual([16, 16, 1]);
+    expect(captures).toHaveLength(1);
+    const recorded = await captures[0]!.takeGenerationCapture();
+    if (recorded.status !== 'captured') throw new Error(`Expected captured generation, received ${recorded.status}`);
+    const identities = snapshot.requests.map((request, index) => ({
+      runId: 'synthetic-owner-comlink',
+      workerEpoch: 1,
+      requestId: request.requestId,
+      generationCallId: index + 1,
+    }));
+    expect(recorded.capture.calls).toEqual(identities.map(context => ({ context, loadIdentity: capturedSmolLoadIdentity, outcome: 'fulfilled', invocations: [{ nativeInvocationOrdinal: 1, stream: { status: 'available', restoration: 'restored' } }] })));
+    expect(captures[0]!.getCaptureLifetime().issuedCalls).toEqual(identities);
+    expect(captures[0]!.getCaptureLifetime().incompleteReasons).toEqual([]);
+    expect(recorded.capture.incompleteReasons).toEqual([]);
+    expect(recorded.capture.events.filter(event => event.kind === 'native-call')).toEqual(identities.flatMap(identity => [
+      { kind: 'native-call', identity: { ...identity, nativeInvocationOrdinal: 1 }, phase: 'entering' },
+      { kind: 'native-call', identity: { ...identity, nativeInvocationOrdinal: 1 }, phase: 'fulfilled' },
+    ]));
+    const nativeInputs = recorded.capture.events.filter(event => event.kind === 'inputs').filter(event => event.phase === 'native-kwargs');
+    expect(nativeInputs.map(event => event.values.find(value => value.name === 'input_ids')?.snapshot)).toEqual(baselineNative.inputs.map(input => {
+      const bytes = new Uint8Array(BigInt64Array.from(input.ids.map(BigInt)).buffer);
+      return { status: 'captured', dtype: 'int64', dims: [1, input.ids.length], byteLength: bytes.byteLength, bytes };
+    }));
+    expect(recorded.capture.events.filter(event => event.kind === 'settings').map(event => event.value.kwargs.maxNewTokens)).toEqual([
+      { status: 'value', value: 16 }, { status: 'value', value: 16 }, { status: 'value', value: 1 },
+    ]);
+    expect(recorded.capture.events.filter(event => event.kind === 'sequence')).toEqual(identities.map((identity, index) => {
+      const bytes = baselineNative.outputs[index]!;
+      return {
+        kind: 'sequence',
+        identity: { ...identity, nativeInvocationOrdinal: 1 },
+        resultShape: 'tensor',
+        snapshot: { status: 'captured', dtype: 'int64', dims: [1, bytes.byteLength / 8], byteLength: bytes.byteLength, bytes },
+      };
+    }));
+    expect(recorded.capture.unobserved).toEqual(['native-stop-cause', 'native-forward-input', 'kv-bytes']);
+    expect(owner.snapshot().requests.map(request => request.trace.settled)).toEqual(snapshot.requests.map(request => request.trace.settled));
+    await expect(captures[0]!.takeGenerationCapture()).resolves.toEqual({ status: 'already-taken' });
+    expect(captured.observations.workers).toHaveLength(1);
+    expect(captured.service.getState().status).toBe('idle');
+    expect(captured.observations.forbiddenTransport).toEqual([]);
+    expect(captured.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    // Equality demonstrates non-repair and owner isolation, not successful
+    // delivery. The independent full-output contract below must stay RED.
   }, 30_000);
 
   it('retains the rejected real Provider request without starting later capture scenarios', async () => {
@@ -978,53 +985,54 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
       },
       traceLimits: { maximumEvents: 64, maximumCharacters: 4096 },
     });
-    try {
-      const snapshot = await owner.run();
-      expect(snapshot.run).toEqual({ status: 'stopped', reason: 'provider-rejected' });
-      expect(snapshot.requests.map(request => request.status)).toEqual(['settled', 'not-started', 'not-started']);
-      expect(snapshot.requests[0]?.input?.messages).toEqual([{ role: 'user', content: 'Template probe user message.' }]);
-      // Actual Comlink deserialization assigns an own name to the Error. Keep
-      // that allowlisted name, but not its message, stack or guessed origin.
-      expect(snapshot.requests[0]?.trace.settled?.outcome).toEqual({ status: 'rejected', errorName: 'Error' });
-      expect(snapshot.requests.slice(1).map(request => ({ input: request.input, settled: request.trace.settled, events: request.trace.events })))
-        .toEqual([{ input: undefined, settled: undefined, events: [] }, { input: undefined, settled: undefined, events: [] }]);
-      expect(generate).toHaveBeenCalledOnce();
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(captures).toHaveLength(1);
-      const recorded = await captures[0]!.takeGenerationCapture();
-      if (recorded.status !== 'captured') throw new Error(`Expected partial native capture, received ${recorded.status}`);
-      const identity = {
-        runId: 'synthetic-owner-rejected',
-        workerEpoch: 1,
-        requestId: snapshot.requests[0]!.requestId,
-        generationCallId: 1,
-      };
-      expect(recorded.capture.calls).toEqual([{
-        context: identity,
-        loadIdentity: capturedSmolLoadIdentity,
-        outcome: 'rejected',
-        invocations: [
-          { nativeInvocationOrdinal: 1, stream: { status: 'available', restoration: 'restored' } },
-        ],
-      }]);
-      expect(recorded.capture.events.filter(event => event.kind === 'native-call')).toEqual([
-        { kind: 'native-call', identity: { ...identity, nativeInvocationOrdinal: 1 }, phase: 'entering' },
-        { kind: 'native-call', identity: { ...identity, nativeInvocationOrdinal: 1 }, phase: 'rejected' },
-      ]);
-      expect(recorded.capture.events.filter(event => event.kind === 'inputs').map(event => event.phase)).toEqual(['pre-budget', 'native-kwargs']);
-      expect(recorded.capture.events.filter(event => event.kind === 'sequence')).toEqual([]);
-      expect(recorded.capture.incompleteReasons).toEqual([]);
-      expect(harness.observations.workers).toHaveLength(1);
-      expect(harness.service.getState().status).toBe('idle');
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      try {
-        await owner.dispose();
-      } finally {
-        await harness.close();
-      }
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        try {
+          await owner.dispose();
+        } finally {
+          await harness.close();
+        }
+      },
+    });
+    const snapshot = await owner.run();
+    expect(snapshot.run).toEqual({ status: 'stopped', reason: 'provider-rejected' });
+    expect(snapshot.requests.map(request => request.status)).toEqual(['settled', 'not-started', 'not-started']);
+    expect(snapshot.requests[0]?.input?.messages).toEqual([{ role: 'user', content: 'Template probe user message.' }]);
+    // Actual Comlink deserialization assigns an own name to the Error. Keep
+    // that allowlisted name, but not its message, stack or guessed origin.
+    expect(snapshot.requests[0]?.trace.settled?.outcome).toEqual({ status: 'rejected', errorName: 'Error' });
+    expect(snapshot.requests.slice(1).map(request => ({ input: request.input, settled: request.trace.settled, events: request.trace.events })))
+      .toEqual([{ input: undefined, settled: undefined, events: [] }, { input: undefined, settled: undefined, events: [] }]);
+    expect(generate).toHaveBeenCalledOnce();
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(captures).toHaveLength(1);
+    const recorded = await captures[0]!.takeGenerationCapture();
+    if (recorded.status !== 'captured') throw new Error(`Expected partial native capture, received ${recorded.status}`);
+    const identity = {
+      runId: 'synthetic-owner-rejected',
+      workerEpoch: 1,
+      requestId: snapshot.requests[0]!.requestId,
+      generationCallId: 1,
+    };
+    expect(recorded.capture.calls).toEqual([{
+      context: identity,
+      loadIdentity: capturedSmolLoadIdentity,
+      outcome: 'rejected',
+      invocations: [
+        { nativeInvocationOrdinal: 1, stream: { status: 'available', restoration: 'restored' } },
+      ],
+    }]);
+    expect(recorded.capture.events.filter(event => event.kind === 'native-call')).toEqual([
+      { kind: 'native-call', identity: { ...identity, nativeInvocationOrdinal: 1 }, phase: 'entering' },
+      { kind: 'native-call', identity: { ...identity, nativeInvocationOrdinal: 1 }, phase: 'rejected' },
+    ]);
+    expect(recorded.capture.events.filter(event => event.kind === 'inputs').map(event => event.phase)).toEqual(['pre-budget', 'native-kwargs']);
+    expect(recorded.capture.events.filter(event => event.kind === 'sequence')).toEqual([]);
+    expect(recorded.capture.incompleteReasons).toEqual([]);
+    expect(harness.observations.workers).toHaveLength(1);
+    expect(harness.service.getState().status).toBe('idle');
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('observes actual streamed parts at Provider settlement without a post-hoc drain', async () => {
@@ -1047,24 +1055,25 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
         return new runtime.Tensor('int64', BigInt64Array.from(output), [1, output.length]);
       },
     });
-    try {
-      const snapshot = await captureMechanicsChat({
-        provider: harness.provider,
-        messages: [textMessage({ id: 'mechanics-user', role: 'user', text: 'Synthetic mechanics probe' })],
-        parameters: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }).parameters,
-      });
-      expect(snapshot.parts).toEqual([{
-        type: 'text',
-        partId: 'part_0',
-        index: 0,
-        chunks: ['', 'S', 'ynthetic ', 'output.'],
-        completeness: 'partial',
-      }]);
-      expect(snapshot.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(snapshot.settlement).toEqual({ status: 'fulfilled' });
-    } finally {
-      await harness.close();
-    }
+    await using _cleanupResource = createAsyncTestDisposable({
+      dispose: async () => {
+        await harness.close();
+      },
+    });
+    const snapshot = await captureMechanicsChat({
+      provider: harness.provider,
+      messages: [textMessage({ id: 'mechanics-user', role: 'user', text: 'Synthetic mechanics probe' })],
+      parameters: captureScenarioInput({ scenario: 'first-turn', firstSettled: undefined }).parameters,
+    });
+    expect(snapshot.parts).toEqual([{
+      type: 'text',
+      partId: 'part_0',
+      index: 0,
+      chunks: ['', 'S', 'ynthetic ', 'output.'],
+      completeness: 'partial',
+    }]);
+    expect(snapshot.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(snapshot.settlement).toEqual({ status: 'fulfilled' });
   }, 30_000);
 
   it('reaches injected inference only after actual Provider, Comlink, offline Load and tokenizer', async () => {
