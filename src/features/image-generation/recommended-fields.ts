@@ -5,7 +5,8 @@ export type ImageRecommendedField = keyof ImageGenerationRecommendation['paramet
 export type ImageRecommendedHint = { value: Parameters[ImageRecommendedField], origin: 'recommended' | 'suggested', range: { minimum: number, maximum: number } | undefined };
 
 /** Passive presentation of the same values used by the existing preset action. */
-export function imageRecommendedHint({ recommendation, field }: { recommendation: ImageGenerationRecommendation, field: ImageRecommendedField }): ImageRecommendedHint {
+export function imageRecommendedHint({ recommendation, field }: { recommendation: ImageGenerationRecommendation, field: ImageRecommendedField }): ImageRecommendedHint | undefined {
+  if (recommendation.recommendedFieldsOnly && !recommendation.recommendedFields?.includes(field)) return undefined;
   const range = (() => {
     switch (field) {
     case 'steps': return recommendation.stepRange;
@@ -27,6 +28,7 @@ export function differsFromImageRecommendation({ current, hint }: { current: unk
 
 export function applyImageRecommendedField({ parameters, recommendation, field }: { parameters: Parameters, recommendation: ImageGenerationRecommendation, field: ImageRecommendedField }): Parameters {
   // Explicitly update one field; a tile size action never enables tiling, etc.
+  if (recommendation.recommendedFieldsOnly && !recommendation.recommendedFields?.includes(field)) return parameters;
   return { ...parameters, [field]: recommendation.parameters[field] };
 }
 

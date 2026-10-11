@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isExperimentalImageCatalogMain } from '@/01-models/experimental-image-catalog-source';
 
 /** Per-file publication shared by image downloads and the llama.cpp reader.
  * A pending marker always wins, even when a crash left a complete receipt too.
@@ -28,10 +29,14 @@ export const modelFileSourceSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('hugging-face'),
     repository: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/),
-    revision: z.string().regex(/^[a-f0-9]{40}$/),
+    revision: z.string().regex(/^(?:[a-f0-9]{40}|main)$/),
     path: z.string().min(1),
     sha256: z.string().regex(/^[a-f0-9]{64}$/),
-  }).strict(),
+  }).strict().superRefine((source, ctx) => {
+    if (source.revision === 'main' && !isExperimentalImageCatalogMain(source)) {
+      ctx.addIssue({ code: 'custom', message: 'Mutable model receipt revision is not permitted for this file' });
+    }
+  }),
 ]);
 export const modelFileReceiptSchema = z.object({
   version: z.literal(1),

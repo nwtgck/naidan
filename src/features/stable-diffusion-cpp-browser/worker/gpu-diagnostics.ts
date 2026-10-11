@@ -155,6 +155,8 @@ export function observeImageGpu({ emit, debug, now = () => performance.now() }: 
       maxBufferSize: device.limits.maxBufferSize,
       maxStorageBufferBindingSize: device.limits.maxStorageBufferBindingSize,
       maxComputeWorkgroupsPerDimension: device.limits.maxComputeWorkgroupsPerDimension,
+      maxComputeInvocationsPerWorkgroup: device.limits.maxComputeInvocationsPerWorkgroup,
+      maxComputeWorkgroupStorageSize: device.limits.maxComputeWorkgroupStorageSize,
       adapterTimestampQuery: adapter.features?.has('timestamp-query') ?? false,
       deviceTimestampQuery: device.features.has('timestamp-query'),
       gpuTimestampsMeasured: false,
