@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest';
-import { createPipingFetchPool } from './piping-pool';
+import { createPipingFetchPool } from './piping-pool.test-support';
 
 it('does not release a finite response slot at headers or the final data chunk before EOF', async () => {
   const body = new TransformStream<Uint8Array, Uint8Array>(), writer = body.writable.getWriter();

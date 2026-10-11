@@ -5,7 +5,7 @@ import { parametersSchema, previewSettingsSchema, defaultPreviewSettings } from 
 import { parametersFixture } from './test-fixtures';
 import { scanImageRepositories } from './logic/model-candidates';
 import { imageModelRecipes } from './model-recipes';
-import { ggufFixture, zImageTensors, qwenImageTensors, flux2KleinTensors, animaTensors, krea2Tensors, ernieImageTensors } from './test-utils/weights';
+import { ggufFixture, zImageTensors, qwenImageTensors, flux2KleinTensors, animaTensors, krea2Tensors, ernieImageTensors } from './test-utils/weights.test-support';
 
 it.each(['z-image-turbo', 'z-image-base', 'qwen-image-2.1', 'qwen-image-2.1-turbo', 'flux2-klein-4b', 'anima-turbo-1.1', 'krea2-turbo', 'ernie-image-turbo'] as const)('validates every field in the static %s starting point without replacing prompt or seed', id => {
   const preset = TEST_ONLY.presets[id], original = { ...parametersFixture(), prompt: 'private', negativePrompt: 'custom', seed: '123' };

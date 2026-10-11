@@ -6,8 +6,8 @@ import type { Chat } from '@/01-models/types';
 import { idToRaw, toChatId } from '@/01-models/ids';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 import { getMessageText } from '@/01-models/message-text';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 
 // Mock useSettings
 vi.mock('./useSettings', () => ({
@@ -94,22 +94,23 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         return { type: 'interrupted', reason: 'aborted' };
       },
     }));
-    try {
-      await sendMessage({ content: 'Hello' });
-      await started.promise;
-      const assistant = chat.root.items[0]!.replies.items[0]!;
-      await vi.waitUntil(() => getMessageText({ message: assistant }) === '<think>I am thinking...');
-      expect(streaming.value).toBe(true);
-      abortChat({ chatId: idToRaw({ id: chat.id }) });
-      await vi.waitUntil(() => !streaming.value);
-      expect(assistant.parts).toEqual([{ type: 'text', text: '<think>I am thinking...', completeness: 'partial' }]);
-      expect(assistant.role === 'assistant' && assistant.interruption).toEqual({ type: 'cancelled' });
-      expect(getMessageText({ message: assistant })).not.toContain('</think>');
-      expect(getMessageText({ message: assistant })).not.toContain('[Generation Aborted]');
-    } finally {
-      abortChat({ chatId: undefined });
-      stopped.resolve();
-      await vi.waitUntil(() => !streaming.value);
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        abortChat({ chatId: undefined });
+        stopped.resolve();
+        await vi.waitUntil(() => !streaming.value);
+      },
+    };
+    await sendMessage({ content: 'Hello' });
+    await started.promise;
+    const assistant = chat.root.items[0]!.replies.items[0]!;
+    await vi.waitUntil(() => getMessageText({ message: assistant }) === '<think>I am thinking...');
+    expect(streaming.value).toBe(true);
+    abortChat({ chatId: idToRaw({ id: chat.id }) });
+    await vi.waitUntil(() => !streaming.value);
+    expect(assistant.parts).toEqual([{ type: 'text', text: '<think>I am thinking...', completeness: 'partial' }]);
+    expect(assistant.role === 'assistant' && assistant.interruption).toEqual({ type: 'cancelled' });
+    expect(getMessageText({ message: assistant })).not.toContain('</think>');
+    expect(getMessageText({ message: assistant })).not.toContain('[Generation Aborted]');
   });
 });

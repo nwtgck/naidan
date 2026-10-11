@@ -50,14 +50,15 @@ function source<T>({ items }: { items: readonly T[] }): ReadableStream<T> {
 async function collect<T>({ stream }: { stream: ReadableStream<T> }): Promise<T[]> {
   const reader = stream.getReader();
   const items: T[] = [];
-  try {
-    for (;;) {
-      const next = await reader.read();
-      if (next.done) return items;
-      items.push(next.value);
-    }
-  } finally {
-    reader.releaseLock();
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      reader.releaseLock();
+    },
+  };
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) return items;
+    items.push(next.value);
   }
 }
 

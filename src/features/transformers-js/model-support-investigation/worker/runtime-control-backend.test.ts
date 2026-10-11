@@ -74,110 +74,111 @@ it.each(['valid', 'short', 'invalid-magic', 'hash-mismatch'] as const)('binds Pl
   const checkpoints: ModelSupportInvestigationRun[] = [];
   const stoppedAfterControls = new Error('Fixture stops before repository or model work');
   const importedModules: string[] = [];
-  try {
-    vi.stubGlobal('self', Object.assign(new DedicatedWorkerGlobalScope(), { location: new URL(identity.workerLocationUrl), fetch: transport }));
-    vi.stubGlobal('navigator', { userAgent: identity.userAgent, vendor: '', hardwareConcurrency: 1, gpu: {} });
-    vi.stubGlobal('fetch', transport);
-    vi.stubGlobal('process', { ...originalProcess, release: { ...originalProcess.release, name: 'browser-test' } });
-    const runtime = await importProductionTransformersArtifact({ moduleUrl: artifact.moduleUrl }) as typeof import('@huggingface/transformers');
-    vi.stubGlobal('process', originalProcess);
-    vi.doMock('@huggingface/transformers', () => runtime);
-    vi.doMock('onnxruntime-web', () => rootOrt);
-    vi.doMock('onnxruntime-web/webgpu', () => webGpuOrt);
-    vi.doMock('@/utils/worker-transport', async () => ({
-      ...await vi.importActual<typeof import('@/utils/worker-transport')>('@/utils/worker-transport'),
-      exposeWorkerRemote: ({ api: exposed }: { api: WorkerServerApi<IModelSupportInvestigationWorker> }) => {
-        api = exposed;
-      },
-    }));
-    vi.doMock('./import-planning-runtime-module', () => ({
-      importPlanningRuntimeModule: async ({ url }: { url: string }) => {
-        importedModules.push(url);
-      },
-    }));
-    vi.doMock('../logic/inspect-runtime-environment', () => ({
-      inspectRuntimeEnvironment: async () => ({ userAgent: identity.userAgent, vendor: '', hardwareConcurrency: 1, crossOriginIsolated: false, webGpu: { availability: 'available', adapterInfo: {}, features: [], limits: {}, error: undefined } }),
-    }));
-    vi.doMock('../logic/run-partial-model-support-investigation', () => ({
-      runPartialModelSupportInvestigation: async ({ runRuntimePreflight }: { runRuntimePreflight: () => Promise<ModelSupportInvestigationRun> }) => {
-        preflight = await runRuntimePreflight();
-        throw stoppedAfterControls;
-      },
-    }));
-    await import('./entry');
-    if (api === undefined) throw new Error('Planning entry did not expose its API');
-    const configuration = configurationForPreset({ preset: 'offline' });
-    await expect(api.runPartialInvestigation({
-      runId: 'runtime-control-test',
-      modelId: 'fixture/runtime-control',
-      externalNetworkPolicy: configuration.externalNetworkPolicy,
-      executionPlan: resolveInvestigationExecutionPlan({ scope: configuration.scope }),
-    }, vi.fn(), ({ run }) => {
-      checkpoints.push(fromPlanningWorkerRun({ run }));
-    }, async () => {
-      throw new Error('Metadata work forbidden');
-    })).rejects.toBe(stoppedAfterControls);
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      rootCreate.mockRestore();
+      webGpuCreate.mockRestore();
+      for (const key of Object.keys(rootOrt.env.wasm)) Reflect.deleteProperty(rootOrt.env.wasm, key);
+      for (const key of Object.keys(webGpuOrt.env.wasm)) Reflect.deleteProperty(webGpuOrt.env.wasm, key);
+      Object.assign(rootOrt.env.wasm, rootWasm);
+      Object.assign(webGpuOrt.env.wasm, webGpuWasm);
+      vi.doUnmock('@huggingface/transformers');
+      vi.doUnmock('onnxruntime-web');
+      vi.doUnmock('onnxruntime-web/webgpu');
+      vi.doUnmock('@/utils/worker-transport');
+      vi.doUnmock('./import-planning-runtime-module');
+      vi.doUnmock('../logic/inspect-runtime-environment');
+      vi.doUnmock('../logic/run-partial-model-support-investigation');
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    },
+  };
+  vi.stubGlobal('self', Object.assign(new DedicatedWorkerGlobalScope(), { location: new URL(identity.workerLocationUrl), fetch: transport }));
+  vi.stubGlobal('navigator', { userAgent: identity.userAgent, vendor: '', hardwareConcurrency: 1, gpu: {} });
+  vi.stubGlobal('fetch', transport);
+  vi.stubGlobal('process', { ...originalProcess, release: { ...originalProcess.release, name: 'browser-test' } });
+  const runtime = await importProductionTransformersArtifact({ moduleUrl: artifact.moduleUrl }) as typeof import('@huggingface/transformers');
+  vi.stubGlobal('process', originalProcess);
+  vi.doMock('@huggingface/transformers', () => runtime);
+  vi.doMock('onnxruntime-web', () => rootOrt);
+  vi.doMock('onnxruntime-web/webgpu', () => webGpuOrt);
+  vi.doMock('@/utils/worker-transport', async () => ({
+    ...await vi.importActual<typeof import('@/utils/worker-transport')>('@/utils/worker-transport'),
+    exposeWorkerRemote: ({ api: exposed }: { api: WorkerServerApi<IModelSupportInvestigationWorker> }) => {
+      api = exposed;
+    },
+  }));
+  vi.doMock('./import-planning-runtime-module', () => ({
+    importPlanningRuntimeModule: async ({ url }: { url: string }) => {
+      importedModules.push(url);
+    },
+  }));
+  vi.doMock('../logic/inspect-runtime-environment', () => ({
+    inspectRuntimeEnvironment: async () => ({ userAgent: identity.userAgent, vendor: '', hardwareConcurrency: 1, crossOriginIsolated: false, webGpu: { availability: 'available', adapterInfo: {}, features: [], limits: {}, error: undefined } }),
+  }));
+  vi.doMock('../logic/run-partial-model-support-investigation', () => ({
+    runPartialModelSupportInvestigation: async ({ runRuntimePreflight }: { runRuntimePreflight: () => Promise<ModelSupportInvestigationRun> }) => {
+      preflight = await runRuntimePreflight();
+      throw stoppedAfterControls;
+    },
+  }));
+  await import('./entry');
+  if (api === undefined) throw new Error('Planning entry did not expose its API');
+  const configuration = configurationForPreset({ preset: 'offline' });
+  await expect(api.runPartialInvestigation({
+    runId: 'runtime-control-test',
+    modelId: 'fixture/runtime-control',
+    externalNetworkPolicy: configuration.externalNetworkPolicy,
+    executionPlan: resolveInvestigationExecutionPlan({ scope: configuration.scope }),
+  }, vi.fn(), ({ run }) => {
+    checkpoints.push(fromPlanningWorkerRun({ run }));
+  }, async () => {
+    throw new Error('Metadata work forbidden');
+  })).rejects.toBe(stoppedAfterControls);
 
-    expect(rootOrt.env).not.toBe(webGpuOrt.env);
-    expect(runtime.env.backends.onnx.wasm).toBe(webGpuOrt.env.wasm);
-    if (bodyKind !== 'valid') {
-      expect(preflight?.status).toBe('failed');
-      expect(rootCreate).not.toHaveBeenCalled();
-      expect(webGpuCreate).not.toHaveBeenCalled();
-      expect(preflight?.runtimeAssetsPartial?.controlRuntimeBindings).toBeUndefined();
-      expect(fetchCalls).toEqual([assets.mjsUrl, assets.wasmUrl]);
-      return;
-    }
-    expect(preflight?.runtimeAssets?.assetIdentity?.wasm).toMatchObject({
-      observedByteLength: wasm.byteLength,
-      observedSha256: assets.wasmSha256,
-    });
-    expect(importedModules).toEqual([assets.mjsUrl]);
-    expect(fetchCalls).toEqual([assets.mjsUrl, assets.wasmUrl]);
+  expect(rootOrt.env).not.toBe(webGpuOrt.env);
+  expect(runtime.env.backends.onnx.wasm).toBe(webGpuOrt.env.wasm);
+  if (bodyKind !== 'valid') {
+    expect(preflight?.status).toBe('failed');
     expect(rootCreate).not.toHaveBeenCalled();
-    expect(webGpuCreate.mock.calls.map(call => call[1]?.executionProviders)).toEqual([['wasm'], ['webgpu']]);
-    expect(observedPaths).toEqual([
-      { mjs: assets.mjsUrl, wasm: assets.wasmUrl },
-      { mjs: assets.mjsUrl, wasm: assets.wasmUrl },
-    ]);
-    expect(suppliedBuffers).toHaveLength(2);
-    expect(suppliedBuffers[0] === suppliedBuffers[1]).toBe(true);
-    const suppliedBuffer = suppliedBuffers[0];
-    if (!(suppliedBuffer instanceof Uint8Array)) throw new Error('Control did not receive WASM bytes');
-    expect(suppliedBuffer.byteLength).toBe(wasm.byteLength);
-    expect(createHash('sha256').update(suppliedBuffer).digest('hex')).toBe(assets.wasmSha256);
-    expect(preflight?.runtimeAssets?.controlRuntimeBindings).toMatchObject({
-      wasm: { environmentMatchesConfigured: true, wasm: { suppliedByteLength: wasm.byteLength, suppliedSha256: assets.wasmSha256, suppliedMagicHex: '0061736d01000000', compilerConsumption: 'not-observed' } },
-      webgpu: { environmentMatchesConfigured: true, wasm: { suppliedByteLength: wasm.byteLength, suppliedSha256: assets.wasmSha256, suppliedMagicHex: '0061736d01000000', compilerConsumption: 'not-observed' } },
-    });
-    expect(release).toHaveBeenCalledTimes(2);
-    const checkpoint = checkpoints.find(run => run.runtimeAssetsPartial?.controlRuntimeBindings?.wasm !== undefined);
-    if (preflight === undefined || checkpoint === undefined) throw new Error('Missing actual preflight evidence');
-    const evidenceWorker = createModelSupportInvestigationEvidenceWorker();
-    for (const run of [checkpoint, preflight]) {
-      const result = await evidenceWorker.createPartialEvidence({ request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery: undefined }) });
-      const archive = await JSZip.loadAsync(await result.blob.arrayBuffer());
-      const path = run.runtimeAssets === undefined ? 'runtime-assets/preflight-partial.json' : 'runtime-assets/preflight.json';
-      const saved = JSON.parse(await archive.file(path)!.async('text'));
-      expect(saved.controlRuntimeBindings.wasm).toEqual(preflight.runtimeAssets?.controlRuntimeBindings?.wasm);
-      expect(JSON.stringify(saved.controlRuntimeBindings)).not.toContain('wasmBinary');
-      expect(saved.controlRuntimeBindings.wasm.wasm.compilerConsumption).toBe('not-observed');
-    }
-  } finally {
-    rootCreate.mockRestore();
-    webGpuCreate.mockRestore();
-    for (const key of Object.keys(rootOrt.env.wasm)) Reflect.deleteProperty(rootOrt.env.wasm, key);
-    for (const key of Object.keys(webGpuOrt.env.wasm)) Reflect.deleteProperty(webGpuOrt.env.wasm, key);
-    Object.assign(rootOrt.env.wasm, rootWasm);
-    Object.assign(webGpuOrt.env.wasm, webGpuWasm);
-    vi.doUnmock('@huggingface/transformers');
-    vi.doUnmock('onnxruntime-web');
-    vi.doUnmock('onnxruntime-web/webgpu');
-    vi.doUnmock('@/utils/worker-transport');
-    vi.doUnmock('./import-planning-runtime-module');
-    vi.doUnmock('../logic/inspect-runtime-environment');
-    vi.doUnmock('../logic/run-partial-model-support-investigation');
-    vi.unstubAllGlobals();
-    vi.resetModules();
+    expect(webGpuCreate).not.toHaveBeenCalled();
+    expect(preflight?.runtimeAssetsPartial?.controlRuntimeBindings).toBeUndefined();
+    expect(fetchCalls).toEqual([assets.mjsUrl, assets.wasmUrl]);
+    return;
+  }
+  expect(preflight?.runtimeAssets?.assetIdentity?.wasm).toMatchObject({
+    observedByteLength: wasm.byteLength,
+    observedSha256: assets.wasmSha256,
+  });
+  expect(importedModules).toEqual([assets.mjsUrl]);
+  expect(fetchCalls).toEqual([assets.mjsUrl, assets.wasmUrl]);
+  expect(rootCreate).not.toHaveBeenCalled();
+  expect(webGpuCreate.mock.calls.map(call => call[1]?.executionProviders)).toEqual([['wasm'], ['webgpu']]);
+  expect(observedPaths).toEqual([
+    { mjs: assets.mjsUrl, wasm: assets.wasmUrl },
+    { mjs: assets.mjsUrl, wasm: assets.wasmUrl },
+  ]);
+  expect(suppliedBuffers).toHaveLength(2);
+  expect(suppliedBuffers[0] === suppliedBuffers[1]).toBe(true);
+  const suppliedBuffer = suppliedBuffers[0];
+  if (!(suppliedBuffer instanceof Uint8Array)) throw new Error('Control did not receive WASM bytes');
+  expect(suppliedBuffer.byteLength).toBe(wasm.byteLength);
+  expect(createHash('sha256').update(suppliedBuffer).digest('hex')).toBe(assets.wasmSha256);
+  expect(preflight?.runtimeAssets?.controlRuntimeBindings).toMatchObject({
+    wasm: { environmentMatchesConfigured: true, wasm: { suppliedByteLength: wasm.byteLength, suppliedSha256: assets.wasmSha256, suppliedMagicHex: '0061736d01000000', compilerConsumption: 'not-observed' } },
+    webgpu: { environmentMatchesConfigured: true, wasm: { suppliedByteLength: wasm.byteLength, suppliedSha256: assets.wasmSha256, suppliedMagicHex: '0061736d01000000', compilerConsumption: 'not-observed' } },
+  });
+  expect(release).toHaveBeenCalledTimes(2);
+  const checkpoint = checkpoints.find(run => run.runtimeAssetsPartial?.controlRuntimeBindings?.wasm !== undefined);
+  if (preflight === undefined || checkpoint === undefined) throw new Error('Missing actual preflight evidence');
+  const evidenceWorker = createModelSupportInvestigationEvidenceWorker();
+  for (const run of [checkpoint, preflight]) {
+    const result = await evidenceWorker.createPartialEvidence({ request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery: undefined }) });
+    const archive = await JSZip.loadAsync(await result.blob.arrayBuffer());
+    const path = run.runtimeAssets === undefined ? 'runtime-assets/preflight-partial.json' : 'runtime-assets/preflight.json';
+    const saved = JSON.parse(await archive.file(path)!.async('text'));
+    expect(saved.controlRuntimeBindings.wasm).toEqual(preflight.runtimeAssets?.controlRuntimeBindings?.wasm);
+    expect(JSON.stringify(saved.controlRuntimeBindings)).not.toContain('wasmBinary');
+    expect(saved.controlRuntimeBindings.wasm.wasm.compilerConsumption).toBe('not-observed');
   }
 }, 30_000);

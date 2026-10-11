@@ -3,7 +3,7 @@ import type { ChatGenerationItem, ChatGenerationResult, LmProvider } from '@/01-
 import type { Chat, ChatContent, ChatMeta, MessageNode } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { toChatId, toMessageId, toToolCallId } from '@/01-models/ids';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { getChatBranchIterator } from '@/logic/chat-tree';
 const state = vi.hoisted(() => ({
   chat: undefined as Chat | undefined,

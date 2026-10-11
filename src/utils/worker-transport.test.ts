@@ -68,14 +68,10 @@ describe('worker transport', () => {
   });
 
   it('treats browsers without readable stream transfer as unsupported', async () => {
-    const clone = vi.spyOn(globalThis, 'structuredClone').mockImplementation(() => {
+    using _clone = vi.spyOn(globalThis, 'structuredClone').mockImplementation(() => {
       throw new DOMException('Unsupported transfer', 'DataCloneError');
     });
-    try {
-      await expect(TEST_ONLY.detectReadableStreamTransferSupport()).resolves.toBe('unsupported');
-    } finally {
-      clone.mockRestore();
-    }
+    await expect(TEST_ONLY.detectReadableStreamTransferSupport()).resolves.toBe('unsupported');
   });
 
   it('wraps and exposes a typed Comlink worker API', async () => {
@@ -93,13 +89,14 @@ describe('worker transport', () => {
       endpoint: asEndpoint({ port: channel.port2 }),
     });
 
-    try {
-      await expect(remote.echo('hello')).resolves.toBe('hello');
-    } finally {
-      releaseWorkerRemote({ remote });
-      channel.port1.close();
-      channel.port2.close();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        releaseWorkerRemote({ remote });
+        channel.port1.close();
+        channel.port2.close();
+      },
+    };
+    await expect(remote.echo('hello')).resolves.toBe('hello');
   });
 
   it('proxies reverse-direction callbacks', async () => {
@@ -118,14 +115,15 @@ describe('worker transport', () => {
     });
     const callback = vi.fn<(value: number) => void>();
 
-    try {
-      await remote.run(workerProxy({ value: callback }));
-      await vi.waitFor(() => expect(callback).toHaveBeenCalledWith(42));
-    } finally {
-      releaseWorkerRemote({ remote });
-      channel.port1.close();
-      channel.port2.close();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        releaseWorkerRemote({ remote });
+        channel.port1.close();
+        channel.port2.close();
+      },
+    };
+    await remote.run(workerProxy({ value: callback }));
+    await vi.waitFor(() => expect(callback).toHaveBeenCalledWith(42));
   });
 
   it('transfers values that require a transfer list', async () => {
@@ -146,19 +144,20 @@ describe('worker transport', () => {
       endpoint: asEndpoint({ port: channel.port2 }),
     });
 
-    try {
-      await remote.attach(workerTransfer({
-        value: transferredChannel.port1 as unknown as MessagePort,
-        transferables: [transferredChannel.port1 as unknown as Transferable],
-      }));
-      transferredChannel.port2.postMessage('transferred');
-      await vi.waitFor(() => expect(received).toHaveBeenCalledWith('transferred'));
-    } finally {
-      releaseWorkerRemote({ remote });
-      channel.port1.close();
-      channel.port2.close();
-      transferredChannel.port2.close();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        releaseWorkerRemote({ remote });
+        channel.port1.close();
+        channel.port2.close();
+        transferredChannel.port2.close();
+      },
+    };
+    await remote.attach(workerTransfer({
+      value: transferredChannel.port1 as unknown as MessagePort,
+      transferables: [transferredChannel.port1 as unknown as Transferable],
+    }));
+    transferredChannel.port2.postMessage('transferred');
+    await vi.waitFor(() => expect(received).toHaveBeenCalledWith('transferred'));
   });
 
   it('strips wire-only markers from worker realm implementation arguments', async () => {
@@ -191,15 +190,16 @@ it('accepts only schema-checked controls on the implicit worker endpoint and rem
   const target = new EventTarget(), listener = vi.fn();
   const add = vi.spyOn(globalThis, 'addEventListener').mockImplementation((type, callback, options) => target.addEventListener(type, callback, options));
   const remove = vi.spyOn(globalThis, 'removeEventListener').mockImplementation((type, callback, options) => target.removeEventListener(type, callback, options));
-  try {
-    const stop = subscribeWorkerNotifications({ endpoint: undefined, schema: z.object({ type: z.literal('control'), enabled: z.boolean() }).strict(), listener });
-    target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: true } }));
-    target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: 'bad' } }));
-    target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: true, injection: 1 } }));
-    expect(listener).toHaveBeenCalledExactlyOnceWith({ value: { type: 'control', enabled: true } });
-    stop(); target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: false } }));
-    expect(listener).toHaveBeenCalledTimes(1);
-  } finally {
-    add.mockRestore(); remove.mockRestore();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      add.mockRestore(); remove.mockRestore();
+    },
+  };
+  const stop = subscribeWorkerNotifications({ endpoint: undefined, schema: z.object({ type: z.literal('control'), enabled: z.boolean() }).strict(), listener });
+  target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: true } }));
+  target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: 'bad' } }));
+  target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: true, injection: 1 } }));
+  expect(listener).toHaveBeenCalledExactlyOnceWith({ value: { type: 'control', enabled: true } });
+  stop(); target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: false } }));
+  expect(listener).toHaveBeenCalledTimes(1);
 });

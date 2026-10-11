@@ -36,28 +36,29 @@ describe('file-explorer.worker.impl', () => {
     const { sessionId } = await worker.prepareSession({ request: { root: descriptor } });
     const directory = kind === 'wesh-mounts' ? '/mount' : '/';
     const path = kind === 'wesh-mounts' ? '/mount/model.gguf' : '/model.gguf';
-    try {
-      const listing = await worker.readDirectory({ request: { sessionId, path: directory } });
-      expect(listing.entries[0]!.size).toBe(1);
-      handle.content = new Uint8Array([4, 5, 6]);
-      const file = await handle.getFile();
-      const getFile = vi.spyOn(handle, 'getFile').mockResolvedValue(file);
-      const stream = vi.spyOn(file, 'stream');
-      const buffer = vi.spyOn(file, 'arrayBuffer');
-      const prepared = await worker.prepareFileDownload({ request: { sessionId, path } });
-      expect(prepared.kind).toBe('file');
-      if (prepared.kind !== 'file') throw new Error('Expected a native File');
-      expect(prepared.blob).toBe(file);
-      expect(prepared.blob.size).toBe(3);
-      expect(getFile).toHaveBeenCalledOnce();
-      expect(stream).not.toHaveBeenCalled();
-      expect(buffer).not.toHaveBeenCalled();
-      expect(await prepared.blob.text()).toBe(String.fromCharCode(4, 5, 6));
-    } finally {
-      await worker.disposeSession({ request: { sessionId } });
-      vi.restoreAllMocks();
-      vi.unstubAllGlobals();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await worker.disposeSession({ request: { sessionId } });
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+      },
+    };
+    const listing = await worker.readDirectory({ request: { sessionId, path: directory } });
+    expect(listing.entries[0]!.size).toBe(1);
+    handle.content = new Uint8Array([4, 5, 6]);
+    const file = await handle.getFile();
+    const getFile = vi.spyOn(handle, 'getFile').mockResolvedValue(file);
+    const stream = vi.spyOn(file, 'stream');
+    const buffer = vi.spyOn(file, 'arrayBuffer');
+    const prepared = await worker.prepareFileDownload({ request: { sessionId, path } });
+    expect(prepared.kind).toBe('file');
+    if (prepared.kind !== 'file') throw new Error('Expected a native File');
+    expect(prepared.blob).toBe(file);
+    expect(prepared.blob.size).toBe(3);
+    expect(getFile).toHaveBeenCalledOnce();
+    expect(stream).not.toHaveBeenCalled();
+    expect(buffer).not.toHaveBeenCalled();
+    expect(await prepared.blob.text()).toBe(String.fromCharCode(4, 5, 6));
   });
 
   it('leaves a virtual file lazy without guessing Content-Length from stat', async () => {
@@ -75,13 +76,14 @@ describe('file-explorer.worker.impl', () => {
     });
     vi.spyOn(WeshVFS.prototype, 'getNativeHandle').mockResolvedValue(null);
     const open = vi.spyOn(WeshVFS.prototype, 'open');
-    try {
-      expect(await worker.prepareFileDownload({ request: { sessionId, path: '/mount/file' } })).toEqual({ kind: 'stream' });
-      expect(open).not.toHaveBeenCalled();
-    } finally {
-      await worker.disposeSession({ request: { sessionId } });
-      vi.restoreAllMocks();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await worker.disposeSession({ request: { sessionId } });
+        vi.restoreAllMocks();
+      },
+    };
+    expect(await worker.prepareFileDownload({ request: { sessionId, path: '/mount/file' } })).toEqual({ kind: 'stream' });
+    expect(open).not.toHaveBeenCalled();
   });
 
   it('lists native directory entries with metadata', async () => {
@@ -517,18 +519,19 @@ describe('file-explorer.worker.impl', () => {
       });
       return handle;
     });
-    try {
-      expect(await worker.readPreview({ request: { sessionId, path: '/preview/large.txt', mode: 'bounded' } }))
-        .toMatchObject({ kind: 'text', oversized: true, rawText: '' });
-      expect(bytesRead).toBe(TEXT_PREVIEW_SIZE_LIMIT + 1);
-      const calls = opened.mock.calls.length;
-      expect(await worker.readPreview({ request: { sessionId, path: '/preview/large.bin', mode: 'bounded' } }))
-        .toEqual({ kind: 'binary', oversized: false });
-      expect(opened).toHaveBeenCalledTimes(calls);
-    } finally {
-      opened.mockRestore(); nativeHandle.mockRestore();
-      await worker.disposeSession({ request: { sessionId } });
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        opened.mockRestore(); nativeHandle.mockRestore();
+        await worker.disposeSession({ request: { sessionId } });
+      },
+    };
+    expect(await worker.readPreview({ request: { sessionId, path: '/preview/large.txt', mode: 'bounded' } }))
+      .toMatchObject({ kind: 'text', oversized: true, rawText: '' });
+    expect(bytesRead).toBe(TEXT_PREVIEW_SIZE_LIMIT + 1);
+    const calls = opened.mock.calls.length;
+    expect(await worker.readPreview({ request: { sessionId, path: '/preview/large.bin', mode: 'bounded' } }))
+      .toEqual({ kind: 'binary', oversized: false });
+    expect(opened).toHaveBeenCalledTimes(calls);
   });
 
   it('exposes virtual directories for wesh mounts roots', async () => {

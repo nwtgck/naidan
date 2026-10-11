@@ -6,7 +6,7 @@ import ModelSelector from './ModelSelector.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useChatModels } from '@/composables/chat/useChatModels';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
   mockAvailableModelsRef: { value: [] as string[] },
   mockFetchingModelsRef: { value: false },

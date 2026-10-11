@@ -9,8 +9,8 @@ import ChatPane from './ChatPane.vue';
 import { nextTick, ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { transformersJsService } from '@/features/transformers-js';
-import { setupScrollToMock } from '@/utils/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { setupScrollToMock } from '@/utils/utils.test-support';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 vi.mock('@/utils/idle-task', () => ({
   scheduleIdleTask: vi.fn(() => ({ cancel: vi.fn() })),
@@ -107,7 +107,7 @@ const mockFetchingModels = ref(false);
 const mockAvailableModels = ref<string[]>([]);
 const mockIsProcessing = ref(true);
 
-vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support', () => ({
   useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: ref(null),

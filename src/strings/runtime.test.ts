@@ -95,33 +95,34 @@ describe('Boundary Strings runtime', () => {
     meta.name = STANDALONE_PACKAGE_LOCALE_META_NAME;
     meta.content = 'ja';
     document.head.append(meta);
-    try {
-      const englishLoader = vi.fn(resolvedModule({
-        module: { ChatInput__cancel: () => 'Cancel' },
-      }));
-      const japaneseLoader = vi.fn(resolvedModule({
-        module: { ChatInput__cancel: () => 'キャンセル' },
-      }));
-      registerTestStringBoundary({
-        boundaryId: 'package-constrained-boundary',
-        keys: ['ChatInput__cancel'],
-        loaders: {
-          en: englishLoader,
-          ja: japaneseLoader,
-        },
-      });
-      TEST_ONLY.usedBoundaryIds.add('package-constrained-boundary');
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        meta.remove();
+      },
+    };
+    const englishLoader = vi.fn(resolvedModule({
+      module: { ChatInput__cancel: () => 'Cancel' },
+    }));
+    const japaneseLoader = vi.fn(resolvedModule({
+      module: { ChatInput__cancel: () => 'キャンセル' },
+    }));
+    registerTestStringBoundary({
+      boundaryId: 'package-constrained-boundary',
+      keys: ['ChatInput__cancel'],
+      loaders: {
+        en: englishLoader,
+        ja: japaneseLoader,
+      },
+    });
+    TEST_ONLY.usedBoundaryIds.add('package-constrained-boundary');
 
-      expect(TEST_ONLY.resolveEffectiveLocale({ locale: 'en' })).toBe('ja');
-      await setLocale({ locale: 'en' });
+    expect(TEST_ONLY.resolveEffectiveLocale({ locale: 'en' })).toBe('ja');
+    await setLocale({ locale: 'en' });
 
-      expect(englishLoader).not.toHaveBeenCalled();
-      expect(japaneseLoader).toHaveBeenCalledTimes(1);
-      expect(currentLocale.value).toBe('ja');
-      expect(document.documentElement.lang).toBe('ja');
-    } finally {
-      meta.remove();
-    }
+    expect(englishLoader).not.toHaveBeenCalled();
+    expect(japaneseLoader).toHaveBeenCalledTimes(1);
+    expect(currentLocale.value).toBe('ja');
+    expect(document.documentElement.lang).toBe('ja');
   });
 
   it('does not expose message accessors through Promise or object protocol properties', async () => {

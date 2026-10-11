@@ -4,7 +4,7 @@ import type { ChangeListener } from '@/00-storage/service/synchronizer';
 import type { StorageType } from '@/01-models/types';
 import type { ImageGenerationHistoryPage } from '@/01-models/image-generation-history';
 import { toBinaryObjectId, toImageGenerationId } from '@/01-models/ids';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageGenerationLab from './ImageGenerationLab.vue';
 import ImageGenerationHistory from './ImageGenerationHistory.vue';
 
@@ -19,7 +19,7 @@ vi.mock('@/00-storage/service', () => ({
 vi.mock('@/features/image-generation/history/worker/client-hosted', () => ({ createImageHistoryClient: () => ({ query: mocks.query, dispose: mocks.dispose }) }));
 vi.mock('@/features/stable-diffusion-cpp-browser/use-image-benchmark', () => import('@/features/stable-diffusion-cpp-browser/use-image-benchmark-standalone'));
 vi.mock('@/features/image-generation/use-image-generation', async () => {
-  const { useImageGeneration: createForm } = await import('@/features/image-generation/test-utils/unavailable-image-view');
+  const { useImageGeneration: createForm } = await import('@/features/image-generation/test-utils/unavailable-image-view.test-support');
   const { useImageGenerationHistory } = await import('@/features/image-generation/history/use-image-generation-history');
   const { onScopeDispose } = await import('vue');
   return {

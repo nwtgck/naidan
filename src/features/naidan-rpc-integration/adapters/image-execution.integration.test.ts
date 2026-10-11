@@ -103,31 +103,33 @@ async function setup() {
 
 it('uses a real manager, typed caller and handler once per explicit image without listing models', async () => {
   const fixture = await setup();
-  try {
-    expect(fixture.generateImage).not.toHaveBeenCalled();
-    expect((await fixture.plan.start(fixture.args).result).status).toBe('completed');
-    expect((await fixture.plan.start({ ...fixture.args, seed: '43' }).result).status).toBe('completed');
-    expect(fixture.generateImage.mock.calls.map(([args]) => args.input.parameters.seed)).toEqual(['42', '43']);
-    expect(fixture.unexpected).not.toHaveBeenCalled(); expect(fixture.open).toHaveBeenCalledOnce();
-    expect(fixture.args.onProgress).toHaveBeenCalledWith({ event: { phase: 'sampling', step: 2, steps: 4 } });
-  } finally {
-    await fixture.close();
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      await fixture.close();
+    },
+  };
+  expect(fixture.generateImage).not.toHaveBeenCalled();
+  expect((await fixture.plan.start(fixture.args).result).status).toBe('completed');
+  expect((await fixture.plan.start({ ...fixture.args, seed: '43' }).result).status).toBe('completed');
+  expect(fixture.generateImage.mock.calls.map(([args]) => args.input.parameters.seed)).toEqual(['42', '43']);
+  expect(fixture.unexpected).not.toHaveBeenCalled(); expect(fixture.open).toHaveBeenCalledOnce();
+  expect(fixture.args.onProgress).toHaveBeenCalledWith({ event: { phase: 'sampling', step: 2, steps: 4 } });
 });
 
 it('does not retry a denied generation or retarget a disconnected accepted plan', async () => {
   const fixture = await setup();
-  try {
-    fixture.provider.setAllowedMethods({ contract: naidanPeerContract, allowedMethods: [] });
-    expect((await fixture.plan.start(fixture.args).result).status).toBe('failed');
-    expect(fixture.generateImage).not.toHaveBeenCalled();
-    fixture.provider.setAllowedMethods({ contract: naidanPeerContract, allowedMethods: ['generateImage'] });
-    await Promise.resolve(); expect(fixture.generateImage).not.toHaveBeenCalled();
-    expect((await fixture.plan.start({ ...fixture.args, seed: '43' }).result).status).toBe('completed');
-    await fixture.manager.disconnect({ id: fixture.record.id });
-    expect((await fixture.plan.start({ ...fixture.args, seed: '44' }).result).status).toBe('cancelled');
-    expect(fixture.generateImage).toHaveBeenCalledOnce(); expect(fixture.open).toHaveBeenCalledOnce();
-  } finally {
-    await fixture.close();
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      await fixture.close();
+    },
+  };
+  fixture.provider.setAllowedMethods({ contract: naidanPeerContract, allowedMethods: [] });
+  expect((await fixture.plan.start(fixture.args).result).status).toBe('failed');
+  expect(fixture.generateImage).not.toHaveBeenCalled();
+  fixture.provider.setAllowedMethods({ contract: naidanPeerContract, allowedMethods: ['generateImage'] });
+  await Promise.resolve(); expect(fixture.generateImage).not.toHaveBeenCalled();
+  expect((await fixture.plan.start({ ...fixture.args, seed: '43' }).result).status).toBe('completed');
+  await fixture.manager.disconnect({ id: fixture.record.id });
+  expect((await fixture.plan.start({ ...fixture.args, seed: '44' }).result).status).toBe('cancelled');
+  expect(fixture.generateImage).toHaveBeenCalledOnce(); expect(fixture.open).toHaveBeenCalledOnce();
 });

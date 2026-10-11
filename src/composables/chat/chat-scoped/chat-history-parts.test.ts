@@ -3,7 +3,7 @@ import { reactive } from 'vue';
 import type { AssistantMessageNode, Chat, ChatContent, ChatMeta, Hierarchy, MessageNode } from '@/01-models/types';
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { toAttachmentId, toBinaryObjectId, toChatId, toMessageId, toToolCallId, type ChatId } from '@/01-models/ids';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { getChatBranchIterator } from '@/logic/chat-tree';
 import { createChatMessageSnapshot } from '@/01-models/chat-message';
 
@@ -184,15 +184,11 @@ describe('parts history branches', () => {
     const blob = new Blob(['original']);
     user.parts.push({ type: 'attachment', attachment: { id: toAttachmentId({ raw: 'a' }), binaryObjectId: toBinaryObjectId({ raw: 'b' }), originalName: 'x.png', mimeType: 'image/png', size: blob.size, uploadedAt: 1, status: 'memory', blob } });
     state.persistBinary = true; state.saveFile.mockRejectedValueOnce(new Error('disk full'));
-    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      await commitFullHistoryManipulationForChat({ chatId: chat.id, messages: [user], systemPrompt: undefined });
-      const copy = chat.root.items[1]!.parts[1];
-      expect(copy).toMatchObject({ type: 'attachment', attachment: { status: 'memory', blob } });
-      expect(log).toHaveBeenCalledOnce();
-    } finally {
-      log.mockRestore();
-    }
+    using log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await commitFullHistoryManipulationForChat({ chatId: chat.id, messages: [user], systemPrompt: undefined });
+    const copy = chat.root.items[1]!.parts[1];
+    expect(copy).toMatchObject({ type: 'attachment', attachment: { status: 'memory', blob } });
+    expect(log).toHaveBeenCalledOnce();
   });
 
   it('keeps the new branch in memory without rewriting original nodes when content save fails', async () => {

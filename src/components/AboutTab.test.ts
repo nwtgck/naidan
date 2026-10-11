@@ -3,7 +3,7 @@ import path from 'node:path';
 import { flushPromises, mount } from '@vue/test-utils';
 import { parse } from '@vue/compiler-sfc';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 import AboutTab from './AboutTab.vue';
 

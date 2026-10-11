@@ -354,11 +354,12 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
 
   it("never falls back to main-thread ZIP generation when Worker is unavailable", async () => {
     vi.stubGlobal("Worker", undefined);
-    try {
-      const { createModelSupportInvestigationEvidenceWorkerClient } = await import("./client-hosted");
-      expect(() => createModelSupportInvestigationEvidenceWorkerClient()).toThrow(/requires a Worker/u);
-    } finally {
-      vi.stubGlobal("Worker", MockWorker);
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        vi.stubGlobal("Worker", MockWorker);
+      },
+    };
+    const { createModelSupportInvestigationEvidenceWorkerClient } = await import("./client-hosted");
+    expect(() => createModelSupportInvestigationEvidenceWorkerClient()).toThrow(/requires a Worker/u);
   });
 });

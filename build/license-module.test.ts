@@ -178,29 +178,30 @@ describe('createLicenseModulePlugins', () => {
         getAdditionalDependencies: () => [createSyntheticDependency({ version: 'dev-additional' })],
       })],
     });
-    try {
-      const loaded = await server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID) as {
-        default: readonly BuildLicenseDependency[],
-      };
-      expect(loaded.default).toEqual([
-        {
-          name: 'prod-package',
-          version: '1.0.0',
-          license: 'MIT',
-          licenseText: 'prod license text',
-        },
-        createSyntheticDependency({ version: 'dev-additional' }),
-        {
-          name: 'transitive-package',
-          version: '2.0.0',
-          license: '(Apache-2.0)',
-          licenseText: 'transitive license text',
-        },
-      ]);
-      expect(loaded.default.some((dependency) => dependency.name === 'dev-only-package')).toBe(false);
-    } finally {
-      await server.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await server.close();
+      },
+    };
+    const loaded = await server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID) as {
+      default: readonly BuildLicenseDependency[],
+    };
+    expect(loaded.default).toEqual([
+      {
+        name: 'prod-package',
+        version: '1.0.0',
+        license: 'MIT',
+        licenseText: 'prod license text',
+      },
+      createSyntheticDependency({ version: 'dev-additional' }),
+      {
+        name: 'transitive-package',
+        version: '2.0.0',
+        license: '(Apache-2.0)',
+        licenseText: 'transitive license text',
+      },
+    ]);
+    expect(loaded.default.some((dependency) => dependency.name === 'dev-only-package')).toBe(false);
   }, 30_000);
 
   it('injects current-build main and additional licenses into one lazy hosted chunk', async () => {

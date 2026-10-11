@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { toToolCallId } from '@/01-models/ids';
-import { runProviderConversationForTest } from '@/features/lm/provider-test-support';
+import { runProviderConversationForTest } from '@/features/lm/provider.test-support';
 import type { InferenceMessage } from './types';
 import type { TransformersJsInferenceScope } from './inference-operation';
 import type { ToolCall } from '@/01-models/types';
@@ -34,11 +34,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  try {
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      vi.unstubAllGlobals();
+    },
+  };
+  expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 
 // Deliberately a service-boundary unit fixture. Real service/Worker isolation

@@ -169,15 +169,16 @@ describe('consume nested chat generation', () => {
   it('fails a duplicate part and stops cooperative producers', async () => {
     const controller = new AbortController(); const node = fresh(); let outerClosed = false;
     const items = (async function* () {
-      try {
-        yield part({ id: 'p', index: 0, type: 'text', text: ['A'], completeness: 'complete' });
-        yield part({ id: 'p', index: 1, type: 'text', text: ['B'], completeness: 'complete' });
-        await new Promise<void>(resolve => {
-          if (controller.signal.aborted) resolve(); else controller.signal.addEventListener('abort', () => resolve(), { once: true });
-        });
-      } finally {
-        outerClosed = true;
-      }
+      using _cleanupResource = {
+        [Symbol.dispose]() {
+          outerClosed = true;
+        },
+      };
+      yield part({ id: 'p', index: 0, type: 'text', text: ['A'], completeness: 'complete' });
+      yield part({ id: 'p', index: 1, type: 'text', text: ['B'], completeness: 'complete' });
+      await new Promise<void>(resolve => {
+        if (controller.signal.aborted) resolve(); else controller.signal.addEventListener('abort', () => resolve(), { once: true });
+      });
     })();
     await expect(consume({ node, items, abortController: controller, onChange: () => {} })).rejects.toThrow('Duplicate');
     expect(outerClosed).toBe(true); expect(node.parts).toHaveLength(1);
@@ -187,11 +188,12 @@ describe('consume nested chat generation', () => {
     const fault = new Error('render failed'); const node = fresh(); const controller = new AbortController(); let childClosed = false;
     const item = part({ id: 'p', index: 0, type: 'text', text: [], completeness: 'complete' });
     item.chunks = (async function* () {
-      try {
-        yield 'A'; yield 'B';
-      } finally {
-        childClosed = true;
-      }
+      using _cleanupResource = {
+        [Symbol.dispose]() {
+          childClosed = true;
+        },
+      };
+      yield 'A'; yield 'B';
     })();
     await expect(consume({
       node,

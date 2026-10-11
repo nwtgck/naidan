@@ -6,7 +6,7 @@ import { toChatId } from '@/01-models/ids';
 import { STORAGE_KEY_PREFIX } from '@/constants';
 import { LocalStorageProvider } from '@/00-storage/service/local-storage';
 import { createChatDataStore } from '@/composables/chat/global/chat-data-store';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ChatPage from './[id].vue';
 
 const { mockLoadChat, mockSetCurrentChatId, mockUpdateContent, mockUpdateMeta, mockSend } = vi.hoisted(() => ({

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import BlockMarkdownRenderer from './BlockMarkdownRenderer.vue';
-import { normalizeDom } from './test-utils';
+import { normalizeDom } from './utils.test-support';
 
 describe('BlockMarkdownRenderer: Token Coverage', () => {
   const mountRenderer = ({ content }: { content: string }) => {

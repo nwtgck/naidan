@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
 import { h, defineComponent } from 'vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
@@ -213,17 +213,18 @@ it('keeps the full long tool summary in a wrapping, keyboard-accessible toggle',
       stats: makeStats({ thinkingSteps: 3, toolCallCount: 2, toolNames: tools }),
     },
   });
-  try {
-    const toggle = wrapper.get('[data-testid="assistant-process-toggle"]');
-    expect(toggle.element.tagName).toBe('BUTTON'); expect(toggle.attributes('type')).toBe('button');
-    for (const name of tools) {
-      expect(toggle.text()).toContain(name); expect(toggle.attributes('title')).toContain(name);
-    }
-    expect(toggle.attributes('aria-expanded')).toBe('false');
-    expect(toggle.findAll('.truncate, .line-clamp-1')).toHaveLength(0);
-    expect(toggle.find('.whitespace-normal').exists()).toBe(true);
-    await toggle.trigger('click'); expect(toggle.attributes('aria-expanded')).toBe('true');
-  } finally {
-    wrapper.unmount();
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      wrapper.unmount();
+    },
+  };
+  const toggle = wrapper.get('[data-testid="assistant-process-toggle"]');
+  expect(toggle.element.tagName).toBe('BUTTON'); expect(toggle.attributes('type')).toBe('button');
+  for (const name of tools) {
+    expect(toggle.text()).toContain(name); expect(toggle.attributes('title')).toContain(name);
   }
+  expect(toggle.attributes('aria-expanded')).toBe('false');
+  expect(toggle.findAll('.truncate, .line-clamp-1')).toHaveLength(0);
+  expect(toggle.find('.whitespace-normal').exists()).toBe(true);
+  await toggle.trigger('click'); expect(toggle.attributes('aria-expanded')).toBe('true');
 });

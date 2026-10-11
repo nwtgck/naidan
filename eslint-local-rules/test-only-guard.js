@@ -164,7 +164,8 @@ export function isInsideGuardedTestOnlyPayload(node) {
 export function isTestSupportFilename(filename) {
   const normalized = filename.replaceAll('\\', '/');
 
-  return /\.(?:test|spec|test-helpers)\.[cm]?[jt]sx?$/.test(normalized)
+  return normalized.endsWith('.test-support.ts')
+    || /\.(?:test|spec|test-helpers)\.[cm]?[jt]sx?$/.test(normalized)
     || /(?:^|\/)test-setup\.[cm]?[jt]sx?$/.test(normalized)
     || /(?:^|\/)test-utils(?:\.[cm]?[jt]sx?|\/|$)/.test(normalized)
     || /(?:^|\/)test-mocks(?:\/|$)/.test(normalized)

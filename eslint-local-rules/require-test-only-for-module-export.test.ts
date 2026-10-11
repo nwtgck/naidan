@@ -67,10 +67,11 @@ describe('require-test-only-for-module-export rule', () => {
   it.each([
     'src/example.d.ts',
     'src/example.test.ts',
+    'src/example.test-support.ts',
     'src/example.spec.ts',
     'src/FailedOnlyReporter.ts',
     'src/test-mocks/example.ts',
-    'src/test-setup.ts',
+    'src/test-setup.test-support.ts',
     'src/test-tmp/example.ts',
     'src/strings/catalogs/en.ts',
     'src/strings/messages/Example__value/en.ts',
@@ -85,7 +86,7 @@ describe('require-test-only-for-module-export rule', () => {
   it('keeps non-message strings modules in scope', async () => {
     const result = await lintWithDefaultConfig({
       code: 'export const value = 1;\n',
-      filePath: 'src/strings/test-utils.ts',
+      filePath: 'src/strings/runtime-example.ts',
     });
     expect(result.messages).toHaveLength(1);
     expect(result.messages[0]?.messageId).toBe('missing');

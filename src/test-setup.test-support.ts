@@ -11,7 +11,7 @@ import { flushPromises } from '@vue/test-utils';
  * environment API, implement it LOCALLY within that test file.
  *
  * SUGGESTION: If a particular mock is needed across multiple files, create a
- * shared test utility (e.g. in `src/utils/test-utils.ts`) and invoke it
+ * shared test utility (e.g. in `src/utils/utils.test-support.ts`) and invoke it
  * EXPLICITLY in the relevant test files. This keeps dependencies visible.
  */
 

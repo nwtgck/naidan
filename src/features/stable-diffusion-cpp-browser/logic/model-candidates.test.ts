@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { expect, it } from 'vitest';
 import { scanImageRepositories, componentRequirements, defaultCompanion, componentMatch } from './model-candidates';
-import { ggufFixture, safetensorsFixture, zImageTensors, qwenImageTensors, fluxVaeTensors, qwenVaeTensors, qwenTextTensors, tensor, sdVaeTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
+import { ggufFixture, safetensorsFixture, zImageTensors, qwenImageTensors, fluxVaeTensors, qwenVaeTensors, qwenTextTensors, tensor, sdVaeTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights.test-support';
 import type { LocalImageRepository } from './repository-store';
 
 function repository({ id, file }: { id: string, file: File }): LocalImageRepository {

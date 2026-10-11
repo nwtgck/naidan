@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { acquireRpcOwner } from './owner';
 
-import { createWebLocksFixture as locks } from './test-support/web-locks';
+import { createWebLocksFixture as locks } from './test-support/web-locks.test-support';
 
 afterEach(() => vi.unstubAllGlobals());
 

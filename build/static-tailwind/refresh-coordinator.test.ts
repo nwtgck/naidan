@@ -75,11 +75,12 @@ describe('static Tailwind refresh coordinator', () => {
       concurrentRefreshes += 1;
       maximumConcurrentRefreshes = Math.max(maximumConcurrentRefreshes, concurrentRefreshes);
       const callIndex = refresh.mock.calls.length;
-      try {
-        await (callIndex === 1 ? firstRefresh.promise : secondRefresh.promise);
-      } finally {
-        concurrentRefreshes -= 1;
-      }
+      using _cleanupResource = {
+        [Symbol.dispose]() {
+          concurrentRefreshes -= 1;
+        },
+      };
+      await (callIndex === 1 ? firstRefresh.promise : secondRefresh.promise);
     });
     const coordinator = createRefreshCoordinator({ refresh });
 

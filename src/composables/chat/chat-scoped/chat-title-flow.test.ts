@@ -4,7 +4,7 @@ import type { ChatGenerationItem, LmProvider } from '@/01-models/lm';
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { DEFAULT_SETTINGS, type Chat, type Settings } from '@/01-models/types';
 import { storageService } from '@/00-storage/service';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
 import {
   chatRuntimeStore, currentChatRef, getLiveChatById, liveChatRegistry,
@@ -269,19 +269,20 @@ describe('title lifecycle with real memory persistence', () => {
     chatRuntimeStore.activeTitleGenerations.clear();
     chatRuntimeStore.clearActiveTaskCounts();
     const second = generateChatTitleForChat({ chatId: chat.id, signal: undefined, titleModelIdOverride: undefined });
-    try {
-      await vi.advanceTimersByTimeAsync(0);
-      firstReady.resolve();
-      await firstSettled;
-      expect(chatRuntimeStore.isGeneratingTitle({ chatId: chat.id })).toBe(true);
-      expect(getLiveChatById({ chatId: chat.id })).not.toBeNull();
-      secondReady.resolve();
-      expect(await second).toBe('New title');
-      expect(chatRuntimeStore.isGeneratingTitle({ chatId: chat.id })).toBe(false);
-    } finally {
-      firstReady.resolve(); secondReady.resolve();
-      await Promise.allSettled([first, second]);
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        firstReady.resolve(); secondReady.resolve();
+        await Promise.allSettled([first, second]);
+      },
+    };
+    await vi.advanceTimersByTimeAsync(0);
+    firstReady.resolve();
+    await firstSettled;
+    expect(chatRuntimeStore.isGeneratingTitle({ chatId: chat.id })).toBe(true);
+    expect(getLiveChatById({ chatId: chat.id })).not.toBeNull();
+    secondReady.resolve();
+    expect(await second).toBe('New title');
+    expect(chatRuntimeStore.isGeneratingTitle({ chatId: chat.id })).toBe(false);
   });
 
   it('does not start work for a chat removed from the hierarchy during its undo window', async () => {

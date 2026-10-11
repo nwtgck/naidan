@@ -7,7 +7,7 @@ import type { LocalImageRepository } from './logic/repository-store';
 import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
 import { DEFAULT_SETTINGS } from '@/01-models/types';
 import { idToRaw } from '@/01-models/ids';
-import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTextTensors } from './test-utils/weights';
+import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTextTensors } from './test-utils/weights.test-support';
 
 const scopes: ReturnType<typeof effectScope>[] = [];
 

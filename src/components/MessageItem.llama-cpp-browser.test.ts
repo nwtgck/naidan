@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { shallowMount } from '@vue/test-utils';
 import { ref } from 'vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { toChatId, toMessageId } from '@/01-models/ids';
 import type { MessageNode } from '@/01-models/types';
 import MessageItem from './MessageItem.vue';

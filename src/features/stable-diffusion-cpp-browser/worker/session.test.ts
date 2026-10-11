@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { runImageGeneration, createImageGenerationSession, effectiveVaeTile } from './session';
 import type { Core, CoreModule, HostHelpers, NativeApi } from './core-types';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
-import { fixtureReader, ggufFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
+import { fixtureReader, ggufFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/weights.test-support';
 import { imageLoraRequests } from '@/features/stable-diffusion-cpp-browser/lora-form';
 import type { ImageEngineInspection } from '@/features/stable-diffusion-cpp-browser/engine-state';
 
@@ -819,18 +819,19 @@ it.each([4, 8] as const)('keeps image pixels until native return, updates and cl
     } else observed.push(-1);
     return original(ctx, params, imagesOut, countOut);
   });
-  try {
-    await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
-    value = 8; request.imageInputs = { initImage: undefined, strength: 0.4, referenceImages: [second] };
-    await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
-    request.imageInputs.referenceImages = [];
-    await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
-    expect(observed).toEqual([9, 8, -1]); expect(h.api.new_sd_ctx).toHaveBeenCalledOnce();
-    expect(bitmap.close).toHaveBeenCalledTimes(3);
-    await session.close();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      vi.unstubAllGlobals();
+    },
+  };
+  await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
+  value = 8; request.imageInputs = { initImage: undefined, strength: 0.4, referenceImages: [second] };
+  await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
+  request.imageInputs.referenceImages = [];
+  await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
+  expect(observed).toEqual([9, 8, -1]); expect(h.api.new_sd_ctx).toHaveBeenCalledOnce();
+  expect(bitmap.close).toHaveBeenCalledTimes(3);
+  await session.close();
 });
 
 it('settles cancellation during input decode without entering native generation or leaking the bitmap', async () => {
@@ -841,18 +842,19 @@ it('settles cancellation during input decode without entering native generation 
   const session = createImageGenerationSession({ core: h.core, helpers: h.helpers, reader: h.reader });
   const request = requestFixture(); request.runId = 1;
   request.imageInputs.initImage = new File(['one'], 'image.png', { type: 'image/png' });
-  try {
-    const run = session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
-    await vi.waitFor(() => expect(createImageBitmap).toHaveBeenCalledOnce());
-    expect(session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 1 } })).toBe(true);
-    decode.resolve(bitmap);
-    await expect(run).resolves.toEqual({ cancelled: true, modelResident: true });
-    expect(h.api.generate_image).not.toHaveBeenCalled(); expect(bitmap.close).toHaveBeenCalledOnce();
-    expect(h.core.free).toHaveBeenCalledWith(h.recordPointers.get('sd_img_gen_params_t'));
-    await session.close();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      vi.unstubAllGlobals();
+    },
+  };
+  const run = session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
+  await vi.waitFor(() => expect(createImageBitmap).toHaveBeenCalledOnce());
+  expect(session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 1 } })).toBe(true);
+  decode.resolve(bitmap);
+  await expect(run).resolves.toEqual({ cancelled: true, modelResident: true });
+  expect(h.api.generate_image).not.toHaveBeenCalled(); expect(bitmap.close).toHaveBeenCalledOnce();
+  expect(h.core.free).toHaveBeenCalledWith(h.recordPointers.get('sd_img_gen_params_t'));
+  await session.close();
 });
 
 it.each(['projection', 'vae'] as const)('excludes input VAE tile progress and fixes the total before the first %s preview', async mode => {
@@ -893,14 +895,15 @@ it.each(['projection', 'vae'] as const)('excludes input VAE tile progress and fi
     progress(2, 4, 0.1, 0n);
     return result;
   });
-  try {
-    await runImageGeneration({ ...h, request, onProgress, onLog: vi.fn(), onPerformance, onPreview });
-    expect(onPerformance.mock.calls.filter(([event]) => event.signal.kind === 'sampling-progress').map(([event]) => event.signal)).toEqual([
-      { kind: 'sampling-progress', step: 0, steps: 13 }, { kind: 'sampling-progress', step: 1, steps: 13 },
-    ]);
-    expect(onProgress.mock.calls.some(([{ event }]) => event.phase === 'sampling' && event.steps === 4)).toBe(false);
-    expect(onPreview.mock.calls.map(([{ capture }]) => ({ step: capture.step, steps: capture.steps }))).toEqual([{ step: 1, steps: 13 }]);
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      vi.unstubAllGlobals();
+    },
+  };
+  await runImageGeneration({ ...h, request, onProgress, onLog: vi.fn(), onPerformance, onPreview });
+  expect(onPerformance.mock.calls.filter(([event]) => event.signal.kind === 'sampling-progress').map(([event]) => event.signal)).toEqual([
+    { kind: 'sampling-progress', step: 0, steps: 13 }, { kind: 'sampling-progress', step: 1, steps: 13 },
+  ]);
+  expect(onProgress.mock.calls.some(([{ event }]) => event.phase === 'sampling' && event.steps === 4)).toBe(false);
+  expect(onPreview.mock.calls.map(([{ capture }]) => ({ step: capture.step, steps: capture.steps }))).toEqual([{ step: 1, steps: 13 }]);
 });

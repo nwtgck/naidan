@@ -5,7 +5,7 @@ import type { LmProvider } from '@/01-models/lm';
 import { getMessageText } from '@/01-models/message-text';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 import { createAsyncChannel } from '@/utils/async-channel';
-import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 import { nextTick } from 'vue';
 
 // Mock storage

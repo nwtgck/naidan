@@ -5,7 +5,7 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useLayout } from '@/composables/useLayout';
 import { useFileExplorerModal } from '@/features/file-explorer/composables/useFileExplorerModal';
 import { ref } from 'vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 vi.mock('../composables/useGlobalEvents', () => ({
   useGlobalEvents: vi.fn(),

@@ -213,16 +213,12 @@ it('preserves null custom configuration defaults and does not mutate the caller 
 
 it('refuses a new custom loader override without bypassing it or starting model reads', async () => {
   const h = await fixture();
-  const override = vi.spyOn(h.runtime.LlamaForCausalLM, 'from_pretrained').mockRejectedValue(new Error('Custom loader must not run during selection'));
-  try {
-    expect(() => h.selectProductionModelResources({ autoClass: 'AutoModelForCausalLM', config: textConfig(), candidate: { device: 'webgpu', dtype: 'q4' } }))
-      .toThrow('Unsupported non-generic');
-    expect(override).not.toHaveBeenCalled();
-    expect(h.paths).toEqual([]);
-    expect(h.session).not.toHaveBeenCalled();
-  } finally {
-    override.mockRestore();
-  }
+  using override = vi.spyOn(h.runtime.LlamaForCausalLM, 'from_pretrained').mockRejectedValue(new Error('Custom loader must not run during selection'));
+  expect(() => h.selectProductionModelResources({ autoClass: 'AutoModelForCausalLM', config: textConfig(), candidate: { device: 'webgpu', dtype: 'q4' } }))
+    .toThrow('Unsupported non-generic');
+  expect(override).not.toHaveBeenCalled();
+  expect(h.paths).toEqual([]);
+  expect(h.session).not.toHaveBeenCalled();
 });
 
 export const TEST_ONLY = {

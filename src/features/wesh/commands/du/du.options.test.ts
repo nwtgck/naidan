@@ -5,7 +5,7 @@ import {
   executeDuTest,
   type DuTestContext,
   writeDuTestFile,
-} from './test-utils';
+} from './utils.test-support';
 
 describe('wesh du options', () => {
   let testContext: DuTestContext;

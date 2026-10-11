@@ -1,4 +1,4 @@
-import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
+import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics.test-support';
 import { importModelDirectory, resolveModelFiles } from './model-directory';
 import { File as NodeFile } from 'node:buffer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

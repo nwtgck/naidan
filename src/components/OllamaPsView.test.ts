@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import type { OllamaProvider, OllamaRunningModel } from '@/features/lm/ollama';
 import OllamaPsView from './OllamaPsView.vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 const mockAddToast = vi.fn();
 

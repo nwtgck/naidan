@@ -27,11 +27,12 @@ describe('Planning Worker Provider capture ownership', () => {
       },
       traceLimits: { maximumEvents: 10, maximumCharacters: 100 },
     });
-    try {
-      expect(() => toPlanningWorkerRun({ run: { ...run, productionProviderCapture: owner.snapshot() } })).toThrow('Planning Worker must not return Production Provider capture');
-    } finally {
-      await owner.dispose();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await owner.dispose();
+      },
+    };
+    expect(() => toPlanningWorkerRun({ run: { ...run, productionProviderCapture: owner.snapshot() } })).toThrow('Planning Worker must not return Production Provider capture');
   });
 
   it('rejects a forged returned capture property even when its value is undefined', () => {

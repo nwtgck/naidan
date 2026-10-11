@@ -439,12 +439,8 @@ describe('transformers-js.worker', () => {
     const comlink = await import('comlink');
     await initializeWorkerEntry();
     const exposed = vi.mocked(comlink.expose).mock.calls[0]![0] as WorkerServerApi<ITransformersJsWorker>;
-    const unload = vi.spyOn(exposed, 'unloadModel').mockRejectedValueOnce(failure);
-    try {
-      await expect(exposed.loadDownloadedModel('org/repo', { kind: 'pinned', revision: undefined }, vi.fn())).rejects.toBe(failure);
-    } finally {
-      unload.mockRestore();
-    }
+    using _unload = vi.spyOn(exposed, 'unloadModel').mockRejectedValueOnce(failure);
+    await expect(exposed.loadDownloadedModel('org/repo', { kind: 'pinned', revision: undefined }, vi.fn())).rejects.toBe(failure);
   });
 
   it('loadDownloadedModel should try tiered fallback from WebGPU to WASM', async () => {
@@ -564,20 +560,21 @@ describe('transformers-js.worker', () => {
       returned();
       return { dispose };
     });
-    try {
-      await entered.promise;
-      await expect(worker.loadDownloadedModel('org/repo', { kind: 'pinned', revision: undefined }, vi.fn())).rejects.toMatchObject({ name: 'OpfsResourceBusyError' });
-      expect(returned).toHaveBeenCalledOnce();
-      expect(dispose).toHaveBeenCalledOnce();
-      expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledOnce();
-      expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
-      expect(originalFetchMock).not.toHaveBeenCalled();
-      await worker.unloadModel();
-      expect(dispose).toHaveBeenCalledOnce();
-    } finally {
-      release.resolve();
-      await writer;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        release.resolve();
+        await writer;
+      },
+    };
+    await entered.promise;
+    await expect(worker.loadDownloadedModel('org/repo', { kind: 'pinned', revision: undefined }, vi.fn())).rejects.toMatchObject({ name: 'OpfsResourceBusyError' });
+    expect(returned).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledOnce();
+    expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
+    expect(originalFetchMock).not.toHaveBeenCalled();
+    await worker.unloadModel();
+    expect(dispose).toHaveBeenCalledOnce();
   });
 
   it('stops instead of falling back after a planned-complete candidate reaches the cache-miss boundary', async () => {
@@ -597,19 +594,20 @@ describe('transformers-js.worker', () => {
         throw new Error('The cache-miss boundary unexpectedly returned');
       });
 
-    try {
-      const failure = await workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: revision }, vi.fn())
-        .then(() => undefined, (error: unknown) => error);
-      expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
-      expect(failure).toBeInstanceOf(Error);
-      if (!(failure instanceof Error)) throw new Error('The required resource loss must stop Load');
-      expect(failure.message).toContain('MUST NOT fetch model artifacts');
-      expect(failure.message).toContain(missingUrl);
-      expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
-      expect(originalFetchMock).not.toHaveBeenCalled();
-    } finally {
-      vi.mocked(AutoModelForCausalLM.from_pretrained).mockReset();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        vi.mocked(AutoModelForCausalLM.from_pretrained).mockReset();
+      },
+    };
+    const failure = await workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: revision }, vi.fn())
+      .then(() => undefined, (error: unknown) => error);
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
+    expect(failure).toBeInstanceOf(Error);
+    if (!(failure instanceof Error)) throw new Error('The required resource loss must stop Load');
+    expect(failure.message).toContain('MUST NOT fetch model artifacts');
+    expect(failure.message).toContain(missingUrl);
+    expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
+    expect(originalFetchMock).not.toHaveBeenCalled();
   });
 
   it('classifies a shared config failure before any candidate or model is attempted', async () => {
@@ -717,20 +715,21 @@ describe('transformers-js.worker', () => {
       await env.customCache.match(requiredUrl).catch(() => undefined);
       return apparentModel;
     });
-    try {
-      await expect(workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: revision }, vi.fn())).rejects.toMatchObject({
-        name: 'RequiredDownloadedModelResourceError',
-        failure: 'missing',
-        url: requiredUrl,
-      });
-      expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
-      expect(dispose).toHaveBeenCalledTimes(1);
-      expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
-      await workerObj.unloadModel();
-      expect(dispose).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.mocked(AutoModelForCausalLM.from_pretrained).mockReset();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        vi.mocked(AutoModelForCausalLM.from_pretrained).mockReset();
+      },
+    };
+    await expect(workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: revision }, vi.fn())).rejects.toMatchObject({
+      name: 'RequiredDownloadedModelResourceError',
+      failure: 'missing',
+      url: requiredUrl,
+    });
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
+    await workerObj.unloadModel();
+    expect(dispose).toHaveBeenCalledTimes(1);
   });
 
   it('disposes and clears an accepted model when required cancellation fails after tokenizer preparation', async () => {
@@ -767,21 +766,22 @@ describe('transformers-js.worker', () => {
       return apparentModel;
     });
     vi.mocked(AutoTokenizer.from_pretrained).mockResolvedValue({} as Awaited<ReturnType<typeof AutoTokenizer.from_pretrained>>);
-    try {
-      await expect(workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: revision }, vi.fn())).rejects.toMatchObject({
-        name: 'RequiredDownloadedModelResourceError',
-        failure: 'io',
-        cause: cancellationError,
-      });
-      expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
-      expect(AutoTokenizer.from_pretrained).toHaveBeenCalledTimes(1);
-      expect(cancel).toHaveBeenCalledTimes(1);
-      expect(dispose).toHaveBeenCalledTimes(1);
-      await workerObj.unloadModel();
-      expect(dispose).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.mocked(AutoModelForCausalLM.from_pretrained).mockReset();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        vi.mocked(AutoModelForCausalLM.from_pretrained).mockReset();
+      },
+    };
+    await expect(workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: revision }, vi.fn())).rejects.toMatchObject({
+      name: 'RequiredDownloadedModelResourceError',
+      failure: 'io',
+      cause: cancellationError,
+    });
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
+    expect(AutoTokenizer.from_pretrained).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(dispose).toHaveBeenCalledTimes(1);
+    await workerObj.unloadModel();
+    expect(dispose).toHaveBeenCalledTimes(1);
   });
 
   it('fails before tokenizer or model initialization when no local candidate is complete', async () => {
@@ -1088,65 +1088,61 @@ describe('transformers-js.worker', () => {
     const workerObj = (comlink.expose as any).mock.calls[0][0];
     const progressCallback = vi.fn();
     const observationCheckpointCallback = vi.fn();
-    const performanceNow = vi.spyOn(performance, 'now').mockReturnValue(0);
+    using _performanceNow = vi.spyOn(performance, 'now').mockReturnValue(0);
 
-    try {
-      (AutoModelForCausalLM.from_pretrained as any).mockImplementationOnce(async (_modelId: string, options: { progress_callback: (info: unknown) => void }) => {
-        for (let index = 0; index < 100_000; index += 1) {
-          options.progress_callback({
-            status: 'progress',
-            file: `onnx/model_q4f16.onnx_data_${index % 6}`,
-            loaded: index + 1,
-            total: 100_000,
-            progress: ((index + 1) / 100_000) * 100,
-          });
-        }
-        throw new Error('synthetic load failure');
-      });
+    (AutoModelForCausalLM.from_pretrained as any).mockImplementationOnce(async (_modelId: string, options: { progress_callback: (info: unknown) => void }) => {
+      for (let index = 0; index < 100_000; index += 1) {
+        options.progress_callback({
+          status: 'progress',
+          file: `onnx/model_q4f16.onnx_data_${index % 6}`,
+          loaded: index + 1,
+          total: 100_000,
+          progress: ((index + 1) / 100_000) * 100,
+        });
+      }
+      throw new Error('synthetic load failure');
+    });
 
-      await expect(workerObj.runModelSupportInvestigationScenario(
-        {
-          modelId: 'org/model',
-          resolvedRevision: 'a'.repeat(40),
-          loadRevision: undefined,
-          candidates: [{ device: 'webgpu', dtype: 'q4' }],
-          messages: [{ role: 'user', content: 'hello' }],
-          followUpMessage: { role: 'user', content: 'Continue.' },
-          toolResultContinuation: undefined,
-          maxNewTokens: 16,
-        },
-        progressCallback,
-        observationCheckpointCallback,
-      )).rejects.toThrow('synthetic load failure');
+    await expect(workerObj.runModelSupportInvestigationScenario(
+      {
+        modelId: 'org/model',
+        resolvedRevision: 'a'.repeat(40),
+        loadRevision: undefined,
+        candidates: [{ device: 'webgpu', dtype: 'q4' }],
+        messages: [{ role: 'user', content: 'hello' }],
+        followUpMessage: { role: 'user', content: 'Continue.' },
+        toolResultContinuation: undefined,
+        maxNewTokens: 16,
+      },
+      progressCallback,
+      observationCheckpointCallback,
+    )).rejects.toThrow('synthetic load failure');
 
-      const modelLoadEvents = progressCallback.mock.calls
-        .map(([value]) => value?.event)
-        .filter(event => event?.kind === 'model-load');
-      expect(modelLoadEvents).toHaveLength(2);
-      expect(modelLoadEvents.at(-1)?.progress).toMatchObject({
-        candidateId: 'production-webgpu-q4',
-        artifactSource: 'downloaded-model-cache',
+    const modelLoadEvents = progressCallback.mock.calls
+      .map(([value]) => value?.event)
+      .filter(event => event?.kind === 'model-load');
+    expect(modelLoadEvents).toHaveLength(2);
+    expect(modelLoadEvents.at(-1)?.progress).toMatchObject({
+      candidateId: 'production-webgpu-q4',
+      artifactSource: 'downloaded-model-cache',
+      eventCount: 100_000,
+      progressEventCount: 100_000,
+      publishedSampleCount: 2,
+    });
+    const checkpointWithAttempt = observationCheckpointCallback.mock.calls
+      .map(([value]) => value?.observation)
+      .find(observation => observation?.loadAttempts?.length === 1);
+    expect(checkpointWithAttempt?.loadAttempts?.[0]).toMatchObject({
+      candidate: { device: 'webgpu', dtype: 'q4' },
+      status: 'failed',
+      modelLoadDurationMs: 0,
+      modelLoadProgress: {
         eventCount: 100_000,
         progressEventCount: 100_000,
         publishedSampleCount: 2,
-      });
-      const checkpointWithAttempt = observationCheckpointCallback.mock.calls
-        .map(([value]) => value?.observation)
-        .find(observation => observation?.loadAttempts?.length === 1);
-      expect(checkpointWithAttempt?.loadAttempts?.[0]).toMatchObject({
-        candidate: { device: 'webgpu', dtype: 'q4' },
-        status: 'failed',
-        modelLoadDurationMs: 0,
-        modelLoadProgress: {
-          eventCount: 100_000,
-          progressEventCount: 100_000,
-          publishedSampleCount: 2,
-        },
-      });
-      expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
-    } finally {
-      performanceNow.mockRestore();
-    }
+      },
+    });
+    expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
   });
 
   it('runs a normal-Chat-revision Production Lane scenario with an explicit candidate list', async () => {
@@ -2118,108 +2114,109 @@ describe('transformers-js.worker', () => {
       behavior: { fullGet: 'synthetic', syntheticFullGetBytes: 8192 },
     });
 
-    try {
-      const fixtureFetch = vi.fn(rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl }));
-      vi.stubGlobal('fetch', fixtureFetch);
-      global.self = {
-        ...global.self,
-        fetch: fixtureFetch,
-        location: {
-          origin: 'http://localhost:3000',
-          href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
-        } as any,
-      } as any;
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await server.close();
+      },
+    };
+    const fixtureFetch = vi.fn(rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl }));
+    vi.stubGlobal('fetch', fixtureFetch);
+    global.self = {
+      ...global.self,
+      fetch: fixtureFetch,
+      location: {
+        origin: 'http://localhost:3000',
+        href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+      } as any,
+    } as any;
 
-      const comlink = await import('comlink');
-      const { AutoConfig, AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
-      await import('@/features/transformers-js/download-verification/download-worker/entry');
-      const workerObj = (comlink.expose as any).mock.calls[0][0];
-      const revision = repository.resolvedRevision;
-      const fileUrl = ({ path }: { path: string }) => (
-        `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
-      );
-      const modelUrl = fileUrl({ path: modelFile!.path });
-      const configUrl = fileUrl({ path: configFile!.path });
-      const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
+    const comlink = await import('comlink');
+    const { AutoConfig, AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const revision = repository.resolvedRevision;
+    const fileUrl = ({ path }: { path: string }) => (
+      `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
+    );
+    const modelUrl = fileUrl({ path: modelFile!.path });
+    const configUrl = fileUrl({ path: configFile!.path });
+    const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
 
-      (AutoConfig.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string; local_files_only?: boolean }) => {
-        expect(options.revision).toBe(revision);
-        if (options.local_files_only === true) {
-          expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
-          return { model_type: 'llama' };
-        }
-        const response = await (env.fetch as typeof fetch)(configUrl);
-        expect(response.ok).toBe(true);
-        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
+    (AutoConfig.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string; local_files_only?: boolean }) => {
+      expect(options.revision).toBe(revision);
+      if (options.local_files_only === true) {
+        expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
         return { model_type: 'llama' };
-      });
-      (AutoTokenizer.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string; local_files_only?: boolean }) => {
-        expect(options.revision).toBe(revision);
-        if (options.local_files_only === true) {
-          const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl);
-          expect(cached).toBeDefined();
-          return {
-            apply_chat_template: vi.fn(),
-            decode: vi.fn(),
-          };
-        }
-        const response = await (env.fetch as typeof fetch)(tokenizerConfigUrl);
-        expect(response.ok).toBe(true);
-        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(tokenizerConfigUrl, response);
-        return {};
-      });
-
-      const runtimeArtifacts = await workerObj.prepareModelRuntimeArtifacts(repository.modelId, revision, vi.fn());
-      expect(runtimeArtifacts).toEqual({
-        processor: 'tokenizer',
-        modelType: 'llama',
-        resourcePlansByCandidate: {
-          'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'] },
-          'webgpu/q4': { status: 'ready', paths: ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'] },
-          'wasm/q4': { status: 'ready', paths: ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'] },
-        },
-      });
-      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
-      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
-
-      const prefetch = await workerObj.prefetchUrls([modelUrl], vi.fn());
-      expect(prefetch).toMatchObject({
-        requestedCount: 1,
-        cachedCount: 0,
-        downloadedCount: 1,
-        failedCount: 0,
-        complete: true,
-        files: [{ status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 }],
-      });
-      const cachedModel = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl);
-      expect(cachedModel).toBeDefined();
-      expect((await cachedModel!.arrayBuffer()).byteLength).toBe(8192);
-
-      (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async (_modelId: string, options: {
-        revision?: string;
-        local_files_only?: boolean;
-      }) => {
-        expect(options).toMatchObject({ revision, local_files_only: true });
-        const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl);
+      }
+      const response = await (env.fetch as typeof fetch)(configUrl);
+      expect(response.ok).toBe(true);
+      await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
+      return { model_type: 'llama' };
+    });
+    (AutoTokenizer.from_pretrained as any).mockImplementation(async (_modelId: string, options: { revision?: string; local_files_only?: boolean }) => {
+      expect(options.revision).toBe(revision);
+      if (options.local_files_only === true) {
+        const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl);
         expect(cached).toBeDefined();
-        expect((await cached!.arrayBuffer()).byteLength).toBe(8192);
-        return { dispose: vi.fn(), config: { model_type: 'llama', is_encoder_decoder: false } };
-      });
+        return {
+          apply_chat_template: vi.fn(),
+          decode: vi.fn(),
+        };
+      }
+      const response = await (env.fetch as typeof fetch)(tokenizerConfigUrl);
+      expect(response.ok).toBe(true);
+      await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(tokenizerConfigUrl, response);
+      return {};
+    });
 
-      const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
-      await initializeWorkerEntry();
-      const productionWorkerObj = (comlink.expose as any).mock.calls.at(-1)[0];
-      const acceptance = await productionWorkerObj.verifyDownloadedModelCandidate(
-        repository.modelId,
-        revision,
-        { device: 'webgpu', dtype: 'q4f16' },
-        vi.fn(),
-      );
-      expect(acceptance).toEqual({ device: 'webgpu', dtype: 'q4f16' });
-      expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeAcceptance);
-    } finally {
-      await server.close();
-    }
+    const runtimeArtifacts = await workerObj.prepareModelRuntimeArtifacts(repository.modelId, revision, vi.fn());
+    expect(runtimeArtifacts).toEqual({
+      processor: 'tokenizer',
+      modelType: 'llama',
+      resourcePlansByCandidate: {
+        'webgpu/q4f16': { status: 'ready', paths: ['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data'] },
+        'webgpu/q4': { status: 'ready', paths: ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'] },
+        'wasm/q4': { status: 'ready', paths: ['onnx/model_q4.onnx', 'onnx/model_q4.onnx_data'] },
+      },
+    });
+    expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
+    expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
+
+    const prefetch = await workerObj.prefetchUrls([modelUrl], vi.fn());
+    expect(prefetch).toMatchObject({
+      requestedCount: 1,
+      cachedCount: 0,
+      downloadedCount: 1,
+      failedCount: 0,
+      complete: true,
+      files: [{ status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 }],
+    });
+    const cachedModel = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl);
+    expect(cachedModel).toBeDefined();
+    expect((await cachedModel!.arrayBuffer()).byteLength).toBe(8192);
+
+    (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async (_modelId: string, options: {
+      revision?: string;
+      local_files_only?: boolean;
+    }) => {
+      expect(options).toMatchObject({ revision, local_files_only: true });
+      const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl);
+      expect(cached).toBeDefined();
+      expect((await cached!.arrayBuffer()).byteLength).toBe(8192);
+      return { dispose: vi.fn(), config: { model_type: 'llama', is_encoder_decoder: false } };
+    });
+
+    const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
+    await initializeWorkerEntry();
+    const productionWorkerObj = (comlink.expose as any).mock.calls.at(-1)[0];
+    const acceptance = await productionWorkerObj.verifyDownloadedModelCandidate(
+      repository.modelId,
+      revision,
+      { device: 'webgpu', dtype: 'q4f16' },
+      vi.fn(),
+    );
+    expect(acceptance).toEqual({ device: 'webgpu', dtype: 'q4f16' });
+    expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeAcceptance);
   });
 
   it('keeps exact-revision runtime artifacts but no completed model when the model stream disconnects', async () => {
@@ -2244,66 +2241,67 @@ describe('transformers-js.worker', () => {
       },
     });
 
-    try {
-      const runtimeFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: runtimeServer.baseUrl });
-      const modelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: modelServer.baseUrl });
-      const fixtureFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-        return rawUrl.includes('/onnx/model_q4f16.onnx')
-          ? await modelFetch(input, init)
-          : await runtimeFetch(input, init);
-      });
-      vi.stubGlobal('fetch', fixtureFetch);
-      global.self = {
-        ...global.self,
-        fetch: fixtureFetch,
-        location: {
-          origin: 'http://localhost:3000',
-          href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
-        } as any,
-      } as any;
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await Promise.all([runtimeServer.close(), modelServer.close()]);
+      },
+    };
+    const runtimeFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: runtimeServer.baseUrl });
+    const modelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: modelServer.baseUrl });
+    const fixtureFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      return rawUrl.includes('/onnx/model_q4f16.onnx')
+        ? await modelFetch(input, init)
+        : await runtimeFetch(input, init);
+    });
+    vi.stubGlobal('fetch', fixtureFetch);
+    global.self = {
+      ...global.self,
+      fetch: fixtureFetch,
+      location: {
+        origin: 'http://localhost:3000',
+        href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+      } as any,
+    } as any;
 
-      const comlink = await import('comlink');
-      const { AutoConfig, AutoTokenizer, env } = await import('@huggingface/transformers');
-      await import('@/features/transformers-js/download-verification/download-worker/entry');
-      const workerObj = (comlink.expose as any).mock.calls[0][0];
-      const revision = repository.resolvedRevision;
-      const fileUrl = ({ path }: { path: string }) => (
-        `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
-      );
-      const modelUrl = fileUrl({ path: modelFile!.path });
-      const configUrl = fileUrl({ path: configFile!.path });
-      const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
+    const comlink = await import('comlink');
+    const { AutoConfig, AutoTokenizer, env } = await import('@huggingface/transformers');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const revision = repository.resolvedRevision;
+    const fileUrl = ({ path }: { path: string }) => (
+      `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
+    );
+    const modelUrl = fileUrl({ path: modelFile!.path });
+    const configUrl = fileUrl({ path: configFile!.path });
+    const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
 
-      (AutoConfig.from_pretrained as any).mockImplementation(async () => {
-        const response = await (env.fetch as typeof fetch)(configUrl);
-        expect(response.ok).toBe(true);
-        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
-        return { model_type: 'llama' };
-      });
-      (AutoTokenizer.from_pretrained as any).mockImplementation(async () => {
-        const response = await (env.fetch as typeof fetch)(tokenizerConfigUrl);
-        expect(response.ok).toBe(true);
-        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(tokenizerConfigUrl, response);
-        return {};
-      });
+    (AutoConfig.from_pretrained as any).mockImplementation(async () => {
+      const response = await (env.fetch as typeof fetch)(configUrl);
+      expect(response.ok).toBe(true);
+      await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
+      return { model_type: 'llama' };
+    });
+    (AutoTokenizer.from_pretrained as any).mockImplementation(async () => {
+      const response = await (env.fetch as typeof fetch)(tokenizerConfigUrl);
+      expect(response.ok).toBe(true);
+      await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(tokenizerConfigUrl, response);
+      return {};
+    });
 
-      await workerObj.prepareModelRuntimeArtifacts(repository.modelId, revision, vi.fn());
-      const prefetch = await workerObj.prefetchUrls([modelUrl], vi.fn());
+    await workerObj.prepareModelRuntimeArtifacts(repository.modelId, revision, vi.fn());
+    const prefetch = await workerObj.prefetchUrls([modelUrl], vi.fn());
 
-      expect(prefetch).toMatchObject({
-        requestedCount: 1,
-        downloadedCount: 0,
-        failedCount: 1,
-        complete: false,
-        files: [{ status: 'failed', failureStage: 'write' }],
-      });
-      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
-      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
-      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl)).toBeUndefined();
-    } finally {
-      await Promise.all([runtimeServer.close(), modelServer.close()]);
-    }
+    expect(prefetch).toMatchObject({
+      requestedCount: 1,
+      downloadedCount: 0,
+      failedCount: 1,
+      complete: false,
+      files: [{ status: 'failed', failureStage: 'write' }],
+    });
+    expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
+    expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
+    expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl)).toBeUndefined();
   });
 
   it('resumes the same exact revision after a model stream disconnect and then accepts it cache-only', async () => {
@@ -2333,99 +2331,99 @@ describe('transformers-js.worker', () => {
     });
 
     let modelAttempt: 'failed' | 'resumed' = 'failed';
-    try {
-      const runtimeFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: runtimeServer.baseUrl });
-      const failedModelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: failedModelServer.baseUrl });
-      const resumedModelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: resumedModelServer.baseUrl });
-      const fixtureFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-        if (!rawUrl.includes('/onnx/model_q4f16.onnx')) return await runtimeFetch(input, init);
-        return modelAttempt === 'failed'
-          ? await failedModelFetch(input, init)
-          : await resumedModelFetch(input, init);
-      });
-      vi.stubGlobal('fetch', fixtureFetch);
-      global.self = {
-        ...global.self,
-        fetch: fixtureFetch,
-        location: {
-          origin: 'http://localhost:3000',
-          href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
-        } as any,
-      } as any;
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await Promise.all([runtimeServer.close(), failedModelServer.close(), resumedModelServer.close()]);
+      },
+    };
+    const runtimeFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: runtimeServer.baseUrl });
+    const failedModelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: failedModelServer.baseUrl });
+    const resumedModelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: resumedModelServer.baseUrl });
+    const fixtureFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!rawUrl.includes('/onnx/model_q4f16.onnx')) return await runtimeFetch(input, init);
+      return modelAttempt === 'failed'
+        ? await failedModelFetch(input, init)
+        : await resumedModelFetch(input, init);
+    });
+    vi.stubGlobal('fetch', fixtureFetch);
+    global.self = {
+      ...global.self,
+      fetch: fixtureFetch,
+      location: {
+        origin: 'http://localhost:3000',
+        href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+      } as any,
+    } as any;
 
-      const comlink = await import('comlink');
-      const { AutoConfig, AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
-      await import('@/features/transformers-js/download-verification/download-worker/entry');
-      const workerObj = (comlink.expose as any).mock.calls[0][0];
-      const revision = repository.resolvedRevision;
-      const fileUrl = ({ path }: { path: string }) => (
-        `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
-      );
-      const modelUrl = fileUrl({ path: modelFile!.path });
-      const configUrl = fileUrl({ path: configFile!.path });
-      const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
+    const comlink = await import('comlink');
+    const { AutoConfig, AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const revision = repository.resolvedRevision;
+    const fileUrl = ({ path }: { path: string }) => (
+      `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
+    );
+    const modelUrl = fileUrl({ path: modelFile!.path });
+    const configUrl = fileUrl({ path: configFile!.path });
+    const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
 
-      (AutoConfig.from_pretrained as any).mockImplementation(async (_modelId: string, options: { local_files_only?: boolean }) => {
-        if (options.local_files_only === true) {
-          expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
-          return { model_type: 'llama' };
-        }
-        const response = await (env.fetch as typeof fetch)(configUrl);
-        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
+    (AutoConfig.from_pretrained as any).mockImplementation(async (_modelId: string, options: { local_files_only?: boolean }) => {
+      if (options.local_files_only === true) {
+        expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
         return { model_type: 'llama' };
-      });
-      (AutoTokenizer.from_pretrained as any).mockImplementation(async (_modelId: string, options: { local_files_only?: boolean }) => {
-        if (options.local_files_only === true) {
-          expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
-          return { apply_chat_template: vi.fn(), decode: vi.fn() };
-        }
-        const response = await (env.fetch as typeof fetch)(tokenizerConfigUrl);
-        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(tokenizerConfigUrl, response);
-        return {};
-      });
+      }
+      const response = await (env.fetch as typeof fetch)(configUrl);
+      await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
+      return { model_type: 'llama' };
+    });
+    (AutoTokenizer.from_pretrained as any).mockImplementation(async (_modelId: string, options: { local_files_only?: boolean }) => {
+      if (options.local_files_only === true) {
+        expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
+        return { apply_chat_template: vi.fn(), decode: vi.fn() };
+      }
+      const response = await (env.fetch as typeof fetch)(tokenizerConfigUrl);
+      await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(tokenizerConfigUrl, response);
+      return {};
+    });
 
-      await workerObj.prepareModelRuntimeArtifacts(repository.modelId, revision, vi.fn());
-      const failedPrefetch = await workerObj.prefetchUrls([modelUrl], vi.fn());
-      expect(failedPrefetch).toMatchObject({
-        downloadedCount: 0,
-        failedCount: 1,
-        complete: false,
-        files: [{ status: 'failed', failureStage: 'write' }],
-      });
-      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
-      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
-      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl)).toBeUndefined();
+    await workerObj.prepareModelRuntimeArtifacts(repository.modelId, revision, vi.fn());
+    const failedPrefetch = await workerObj.prefetchUrls([modelUrl], vi.fn());
+    expect(failedPrefetch).toMatchObject({
+      downloadedCount: 0,
+      failedCount: 1,
+      complete: false,
+      files: [{ status: 'failed', failureStage: 'write' }],
+    });
+    expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
+    expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
+    expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl)).toBeUndefined();
 
-      modelAttempt = 'resumed';
-      const resumedPrefetch = await workerObj.prefetchUrls([modelUrl], vi.fn());
-      expect(resumedPrefetch).toMatchObject({
-        requestedCount: 1,
-        cachedCount: 0,
-        downloadedCount: 1,
-        failedCount: 0,
-        complete: true,
-        files: [{ status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 }],
-      });
+    modelAttempt = 'resumed';
+    const resumedPrefetch = await workerObj.prefetchUrls([modelUrl], vi.fn());
+    expect(resumedPrefetch).toMatchObject({
+      requestedCount: 1,
+      cachedCount: 0,
+      downloadedCount: 1,
+      failedCount: 0,
+      complete: true,
+      files: [{ status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 }],
+    });
 
-      (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async () => {
-        expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl)).toBeDefined();
-        return { dispose: vi.fn(), config: { model_type: 'llama', is_encoder_decoder: false } };
-      });
-      const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
-      await initializeWorkerEntry();
-      const productionWorkerObj = (comlink.expose as any).mock.calls.at(-1)[0];
-      await expect(productionWorkerObj.verifyDownloadedModelCandidate(
-        repository.modelId,
-        revision,
-        { device: 'webgpu', dtype: 'q4f16' },
-        vi.fn(),
-      )).resolves.toEqual({ device: 'webgpu', dtype: 'q4f16' });
-      expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeAcceptance);
-
-    } finally {
-      await Promise.all([runtimeServer.close(), failedModelServer.close(), resumedModelServer.close()]);
-    }
+    (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async () => {
+      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrl)).toBeDefined();
+      return { dispose: vi.fn(), config: { model_type: 'llama', is_encoder_decoder: false } };
+    });
+    const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
+    await initializeWorkerEntry();
+    const productionWorkerObj = (comlink.expose as any).mock.calls.at(-1)[0];
+    await expect(productionWorkerObj.verifyDownloadedModelCandidate(
+      repository.modelId,
+      revision,
+      { device: 'webgpu', dtype: 'q4f16' },
+      vi.fn(),
+    )).resolves.toEqual({ device: 'webgpu', dtype: 'q4f16' });
+    expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeAcceptance);
   });
 
   it('resumes only the missing external-data shard for the same exact LFM revision', async () => {
@@ -2460,114 +2458,114 @@ describe('transformers-js.worker', () => {
     });
 
     let shardAttempt: 'failed' | 'resumed' = 'failed';
-    try {
-      const runtimeFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: runtimeServer.baseUrl });
-      const modelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: modelServer.baseUrl });
-      const failedShardFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: failedShardServer.baseUrl });
-      const fixtureFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-        if (!rawUrl.includes('/onnx/')) return await runtimeFetch(input, init);
-        if (rawUrl.includes('/onnx/model_q4f16.onnx_data_1') && shardAttempt === 'failed') {
-          return await failedShardFetch(input, init);
-        }
-        return await modelFetch(input, init);
-      });
-      vi.stubGlobal('fetch', fixtureFetch);
-      global.self = {
-        ...global.self,
-        fetch: fixtureFetch,
-        location: {
-          origin: 'http://localhost:3000',
-          href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
-        } as any,
-      } as any;
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await Promise.all([runtimeServer.close(), modelServer.close(), failedShardServer.close()]);
+      },
+    };
+    const runtimeFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: runtimeServer.baseUrl });
+    const modelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: modelServer.baseUrl });
+    const failedShardFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: failedShardServer.baseUrl });
+    const fixtureFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!rawUrl.includes('/onnx/')) return await runtimeFetch(input, init);
+      if (rawUrl.includes('/onnx/model_q4f16.onnx_data_1') && shardAttempt === 'failed') {
+        return await failedShardFetch(input, init);
+      }
+      return await modelFetch(input, init);
+    });
+    vi.stubGlobal('fetch', fixtureFetch);
+    global.self = {
+      ...global.self,
+      fetch: fixtureFetch,
+      location: {
+        origin: 'http://localhost:3000',
+        href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+      } as any,
+    } as any;
 
-      const comlink = await import('comlink');
-      const { AutoConfig, AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
-      await import('@/features/transformers-js/download-verification/download-worker/entry');
-      const workerObj = (comlink.expose as any).mock.calls[0][0];
-      const revision = repository.resolvedRevision;
-      const fileUrl = ({ path }: { path: string }) => (
-        `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
-      );
-      const modelUrls = requiredPaths.map(path => fileUrl({ path }));
-      const configUrl = fileUrl({ path: configFile!.path });
-      const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
+    const comlink = await import('comlink');
+    const { AutoConfig, AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const revision = repository.resolvedRevision;
+    const fileUrl = ({ path }: { path: string }) => (
+      `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
+    );
+    const modelUrls = requiredPaths.map(path => fileUrl({ path }));
+    const configUrl = fileUrl({ path: configFile!.path });
+    const tokenizerConfigUrl = fileUrl({ path: tokenizerConfigFile!.path });
 
-      (AutoConfig.from_pretrained as any).mockImplementation(async (_modelId: string, options: { local_files_only?: boolean }) => {
-        if (options.local_files_only === true) {
-          expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
-          return { model_type: 'lfm2' };
-        }
-        const response = await (env.fetch as typeof fetch)(configUrl);
-        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
+    (AutoConfig.from_pretrained as any).mockImplementation(async (_modelId: string, options: { local_files_only?: boolean }) => {
+      if (options.local_files_only === true) {
+        expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(configUrl)).toBeDefined();
         return { model_type: 'lfm2' };
-      });
-      (AutoTokenizer.from_pretrained as any).mockImplementation(async (_modelId: string, options: { local_files_only?: boolean }) => {
-        if (options.local_files_only === true) {
-          expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
-          return { apply_chat_template: vi.fn(), decode: vi.fn() };
-        }
-        const response = await (env.fetch as typeof fetch)(tokenizerConfigUrl);
-        await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(tokenizerConfigUrl, response);
-        return {};
-      });
+      }
+      const response = await (env.fetch as typeof fetch)(configUrl);
+      await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(configUrl, response);
+      return { model_type: 'lfm2' };
+    });
+    (AutoTokenizer.from_pretrained as any).mockImplementation(async (_modelId: string, options: { local_files_only?: boolean }) => {
+      if (options.local_files_only === true) {
+        expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(tokenizerConfigUrl)).toBeDefined();
+        return { apply_chat_template: vi.fn(), decode: vi.fn() };
+      }
+      const response = await (env.fetch as typeof fetch)(tokenizerConfigUrl);
+      await (env.customCache as { put: (request: string, response: Response) => Promise<void> }).put(tokenizerConfigUrl, response);
+      return {};
+    });
 
-      await workerObj.prepareModelRuntimeArtifacts(repository.modelId, revision, vi.fn());
-      const firstPrefetch = await workerObj.prefetchUrls(modelUrls, vi.fn());
-      expect(firstPrefetch).toMatchObject({
-        requestedCount: 3,
-        cachedCount: 0,
-        downloadedCount: 2,
-        failedCount: 1,
-        complete: false,
-        files: [
-          { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
-          { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
-          { status: 'failed', failureStage: 'write' },
-        ],
-      });
-      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrls[0]!)).toBeDefined();
-      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrls[1]!)).toBeDefined();
-      expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrls[2]!)).toBeUndefined();
+    await workerObj.prepareModelRuntimeArtifacts(repository.modelId, revision, vi.fn());
+    const firstPrefetch = await workerObj.prefetchUrls(modelUrls, vi.fn());
+    expect(firstPrefetch).toMatchObject({
+      requestedCount: 3,
+      cachedCount: 0,
+      downloadedCount: 2,
+      failedCount: 1,
+      complete: false,
+      files: [
+        { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
+        { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
+        { status: 'failed', failureStage: 'write' },
+      ],
+    });
+    expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrls[0]!)).toBeDefined();
+    expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrls[1]!)).toBeDefined();
+    expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(modelUrls[2]!)).toBeUndefined();
 
-      const fetchCallCountBeforeResume = fixtureFetch.mock.calls.length;
-      shardAttempt = 'resumed';
-      const resumedPrefetch = await workerObj.prefetchUrls(modelUrls, vi.fn());
-      expect(resumedPrefetch).toMatchObject({
-        requestedCount: 3,
-        cachedCount: 2,
-        downloadedCount: 1,
-        failedCount: 0,
-        complete: true,
-        files: [
-          { status: 'cached', byteLength: 8192 },
-          { status: 'cached', byteLength: 8192 },
-          { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
-        ],
-      });
-      expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeResume + 1);
+    const fetchCallCountBeforeResume = fixtureFetch.mock.calls.length;
+    shardAttempt = 'resumed';
+    const resumedPrefetch = await workerObj.prefetchUrls(modelUrls, vi.fn());
+    expect(resumedPrefetch).toMatchObject({
+      requestedCount: 3,
+      cachedCount: 2,
+      downloadedCount: 1,
+      failedCount: 0,
+      complete: true,
+      files: [
+        { status: 'cached', byteLength: 8192 },
+        { status: 'cached', byteLength: 8192 },
+        { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
+      ],
+    });
+    expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeResume + 1);
 
-      (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async () => {
-        for (const url of modelUrls) {
-          expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(url)).toBeDefined();
-        }
-        return { dispose: vi.fn(), config: { model_type: 'lfm2', is_encoder_decoder: false } };
-      });
-      const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
-      await initializeWorkerEntry();
-      const productionWorkerObj = (comlink.expose as any).mock.calls.at(-1)[0];
-      await expect(productionWorkerObj.verifyDownloadedModelCandidate(
-        repository.modelId,
-        revision,
-        { device: 'webgpu', dtype: 'q4f16' },
-        vi.fn(),
-      )).resolves.toEqual({ device: 'webgpu', dtype: 'q4f16' });
-      expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeAcceptance);
-
-    } finally {
-      await Promise.all([runtimeServer.close(), modelServer.close(), failedShardServer.close()]);
-    }
+    (AutoModelForCausalLM.from_pretrained as any).mockImplementation(async () => {
+      for (const url of modelUrls) {
+        expect(await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(url)).toBeDefined();
+      }
+      return { dispose: vi.fn(), config: { model_type: 'lfm2', is_encoder_decoder: false } };
+    });
+    const fetchCallCountBeforeAcceptance = fixtureFetch.mock.calls.length;
+    await initializeWorkerEntry();
+    const productionWorkerObj = (comlink.expose as any).mock.calls.at(-1)[0];
+    await expect(productionWorkerObj.verifyDownloadedModelCandidate(
+      repository.modelId,
+      revision,
+      { device: 'webgpu', dtype: 'q4f16' },
+      vi.fn(),
+    )).resolves.toEqual({ device: 'webgpu', dtype: 'q4f16' });
+    expect(fixtureFetch).toHaveBeenCalledTimes(fetchCallCountBeforeAcceptance);
   });
 
   it('observes the LFM2.5-230M repository boundary where q4f16 is unavailable but q4 core and external data can be prefetched', async () => {
@@ -2577,59 +2575,60 @@ describe('transformers-js.worker', () => {
       behavior: { fullGet: 'synthetic', syntheticFullGetBytes: 8192 },
     });
 
-    try {
-      const fixtureFetch = vi.fn(rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl }));
-      vi.stubGlobal('fetch', fixtureFetch);
-      global.self = {
-        ...global.self,
-        fetch: fixtureFetch,
-        location: {
-          origin: 'http://localhost:3000',
-          href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
-        } as any,
-      } as any;
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await server.close();
+      },
+    };
+    const fixtureFetch = vi.fn(rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl }));
+    vi.stubGlobal('fetch', fixtureFetch);
+    global.self = {
+      ...global.self,
+      fetch: fixtureFetch,
+      location: {
+        origin: 'http://localhost:3000',
+        href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+      } as any,
+    } as any;
 
-      const comlink = await import('comlink');
-      await import('@/features/transformers-js/download-verification/download-worker/entry');
-      const workerObj = (comlink.expose as any).mock.calls[0][0];
-      const revision = repository.resolvedRevision;
-      const fileUrl = ({ path }: { path: string }) => (
-        `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
-      );
+    const comlink = await import('comlink');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const revision = repository.resolvedRevision;
+    const fileUrl = ({ path }: { path: string }) => (
+      `https://huggingface.co/${repository.modelId}/resolve/${revision}/${path.split('/').map(part => encodeURIComponent(part)).join('/')}`
+    );
 
-      const q4f16 = await workerObj.prefetchUrls([
-        fileUrl({ path: 'onnx/model_q4f16.onnx' }),
-        fileUrl({ path: 'onnx/model_q4f16.onnx_data' }),
-      ], vi.fn());
-      expect(q4f16).toMatchObject({
-        requestedCount: 2,
-        downloadedCount: 0,
-        failedCount: 2,
-        complete: false,
-        files: [
-          { status: 'failed', failureStage: 'response-status', httpStatus: 404 },
-          { status: 'failed', failureStage: 'response-status', httpStatus: 404 },
-        ],
-      });
+    const q4f16 = await workerObj.prefetchUrls([
+      fileUrl({ path: 'onnx/model_q4f16.onnx' }),
+      fileUrl({ path: 'onnx/model_q4f16.onnx_data' }),
+    ], vi.fn());
+    expect(q4f16).toMatchObject({
+      requestedCount: 2,
+      downloadedCount: 0,
+      failedCount: 2,
+      complete: false,
+      files: [
+        { status: 'failed', failureStage: 'response-status', httpStatus: 404 },
+        { status: 'failed', failureStage: 'response-status', httpStatus: 404 },
+      ],
+    });
 
-      const q4 = await workerObj.prefetchUrls([
-        fileUrl({ path: 'onnx/model_q4.onnx' }),
-        fileUrl({ path: 'onnx/model_q4.onnx_data' }),
-      ], vi.fn());
-      expect(q4).toMatchObject({
-        requestedCount: 2,
-        cachedCount: 0,
-        downloadedCount: 2,
-        failedCount: 0,
-        complete: true,
-        files: [
-          { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
-          { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
-        ],
-      });
-    } finally {
-      await server.close();
-    }
+    const q4 = await workerObj.prefetchUrls([
+      fileUrl({ path: 'onnx/model_q4.onnx' }),
+      fileUrl({ path: 'onnx/model_q4.onnx_data' }),
+    ], vi.fn());
+    expect(q4).toMatchObject({
+      requestedCount: 2,
+      cachedCount: 0,
+      downloadedCount: 2,
+      failedCount: 0,
+      complete: true,
+      files: [
+        { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
+        { status: 'downloaded', byteLength: 8192, expectedByteLength: 8192 },
+      ],
+    });
   });
 
   it('normalizes supported Hugging Face model URL forms at the dedicated Download Worker boundary', async () => {
@@ -2811,45 +2810,46 @@ describe('transformers-js.worker', () => {
       behavior: { fullGet: 'synthetic', syntheticFullGetBytes: 8192 },
     });
 
-    try {
-      const fixtureFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl });
-      vi.stubGlobal('fetch', fixtureFetch);
-      global.self = {
-        ...global.self,
-        fetch: fixtureFetch,
-        location: {
-          origin: 'http://localhost:3000',
-          href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
-        } as any,
-      } as any;
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await server.close();
+      },
+    };
+    const fixtureFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl });
+    vi.stubGlobal('fetch', fixtureFetch);
+    global.self = {
+      ...global.self,
+      fetch: fixtureFetch,
+      location: {
+        origin: 'http://localhost:3000',
+        href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+      } as any,
+    } as any;
 
-      const comlink = await import('comlink');
-      const { env } = await import('@huggingface/transformers');
-      await import('@/features/transformers-js/download-verification/download-worker/entry');
-      const workerObj = (comlink.expose as any).mock.calls[0][0];
-      const encodedPath = file!.path.split('/').map(part => encodeURIComponent(part)).join('/');
-      const url = `https://huggingface.co/${repository.modelId}/resolve/${repository.resolvedRevision}/${encodedPath}`;
+    const comlink = await import('comlink');
+    const { env } = await import('@huggingface/transformers');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const encodedPath = file!.path.split('/').map(part => encodeURIComponent(part)).join('/');
+    const url = `https://huggingface.co/${repository.modelId}/resolve/${repository.resolvedRevision}/${encodedPath}`;
 
-      const result = await workerObj.prefetchUrls([url], vi.fn());
+    const result = await workerObj.prefetchUrls([url], vi.fn());
 
-      expect(result).toMatchObject({
-        requestedCount: 1,
-        cachedCount: 0,
-        downloadedCount: 1,
-        failedCount: 0,
-        complete: true,
-        files: [{
-          status: 'downloaded',
-          byteLength: 8192,
-          expectedByteLength: 8192,
-        }],
-      });
-      const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(url);
-      expect(cached).toBeDefined();
-      expect((await cached!.arrayBuffer()).byteLength).toBe(8192);
-    } finally {
-      await server.close();
-    }
+    expect(result).toMatchObject({
+      requestedCount: 1,
+      cachedCount: 0,
+      downloadedCount: 1,
+      failedCount: 0,
+      complete: true,
+      files: [{
+        status: 'downloaded',
+        byteLength: 8192,
+        expectedByteLength: 8192,
+      }],
+    });
+    const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(url);
+    expect(cached).toBeDefined();
+    expect((await cached!.arrayBuffer()).byteLength).toBe(8192);
   });
 
   it('prefetchUrls leaves no completed OPFS entry when the real HTTP stream disconnects mid-write', async () => {
@@ -2865,42 +2865,43 @@ describe('transformers-js.worker', () => {
       },
     });
 
-    try {
-      const fixtureFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl });
-      vi.stubGlobal('fetch', fixtureFetch);
-      global.self = {
-        ...global.self,
-        fetch: fixtureFetch,
-        location: {
-          origin: 'http://localhost:3000',
-          href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
-        } as any,
-      } as any;
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await server.close();
+      },
+    };
+    const fixtureFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl });
+    vi.stubGlobal('fetch', fixtureFetch);
+    global.self = {
+      ...global.self,
+      fetch: fixtureFetch,
+      location: {
+        origin: 'http://localhost:3000',
+        href: 'http://localhost:3000/src/features/transformers-js/worker/entry.ts',
+      } as any,
+    } as any;
 
-      const comlink = await import('comlink');
-      const { env } = await import('@huggingface/transformers');
-      await import('@/features/transformers-js/download-verification/download-worker/entry');
-      const workerObj = (comlink.expose as any).mock.calls[0][0];
-      const encodedPath = file!.path.split('/').map(part => encodeURIComponent(part)).join('/');
-      const url = `https://huggingface.co/${repository.modelId}/resolve/${repository.resolvedRevision}/${encodedPath}`;
+    const comlink = await import('comlink');
+    const { env } = await import('@huggingface/transformers');
+    await import('@/features/transformers-js/download-verification/download-worker/entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+    const encodedPath = file!.path.split('/').map(part => encodeURIComponent(part)).join('/');
+    const url = `https://huggingface.co/${repository.modelId}/resolve/${repository.resolvedRevision}/${encodedPath}`;
 
-      const result = await workerObj.prefetchUrls([url], vi.fn());
+    const result = await workerObj.prefetchUrls([url], vi.fn());
 
-      expect(result).toMatchObject({
-        requestedCount: 1,
-        downloadedCount: 0,
-        failedCount: 1,
-        complete: false,
-        files: [{
-          status: 'failed',
-          failureStage: 'write',
-        }],
-      });
-      const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(url);
-      expect(cached).toBeUndefined();
-    } finally {
-      await server.close();
-    }
+    expect(result).toMatchObject({
+      requestedCount: 1,
+      downloadedCount: 0,
+      failedCount: 1,
+      complete: false,
+      files: [{
+        status: 'failed',
+        failureStage: 'write',
+      }],
+    });
+    const cached = await (env.customCache as { match: (request: string) => Promise<Response | undefined> }).match(url);
+    expect(cached).toBeUndefined();
   });
 
   it('prefetchUrls should report partial failures without exposing signed query parameters', async () => {
@@ -3147,20 +3148,21 @@ describe('transformers-js.worker', () => {
       tokensToEmit = ['Synthetic output.'];
       const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
       const pending = worker.generateText([], callback, vi.fn(), undefined, undefined);
-      try {
-        expect(await Promise.race([
-          pending.then(() => 'settled'),
-          entered.promise.then(() => 'callback-entered'),
-        ])).toBe('callback-entered');
-        release.resolve();
-        await pending;
-        expect(delivered).toEqual(['Synthetic output.']);
-      } finally {
-        release.resolve();
-        await pending;
-        channel.port1.close();
-        channel.port2.close();
-      }
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
+          release.resolve();
+          await pending;
+          channel.port1.close();
+          channel.port2.close();
+        },
+      };
+      expect(await Promise.race([
+        pending.then(() => 'settled'),
+        entered.promise.then(() => 'callback-entered'),
+      ])).toBe('callback-entered');
+      release.resolve();
+      await pending;
+      expect(delivered).toEqual(['Synthetic output.']);
     });
 
     it('owns actual Comlink rejection while inference is pending and keeps the next generation independent', async () => {
@@ -3188,28 +3190,29 @@ describe('transformers-js.worker', () => {
       const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
       const pending = worker.generateText([], callback, vi.fn(), undefined, undefined, captureRequest);
       const rejected = expect(pending).rejects.toThrow('Chunk recipient rejected delivery');
-      try {
-        await interrupted.promise;
-        expect(received).toEqual(['first']);
-        finishInference.resolve();
-        await rejected;
-        const oldStreamer = capturedCallback;
-        tokensToEmit = ['next'];
-        const next = vi.fn();
-        await worker.generateText([], next, vi.fn(), undefined, undefined);
-        oldStreamer?.('late from first generation');
-        expect(next).toHaveBeenCalledExactlyOnceWith('next');
-        expect(received).toEqual(['first']);
-        expect(await worker.takeGenerationCapture(captureRun)).toMatchObject({
-          status: 'captured',
-          capture: { calls: [expect.objectContaining({ outcome: 'rejected' })] },
-        });
-      } finally {
-        finishInference.resolve();
-        await rejected;
-        channel.port1.close();
-        channel.port2.close();
-      }
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
+          finishInference.resolve();
+          await rejected;
+          channel.port1.close();
+          channel.port2.close();
+        },
+      };
+      await interrupted.promise;
+      expect(received).toEqual(['first']);
+      finishInference.resolve();
+      await rejected;
+      const oldStreamer = capturedCallback;
+      tokensToEmit = ['next'];
+      const next = vi.fn();
+      await worker.generateText([], next, vi.fn(), undefined, undefined);
+      oldStreamer?.('late from first generation');
+      expect(next).toHaveBeenCalledExactlyOnceWith('next');
+      expect(received).toEqual(['first']);
+      expect(await worker.takeGenerationCapture(captureRun)).toMatchObject({
+        status: 'captured',
+        capture: { calls: [expect.objectContaining({ outcome: 'rejected' })] },
+      });
     });
 
     it.each(['fulfilled', 'rejected'] as const)('settles emitted callbacks before propagating inference failure with %s delivery', async deliveryOutcome => {
@@ -3568,21 +3571,17 @@ question<|im_end|>
       });
       tokensToEmit = ['reasoning', '</thi', 'nk>', 'answer'];
 
-      const rawTokenLog = vi.spyOn(console, 'debug').mockImplementation(() => {});
-      try {
-        const onChunk = vi.fn();
-        await workerObj.generateText([], onChunk, vi.fn(), undefined, undefined);
+      using rawTokenLog = vi.spyOn(console, 'debug').mockImplementation(() => {});
+      const onChunk = vi.fn();
+      await workerObj.generateText([], onChunk, vi.fn(), undefined, undefined);
 
-        const emitted = (onChunk.mock.calls as [string][]).map(([chunk]) => chunk).join('');
-        expect(emitted).toBe('<think>reasoning</think>answer');
-        const rawChunks = rawTokenLog.mock.calls
-          .filter(([label]) => label === '[transformersJsWorker] raw token:')
-          .map(([, chunk]) => chunk);
-        expect(rawChunks).toEqual(tokensToEmit.map(token => JSON.stringify(token)));
-        expect(rawChunks).not.toContain(JSON.stringify('<think>'));
-      } finally {
-        rawTokenLog.mockRestore();
-      }
+      const emitted = (onChunk.mock.calls as [string][]).map(([chunk]) => chunk).join('');
+      expect(emitted).toBe('<think>reasoning</think>answer');
+      const rawChunks = rawTokenLog.mock.calls
+        .filter(([label]) => label === '[transformersJsWorker] raw token:')
+        .map(([, chunk]) => chunk);
+      expect(rawChunks).toEqual(tokensToEmit.map(token => JSON.stringify(token)));
+      expect(rawChunks).not.toContain(JSON.stringify('<think>'));
     });
 
     it('does not change standard output when the rendered generation prompt does not end in <think>', async () => {
@@ -3770,22 +3769,23 @@ Use shell tools.<|im_end|>
         },
       });
       const chunk = vi.fn(); const calls = vi.fn(); let settled = false;
-      try {
-        const pending = workerObj.generateText([], chunk, calls, undefined, undefined, undefined, undefined,
-          async ({ event }: { event: import('@/features/transformers-js/generation-events').InferenceGenerationEvent }) => {
-            received.push(event); if (received.length === 1) {
-              started.resolve(); await release.promise;
-            }
-          }).then(() => {
-          settled = true;
-        });
-        await started.promise; expect(received).toHaveLength(1); expect(settled).toBe(false);
-        release.resolve(); await pending;
-        expect(received.map(e => e.type)).toEqual(['part_start', 'text_delta', 'part_end', 'result']);
-        expect(chunk).not.toHaveBeenCalled(); expect(calls).not.toHaveBeenCalled();
-      } finally {
-        release.resolve(); select.mockRestore();
-      }
+      using _cleanupResource = {
+        [Symbol.dispose]() {
+          release.resolve(); select.mockRestore();
+        },
+      };
+      const pending = workerObj.generateText([], chunk, calls, undefined, undefined, undefined, undefined,
+        async ({ event }: { event: import('@/features/transformers-js/generation-events').InferenceGenerationEvent }) => {
+          received.push(event); if (received.length === 1) {
+            started.resolve(); await release.promise;
+          }
+        }).then(() => {
+        settled = true;
+      });
+      await started.promise; expect(received).toHaveLength(1); expect(settled).toBe(false);
+      release.resolve(); await pending;
+      expect(received.map(e => e.type)).toEqual(['part_start', 'text_delta', 'part_end', 'result']);
+      expect(chunk).not.toHaveBeenCalled(); expect(calls).not.toHaveBeenCalled();
     });
 
     it.each<GenerationStrategy['kind']>(['standard', 'gpt-oss', 'qwen3_5', 'gemma4'])('propagates a failed %s structured acknowledgement instead of reporting generation success', async kind => {
@@ -3800,12 +3800,13 @@ Use shell tools.<|im_end|>
       const sink = vi.fn(async () => {
         throw fault;
       });
-      try {
-        await expect(workerObj.generateText([], vi.fn(), vi.fn(), undefined, undefined, undefined, undefined, sink)).rejects.toBe(fault);
-        expect(sink).toHaveBeenCalledOnce(); expect(mockInterruptFn).toHaveBeenCalled();
-      } finally {
-        select.mockRestore();
-      }
+      using _cleanupResource = {
+        [Symbol.dispose]() {
+          select.mockRestore();
+        },
+      };
+      await expect(workerObj.generateText([], vi.fn(), vi.fn(), undefined, undefined, undefined, undefined, sink)).rejects.toBe(fault);
+      expect(sink).toHaveBeenCalledOnce(); expect(mockInterruptFn).toHaveBeenCalled();
     });
 
     it('retains the strategy-specific rejection for unsupported structured tool history before native inference', async () => {
@@ -3947,23 +3948,24 @@ Use shell tools.<|im_end|>
         emitted.resolve(); return callback.promise;
       }, vi.fn(), undefined, undefined);
       const olderOutcome = older.catch(error => error as unknown);
-      try {
-        await emitted.promise;
-        tokensToEmit = [];
-        await worker.generateText([{ role: 'user', content: 'new' }], vi.fn(), vi.fn(), undefined, undefined);
-        const newState = observation.getState().qwen3_5ConversationState;
-        expect(newState).toBeDefined();
-        const oldCriterion = mockModel.generate.mock.calls[0]![0].stopping_criteria[0];
-        const newCriterion = mockModel.generate.mock.calls[1]![0].stopping_criteria[0];
-        expect(oldCriterion).not.toBe(newCriterion);
-        callback.reject(failure);
-        expect(await olderOutcome).toBe(failure);
-        expect(observation.getState().qwen3_5ConversationState).toBe(newState);
-        expect(oldCriterion.interrupted).toBe(true);
-        expect(newCriterion.interrupted).toBe(false);
-      } finally {
-        callback.resolve(); await olderOutcome; observation.restore();
-      }
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
+          callback.resolve(); await olderOutcome; observation.restore();
+        },
+      };
+      await emitted.promise;
+      tokensToEmit = [];
+      await worker.generateText([{ role: 'user', content: 'new' }], vi.fn(), vi.fn(), undefined, undefined);
+      const newState = observation.getState().qwen3_5ConversationState;
+      expect(newState).toBeDefined();
+      const oldCriterion = mockModel.generate.mock.calls[0]![0].stopping_criteria[0];
+      const newCriterion = mockModel.generate.mock.calls[1]![0].stopping_criteria[0];
+      expect(oldCriterion).not.toBe(newCriterion);
+      callback.reject(failure);
+      expect(await olderOutcome).toBe(failure);
+      expect(observation.getState().qwen3_5ConversationState).toBe(newState);
+      expect(oldCriterion.interrupted).toBe(true);
+      expect(newCriterion.interrupted).toBe(false);
     });
 
     it('keeps an interrupted invocation stopped across resetCache while a new request gets a fresh criterion', async () => {
@@ -3976,20 +3978,21 @@ Use shell tools.<|im_end|>
       });
       const pending = worker.generateText([{ role: 'user', content: 'old' }], vi.fn(), vi.fn(), undefined, undefined);
       const criterion = await entered.promise;
-      try {
-        expect(criterion.interrupted).toBe(false);
-        await worker.interrupt();
-        expect(criterion.interrupted).toBe(true);
-        await worker.resetCache();
-        expect(criterion.interrupted).toBe(true);
-        await worker.generateText([{ role: 'user', content: 'new' }], vi.fn(), vi.fn(), undefined, undefined);
-        const next = mockModel.generate.mock.calls[1]![0].stopping_criteria[0];
-        expect(next).not.toBe(criterion);
-        expect(next.interrupted).toBe(false);
-        expect(criterion.interrupted).toBe(true);
-      } finally {
-        complete.resolve({ past_key_values: {} }); await pending;
-      }
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
+          complete.resolve({ past_key_values: {} }); await pending;
+        },
+      };
+      expect(criterion.interrupted).toBe(false);
+      await worker.interrupt();
+      expect(criterion.interrupted).toBe(true);
+      await worker.resetCache();
+      expect(criterion.interrupted).toBe(true);
+      await worker.generateText([{ role: 'user', content: 'new' }], vi.fn(), vi.fn(), undefined, undefined);
+      const next = mockModel.generate.mock.calls[1]![0].stopping_criteria[0];
+      expect(next).not.toBe(criterion);
+      expect(next.interrupted).toBe(false);
+      expect(criterion.interrupted).toBe(true);
     });
 
     it('interrupts only its own still-running native call when an older callback fails after a newer request starts', async () => {
@@ -4005,19 +4008,20 @@ Use shell tools.<|im_end|>
         emitted.resolve(); return callback.promise;
       }, vi.fn(), undefined, undefined);
       const outcome = older.catch(error => error as unknown);
-      try {
-        await emitted.promise;
-        await worker.generateText([{ role: 'user', content: 'new' }], vi.fn(), vi.fn(), undefined, undefined);
-        const oldCriterion = mockModel.generate.mock.calls[0]![0].stopping_criteria[0];
-        const newCriterion = mockModel.generate.mock.calls[1]![0].stopping_criteria[0];
-        callback.reject(failure);
-        await vi.waitFor(() => expect(oldCriterion.interrupted).toBe(true));
-        expect(newCriterion.interrupted).toBe(false);
-        native.resolve({ past_key_values: {} });
-        expect(await outcome).toBe(failure);
-      } finally {
-        callback.resolve(); native.resolve({ past_key_values: {} }); await outcome;
-      }
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
+          callback.resolve(); native.resolve({ past_key_values: {} }); await outcome;
+        },
+      };
+      await emitted.promise;
+      await worker.generateText([{ role: 'user', content: 'new' }], vi.fn(), vi.fn(), undefined, undefined);
+      const oldCriterion = mockModel.generate.mock.calls[0]![0].stopping_criteria[0];
+      const newCriterion = mockModel.generate.mock.calls[1]![0].stopping_criteria[0];
+      callback.reject(failure);
+      await vi.waitFor(() => expect(oldCriterion.interrupted).toBe(true));
+      expect(newCriterion.interrupted).toBe(false);
+      native.resolve({ past_key_values: {} });
+      expect(await outcome).toBe(failure);
     });
 
     it('does not re-register Qwen state when resetCache completes before a native result', async () => {
@@ -4029,17 +4033,18 @@ Use shell tools.<|im_end|>
         entered.resolve(); return complete.promise;
       });
       const pending = worker.generateText([{ role: 'user', content: 'pending' }], vi.fn(), vi.fn(), undefined, undefined);
-      try {
-        await entered.promise;
-        await worker.resetCache();
-        complete.resolve({ past_key_values: {} });
-        await pending;
-        expect(observation.getState().qwen3_5ConversationState).toBeUndefined();
-        expect(observation.getState().qwen3_5SequenceCache).toBeUndefined();
-        expect(observation.getState()).not.toHaveProperty('qwen3_5PastKeyValues');
-      } finally {
-        complete.resolve({ past_key_values: {} }); await pending; observation.restore();
-      }
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
+          complete.resolve({ past_key_values: {} }); await pending; observation.restore();
+        },
+      };
+      await entered.promise;
+      await worker.resetCache();
+      complete.resolve({ past_key_values: {} });
+      await pending;
+      expect(observation.getState().qwen3_5ConversationState).toBeUndefined();
+      expect(observation.getState().qwen3_5SequenceCache).toBeUndefined();
+      expect(observation.getState()).not.toHaveProperty('qwen3_5PastKeyValues');
     });
 
     it('does not re-register Qwen state after unload while the original native request is pending', async () => {
@@ -4051,17 +4056,18 @@ Use shell tools.<|im_end|>
         entered.resolve(); return complete.promise;
       });
       const pending = worker.generateText([{ role: 'user', content: 'pending' }], vi.fn(), vi.fn(), undefined, undefined);
-      try {
-        await entered.promise;
-        await worker.unloadModel();
-        complete.resolve({ past_key_values: {} });
-        await pending;
-        expect(observation.getState().qwen3_5ConversationState).toBeUndefined();
-        expect(observation.getState().qwen3_5SequenceCache).toBeUndefined();
-        expect(observation.getState()).not.toHaveProperty('qwen3_5PastKeyValues');
-      } finally {
-        complete.resolve({ past_key_values: {} }); await pending; observation.restore();
-      }
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
+          complete.resolve({ past_key_values: {} }); await pending; observation.restore();
+        },
+      };
+      await entered.promise;
+      await worker.unloadModel();
+      complete.resolve({ past_key_values: {} });
+      await pending;
+      expect(observation.getState().qwen3_5ConversationState).toBeUndefined();
+      expect(observation.getState().qwen3_5SequenceCache).toBeUndefined();
+      expect(observation.getState()).not.toHaveProperty('qwen3_5PastKeyValues');
     });
 
     it.each(['2B', '4B'] as const)('preserves the %s native thinking default when effort is omitted', async modelSize => {

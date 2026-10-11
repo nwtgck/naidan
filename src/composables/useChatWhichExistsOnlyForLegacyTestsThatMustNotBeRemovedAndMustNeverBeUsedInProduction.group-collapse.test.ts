@@ -1,6 +1,6 @@
 import type { StorageService } from '@/00-storage/service';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 import { storageService } from '@/00-storage/service';
 import { reactive } from 'vue';
 import type { SidebarItem, ChatGroup } from '@/01-models/types';

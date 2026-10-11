@@ -6,7 +6,7 @@ import { imageModelRecipes, selectedRecipeFiles, type ImageRecipeFile } from './
 import { scanImageRepositories } from './logic/model-candidates';
 import type { ImageRecipeDownloader } from './logic/catalog-download';
 import type { LocalImageRepository } from './logic/repository-store';
-import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTextTensors } from './test-utils/weights';
+import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTextTensors } from './test-utils/weights.test-support';
 
 const scopes: ReturnType<typeof effectScope>[] = [];
 

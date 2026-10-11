@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, it, onTestFinished, vi } from 'vitest';
 import { toImageGenerationId, toImageGenerationSessionId, toImageGenerationStoreId } from '@/01-models/ids';
-import { generationRunFixture } from '@/00-storage/service/image-generation/test-support';
+import { generationRunFixture } from '@/00-storage/service/image-generation/index.test-support';
 import { finishImageGenerationSnapshot, recoverImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
 import { imageRecoveryStore } from './recovery';
 import { pendingImageHistory } from '@/features/image-generation/history/pending-saves';

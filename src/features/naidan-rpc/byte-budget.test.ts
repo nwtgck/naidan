@@ -108,15 +108,16 @@ it('rejects oversized caller input before opening a stream and refunds failed en
   const definition = contract({ name: 'bytes.admission', methods: { run: procedure({ input: z.instanceof(Uint8Array), result: z.number(), notifications: {} }) } });
   const signal = new AbortController().signal;
   const peer = new NaidanRpcPeer({ transport: wire.a, exports: [], byteBudget: budget, signal, limits: { maxCalls: 2, maxCallTimeoutMs: undefined } });
-  try {
-    const call = peer.client({ contract: definition }).run({ input: new Uint8Array(4096), on: {}, signal, timeoutMs: undefined });
-    await expect(call.result).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
-    await expect(call.closed).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
-    expect(wire.stats().total).toBe(0);
-    await peer.retire(); expect(TEST_ONLY.retained({ budget })).toBe(0);
-  } finally {
-    wire.close(); await peer.retire();
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      wire.close(); await peer.retire();
+    },
+  };
+  const call = peer.client({ contract: definition }).run({ input: new Uint8Array(4096), on: {}, signal, timeoutMs: undefined });
+  await expect(call.result).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
+  await expect(call.closed).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
+  expect(wire.stats().total).toBe(0);
+  await peer.retire(); expect(TEST_ONLY.retained({ budget })).toBe(0);
 });
 
 it('keeps old native inputs charged after network retirement and refunds only full retirement', async () => {
@@ -140,18 +141,19 @@ it('keeps old native inputs charged after network retirement and refunds only fu
       },
     })],
   });
-  try {
-    const call = caller.client({ contract: definition }).run({ input: new Uint8Array(8192).fill(73), on: {}, signal, timeoutMs: undefined });
-    await entered.promise; await callee.retireNetwork();
-    const retained = TEST_ONLY.retained({ budget }); expect(retained).toBeGreaterThanOrEqual(8192);
-    const next = budget.owner();
-    expect(() => next.allocate({ bytes: 256 * 1024 - retained + 1 })).toThrowError(expect.objectContaining({ code: 'RESOURCE_EXHAUSTED' }));
-    next.clear(); finish.resolve(); await callee.retire();
-    expect(TEST_ONLY.retained({ budget })).toBe(0);
-    await expect(call.result).rejects.toBeDefined(); await expect(call.closed).rejects.toBeDefined();
-  } finally {
-    finish.resolve(); wire.close(); await Promise.all([caller.retire(), callee.retire()]);
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      finish.resolve(); wire.close(); await Promise.all([caller.retire(), callee.retire()]);
+    },
+  };
+  const call = caller.client({ contract: definition }).run({ input: new Uint8Array(8192).fill(73), on: {}, signal, timeoutMs: undefined });
+  await entered.promise; await callee.retireNetwork();
+  const retained = TEST_ONLY.retained({ budget }); expect(retained).toBeGreaterThanOrEqual(8192);
+  const next = budget.owner();
+  expect(() => next.allocate({ bytes: 256 * 1024 - retained + 1 })).toThrowError(expect.objectContaining({ code: 'RESOURCE_EXHAUSTED' }));
+  next.clear(); finish.resolve(); await callee.retire();
+  expect(TEST_ONLY.retained({ budget })).toBe(0);
+  await expect(call.result).rejects.toBeDefined(); await expect(call.closed).rejects.toBeDefined();
 });
 
 it('retains bytes after failed late native cleanup instead of treating a retired network as success', async () => {
@@ -180,18 +182,19 @@ it('retains bytes after failed late native cleanup instead of treating a retired
       },
     })],
   });
-  try {
-    const call = caller.client({ contract: definition }).run({ input: new Uint8Array(8192), on: {}, signal, timeoutMs: undefined });
-    const read = (await call.result).getReader().read(); void read.catch(() => {});
-    await started.promise; await callee.retireNetwork();
-    const retirement = callee.retire(), rejected = expect(retirement).rejects.toBeDefined();
-    expect(TEST_ONLY.retained({ budget })).toBeGreaterThanOrEqual(8192);
-    finish.resolve(); await rejected;
-    expect(TEST_ONLY.retained({ budget })).toBeGreaterThanOrEqual(8192);
-    await expect(call.closed).rejects.toBeDefined();
-  } finally {
-    finish.resolve(); wire.close(); await Promise.allSettled([caller.retire(), callee.retire()]);
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      finish.resolve(); wire.close(); await Promise.allSettled([caller.retire(), callee.retire()]);
+    },
+  };
+  const call = caller.client({ contract: definition }).run({ input: new Uint8Array(8192), on: {}, signal, timeoutMs: undefined });
+  const read = (await call.result).getReader().read(); void read.catch(() => {});
+  await started.promise; await callee.retireNetwork();
+  const retirement = callee.retire(), rejected = expect(retirement).rejects.toBeDefined();
+  expect(TEST_ONLY.retained({ budget })).toBeGreaterThanOrEqual(8192);
+  finish.resolve(); await rejected;
+  expect(TEST_ONLY.retained({ budget })).toBeGreaterThanOrEqual(8192);
+  await expect(call.closed).rejects.toBeDefined();
 });
 
 it('releases frame, stream item and copied-result reservations across repeated successful calls', async () => {
@@ -217,21 +220,22 @@ it('releases frame, stream item and copied-result reservations across repeated s
       },
     })],
   });
-  try {
-    for (let index = 0; index < 8; index++) {
-      const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal, timeoutMs: undefined });
-      const reader = (await call.result).getReader();
-      let count = 0;
-      for (;;) {
-        const item = await reader.read(); if (item.done) break; count += item.value.length; expect(item.value.every(byte => byte === 37)).toBe(true);
-      }
-      reader.releaseLock(); expect(count).toBe(16384); await call.closed;
-      await vi.waitFor(() => {
-        expect(TEST_ONLY.retained({ budget: aBudget })).toBe(0); expect(TEST_ONLY.retained({ budget: bBudget })).toBe(0);
-      });
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      wire.close(); await Promise.all([caller.retire(), callee.retire()]);
+    },
+  };
+  for (let index = 0; index < 8; index++) {
+    const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal, timeoutMs: undefined });
+    const reader = (await call.result).getReader();
+    let count = 0;
+    for (;;) {
+      const item = await reader.read(); if (item.done) break; count += item.value.length; expect(item.value.every(byte => byte === 37)).toBe(true);
     }
-  } finally {
-    wire.close(); await Promise.all([caller.retire(), callee.retire()]);
+    reader.releaseLock(); expect(count).toBe(16384); await call.closed;
+    await vi.waitFor(() => {
+      expect(TEST_ONLY.retained({ budget: aBudget })).toBe(0); expect(TEST_ONLY.retained({ budget: bBudget })).toBe(0);
+    });
   }
 });
 
@@ -258,19 +262,20 @@ it.each(['before', 'after'] as const)('retires returned sources %s an oversized 
       },
     })],
   });
-  try {
-    const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal, timeoutMs: undefined });
-    await started.promise; expect(cancel).toHaveBeenCalledOnce();
-    let complete = false; const retirement = callee.retire().then(() => {
-      complete = true;
-    });
-    await Promise.resolve(); expect(complete).toBe(false);
-    finish.resolve(); await retirement;
-    await expect(call.result).rejects.toBeDefined(); await expect(call.closed).rejects.toBeDefined();
-    expect(TEST_ONLY.retained({ budget })).toBe(0);
-  } finally {
-    finish.resolve(); wire.close(); await Promise.allSettled([caller.retire(), callee.retire()]);
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      finish.resolve(); wire.close(); await Promise.allSettled([caller.retire(), callee.retire()]);
+    },
+  };
+  const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal, timeoutMs: undefined });
+  await started.promise; expect(cancel).toHaveBeenCalledOnce();
+  let complete = false; const retirement = callee.retire().then(() => {
+    complete = true;
+  });
+  await Promise.resolve(); expect(complete).toBe(false);
+  finish.resolve(); await retirement;
+  await expect(call.result).rejects.toBeDefined(); await expect(call.closed).rejects.toBeDefined();
+  expect(TEST_ONLY.retained({ budget })).toBe(0);
 });
 
 it('does not release an observer input until the observer actually returns', async () => {
@@ -293,26 +298,27 @@ it('does not release an observer input until the observer actually returns', asy
       },
     })],
   });
-  try {
-    const call = caller.client({ contract: definition }).run({
-      input: {},
-      signal,
-      timeoutMs: undefined,
-      on: {
-        progress: async ({ value }) => {
-          entered.resolve(); await finish.promise; expect(value[0]).toBe(71);
-        },
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      finish.resolve(); done.resolve(); wire.close(); await Promise.all([caller.retire(), callee.retire()]);
+    },
+  };
+  const call = caller.client({ contract: definition }).run({
+    input: {},
+    signal,
+    timeoutMs: undefined,
+    on: {
+      progress: async ({ value }) => {
+        entered.resolve(); await finish.promise; expect(value[0]).toBe(71);
       },
-    });
-    await entered.promise; await caller.retireNetwork();
-    expect(TEST_ONLY.retained({ budget })).toBeGreaterThanOrEqual(8192);
-    let returned = false; const retirement = caller.retire().then(() => {
-      returned = true;
-    });
-    await Promise.resolve(); expect(returned).toBe(false); finish.resolve(); await retirement;
-    expect(TEST_ONLY.retained({ budget })).toBe(0);
-    await expect(call.result).rejects.toBeDefined(); await expect(call.closed).rejects.toBeDefined();
-  } finally {
-    finish.resolve(); done.resolve(); wire.close(); await Promise.all([caller.retire(), callee.retire()]);
-  }
+    },
+  });
+  await entered.promise; await caller.retireNetwork();
+  expect(TEST_ONLY.retained({ budget })).toBeGreaterThanOrEqual(8192);
+  let returned = false; const retirement = caller.retire().then(() => {
+    returned = true;
+  });
+  await Promise.resolve(); expect(returned).toBe(false); finish.resolve(); await retirement;
+  expect(TEST_ONLY.retained({ budget })).toBe(0);
+  await expect(call.result).rejects.toBeDefined(); await expect(call.closed).rejects.toBeDefined();
 });

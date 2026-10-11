@@ -18,14 +18,10 @@ describe('full document reload', () => {
         throw new DOMException('blocked', 'SecurityError');
       }),
     };
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      reloadPWAPage({ location, history });
-      expect(location.reload).toHaveBeenCalledOnce();
-      expect(warn).toHaveBeenCalledOnce();
-    } finally {
-      warn.mockRestore();
-    }
+    using warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reloadPWAPage({ location, history });
+    expect(location.reload).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledOnce();
   });
 
   it('removes the obsolete marker without losing query, route, or history state', () => {

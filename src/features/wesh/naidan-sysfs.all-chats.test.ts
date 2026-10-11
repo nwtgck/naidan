@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { renderChatMetadataMarkdown } from './naidan-sysfs/render/metadata-markdown';
-import { createMountedNaidanSysfsWesh, createMountedNaidanSysfsWeshWithCurrentChat, executeInWesh, individualChatMetadata, siblingChatMetadata } from './naidan-sysfs.test-helpers';
+import { createMountedNaidanSysfsWesh, createMountedNaidanSysfsWeshWithCurrentChat, executeInWesh, individualChatMetadata, siblingChatMetadata } from './naidan-sysfs.test-support';
 import type { Wesh } from './index';
 
 describe('naidan sysfs all chats option', () => {

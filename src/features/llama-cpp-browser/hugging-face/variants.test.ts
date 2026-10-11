@@ -145,12 +145,13 @@ describe('scoped local launch validation', () => {
       throw new DOMException('Unrelated model is unreadable', 'NotReadableError');
     });
     const get = vi.spyOn(other, 'getFile').mockResolvedValue(snapshot);
-    try {
-      expect(await installedSelection({ selection: selection({ quant: 'Q4_K_M' }) })).toMatchObject({ name: `hf.co/${repository}:Q4_K_M` });
-      expect(slice).not.toHaveBeenCalled();
-      await expect(installedSelection({ selection: selection({ quant: 'Q8_0' }) })).rejects.toMatchObject({ name: 'NotReadableError' });
-    } finally {
-      slice.mockRestore(); get.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        slice.mockRestore(); get.mockRestore();
+      },
+    };
+    expect(await installedSelection({ selection: selection({ quant: 'Q4_K_M' }) })).toMatchObject({ name: `hf.co/${repository}:Q4_K_M` });
+    expect(slice).not.toHaveBeenCalled();
+    await expect(installedSelection({ selection: selection({ quant: 'Q8_0' }) })).rejects.toMatchObject({ name: 'NotReadableError' });
   });
 });

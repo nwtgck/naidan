@@ -1,18 +1,18 @@
 import type { StorageService } from '@/00-storage/service';
 import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import { nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from '@/composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 import type { LmProvider } from '@/01-models/lm';
 import { createAsyncChannel } from '@/utils/async-channel';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 
 
-import { setupScrollToMock } from '@/utils/test-utils';
+import { setupScrollToMock } from '@/utils/utils.test-support';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });

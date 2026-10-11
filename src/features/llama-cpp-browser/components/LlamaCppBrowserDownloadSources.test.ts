@@ -1,6 +1,6 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { lazyStrings } from '@/strings';
 import type { DownloadJob } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { modelDownloadUrl } from '@/features/llama-cpp-browser/hugging-face/download-url';

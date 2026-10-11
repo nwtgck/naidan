@@ -12,42 +12,44 @@ it('records missing Content-Length and a size probe without retaining signed que
     headers: { 'Content-Range': 'bytes 0-0/100' },
   }));
   const transport = createFreshMetadataTransport({ modelId, revision, maximumBytes: 8, originalFetch, signal: new AbortController().signal, onObservation: () => undefined });
-  try {
-    const response = await transport.fetch(`${base}config.json?token=private-fixture-value`, { headers: { Range: 'bytes=0-0' } });
-    expect(response.status).toBe(206);
-    expect(new Uint8Array(await response.arrayBuffer())).toEqual(Uint8Array.of(123));
-    expect(transport.snapshot()).toEqual({
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      transport.dispose();
+    },
+  };
+  const response = await transport.fetch(`${base}config.json?token=private-fixture-value`, { headers: { Range: 'bytes=0-0' } });
+  expect(response.status).toBe(206);
+  expect(new Uint8Array(await response.arrayBuffer())).toEqual(Uint8Array.of(123));
+  expect(transport.snapshot()).toEqual({
+    receivedBytes: 1,
+    requests: [{
+      consumer: 'runtime-preparation',
+      path: 'config.json',
+      request: 'size-probe',
+      status: 'complete',
+      httpStatus: 206,
+      contentLength: undefined,
+      contentRange: 'bytes 0-0/100',
       receivedBytes: 1,
-      requests: [{
-        consumer: 'runtime-preparation',
-        path: 'config.json',
-        request: 'size-probe',
-        status: 'complete',
-        httpStatus: 206,
-        contentLength: undefined,
-        contentRange: 'bytes 0-0/100',
-        receivedBytes: 1,
-      }],
-    });
-    expect(originalFetch.mock.calls[0]![1]).toMatchObject({ credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer' });
-  } finally {
-    transport.dispose();
-  }
+    }],
+  });
+  expect(originalFetch.mock.calls[0]![1]).toMatchObject({ credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer' });
 });
 
 it('counts bodies across requests and rejects the chunk that crosses the operation budget', async () => {
   const originalFetch = vi.fn<typeof fetch>(async () => new Response(Uint8Array.of(1, 2)));
   const transport = createFreshMetadataTransport({ modelId, revision, maximumBytes: 3, originalFetch, signal: new AbortController().signal, onObservation: () => undefined });
-  try {
-    await (await transport.fetch(`${base}config.json`)).arrayBuffer();
-    await expect((await transport.fetch(`${base}tokenizer.json`)).arrayBuffer()).rejects.toThrow('budget');
-    expect(transport.snapshot().receivedBytes).toBe(4);
-    expect(transport.snapshot().requests.map(item => item.status)).toEqual(['complete', 'failed']);
-    await expect(transport.fetch(`${base}processor_config.json`)).rejects.toThrow('budget');
-    expect(originalFetch).toHaveBeenCalledTimes(2);
-  } finally {
-    transport.dispose();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      transport.dispose();
+    },
+  };
+  await (await transport.fetch(`${base}config.json`)).arrayBuffer();
+  await expect((await transport.fetch(`${base}tokenizer.json`)).arrayBuffer()).rejects.toThrow('budget');
+  expect(transport.snapshot().receivedBytes).toBe(4);
+  expect(transport.snapshot().requests.map(item => item.status)).toEqual(['complete', 'failed']);
+  await expect(transport.fetch(`${base}processor_config.json`)).rejects.toThrow('budget');
+  expect(originalFetch).toHaveBeenCalledTimes(2);
 });
 
 it('rejects weights before transport even if another caller bypasses the metadata operation', async () => {
@@ -89,15 +91,16 @@ it('does not report a size probe as cancelled until its source acknowledges canc
   });
   const response = await transport.fetch(`${base}config.json`, { headers: { Range: 'bytes=0-0' } });
   const cancellation = response.body!.cancel();
-  try {
-    await started.promise;
-    expect(transport.snapshot().requests[0]?.status).toBe('cancelling');
-    finished.resolve();
-    await cancellation;
-    expect(transport.snapshot().requests[0]?.status).toBe('cancelled');
-  } finally {
-    finished.resolve();
-    await cancellation;
-    transport.dispose();
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      finished.resolve();
+      await cancellation;
+      transport.dispose();
+    },
+  };
+  await started.promise;
+  expect(transport.snapshot().requests[0]?.status).toBe('cancelling');
+  finished.resolve();
+  await cancellation;
+  expect(transport.snapshot().requests[0]?.status).toBe('cancelled');
 });

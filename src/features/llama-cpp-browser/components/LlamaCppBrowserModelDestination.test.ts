@@ -4,7 +4,7 @@ import { computed, ref, type Ref } from 'vue';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import type { useSettings } from '@/composables/useSettings';
 import { TEST_ONLY as destinationTest } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { getDownloadQueue, TEST_ONLY as queueTest } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { TEST_ONLY as metadataTest } from '@/features/llama-cpp-browser/hugging-face/metadata-session';
 import { downloadRepository } from '@/features/llama-cpp-browser/hugging-face/download';

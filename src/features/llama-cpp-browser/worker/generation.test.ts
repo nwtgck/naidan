@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
+import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics.test-support';
 import { File as NodeFile } from 'node:buffer';
 import { invalidateStoredModel, prepareSession, releaseSession, TEST_ONLY as sessionTesting } from './session';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,8 +16,8 @@ import * as yieldModule from './generation-yield-pacing';
 import * as renderingModule from './token-renderer';
 import * as prefillOutputsModule from './prefill-outputs';
 import { tokenizePrompt } from './tokenize-prompt';
-import { createInputSensitiveGguf, createSyntheticGguf } from './test-utils/synthetic-gguf';
-import { createTinyLfm2Gguf } from './test-utils/tiny-lfm2-gguf';
+import { createInputSensitiveGguf, createSyntheticGguf } from './test-utils/synthetic-gguf.test-support';
+import { createTinyLfm2Gguf } from './test-utils/tiny-lfm2-gguf.test-support';
 import type { WorkerGenerateInput } from './types';
 import { profileSchema, type GenerationEvent } from '@/features/llama-cpp-browser/types';
 import { diagnosticSchema, subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
@@ -138,29 +138,30 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const req = { ...request({ messages: [{ role: 'user' as const, content: 'repeat fixture' }] }), maxTokens: 33, debug: 'on' as const };
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     let referenceFactory: ReturnType<typeof vi.spyOn> | undefined;
-    try {
-      await releaseSession({ releaseRuntime: false });
-      referenceFactory = vi.spyOn(renderingModule, 'createTokenRenderer').mockImplementation(args => factory({ ...args, cacheMode: 'disabled' }));
-      const reference = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      const referencePosition = await sequencePosition();
-      referenceFactory.mockRestore(); referenceFactory = undefined;
-      const referenceStats = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
-      log.mockClear();
-      await releaseSession({ releaseRuntime: false });
-      const cached = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      const cachedStats = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
-      expect(cached).toEqual(reference); expect(await sequencePosition()).toBe(referencePosition);
-      expect(cachedStats.decodedTokens).toBe(referenceStats.decodedTokens);
-      expect(referenceStats.tokenRendering).toMatchObject({ cacheHits: 0, cacheMisses: 33, eogCalls: 33, pieceCalls: 33 });
-      expect(cachedStats.tokenRendering).toMatchObject({ cacheHits: 32, cacheMisses: 1, eogCalls: 1, pieceCalls: 1, peakCachedBytes: 1 });
-      log.mockClear();
-      await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      const again = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
-      expect(again.tokenRendering).toMatchObject({ cacheMisses: 1, pieceCalls: 1 });
-      expect(JSON.stringify(log.mock.calls)).not.toContain('repeat fixture');
-    } finally {
-      referenceFactory?.mockRestore(); log.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        referenceFactory?.mockRestore(); log.mockRestore();
+      },
+    };
+    await releaseSession({ releaseRuntime: false });
+    referenceFactory = vi.spyOn(renderingModule, 'createTokenRenderer').mockImplementation(args => factory({ ...args, cacheMode: 'disabled' }));
+    const reference = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const referencePosition = await sequencePosition();
+    referenceFactory.mockRestore(); referenceFactory = undefined;
+    const referenceStats = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
+    log.mockClear();
+    await releaseSession({ releaseRuntime: false });
+    const cached = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const cachedStats = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
+    expect(cached).toEqual(reference); expect(await sequencePosition()).toBe(referencePosition);
+    expect(cachedStats.decodedTokens).toBe(referenceStats.decodedTokens);
+    expect(referenceStats.tokenRendering).toMatchObject({ cacheHits: 0, cacheMisses: 33, eogCalls: 33, pieceCalls: 33 });
+    expect(cachedStats.tokenRendering).toMatchObject({ cacheHits: 32, cacheMisses: 1, eogCalls: 1, pieceCalls: 1, peakCachedBytes: 1 });
+    log.mockClear();
+    await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const again = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
+    expect(again.tokenRendering).toMatchObject({ cacheMisses: 1, pieceCalls: 1 });
+    expect(JSON.stringify(log.mock.calls)).not.toContain('repeat fixture');
   }, 30000);
 
   it('keeps real native output and logits when optional token caching cannot allocate a copy', async () => {
@@ -188,16 +189,17 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       cacheMode,
     }));
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    try {
-      expect(await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(expected);
-      expect(await readNativeLogits()).toEqual(logits);
-      expect(await sequencePosition()).toBe(position);
-      expect(copy).toHaveBeenCalledOnce();
-      const report = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance'));
-      expect(report.performance?.tokenRendering).toMatchObject({ allocationFallbacks: 1, cacheHits: 0, pieceCalls: 17 });
-    } finally {
-      factory.mockRestore(); log.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        factory.mockRestore(); log.mockRestore();
+      },
+    };
+    expect(await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(expected);
+    expect(await readNativeLogits()).toEqual(logits);
+    expect(await sequencePosition()).toBe(position);
+    expect(copy).toHaveBeenCalledOnce();
+    const report = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance'));
+    expect(report.performance?.tokenRendering).toMatchObject({ allocationFallbacks: 1, cacheHits: 0, pieceCalls: 17 });
   }, 30000);
 
   it('renders every native byte token and both special modes equivalently with and without caching', async () => {
@@ -206,18 +208,19 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const count = await core.api.llama_vocab_n_tokens(vocab);
     const a = renderingModule.createTokenRenderer({ core, vocab, cacheMode: 'bounded' });
     const b = renderingModule.createTokenRenderer({ core, vocab, cacheMode: 'disabled' });
-    try {
-      for (let repeat = 0; repeat < 2; repeat++) {
-        for (let token = 0; token < count; token++) {
-          for (const special of [false, true]) expect(await a.render({ token, special })).toEqual(await b.render({ token, special }));
-        }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        a.dispose(); b.dispose();
+      },
+    };
+    for (let repeat = 0; repeat < 2; repeat++) {
+      for (let token = 0; token < count; token++) {
+        for (const special of [false, true]) expect(await a.render({ token, special })).toEqual(await b.render({ token, special }));
       }
-      expect(a.finish()).toBe(b.finish());
-      expect(a.counters.cacheHits).toBe(count * 2);
-      expect(a.counters.pieceCalls * 2).toBe(b.counters.pieceCalls);
-    } finally {
-      a.dispose(); b.dispose();
     }
+    expect(a.finish()).toBe(b.finish());
+    expect(a.counters.cacheHits).toBe(count * 2);
+    expect(a.counters.pieceCalls * 2).toBe(b.counters.pieceCalls);
   }, 30000);
 
   it.each(['', 'plain ASCII', '日本語の入力 🐈 café', `\
@@ -229,24 +232,26 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const contextTokens = await core.api.llama_n_ctx(context);
     const prompt = core.utf8({ text });
     const promptBytes = new TextEncoder().encode(text).length;
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let reference: bigint | undefined; let candidate: bigint | undefined;
-    try {
-      const required = -(await core.api.llama_tokenize(vocab, prompt, promptBytes, 0n, 0, 1, 1));
-      expect(required).toBeGreaterThan(0); expect(required).toBeLessThan(contextTokens);
-      reference = core.alloc({ bytes: required * 4 });
-      expect(await core.api.llama_tokenize(vocab, prompt, promptBytes, reference, required, 1, 1)).toBe(required);
-      const bytes = core.bytes({ pointer: reference, length: required * 4 });
-      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-      const expected = Array.from({ length: required }, (_, index) => view.getInt32(index * 4, true));
-      const onTokenize = vi.fn();
-      const actual = await tokenizePrompt({ core, vocab, prompt, promptBytes, contextTokens, onTokenize });
-      candidate = actual.pointer;
-      expect(actual.tokens).toEqual(expected); expect(onTokenize).toHaveBeenCalledOnce();
-    } finally {
-      if (candidate !== undefined) core.free({ pointer: candidate });
-      if (reference !== undefined) core.free({ pointer: reference });
-      core.free({ pointer: prompt });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        if (candidate !== undefined) core.free({ pointer: candidate });
+        if (reference !== undefined) core.free({ pointer: reference });
+        core.free({ pointer: prompt });
+      },
+    };
+    const required = -(await core.api.llama_tokenize(vocab, prompt, promptBytes, 0n, 0, 1, 1));
+    expect(required).toBeGreaterThan(0); expect(required).toBeLessThan(contextTokens);
+    reference = core.alloc({ bytes: required * 4 });
+    expect(await core.api.llama_tokenize(vocab, prompt, promptBytes, reference, required, 1, 1)).toBe(required);
+    const bytes = core.bytes({ pointer: reference, length: required * 4 });
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const expected = Array.from({ length: required }, (_, index) => view.getInt32(index * 4, true));
+    const onTokenize = vi.fn();
+    const actual = await tokenizePrompt({ core, vocab, prompt, promptBytes, contextTokens, onTokenize });
+    candidate = actual.pointer;
+    expect(actual.tokens).toEqual(expected); expect(onTokenize).toHaveBeenCalledOnce();
   }, 30000);
 
   it('tokenizes once and reports the unevaluated terminal token after cleanup', async () => {
@@ -258,47 +263,48 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const decode = vi.spyOn(session.core.api, 'llama_decode');
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const callbacks: string[] = [];
-    try {
-      const result = await generate({
-        request: req,
-        signal: undefined,
-        onEvent: ({ event }) => {
-          callbacks.push(event.type);
-        },
-        onProgress: () => {},
-      });
-      expect(result.content).toBe('A'); expect(result.finishReason).toBe('length');
-      expect(tokenize).toHaveBeenCalledOnce();
-      expect(tokenize.mock.calls[0]![3]).not.toBe(0n);
-      expect(decode).toHaveBeenCalledOnce(); // Prefill only, no terminal decode.
-      expect(session.cache.tokens).toHaveLength('privatePerformancePrompt'.length + 1);
-      expect(await sequencePosition()).toBe(session.cache.tokens.length - 1);
-      expect(session.cache.validity).toBe('valid');
-      const reports = readDiagnostics({ calls: debug.mock.calls }).filter(item => item.event === 'generation-performance').map(item => diagnosticSchema.parse(item));
-      expect(reports).toHaveLength(1);
-      const report = reports[0]!;
-      expect(report.performance).toMatchObject({
-        version: 1,
-        outcome: 'completed',
-        input: 'text',
-        tokenizeCalls: 1,
-        checkpointTokenizeCalls: 0,
-        sampledTokens: 1,
-        decodedTokens: 0,
-        terminalDecodeDeferred: true,
-        promptTokens: session.cache.tokens.length,
-        prefillDecodedTokens: session.cache.tokens.length,
-        reusedTokens: 0,
-      });
-      expect(report.performance!.stages).toContainEqual(expect.objectContaining({ stage: 'cleanup', visits: 1 }));
-      expect(report.performance!.stages.reduce((total, item) => total + item.elapsedMs, 0)).toBeCloseTo(report.elapsedMs!, 5);
-      expect(report.performance!.firstSampleMs).toBeLessThanOrEqual(report.performance!.firstDeliveryMs!);
-      expect(callbacks).toContain('text');
-      expect(JSON.stringify(debug.mock.calls)).not.toContain('privatePerformancePrompt');
-      expect(JSON.stringify(reports)).not.toContain('private-local-name');
-    } finally {
-      tokenize.mockRestore(); decode.mockRestore(); debug.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        tokenize.mockRestore(); decode.mockRestore(); debug.mockRestore();
+      },
+    };
+    const result = await generate({
+      request: req,
+      signal: undefined,
+      onEvent: ({ event }) => {
+        callbacks.push(event.type);
+      },
+      onProgress: () => {},
+    });
+    expect(result.content).toBe('A'); expect(result.finishReason).toBe('length');
+    expect(tokenize).toHaveBeenCalledOnce();
+    expect(tokenize.mock.calls[0]![3]).not.toBe(0n);
+    expect(decode).toHaveBeenCalledOnce(); // Prefill only, no terminal decode.
+    expect(session.cache.tokens).toHaveLength('privatePerformancePrompt'.length + 1);
+    expect(await sequencePosition()).toBe(session.cache.tokens.length - 1);
+    expect(session.cache.validity).toBe('valid');
+    const reports = readDiagnostics({ calls: debug.mock.calls }).filter(item => item.event === 'generation-performance').map(item => diagnosticSchema.parse(item));
+    expect(reports).toHaveLength(1);
+    const report = reports[0]!;
+    expect(report.performance).toMatchObject({
+      version: 1,
+      outcome: 'completed',
+      input: 'text',
+      tokenizeCalls: 1,
+      checkpointTokenizeCalls: 0,
+      sampledTokens: 1,
+      decodedTokens: 0,
+      terminalDecodeDeferred: true,
+      promptTokens: session.cache.tokens.length,
+      prefillDecodedTokens: session.cache.tokens.length,
+      reusedTokens: 0,
+    });
+    expect(report.performance!.stages).toContainEqual(expect.objectContaining({ stage: 'cleanup', visits: 1 }));
+    expect(report.performance!.stages.reduce((total, item) => total + item.elapsedMs, 0)).toBeCloseTo(report.elapsedMs!, 5);
+    expect(report.performance!.firstSampleMs).toBeLessThanOrEqual(report.performance!.firstDeliveryMs!);
+    expect(callbacks).toContain('text');
+    expect(JSON.stringify(debug.mock.calls)).not.toContain('privatePerformancePrompt');
+    expect(JSON.stringify(reports)).not.toContain('private-local-name');
   }, 30000);
 
   it.each([
@@ -321,22 +327,23 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     next.stop = ['A', 'B'];
     const batch = vi.spyOn(session.core.api, 'llama_batch_get_one');
     const clear = vi.spyOn(session.core.api, 'llama_memory_clear');
-    try {
-      const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      const logits = await readNativeLogits();
-      expect(clear).not.toHaveBeenCalled();
-      expect(batch.mock.calls.reduce((count, call) => count + call[2], 0)).toBe(3); // Deferred token + XX.
-      const frontier = await sequencePosition();
-      await releaseSession({ releaseRuntime: false });
-      const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(warm).toEqual(cold); expect(await sequencePosition()).toBe(frontier);
-      const coldLogits = await readNativeLogits();
-      logits.forEach((value, index) => expect(value).toBeCloseTo(coldLogits[index]!, 5));
-    } finally {
-      batch.mockRestore(); clear.mockRestore();
-      await releaseSession({ releaseRuntime: false });
-      host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        batch.mockRestore(); clear.mockRestore();
+        await releaseSession({ releaseRuntime: false });
+        host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
+      },
+    };
+    const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const logits = await readNativeLogits();
+    expect(clear).not.toHaveBeenCalled();
+    expect(batch.mock.calls.reduce((count, call) => count + call[2], 0)).toBe(3); // Deferred token + XX.
+    const frontier = await sequencePosition();
+    await releaseSession({ releaseRuntime: false });
+    const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(warm).toEqual(cold); expect(await sequencePosition()).toBe(frontier);
+    const coldLogits = await readNativeLogits();
+    logits.forEach((value, index) => expect(value).toBeCloseTo(coldLogits[index]!, 5));
   }, 30000);
 
   it('cancels at the deferred terminal boundary without publishing a valid cache', async () => {
@@ -347,22 +354,23 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const controller = new AbortController();
     const decode = vi.spyOn(session.core.api, 'llama_decode');
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    try {
-      await expect(generate({
-        request: req,
-        signal: controller.signal,
-        onEvent: () => {},
-        onProgress: ({ progress }) => {
-          if (progress.phase === 'generating') controller.abort();
-        },
-      })).rejects.toThrow('aborted');
-      expect(decode).toHaveBeenCalledOnce();
-      expect(session.cache.validity).toBe('invalid');
-      const report = readDiagnostics({ calls: debug.mock.calls }).find(item => item.event === 'generation-performance');
-      expect(report?.performance).toMatchObject({ outcome: 'aborted', sampledTokens: 1, decodedTokens: 0, terminalDecodeDeferred: true });
-    } finally {
-      decode.mockRestore(); debug.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        decode.mockRestore(); debug.mockRestore();
+      },
+    };
+    await expect(generate({
+      request: req,
+      signal: controller.signal,
+      onEvent: () => {},
+      onProgress: ({ progress }) => {
+        if (progress.phase === 'generating') controller.abort();
+      },
+    })).rejects.toThrow('aborted');
+    expect(decode).toHaveBeenCalledOnce();
+    expect(session.cache.validity).toBe('invalid');
+    const report = readDiagnostics({ calls: debug.mock.calls }).find(item => item.event === 'generation-performance');
+    expect(report?.performance).toMatchObject({ outcome: 'aborted', sampledTokens: 1, decodedTokens: 0, terminalDecodeDeferred: true });
   }, 30000);
 
   it('reports failed cleanup as failure rather than a completed performance run', async () => {
@@ -375,14 +383,15 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       await nativeFree(pointer); throw new Error('cleanup fixture');
     });
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    try {
-      await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('cleanup fixture');
-      expect(session.cache.validity).toBe('invalid');
-      const reports = readDiagnostics({ calls: debug.mock.calls }).filter(item => item.event === 'generation-performance').map(item => diagnosticSchema.parse(item));
-      expect(reports).toHaveLength(1); expect(reports[0]?.performance?.outcome).toBe('failed');
-    } finally {
-      free.mockRestore(); debug.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        free.mockRestore(); debug.mockRestore();
+      },
+    };
+    await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('cleanup fixture');
+    expect(session.cache.validity).toBe('invalid');
+    const reports = readDiagnostics({ calls: debug.mock.calls }).filter(item => item.event === 'generation-performance').map(item => diagnosticSchema.parse(item));
+    expect(reports).toHaveLength(1); expect(reports[0]?.performance?.outcome).toBe('failed');
   }, 30000);
 
   it('probes a new native context once and never reuses its temporary tokens or logits', async () => {
@@ -401,39 +410,40 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const synchronize = vi.spyOn(core.api, 'llama_synchronize');
     const req = request({ messages: [{ role: 'user', content: 'aaaaaaaaXX' }] }); req.stop = ['A', 'B'];
     const original = structuredClone(req);
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        batch.mockRestore(); decode.mockRestore(); synchronize.mockRestore();
+        await releaseSession({ releaseRuntime: false });
+        host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
+        await prepareSession({ request: request({ messages: [{ role: 'user', content: 'reset fixture' }] }), signal: undefined, onProgress: () => {} });
+      },
+    };
+    const first = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
+    expect(first.sequenceRemoval).toBe('partial');
+    expect(first.slidingWindow).toBe(0);
+    expect(first.cache).toEqual({ tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'probe-cleared' });
+    const memory = await core.api.llama_get_memory(first.context);
+    expect(await core.api.llama_memory_seq_pos_min(memory, 0)).toBe(-1);
+    expect(await core.api.llama_memory_seq_pos_max(memory, 0)).toBe(-1);
+    expect(batches).toEqual([[0, 0]]);
+    expect(decode).toHaveBeenCalledOnce(); expect(synchronize).toHaveBeenCalledOnce();
+    const second = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
+    expect(second.context).toBe(first.context); expect(second.cache).toBe(first.cache);
+    expect(decode).toHaveBeenCalledOnce();
+    batches.length = 0; decode.mockClear();
+    const capture = vi.spyOn(core.api, 'llama_state_seq_get_size_ext');
     try {
-      const first = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
-      expect(first.sequenceRemoval).toBe('partial');
-      expect(first.slidingWindow).toBe(0);
-      expect(first.cache).toEqual({ tokens: [], validity: 'invalid', checkpoint: undefined, initialMemoryState: 'probe-cleared' });
-      const memory = await core.api.llama_get_memory(first.context);
-      expect(await core.api.llama_memory_seq_pos_min(memory, 0)).toBe(-1);
-      expect(await core.api.llama_memory_seq_pos_max(memory, 0)).toBe(-1);
-      expect(batches).toEqual([[0, 0]]);
-      expect(decode).toHaveBeenCalledOnce(); expect(synchronize).toHaveBeenCalledOnce();
-      const second = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
-      expect(second.context).toBe(first.context); expect(second.cache).toBe(first.cache);
-      expect(decode).toHaveBeenCalledOnce();
-      batches.length = 0; decode.mockClear();
-      const capture = vi.spyOn(core.api, 'llama_state_seq_get_size_ext');
-      try {
-        await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-        expect(capture).not.toHaveBeenCalled(); expect(first.cache.checkpoint).toBeUndefined();
-      } finally {
-        capture.mockRestore();
-      }
-      expect(batches).toEqual([[1, ...Array.from(new TextEncoder().encode('aaaaaaaaXX'), byte => byte + 3)]]);
-      expect(decode).toHaveBeenCalledOnce();
-      expect(first.cache.validity).toBe('valid');
-      expect(first.cache.tokens).toEqual(batches[0]);
-      expect(await sequencePosition()).toBe(10);
-      expect(req).toEqual(original);
+      await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(capture).not.toHaveBeenCalled(); expect(first.cache.checkpoint).toBeUndefined();
     } finally {
-      batch.mockRestore(); decode.mockRestore(); synchronize.mockRestore();
-      await releaseSession({ releaseRuntime: false });
-      host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
-      await prepareSession({ request: request({ messages: [{ role: 'user', content: 'reset fixture' }] }), signal: undefined, onProgress: () => {} });
+      capture.mockRestore();
     }
+    expect(batches).toEqual([[1, ...Array.from(new TextEncoder().encode('aaaaaaaaXX'), byte => byte + 3)]]);
+    expect(decode).toHaveBeenCalledOnce();
+    expect(first.cache.validity).toBe('valid');
+    expect(first.cache.tokens).toEqual(batches[0]);
+    expect(await sequencePosition()).toBe(10);
+    expect(req).toEqual(original);
   }, 30000);
 
   it('diagnoses a sampling failure without logging the exception and releases the sampler for retry', async () => {
@@ -441,25 +451,26 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockRejectedValueOnce(new TypeError('private tool schema and prompt'));
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const req = request({ messages: [{ role: 'user', content: 'private prompt' }] });
-    try {
-      await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('private tool');
-      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'failed', stage: 'native-sample', failureKind: 'type-error' }));
-      expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
-      const chunks: string[] = [];
-      await generate({
-        request: req,
-        signal: undefined,
-        onEvent: ({ event }) => {
-          if (event.type !== 'text') return;
-          const chunk = event.text;
-          chunks.push(chunk);
-        },
-        onProgress: () => {},
-      });
-      expect(chunks.join('')).toBe('AAAAA');
-    } finally {
-      sample.mockRestore(); debug.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        sample.mockRestore(); debug.mockRestore();
+      },
+    };
+    await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('private tool');
+    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'failed', stage: 'native-sample', failureKind: 'type-error' }));
+    expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
+    const chunks: string[] = [];
+    await generate({
+      request: req,
+      signal: undefined,
+      onEvent: ({ event }) => {
+        if (event.type !== 'text') return;
+        const chunk = event.text;
+        chunks.push(chunk);
+      },
+      onProgress: () => {},
+    });
+    expect(chunks.join('')).toBe('AAAAA');
   }, 30000);
 
   it('rejects an oversized prompt without rereading the resident model', async () => {
@@ -596,17 +607,18 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
 
   it('reloads if the filesystem identity changes without a size or timestamp change', async () => {
     const reads = host.reads; host.sameFile = false;
-    try {
-      await generate({
-        request: request({ messages: [{ role: 'user', content: 'hello' }] }),
-        signal: undefined,
-        onEvent: () => {},
-        onProgress: () => {},
-      });
-      expect(host.reads).toBeGreaterThan(reads);
-    } finally {
-      host.sameFile = true;
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        host.sameFile = true;
+      },
+    };
+    await generate({
+      request: request({ messages: [{ role: 'user', content: 'hello' }] }),
+      signal: undefined,
+      onEvent: () => {},
+      onProgress: () => {},
+    });
+    expect(host.reads).toBeGreaterThan(reads);
   }, 30000);
 
   it.each(['private-local-name.gguf', 'private-local-name-GGUF'])('releases only the matching resident model before removing its stored file: %s', async name => {
@@ -663,24 +675,25 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const next = request({ messages: [{ role: 'user', content: 'prefix' }, { role: 'assistant', content: firstResult.content }, { role: 'user', content: 'suffix' }] });
     next.presencePenalty = 0.1;
     const accept = vi.spyOn(core.api, 'llama_sampler_accept');
-    try {
-      const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(clear).not.toHaveBeenCalled();
-      expect(batch.mock.calls.map(call => call[2])).toEqual([7, 1, 1, 1, 1]);
-      const warmAccepted = accept.mock.calls.map(call => call[1]);
-      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'cache-reuse', reusedTokens: frontier + 1, evaluatedTokens: 7, reason: 'prefix-match' }));
-      const warmPosition = await sequencePosition();
-      await releaseSession({ releaseRuntime: false });
-      await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
-      batch.mockClear(); accept.mockClear();
-      const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(cold).toEqual(warm);
-      expect(await sequencePosition()).toBe(warmPosition);
-      expect(batch.mock.calls.map(call => call[2])).toEqual([frontier + 8, 1, 1, 1, 1]);
-      expect(accept.mock.calls.map(call => call[1])).toEqual(warmAccepted);
-    } finally {
-      batch.mockRestore(); clear.mockRestore(); debug.mockRestore(); accept.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        batch.mockRestore(); clear.mockRestore(); debug.mockRestore(); accept.mockRestore();
+      },
+    };
+    const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(clear).not.toHaveBeenCalled();
+    expect(batch.mock.calls.map(call => call[2])).toEqual([7, 1, 1, 1, 1]);
+    const warmAccepted = accept.mock.calls.map(call => call[1]);
+    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'cache-reuse', reusedTokens: frontier + 1, evaluatedTokens: 7, reason: 'prefix-match' }));
+    const warmPosition = await sequencePosition();
+    await releaseSession({ releaseRuntime: false });
+    await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
+    batch.mockClear(); accept.mockClear();
+    const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(cold).toEqual(warm);
+    expect(await sequencePosition()).toBe(warmPosition);
+    expect(batch.mock.calls.map(call => call[2])).toEqual([frontier + 8, 1, 1, 1, 1]);
+    expect(accept.mock.calls.map(call => call[1])).toEqual(warmAccepted);
   }, 30000);
 
   it.each([
@@ -693,43 +706,39 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: '{% for message in messages %}{{ message.content }}{% endfor %}' }));
     const first = request({ messages: [{ role: 'user', content: 'prefix-old' }] });
     first.stop = ['A'];
-    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    try {
-      await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
-        event: 'cache-reuse',
-        cachedTokens: 0,
-        tokens: 11,
-        commonPrefixTokens: 0,
-        cacheComparison: 'empty-cache',
-        nativeMemoryKind: 'attention',
-        nativePositionMin: -1,
-        nativePositionMax: -1,
-        nativeRollbackTokens: 0,
-      }));
-      debug.mockClear();
-      const second = request({ messages: [{ role: 'user', content: next }] });
-      second.stop = ['A'];
-      await generate({ request: second, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
-        event: 'cache-reuse',
-        cachedTokens: 11,
-        tokens: next.length + 1,
-        commonPrefixTokens: common,
-        cacheComparison: comparison,
-        reusedTokens: reused,
-        evaluatedTokens: next.length + 1 - reused,
-        nativeMemoryKind: 'attention',
-        nativePositionMin: 0,
-        nativePositionMax: 10,
-        nativeRollbackTokens: 0,
-      }));
-      expect(JSON.stringify(debug.mock.calls)).not.toContain('prefix-old');
-      expect(JSON.stringify(debug.mock.calls)).not.toContain('prefix-new');
-      expect(JSON.stringify(debug.mock.calls)).not.toContain('private-local-name');
-    } finally {
-      debug.mockRestore();
-    }
+    using debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
+      event: 'cache-reuse',
+      cachedTokens: 0,
+      tokens: 11,
+      commonPrefixTokens: 0,
+      cacheComparison: 'empty-cache',
+      nativeMemoryKind: 'attention',
+      nativePositionMin: -1,
+      nativePositionMax: -1,
+      nativeRollbackTokens: 0,
+    }));
+    debug.mockClear();
+    const second = request({ messages: [{ role: 'user', content: next }] });
+    second.stop = ['A'];
+    await generate({ request: second, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
+      event: 'cache-reuse',
+      cachedTokens: 11,
+      tokens: next.length + 1,
+      commonPrefixTokens: common,
+      cacheComparison: comparison,
+      reusedTokens: reused,
+      evaluatedTokens: next.length + 1 - reused,
+      nativeMemoryKind: 'attention',
+      nativePositionMin: 0,
+      nativePositionMax: 10,
+      nativeRollbackTokens: 0,
+    }));
+    expect(JSON.stringify(debug.mock.calls)).not.toContain('prefix-old');
+    expect(JSON.stringify(debug.mock.calls)).not.toContain('prefix-new');
+    expect(JSON.stringify(debug.mock.calls)).not.toContain('private-local-name');
   }, 30000);
 
   it('matches cold logits after full-prefix reuse with a history-sensitive native model', async () => {
@@ -744,40 +753,41 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const batch = vi.spyOn(core.api, 'llama_batch_get_one');
     const next = request({ messages: [{ role: 'user', content: 'aaaaaaaaXX' }] });
     next.stop = ['A', 'B'];
-    try {
-      const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      const warmLogits = await readNativeLogits();
-      const warmPosition = await sequencePosition();
-      expect(clear).not.toHaveBeenCalled();
-      expect(batch.mock.calls.map(call => call[2])).toEqual([1]);
-      expect(warmPosition).toBe(10);
-      expect(Math.abs(warmLogits[68]! - firstLogits[68]!)).toBeGreaterThan(0.01);
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        clear.mockRestore(); batch.mockRestore();
+      },
+    };
+    const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const warmLogits = await readNativeLogits();
+    const warmPosition = await sequencePosition();
+    expect(clear).not.toHaveBeenCalled();
+    expect(batch.mock.calls.map(call => call[2])).toEqual([1]);
+    expect(warmPosition).toBe(10);
+    expect(Math.abs(warmLogits[68]! - firstLogits[68]!)).toBeGreaterThan(0.01);
 
-      await releaseSession({ releaseRuntime: false });
-      await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
-      batch.mockClear();
-      const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      const coldLogits = await readNativeLogits();
-      expect(cold).toEqual(warm);
-      expect(await sequencePosition()).toBe(warmPosition);
-      expect(batch.mock.calls.map(call => call[2])).toEqual([11]);
-      expect(warmLogits).toHaveLength(259);
-      warmLogits.forEach((logit, index) => expect(logit).toBeCloseTo(coldLogits[index]!, 5));
+    await releaseSession({ releaseRuntime: false });
+    await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
+    batch.mockClear();
+    const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const coldLogits = await readNativeLogits();
+    expect(cold).toEqual(warm);
+    expect(await sequencePosition()).toBe(warmPosition);
+    expect(batch.mock.calls.map(call => call[2])).toEqual([11]);
+    expect(warmLogits).toHaveLength(259);
+    warmLogits.forEach((logit, index) => expect(logit).toBeCloseTo(coldLogits[index]!, 5));
 
-      // Same final byte and token count, but different earlier history. This
-      // control would catch stale KV that a constant-output fixture cannot.
-      await releaseSession({ releaseRuntime: false });
-      const different = request({ messages: [{ role: 'user', content: 'bbbbbbbbXX' }] });
-      different.stop = ['A', 'B'];
-      await generate({ request: different, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      const differentLogits = await readNativeLogits();
-      expect(await sequencePosition()).toBe(warmPosition);
-      expect(Math.abs(coldLogits[68]! - differentLogits[68]!)).toBeGreaterThan(1);
-      expect(coldLogits[68]).toBeGreaterThan(coldLogits[69]!);
-      expect(differentLogits[69]).toBeGreaterThan(differentLogits[68]!);
-    } finally {
-      clear.mockRestore(); batch.mockRestore();
-    }
+    // Same final byte and token count, but different earlier history. This
+    // control would catch stale KV that a constant-output fixture cannot.
+    await releaseSession({ releaseRuntime: false });
+    const different = request({ messages: [{ role: 'user', content: 'bbbbbbbbXX' }] });
+    different.stop = ['A', 'B'];
+    await generate({ request: different, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const differentLogits = await readNativeLogits();
+    expect(await sequencePosition()).toBe(warmPosition);
+    expect(Math.abs(coldLogits[68]! - differentLogits[68]!)).toBeGreaterThan(1);
+    expect(coldLogits[68]).toBeGreaterThan(coldLogits[69]!);
+    expect(differentLogits[69]).toBeGreaterThan(differentLogits[68]!);
   }, 30000);
 
   it('continues native generation after a declined probe and avoids advanced reuse', async () => {
@@ -789,31 +799,32 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const clear = vi.spyOn(core.api, 'llama_memory_clear');
     const remove = vi.spyOn(core.api, 'llama_memory_seq_rm');
     const first = request({ messages: [{ role: 'user', content: 'aaaaaaaa' }] }); first.stop = ['A', 'B'];
-    try {
-      await expect(generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} })).resolves.toEqual({
-        content: '',
-        reasoningContent: '',
-        toolCalls: [],
-        finishReason: 'stop_sequence',
-      });
-      const session = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
-      expect(session.sequenceRemoval).toBe('none');
-      expect(session.cache.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('aaaaaaaa'), byte => byte + 3)]);
-      expect(session.cache.validity).toBe('valid');
-      expect(batch.mock.calls.map(call => call[2])).toEqual([2, 9]);
-      expect(await sequencePosition()).toBe(8);
-      expect(decode).toHaveBeenCalledTimes(2);
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        decode.mockRestore(); batch.mockRestore(); clear.mockRestore(); remove.mockRestore();
+      },
+    };
+    await expect(generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} })).resolves.toEqual({
+      content: '',
+      reasoningContent: '',
+      toolCalls: [],
+      finishReason: 'stop_sequence',
+    });
+    const session = await prepareSession({ request: first, signal: undefined, onProgress: () => {} });
+    expect(session.sequenceRemoval).toBe('none');
+    expect(session.cache.tokens).toEqual([1, ...Array.from(new TextEncoder().encode('aaaaaaaa'), byte => byte + 3)]);
+    expect(session.cache.validity).toBe('valid');
+    expect(batch.mock.calls.map(call => call[2])).toEqual([2, 9]);
+    expect(await sequencePosition()).toBe(8);
+    expect(decode).toHaveBeenCalledTimes(2);
 
-      batch.mockClear(); clear.mockClear();
-      const changed = request({ messages: [{ role: 'user', content: 'aaaaaabb' }] }); changed.stop = ['A', 'B'];
-      await generate({ request: changed, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(batch.mock.calls.map(call => call[2])).toEqual([9]);
-      expect(clear).toHaveBeenCalledOnce();
-      expect(remove).not.toHaveBeenCalled();
-      expect(await sequencePosition()).toBe(8);
-    } finally {
-      decode.mockRestore(); batch.mockRestore(); clear.mockRestore(); remove.mockRestore();
-    }
+    batch.mockClear(); clear.mockClear();
+    const changed = request({ messages: [{ role: 'user', content: 'aaaaaabb' }] }); changed.stop = ['A', 'B'];
+    await generate({ request: changed, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(batch.mock.calls.map(call => call[2])).toEqual([9]);
+    expect(clear).toHaveBeenCalledOnce();
+    expect(remove).not.toHaveBeenCalled();
+    expect(await sequencePosition()).toBe(8);
   }, 30000);
 
   it.each([
@@ -863,42 +874,43 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const next = request({ messages: nextMessages }); next.stop = ['A', 'B'];
     const originalRequest = structuredClone(next);
     const expectedTokens = [1, ...Array.from(new TextEncoder().encode(nextPrompt), byte => byte + 3)];
-    try {
-      const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      const warmLogits = await readNativeLogits();
-      expect(next).toEqual(originalRequest);
-      expect(remove).toHaveBeenCalledExactlyOnceWith(expect.any(BigInt), 0, retained, -1);
-      expect(clear).not.toHaveBeenCalled();
-      expect(batches).toEqual([expectedTokens.slice(retained)]);
-      expect(await sequencePosition()).toBe(expectedTokens.length - 1);
-      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
-        event: 'cache-reuse',
-        reason: 'prefix-partial-match',
-        reusedTokens: retained,
-        evaluatedTokens: expectedTokens.length - retained,
-      }));
-      expect(Math.abs(warmLogits[68]! - originalLogits[68]!)).toBeGreaterThan(0.01);
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        remove.mockRestore(); clear.mockRestore(); batch.mockRestore(); debug.mockRestore();
+      },
+    };
+    const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const warmLogits = await readNativeLogits();
+    expect(next).toEqual(originalRequest);
+    expect(remove).toHaveBeenCalledExactlyOnceWith(expect.any(BigInt), 0, retained, -1);
+    expect(clear).not.toHaveBeenCalled();
+    expect(batches).toEqual([expectedTokens.slice(retained)]);
+    expect(await sequencePosition()).toBe(expectedTokens.length - 1);
+    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
+      event: 'cache-reuse',
+      reason: 'prefix-partial-match',
+      reusedTokens: retained,
+      evaluatedTokens: expectedTokens.length - retained,
+    }));
+    expect(Math.abs(warmLogits[68]! - originalLogits[68]!)).toBeGreaterThan(0.01);
 
-      batches.length = 0; remove.mockClear();
-      const repeated = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(repeated).toEqual(warm);
-      expect(batches).toEqual([]);
-      expect(remove).not.toHaveBeenCalled();
-      expect(await readNativeLogits()).toEqual(warmLogits);
+    batches.length = 0; remove.mockClear();
+    const repeated = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(repeated).toEqual(warm);
+    expect(batches).toEqual([]);
+    expect(remove).not.toHaveBeenCalled();
+    expect(await readNativeLogits()).toEqual(warmLogits);
 
-      await releaseSession({ releaseRuntime: false });
-      await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
-      batches.length = 0;
-      const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      const coldLogits = await readNativeLogits();
-      expect(cold).toEqual(warm);
-      expect(batches).toEqual([expectedTokens]);
-      expect(await sequencePosition()).toBe(expectedTokens.length - 1);
-      expect(warmLogits).toHaveLength(259);
-      warmLogits.forEach((logit, index) => expect(logit).toBeCloseTo(coldLogits[index]!, 5));
-    } finally {
-      remove.mockRestore(); clear.mockRestore(); batch.mockRestore(); debug.mockRestore();
-    }
+    await releaseSession({ releaseRuntime: false });
+    await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
+    batches.length = 0;
+    const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const coldLogits = await readNativeLogits();
+    expect(cold).toEqual(warm);
+    expect(batches).toEqual([expectedTokens]);
+    expect(await sequencePosition()).toBe(expectedTokens.length - 1);
+    expect(warmLogits).toHaveLength(259);
+    warmLogits.forEach((logit, index) => expect(logit).toBeCloseTo(coldLogits[index]!, 5));
   }, 30000);
 
   it.each(['hybrid-tail-only', 'recurrent-tail-only', 'cropped-window', 'frontier-mismatch', 'remove-refused', 'remove-no-effect', 'remove-lost-prefix', 'empty-retained-prefix'] as const)('fully reevaluates instead of trusting an unsafe partial cache: %s', async condition => {
@@ -939,21 +951,22 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     default: { const exhaustive: never = condition; throw new Error(`Unknown unsafe cache condition: ${exhaustive}`); }
     }
     const next = request({ messages: [{ role: 'user', content: nextText }] }); next.stop = ['A', 'B'];
-    try {
-      await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      const warmLogits = await readNativeLogits();
-      expect(remove).toHaveBeenCalledTimes(removalAttempted ? 1 : 0);
-      expect(clear).toHaveBeenCalledOnce();
-      expect(batch.mock.calls.map(call => call[2])).toEqual([nextText.length + 1]);
-      expect(await sequencePosition()).toBe(nextText.length);
-      await releaseSession({ releaseRuntime: false });
-      await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      const coldLogits = await readNativeLogits();
-      warmLogits.forEach((logit, index) => expect(logit).toBeCloseTo(coldLogits[index]!, 5));
-    } finally {
-      remove.mockRestore(); clear.mockRestore(); minimum.mockRestore(); maximum.mockRestore();
-      hybrid.mockRestore(); recurrent.mockRestore(); batch.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        remove.mockRestore(); clear.mockRestore(); minimum.mockRestore(); maximum.mockRestore();
+        hybrid.mockRestore(); recurrent.mockRestore(); batch.mockRestore();
+      },
+    };
+    await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const warmLogits = await readNativeLogits();
+    expect(remove).toHaveBeenCalledTimes(removalAttempted ? 1 : 0);
+    expect(clear).toHaveBeenCalledOnce();
+    expect(batch.mock.calls.map(call => call[2])).toEqual([nextText.length + 1]);
+    expect(await sequencePosition()).toBe(nextText.length);
+    await releaseSession({ releaseRuntime: false });
+    await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const coldLogits = await readNativeLogits();
+    warmLogits.forEach((logit, index) => expect(logit).toBeCloseTo(coldLogits[index]!, 5));
   }, 30000);
 
   it('preserves saved ordered parts through native Jinja, byte tokens and warm cache reuse', async () => {
@@ -1042,11 +1055,12 @@ user:Q ;assistant: R
 <think>[Aborted]</think> lookup: {"value":" x "} ;tool:\uFEFF R🙂 ;`;
     for (const request of [liveRequest, restoredRequest]) {
       const chat = prepareChat({ core, model, request });
-      try {
-        expect(chat.params.prompt).toBe(expectedPrompt);
-      } finally {
-        chat.dispose();
-      }
+      using _cleanupResource = {
+        [Symbol.dispose]() {
+          chat.dispose();
+        },
+      };
+      expect(chat.params.prompt).toBe(expectedPrompt);
     }
     // The fixture's SentencePiece tokenizer spells spaces as U+2581. Its byte
     // vocabulary assigns token 1 to BOS and byte b to b + 3. These expected IDs
@@ -1064,56 +1078,57 @@ user:Q ;assistant: R
     const decode = vi.spyOn(core.api, 'llama_decode');
     const clear = vi.spyOn(core.api, 'llama_memory_clear');
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    try {
-      const first = await generate({ request: liveRequest, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(batches.flat()).toEqual(expectedTokens);
-      expect(await sequencePosition()).toBe(expectedTokens.length - 1);
-      batches.length = 0; decode.mockClear(); clear.mockClear(); debug.mockClear();
-      const repeated = await generate({ request: restoredRequest, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(repeated).toEqual(first);
-      expect(decode).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled();
-      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
-        event: 'cache-reuse',
-        reusedTokens: expectedTokens.length,
-        evaluatedTokens: 0,
-        reason: 'prefix-match',
-      }));
-      const followup: UserMessageNode = {
-        id: toMessageId({ raw: 'followup' }),
-        role: 'user',
-        createdAt: 4,
-        modelId: undefined,
-        lmParameters: undefined,
-        parts: [{ type: 'text', text: 'next', completeness: 'complete' }],
-        replies: { items: [] },
-      };
-      tool.replies.items.push(followup); content.currentLeafId = followup.id;
-      const savedExtension = roundTripChatContentPersistenceSerialization({ content }).restored;
-      const extension = { ...await makeRequest({ chat: savedExtension }), stop: [] };
-      const suffix = Array.from(new TextEncoder().encode('user:next;'), byte => byte + 3);
-      debug.mockClear();
-      const warm = await generate({ request: extension, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(warm.content).toBe('AAAAA');
-      expect(batches.flat()).toEqual([...suffix, 68, 68, 68, 68]);
-      expect(clear).not.toHaveBeenCalled();
-      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
-        event: 'cache-reuse',
-        reusedTokens: expectedTokens.length,
-        evaluatedTokens: suffix.length,
-        reason: 'prefix-match',
-      }));
-      const warmPosition = await sequencePosition();
-      expect(warmPosition).toBe(expectedTokens.length + suffix.length + 3);
-      await releaseSession({ releaseRuntime: false });
-      await prepareSession({ request: extension, signal: undefined, onProgress: () => {} });
-      batches.length = 0;
-      const cold = await generate({ request: extension, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(cold).toEqual(warm);
-      expect(batches.flat()).toEqual([...expectedTokens, ...suffix, 68, 68, 68, 68]);
-      expect(await sequencePosition()).toBe(warmPosition);
-    } finally {
-      batch.mockRestore(); decode.mockRestore(); clear.mockRestore(); debug.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        batch.mockRestore(); decode.mockRestore(); clear.mockRestore(); debug.mockRestore();
+      },
+    };
+    const first = await generate({ request: liveRequest, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(batches.flat()).toEqual(expectedTokens);
+    expect(await sequencePosition()).toBe(expectedTokens.length - 1);
+    batches.length = 0; decode.mockClear(); clear.mockClear(); debug.mockClear();
+    const repeated = await generate({ request: restoredRequest, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(repeated).toEqual(first);
+    expect(decode).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled();
+    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
+      event: 'cache-reuse',
+      reusedTokens: expectedTokens.length,
+      evaluatedTokens: 0,
+      reason: 'prefix-match',
+    }));
+    const followup: UserMessageNode = {
+      id: toMessageId({ raw: 'followup' }),
+      role: 'user',
+      createdAt: 4,
+      modelId: undefined,
+      lmParameters: undefined,
+      parts: [{ type: 'text', text: 'next', completeness: 'complete' }],
+      replies: { items: [] },
+    };
+    tool.replies.items.push(followup); content.currentLeafId = followup.id;
+    const savedExtension = roundTripChatContentPersistenceSerialization({ content }).restored;
+    const extension = { ...await makeRequest({ chat: savedExtension }), stop: [] };
+    const suffix = Array.from(new TextEncoder().encode('user:next;'), byte => byte + 3);
+    debug.mockClear();
+    const warm = await generate({ request: extension, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(warm.content).toBe('AAAAA');
+    expect(batches.flat()).toEqual([...suffix, 68, 68, 68, 68]);
+    expect(clear).not.toHaveBeenCalled();
+    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({
+      event: 'cache-reuse',
+      reusedTokens: expectedTokens.length,
+      evaluatedTokens: suffix.length,
+      reason: 'prefix-match',
+    }));
+    const warmPosition = await sequencePosition();
+    expect(warmPosition).toBe(expectedTokens.length + suffix.length + 3);
+    await releaseSession({ releaseRuntime: false });
+    await prepareSession({ request: extension, signal: undefined, onProgress: () => {} });
+    batches.length = 0;
+    const cold = await generate({ request: extension, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(cold).toEqual(warm);
+    expect(batches.flat()).toEqual([...expectedTokens, ...suffix, 68, 68, 68, 68]);
+    expect(await sequencePosition()).toBe(warmPosition);
   }, 30000);
 
   it('reuses unchanged logits and never records a sampled stop token as decoded', async () => {
@@ -1126,15 +1141,16 @@ user:Q ;assistant: R
     const decode = vi.spyOn(core.api, 'llama_decode');
     const clear = vi.spyOn(core.api, 'llama_memory_clear');
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    try {
-      const repeated = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(repeated).toEqual(first);
-      expect(decode).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled();
-      expect(await sequencePosition()).toBe(frontier);
-      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'cache-reuse', reusedTokens: frontier + 1, evaluatedTokens: 0 }));
-    } finally {
-      decode.mockRestore(); clear.mockRestore(); debug.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        decode.mockRestore(); clear.mockRestore(); debug.mockRestore();
+      },
+    };
+    const repeated = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(repeated).toEqual(first);
+    expect(decode).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled();
+    expect(await sequencePosition()).toBe(frontier);
+    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'cache-reuse', reusedTokens: frontier + 1, evaluatedTokens: 0 }));
   }, 30000);
 
   it.each(['cancelled', 'decode-error', 'decode-exception'] as const)('invalidates the prefix after %s and fully evaluates a retry', async failure => {
@@ -1148,26 +1164,27 @@ user:Q ;assistant: R
     const batch = vi.spyOn(core.api, 'llama_batch_get_one');
     const controller = new AbortController();
     req.stop = [];
-    try {
-      if (failure === 'decode-error') decode.mockResolvedValueOnce(2);
-      if (failure === 'decode-exception') decode.mockRejectedValueOnce(new Error('private native failure'));
-      await expect(generate({
-        request: req,
-        signal: controller.signal,
-        onEvent: () => {
-          if (failure === 'cancelled') controller.abort();
-        },
-        onProgress: () => {},
-      })).rejects.toThrow();
-      decode.mockClear(); batch.mockClear(); clear.mockClear();
-      const result = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(result.content).toBe('AAAAA');
-      expect(clear).toHaveBeenCalledOnce();
-      expect(batch.mock.calls[0]?.[2]).toBeGreaterThan(1);
-      expect(await sequencePosition()).toBe(Number(batch.mock.calls[0]?.[2]) + 3);
-    } finally {
-      decode.mockRestore(); clear.mockRestore(); batch.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        decode.mockRestore(); clear.mockRestore(); batch.mockRestore();
+      },
+    };
+    if (failure === 'decode-error') decode.mockResolvedValueOnce(2);
+    if (failure === 'decode-exception') decode.mockRejectedValueOnce(new Error('private native failure'));
+    await expect(generate({
+      request: req,
+      signal: controller.signal,
+      onEvent: () => {
+        if (failure === 'cancelled') controller.abort();
+      },
+      onProgress: () => {},
+    })).rejects.toThrow();
+    decode.mockClear(); batch.mockClear(); clear.mockClear();
+    const result = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(result.content).toBe('AAAAA');
+    expect(clear).toHaveBeenCalledOnce();
+    expect(batch.mock.calls[0]?.[2]).toBeGreaterThan(1);
+    expect(await sequencePosition()).toBe(Number(batch.mock.calls[0]?.[2]) + 3);
   }, 30000);
 
   it('rejects a mismatched native cache frontier before reuse', async () => {
@@ -1176,13 +1193,9 @@ user:Q ;assistant: R
     await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     const core = host.core!;
     await core.api.llama_memory_clear(await core.api.llama_get_memory(sessionTesting.residentContext()!), 1);
-    const decode = vi.spyOn(core.api, 'llama_decode');
-    try {
-      await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(decode).toHaveBeenCalledOnce();
-    } finally {
-      decode.mockRestore();
-    }
+    using decode = vi.spyOn(core.api, 'llama_decode');
+    await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(decode).toHaveBeenCalledOnce();
   }, 30000);
 
   it('uses remaining context for omitted or oversized completion limits and respects smaller limits', async () => {
@@ -1191,50 +1204,51 @@ user:Q ;assistant: R
     const training = vi.spyOn(core.api, 'llama_model_n_ctx_train').mockResolvedValue(2048);
     const chunks: string[] = [];
     const req = { ...request({ messages: [{ role: 'user' as const, content: 'continue' }] }), maxTokens: undefined };
-    try {
-      const result = await generate({
-        request: req,
-        signal: undefined,
-        onEvent: ({ event }) => {
-          if (event.type !== 'text') return;
-          const chunk = event.text;
-          chunks.push(chunk);
-        },
-        onProgress: () => {},
-      });
-      expect(chunks.join('').length).toBeGreaterThan(1024);
-      expect(result.finishReason).toBe('length');
-      const capacity = await core.api.llama_n_ctx(sessionTesting.residentContext()!);
-      expect(await sequencePosition()).toBe(capacity - 2);
-      const limited: string[] = [];
-      await generate({
-        request: { ...req, maxTokens: 3 },
-        signal: undefined,
-        onEvent: ({ event }) => {
-          if (event.type !== 'text') return;
-          const chunk = event.text;
-          limited.push(chunk);
-        },
-        onProgress: () => {},
-      });
-      expect(limited.join('')).toBe('AAA');
-      const oversized: string[] = [];
-      const bounded = await generate({
-        request: { ...req, maxTokens: 65536 },
-        signal: undefined,
-        onEvent: ({ event }) => {
-          if (event.type !== 'text') return;
-          const chunk = event.text;
-          oversized.push(chunk);
-        },
-        onProgress: () => {},
-      });
-      expect(oversized.join('')).toBe(chunks.join(''));
-      expect(bounded.finishReason).toBe('length');
-      expect(await sequencePosition()).toBe(capacity - 2);
-    } finally {
-      training.mockRestore(); await releaseSession({ releaseRuntime: false });
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        training.mockRestore(); await releaseSession({ releaseRuntime: false });
+      },
+    };
+    const result = await generate({
+      request: req,
+      signal: undefined,
+      onEvent: ({ event }) => {
+        if (event.type !== 'text') return;
+        const chunk = event.text;
+        chunks.push(chunk);
+      },
+      onProgress: () => {},
+    });
+    expect(chunks.join('').length).toBeGreaterThan(1024);
+    expect(result.finishReason).toBe('length');
+    const capacity = await core.api.llama_n_ctx(sessionTesting.residentContext()!);
+    expect(await sequencePosition()).toBe(capacity - 2);
+    const limited: string[] = [];
+    await generate({
+      request: { ...req, maxTokens: 3 },
+      signal: undefined,
+      onEvent: ({ event }) => {
+        if (event.type !== 'text') return;
+        const chunk = event.text;
+        limited.push(chunk);
+      },
+      onProgress: () => {},
+    });
+    expect(limited.join('')).toBe('AAA');
+    const oversized: string[] = [];
+    const bounded = await generate({
+      request: { ...req, maxTokens: 65536 },
+      signal: undefined,
+      onEvent: ({ event }) => {
+        if (event.type !== 'text') return;
+        const chunk = event.text;
+        oversized.push(chunk);
+      },
+      onProgress: () => {},
+    });
+    expect(oversized.join('')).toBe(chunks.join(''));
+    expect(bounded.finishReason).toBe('length');
+    expect(await sequencePosition()).toBe(capacity - 2);
   }, 30000);
 
   it('targets 32K and reduces only the logical batch after the first normal allocation failure', async () => {
@@ -1244,16 +1258,17 @@ user:Q ;assistant: R
     const initialize = vi.spyOn(core.api, 'llama_init_from_model').mockResolvedValueOnce(0n);
     const setField = vi.spyOn(core, 'setField');
     const req = request({ messages: [{ role: 'user', content: 'capacity' }] });
-    try {
-      await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(setField.mock.calls.filter(([args]) => args.field === 'n_ctx').map(([args]) => args.value)).toEqual([32768, 32768]);
-      expect(setField.mock.calls.filter(([args]) => args.field === 'n_batch').map(([args]) => args.value)).toEqual([512, 128]);
-      expect(await core.api.llama_n_ctx(sessionTesting.residentContext()!)).toBe(32768);
-      await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(initialize).toHaveBeenCalledTimes(2);
-    } finally {
-      training.mockRestore(); initialize.mockRestore(); setField.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        training.mockRestore(); initialize.mockRestore(); setField.mockRestore();
+      },
+    };
+    await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(setField.mock.calls.filter(([args]) => args.field === 'n_ctx').map(([args]) => args.value)).toEqual([32768, 32768]);
+    expect(setField.mock.calls.filter(([args]) => args.field === 'n_batch').map(([args]) => args.value)).toEqual([512, 128]);
+    expect(await core.api.llama_n_ctx(sessionTesting.residentContext()!)).toBe(32768);
+    await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(initialize).toHaveBeenCalledTimes(2);
   }, 30000);
 
   it('does not retry a trapped context initialization and discards the runtime', async () => {
@@ -1262,15 +1277,16 @@ user:Q ;assistant: R
     const initialize = vi.spyOn(core.api, 'llama_init_from_model').mockRejectedValueOnce(new WebAssembly.RuntimeError('private trap'));
     const req = request({ messages: [{ role: 'user', content: 'capacity' }] });
     const loads = host.modelLoads;
-    try {
-      await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('private trap');
-      expect(initialize).toHaveBeenCalledOnce();
-      expect(sessionTesting.residentContext()).toBeUndefined();
-      await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(host.modelLoads).toBe(loads + 1);
-    } finally {
-      initialize.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        initialize.mockRestore();
+      },
+    };
+    await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('private trap');
+    expect(initialize).toHaveBeenCalledOnce();
+    expect(sessionTesting.residentContext()).toBeUndefined();
+    await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(host.modelLoads).toBe(loads + 1);
   }, 30000);
 
   it.each([0, 65536])('bounds context allocation attempts for training metadata %s', async trainingSize => {
@@ -1281,14 +1297,15 @@ user:Q ;assistant: R
     const training = vi.spyOn(core.api, 'llama_model_n_ctx_train').mockResolvedValue(trainingSize);
     const initialize = vi.spyOn(core.api, 'llama_init_from_model').mockResolvedValue(0n);
     const setField = vi.spyOn(core, 'setField');
-    try {
-      await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('runtime-error');
-      expect(setField.mock.calls.filter(([args]) => args.field === 'n_ctx').map(([args]) => args.value)).toEqual(trainingSize === 0 ? [] : [32768, 32768, 16384, 8192, 4096]);
-      expect(initialize).toHaveBeenCalledTimes(trainingSize === 0 ? 0 : 5);
-      expect(sessionTesting.residentContext()).toBeUndefined();
-    } finally {
-      training.mockRestore(); initialize.mockRestore(); setField.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        training.mockRestore(); initialize.mockRestore(); setField.mockRestore();
+      },
+    };
+    await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('runtime-error');
+    expect(setField.mock.calls.filter(([args]) => args.field === 'n_ctx').map(([args]) => args.value)).toEqual(trainingSize === 0 ? [] : [32768, 32768, 16384, 8192, 4096]);
+    expect(initialize).toHaveBeenCalledTimes(trainingSize === 0 ? 0 : 5);
+    expect(sessionTesting.residentContext()).toBeUndefined();
   }, 30000);
 });
 
@@ -1302,25 +1319,22 @@ describe('native image boundaries', () => {
     } finally {
       core.free({ pointer: data });
     }
-    try {
-      expect(bitmap).not.toBe(0n); expect(await core.api.mtmd_bitmap_get_nx(bitmap)).toBe(1);
-      expect(await core.api.mtmd_bitmap_get_n_bytes(bitmap)).toBe(3n);
-      expect(Array.from(core.bytes({ pointer: await core.api.mtmd_bitmap_get_data(bitmap), length: 3 }))).toEqual([10, 20, 30]);
-    } finally {
-      if (bitmap !== 0n) await core.api.mtmd_bitmap_free(bitmap);
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        if (bitmap !== 0n) await core.api.mtmd_bitmap_free(bitmap);
+      },
+    };
+    expect(bitmap).not.toBe(0n); expect(await core.api.mtmd_bitmap_get_nx(bitmap)).toBe(1);
+    expect(await core.api.mtmd_bitmap_get_n_bytes(bitmap)).toBe(3n);
+    expect(Array.from(core.bytes({ pointer: await core.api.mtmd_bitmap_get_data(bitmap), length: 3 }))).toEqual([10, 20, 30]);
   });
 
   it('rejects image requests on text-only models without reusing stale text KV afterwards', async () => {
     await releaseSession({ releaseRuntime: true }); host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
-    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    try {
-      await expect(generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: [{ type: 'text', text: 'describe' }, { type: 'image', blob: new Blob(['image'], { type: 'image/png' }) }] }] }), onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('unsupported-input');
-      await generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: 'describe' }] }), onEvent: () => {}, onProgress: () => {} });
-      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'cache-reuse', reusedTokens: 0 }));
-    } finally {
-      debug.mockRestore();
-    }
+    using debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await expect(generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: [{ type: 'text', text: 'describe' }, { type: 'image', blob: new Blob(['image'], { type: 'image/png' }) }] }] }), onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('unsupported-input');
+    await generate({ signal: undefined, request: request({ messages: [{ role: 'user', content: 'describe' }] }), onEvent: () => {}, onProgress: () => {} });
+    expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'cache-reuse', reusedTokens: 0 }));
   });
 
   it('uses the scheduler callback signature and reads tensor shapes synchronously in actual Wasm', async () => {
@@ -1334,29 +1348,30 @@ describe('native image boundaries', () => {
     const params = core.allocRecord({ name: 'llama_context_params' });
     const batch = core.allocRecord({ name: 'llama_batch' });
     const token = core.alloc({ bytes: 4 }); let context = 0n;
-    try {
-      await core.api.llama_context_default_params(params);
-      for (const [field, value] of Object.entries({ n_ctx: 64, n_batch: 16, n_ubatch: 16, n_threads: 1, n_threads_batch: 1 })) core.setField({ name: 'llama_context_params', pointer: params, field, value });
-      // The LM callback has the same native typedef as mtmd; production installs it only on mtmd.
-      core.setField({ name: 'llama_context_params', pointer: params, field: 'cb_eval', value: BigInt(trace.pointer) });
-      core.setField({ name: 'llama_context_params', pointer: params, field: 'cb_eval_user_data', value: 0n });
-      context = await core.api.llama_init_from_model(model, params);
-      expect(context).not.toBe(0n);
-      new DataView(core.bytes({ pointer: token, length: 4 }).buffer, Number(token), 4).setInt32(0, 1, true);
-      await core.api.llama_batch_get_one(batch, token, 1);
-      expect(await core.api.llama_decode(context, batch)).toBe(0);
-      const entries = readDiagnostics({ calls: debug.mock.calls });
-      const starts = entries.filter(entry => entry.event === 'native-node-start');
-      const completions = entries.filter(entry => entry.event === 'native-node-complete');
-      expect(starts.length).toBeGreaterThan(0); expect(completions).toHaveLength(starts.length);
-      expect(starts[0]).toEqual(expect.objectContaining({ nativeOp: expect.any(Number), nativeOpName: expect.stringMatching(/^GGML_OP_/), nativeTensorType: expect.any(Number), nativeTensorShape: expect.any(Array) }));
-      expect(entries.some(entry => entry.stage === 'projector-trace')).toBe(false);
-    } finally {
-      if (context !== 0n) await core.api.llama_free(context);
-      trace.release(); unsubscribe();
-      core.free({ pointer: params }); core.free({ pointer: batch }); core.free({ pointer: token }); debug.mockRestore();
-      await releaseSession({ releaseRuntime: true });
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        if (context !== 0n) await core.api.llama_free(context);
+        trace.release(); unsubscribe();
+        core.free({ pointer: params }); core.free({ pointer: batch }); core.free({ pointer: token }); debug.mockRestore();
+        await releaseSession({ releaseRuntime: true });
+      },
+    };
+    await core.api.llama_context_default_params(params);
+    for (const [field, value] of Object.entries({ n_ctx: 64, n_batch: 16, n_ubatch: 16, n_threads: 1, n_threads_batch: 1 })) core.setField({ name: 'llama_context_params', pointer: params, field, value });
+    // The LM callback has the same native typedef as mtmd; production installs it only on mtmd.
+    core.setField({ name: 'llama_context_params', pointer: params, field: 'cb_eval', value: BigInt(trace.pointer) });
+    core.setField({ name: 'llama_context_params', pointer: params, field: 'cb_eval_user_data', value: 0n });
+    context = await core.api.llama_init_from_model(model, params);
+    expect(context).not.toBe(0n);
+    new DataView(core.bytes({ pointer: token, length: 4 }).buffer, Number(token), 4).setInt32(0, 1, true);
+    await core.api.llama_batch_get_one(batch, token, 1);
+    expect(await core.api.llama_decode(context, batch)).toBe(0);
+    const entries = readDiagnostics({ calls: debug.mock.calls });
+    const starts = entries.filter(entry => entry.event === 'native-node-start');
+    const completions = entries.filter(entry => entry.event === 'native-node-complete');
+    expect(starts.length).toBeGreaterThan(0); expect(completions).toHaveLength(starts.length);
+    expect(starts[0]).toEqual(expect.objectContaining({ nativeOp: expect.any(Number), nativeOpName: expect.stringMatching(/^GGML_OP_/), nativeTensorType: expect.any(Number), nativeTensorShape: expect.any(Array) }));
+    expect(entries.some(entry => entry.stage === 'projector-trace')).toBe(false);
   }, 30000);
 });
 
@@ -1406,39 +1421,40 @@ describe('structured delivery from the real CPU Wasm loop', () => {
     const previews: string[] = [];
     const controller = new AbortController();
     let argumentsText = '';
-    try {
-      const pending = generate({
-        request: req,
-        signal: controller.signal,
-        onProgress: () => {},
-        onEvent: ({ event }) => {
-          events.push(event);
-          if (event.type === 'tool_call_draft' && event.arguments !== undefined) {
-            expect(event.arguments.offset).toBeLessThanOrEqual(argumentsText.length);
-            argumentsText = argumentsText.slice(0, event.arguments.offset) + event.arguments.text;
-            previews.push(argumentsText);
-            expect(events.some(value => value.type === 'tool_call')).toBe(false);
-            if (termination === 'aborted' && argumentsText.includes('Tok')) controller.abort();
-          }
-        },
-      });
-      if (termination === 'aborted') await expect(pending).rejects.toThrow();
-      else {
-        const result = await pending;
-        expect(result.finishReason).toBe(termination);
-        if (termination === 'stop') {
-          expect(result.toolCalls).toHaveLength(1);
-          expect(JSON.parse(result.toolCalls[0]!.function.arguments)).toEqual({ city: 'Tokyo' });
-          expect(events.at(-1)).toEqual({ type: 'tool_call', index: 0, toolCall: result.toolCalls[0] });
-        } else expect(events.some(event => event.type === 'tool_call')).toBe(false);
-      }
-      expect(events).toContainEqual({ type: 'tool_call_start', index: 0 });
-      expect(events.some(event => event.type === 'tool_call_draft' && event.name === 'lookup')).toBe(true);
-      expect(previews.some(text => text.includes('Tok') && !text.includes('Tokyo'))).toBe(true);
-      if (termination === 'aborted') expect(events.some(event => event.type === 'tool_call')).toBe(false);
-    } finally {
-      sample.mockRestore();
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        sample.mockRestore();
+      },
+    };
+    const pending = generate({
+      request: req,
+      signal: controller.signal,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        events.push(event);
+        if (event.type === 'tool_call_draft' && event.arguments !== undefined) {
+          expect(event.arguments.offset).toBeLessThanOrEqual(argumentsText.length);
+          argumentsText = argumentsText.slice(0, event.arguments.offset) + event.arguments.text;
+          previews.push(argumentsText);
+          expect(events.some(value => value.type === 'tool_call')).toBe(false);
+          if (termination === 'aborted' && argumentsText.includes('Tok')) controller.abort();
+        }
+      },
+    });
+    if (termination === 'aborted') await expect(pending).rejects.toThrow();
+    else {
+      const result = await pending;
+      expect(result.finishReason).toBe(termination);
+      if (termination === 'stop') {
+        expect(result.toolCalls).toHaveLength(1);
+        expect(JSON.parse(result.toolCalls[0]!.function.arguments)).toEqual({ city: 'Tokyo' });
+        expect(events.at(-1)).toEqual({ type: 'tool_call', index: 0, toolCall: result.toolCalls[0] });
+      } else expect(events.some(event => event.type === 'tool_call')).toBe(false);
     }
+    expect(events).toContainEqual({ type: 'tool_call_start', index: 0 });
+    expect(events.some(event => event.type === 'tool_call_draft' && event.name === 'lookup')).toBe(true);
+    expect(previews.some(text => text.includes('Tok') && !text.includes('Tokyo'))).toBe(true);
+    if (termination === 'aborted') expect(events.some(event => event.type === 'tool_call')).toBe(false);
   }, 30000);
 
   it('sends bounded suffix patches when a parser revises normalized arguments', async () => {
@@ -1470,30 +1486,31 @@ describe('structured delivery from the real CPU Wasm loop', () => {
     const events: GenerationEvent[] = [];
     let argumentsText = '';
     const snapshots: string[] = [];
-    try {
-      const result = await generate({
-        request: req,
-        signal: undefined,
-        onProgress: () => {},
-        onEvent: ({ event }) => {
-          events.push(event);
-          if (event.type === 'tool_call_draft' && event.arguments !== undefined) {
-            expect(event.arguments.text.length).toBeLessThanOrEqual(8192);
-            argumentsText = argumentsText.slice(0, event.arguments.offset) + event.arguments.text;
-            snapshots.push(argumentsText);
-          }
-        },
-      });
-      expect(snapshots).toContain(firstArguments);
-      expect(argumentsText).toBe(finalArguments);
-      expect(events).toContainEqual({ type: 'tool_call_draft', index: 0, name: 'lookup', arguments: { offset: prefix.length, text: 'new"}' } });
-      expect(events.filter(event => event.type === 'tool_call_draft').reduce((size, event) => size + (event.arguments?.text.length ?? 0), 0)).toBe(firstArguments.length + 5);
-      expect(events.at(-1)).toEqual({ type: 'tool_call', index: 0, toolCall: result.toolCalls[0] });
-      expect(result.toolCalls[0]?.function.arguments).toBe(finalArguments);
-    } finally {
-      prepareSpy.mockRestore();
-      sample.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        prepareSpy.mockRestore();
+        sample.mockRestore();
+      },
+    };
+    const result = await generate({
+      request: req,
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        events.push(event);
+        if (event.type === 'tool_call_draft' && event.arguments !== undefined) {
+          expect(event.arguments.text.length).toBeLessThanOrEqual(8192);
+          argumentsText = argumentsText.slice(0, event.arguments.offset) + event.arguments.text;
+          snapshots.push(argumentsText);
+        }
+      },
+    });
+    expect(snapshots).toContain(firstArguments);
+    expect(argumentsText).toBe(finalArguments);
+    expect(events).toContainEqual({ type: 'tool_call_draft', index: 0, name: 'lookup', arguments: { offset: prefix.length, text: 'new"}' } });
+    expect(events.filter(event => event.type === 'tool_call_draft').reduce((size, event) => size + (event.arguments?.text.length ?? 0), 0)).toBe(firstArguments.length + 5);
+    expect(events.at(-1)).toEqual({ type: 'tool_call', index: 0, toolCall: result.toolCalls[0] });
+    expect(result.toolCalls[0]?.function.arguments).toBe(finalArguments);
   }, 30000);
 
   it('waits for content acknowledgement before sampling another token', async () => {
@@ -1501,21 +1518,22 @@ describe('structured delivery from the real CPU Wasm loop', () => {
     const req = request({ messages: [{ role: 'user', content: 'ack' }] });req.maxTokens = 2;
     await generate({ request: { ...req, maxTokens: 1 }, onEvent: () => {}, onProgress: () => {}, signal: undefined });
     const core = host.core!;const sample = vi.spyOn(core.api, 'llama_sampler_sample');const gate = Promise.withResolvers<void>();let entered = false;
-    try {
-      const task = generate({
-        request: req,
-        signal: undefined,
-        onProgress: () => {},
-        onEvent: async () => {
-          entered = true;await gate.promise;
-        },
-      });
-      await vi.waitFor(() => expect(entered).toBe(true));expect(sample).toHaveBeenCalledOnce();
-      await new Promise<void>(resolve => setTimeout(resolve, 10));expect(sample).toHaveBeenCalledOnce();
-      gate.resolve();await task;expect(sample).toHaveBeenCalledTimes(2);
-    } finally {
-      gate.resolve();sample.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        gate.resolve();sample.mockRestore();
+      },
+    };
+    const task = generate({
+      request: req,
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: async () => {
+        entered = true;await gate.promise;
+      },
+    });
+    await vi.waitFor(() => expect(entered).toBe(true));expect(sample).toHaveBeenCalledOnce();
+    await new Promise<void>(resolve => setTimeout(resolve, 10));expect(sample).toHaveBeenCalledOnce();
+    gate.resolve();await task;expect(sample).toHaveBeenCalledTimes(2);
   }, 30000);
 
   it('drains a held stop-prefix byte when native decoding fails instead of losing accepted content', async () => {
@@ -1529,31 +1547,28 @@ describe('structured delivery from the real CPU Wasm loop', () => {
       if (sampled) throw new Error('controlled decode failure');return original(...args);
     });
     const events: import('@/features/llama-cpp-browser/types').GenerationEvent[] = [];
-    try {
-      await expect(generate({
-        request: req,
-        signal: undefined,
-        onProgress: () => {},
-        onEvent: ({ event }) => {
-          events.push(event);
-        },
-      })).rejects.toThrow('controlled decode failure');
-      expect(events).toEqual([{ type: 'text', text: 'A' }]);
-    } finally {
-      sample.mockRestore();spy.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        sample.mockRestore();spy.mockRestore();
+      },
+    };
+    await expect(generate({
+      request: req,
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        events.push(event);
+      },
+    })).rejects.toThrow('controlled decode failure');
+    expect(events).toEqual([{ type: 'text', text: 'A' }]);
   }, 30000);
 
   it('distinguishes a user stop sequence from a native end-of-generation token', async () => {
     const req = request({ messages: [{ role: 'user', content: 'stop' }] });req.stop = ['A'];
     const stopped = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
     expect(stopped.finishReason).toBe('stop_sequence');
-    const core = host.core!;const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockResolvedValue(2);
-    try {
-      expect((await generate({ request: { ...req, stop: [] }, signal: undefined, onProgress: () => {}, onEvent: () => {} })).finishReason).toBe('stop');
-    } finally {
-      sample.mockRestore();
-    }
+    const core = host.core!;using _sample = vi.spyOn(core.api, 'llama_sampler_sample').mockResolvedValue(2);
+    expect((await generate({ request: { ...req, stop: [] }, signal: undefined, onProgress: () => {}, onEvent: () => {} })).finishReason).toBe('stop');
   }, 30000);
 
   it('delivers native thought and answer channels without synthesizing display tags', async () => {
@@ -1574,22 +1589,23 @@ describe('structured delivery from the real CPU Wasm loop', () => {
     const tokens = [...new TextEncoder().encode(generated)].map(byte => byte + 3).concat(2);let offset = 0;
     const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockImplementation(async () => tokens[offset++] ?? 2);
     const events: import('@/features/llama-cpp-browser/types').GenerationEvent[] = [];
-    try {
-      const result = await generate({
-        request: req,
-        signal: undefined,
-        onProgress: () => {},
-        onEvent: ({ event }) => {
-          events.push(event);
-        },
-      });
-      expect(result).toEqual({ content: 'Answer  ', reasoningContent: 'Reason', finishReason: 'stop', toolCalls: [] });
-      expect(events.filter(e => e.type === 'reasoning').map(e => e.text).join('')).toBe('Reason');
-      expect(events.filter(e => e.type === 'text').map(e => e.text).join('')).toBe('Answer  ');
-      expect(events.every(e => e.type === 'reasoning' || e.type === 'text')).toBe(true);
-    } finally {
-      sample.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        sample.mockRestore();
+      },
+    };
+    const result = await generate({
+      request: req,
+      signal: undefined,
+      onProgress: () => {},
+      onEvent: ({ event }) => {
+        events.push(event);
+      },
+    });
+    expect(result).toEqual({ content: 'Answer  ', reasoningContent: 'Reason', finishReason: 'stop', toolCalls: [] });
+    expect(events.filter(e => e.type === 'reasoning').map(e => e.text).join('')).toBe('Reason');
+    expect(events.filter(e => e.type === 'text').map(e => e.text).join('')).toBe('Answer  ');
+    expect(events.every(e => e.type === 'reasoning' || e.type === 'text')).toBe(true);
   }, 30000);
 });
 
@@ -1619,14 +1635,10 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     host.bytes = Uint8Array.from(createTinyLfm2Gguf({ chatTemplate: '{{ "" }}' }));
     const req = request({ messages: [{ role: 'user', content: 'ignored by authored template' }] });
     const session = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
-    const capture = vi.spyOn(session.core.api, 'llama_state_seq_get_size_ext');
-    try {
-      await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(session.cache.tokens[0]).toBe(1);
-      expect(session.cache.checkpoint).toBeUndefined(); expect(capture).not.toHaveBeenCalled();
-    } finally {
-      capture.mockRestore();
-    }
+    using capture = vi.spyOn(session.core.api, 'llama_state_seq_get_size_ext');
+    await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(session.cache.tokens[0]).toBe(1);
+    expect(session.cache.checkpoint).toBeUndefined(); expect(capture).not.toHaveBeenCalled();
   }, 30000);
 
   it('fully reevaluates a prompt ending at the saved checkpoint because logits need another decode', async () => {
@@ -1639,17 +1651,18 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     const next = request({ messages: [{ role: 'user', content: 'aaaaaaa' }] }); next.stop = ['A', 'B'];
     const restore = vi.spyOn(session.core.api, 'llama_state_seq_set_data_ext');
     const { batches, spy } = observeBatches({ core: session.core });
-    try {
-      await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(restore).not.toHaveBeenCalled();
-      expect(batches.flat()).toEqual([1, ...byteTokens({ text: 'aaaaaaa' })]);
-      const warmLogits = await readNativeLogits();
-      await releaseSession({ releaseRuntime: false });
-      await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
-    } finally {
-      restore.mockRestore(); spy.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        restore.mockRestore(); spy.mockRestore();
+      },
+    };
+    await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(restore).not.toHaveBeenCalled();
+    expect(batches.flat()).toEqual([1, ...byteTokens({ text: 'aaaaaaa' })]);
+    const warmLogits = await readNativeLogits();
+    await releaseSession({ releaseRuntime: false });
+    await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
   }, 30000);
 
   it.each(['reasoning-omission', 'shortened-header', 'earlier-mismatch'] as const)('matches cold logits and native positions after %s', async scenario => {
@@ -1681,35 +1694,36 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const free = vi.spyOn(core, 'free');
     const allocationSpies = [vi.spyOn(core, 'tryAlloc'), vi.spyOn(core, 'alloc'), vi.spyOn(core, 'allocRecord'), vi.spyOn(core, 'utf8')];
-    try {
-      const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      const warmLogits = await readNativeLogits();
-      expect(next).toEqual(originalRequest);
-      expect(await sequencePosition()).toBe(expectedTokens.length - 1);
-      if (scenario === 'earlier-mismatch') {
-        expect(restore).not.toHaveBeenCalled(); expect(clear).toHaveBeenCalledOnce();
-        expect(batches.flat()).toEqual(expectedTokens);
-      } else {
-        expect(restore).toHaveBeenCalledExactlyOnceWith(session.context, checkpoint.pointer, BigInt(checkpoint.bytes), 0, 1);
-        expect(clear).not.toHaveBeenCalled();
-        expect(batches.flat()).toEqual(expectedTokens.slice(boundary));
-        expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'cache-reuse', reason: 'checkpoint-match', reusedTokens: boundary }));
-      }
-      const reusedAt = Math.min(Infinity, ...allocationSpies.flatMap(spy => spy.mock.results.flatMap((result, index) =>
-        result.type === 'return' && result.value === checkpoint.pointer ? [spy.mock.invocationCallOrder[index]!] : [])));
-      expect(free.mock.calls.filter(([args], index) => args.pointer === checkpoint.pointer
-        && free.mock.invocationCallOrder[index]! < reusedAt)).toHaveLength(scenario === 'shortened-header' ? 0 : 1);
-      await releaseSession({ releaseRuntime: false });
-      await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
-      batches.length = 0;
-      const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(cold).toEqual(warm);
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        spy.mockRestore(); restore.mockRestore(); clear.mockRestore(); debug.mockRestore(); free.mockRestore();
+        for (const allocation of allocationSpies) allocation.mockRestore();
+      },
+    };
+    const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const warmLogits = await readNativeLogits();
+    expect(next).toEqual(originalRequest);
+    expect(await sequencePosition()).toBe(expectedTokens.length - 1);
+    if (scenario === 'earlier-mismatch') {
+      expect(restore).not.toHaveBeenCalled(); expect(clear).toHaveBeenCalledOnce();
       expect(batches.flat()).toEqual(expectedTokens);
-      expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
-    } finally {
-      spy.mockRestore(); restore.mockRestore(); clear.mockRestore(); debug.mockRestore(); free.mockRestore();
-      for (const allocation of allocationSpies) allocation.mockRestore();
+    } else {
+      expect(restore).toHaveBeenCalledExactlyOnceWith(session.context, checkpoint.pointer, BigInt(checkpoint.bytes), 0, 1);
+      expect(clear).not.toHaveBeenCalled();
+      expect(batches.flat()).toEqual(expectedTokens.slice(boundary));
+      expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'cache-reuse', reason: 'checkpoint-match', reusedTokens: boundary }));
     }
+    const reusedAt = Math.min(Infinity, ...allocationSpies.flatMap(spy => spy.mock.results.flatMap((result, index) =>
+      result.type === 'return' && result.value === checkpoint.pointer ? [spy.mock.invocationCallOrder[index]!] : [])));
+    expect(free.mock.calls.filter(([args], index) => args.pointer === checkpoint.pointer
+      && free.mock.invocationCallOrder[index]! < reusedAt)).toHaveLength(scenario === 'shortened-header' ? 0 : 1);
+    await releaseSession({ releaseRuntime: false });
+    await prepareSession({ request: next, signal: undefined, onProgress: () => {} });
+    batches.length = 0;
+    const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(cold).toEqual(warm);
+    expect(batches.flat()).toEqual(expectedTokens);
+    expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
   }, 30000);
 
   it('retains a verified restored checkpoint at the same boundary without a redundant host readback', async () => {
@@ -1723,24 +1737,25 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     const capture = vi.spyOn(session.core.api, 'llama_state_seq_get_data_ext');
     const size = vi.spyOn(session.core.api, 'llama_state_seq_get_size_ext');
     const restore = vi.spyOn(session.core.api, 'llama_state_seq_set_data_ext');
-    try {
-      for (let index = 0; index < 3; index++) {
-        const retry = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-        expect(retry).toEqual(initial);
-      }
-      expect(restore).toHaveBeenCalledTimes(3);
-      expect(capture).not.toHaveBeenCalled(); expect(size).not.toHaveBeenCalled();
-      expect(session.cache.checkpoint).toBe(checkpoint);
-      const warmLogits = await readNativeLogits();
-      const warmPosition = await sequencePosition();
-      await releaseSession({ releaseRuntime: false });
-      const cold = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(cold).toEqual(initial);
-      expect(await sequencePosition()).toBe(warmPosition);
-      expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
-    } finally {
-      capture.mockRestore(); size.mockRestore(); restore.mockRestore();
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        capture.mockRestore(); size.mockRestore(); restore.mockRestore();
+      },
+    };
+    for (let index = 0; index < 3; index++) {
+      const retry = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expect(retry).toEqual(initial);
     }
+    expect(restore).toHaveBeenCalledTimes(3);
+    expect(capture).not.toHaveBeenCalled(); expect(size).not.toHaveBeenCalled();
+    expect(session.cache.checkpoint).toBe(checkpoint);
+    const warmLogits = await readNativeLogits();
+    const warmPosition = await sequencePosition();
+    await releaseSession({ releaseRuntime: false });
+    const cold = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(cold).toEqual(initial);
+    expect(await sequencePosition()).toBe(warmPosition);
+    expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
   }, 30000);
 
   it('keeps the original checkpoint across full-prefix tool-like continuations', async () => {
@@ -1753,22 +1768,23 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     if (!checkpoint) throw new Error('Expected initial checkpoint');
     const capture = vi.spyOn(session.core.api, 'llama_state_seq_get_data_ext');
     const restore = vi.spyOn(session.core.api, 'llama_state_seq_set_data_ext');
-    try {
-      const continuation = request({ messages: [{ role: 'user', content: 'aaaaaaaaGG' + old.content + 'tool-result' }] });
-      const continued = await generate({ request: continuation, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(continued.content.length).toBe(5);
-      expect(session.cache.checkpoint).toBe(checkpoint);
-      expect(capture).not.toHaveBeenCalled(); expect(restore).not.toHaveBeenCalled();
-      const next = request({ messages: [{ role: 'user', content: 'aaaaaaaabbbb' }] }); next.stop = ['A', 'B'];
-      const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      const warmLogits = await readNativeLogits();
-      expect(restore).toHaveBeenCalledExactlyOnceWith(session.context, checkpoint.pointer, BigInt(checkpoint.bytes), 0, 1);
-      await releaseSession({ releaseRuntime: false });
-      const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(cold).toEqual(warm); expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
-    } finally {
-      capture.mockRestore(); restore.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        capture.mockRestore(); restore.mockRestore();
+      },
+    };
+    const continuation = request({ messages: [{ role: 'user', content: 'aaaaaaaaGG' + old.content + 'tool-result' }] });
+    const continued = await generate({ request: continuation, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(continued.content.length).toBe(5);
+    expect(session.cache.checkpoint).toBe(checkpoint);
+    expect(capture).not.toHaveBeenCalled(); expect(restore).not.toHaveBeenCalled();
+    const next = request({ messages: [{ role: 'user', content: 'aaaaaaaabbbb' }] }); next.stop = ['A', 'B'];
+    const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    const warmLogits = await readNativeLogits();
+    expect(restore).toHaveBeenCalledExactlyOnceWith(session.context, checkpoint.pointer, BigInt(checkpoint.bytes), 0, 1);
+    await releaseSession({ releaseRuntime: false });
+    const cold = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(cold).toEqual(warm); expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
   }, 30000);
 
   it('restores a checkpoint directly when the required rollback exceeds the native bound', async () => {
@@ -1794,17 +1810,18 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     const remove = vi.spyOn(core.api, 'llama_memory_seq_rm');
     const restore = vi.spyOn(core.api, 'llama_state_seq_set_data_ext');
     const next = request({ messages: [{ role: 'user', content: 'aaaaaaaabbbb' }] }); next.stop = ['A', 'B'];
-    try {
-      await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(restore).toHaveBeenCalledOnce(); expect(remove).toHaveBeenCalledOnce();
-      expect(restore.mock.invocationCallOrder[0]).toBeLessThan(remove.mock.invocationCallOrder[0]!);
-      const warmLogits = await readNativeLogits();
-      await releaseSession({ releaseRuntime: false });
-      await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
-    } finally {
-      defaults.mockRestore(); minimum.mockRestore(); remove.mockRestore(); restore.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        defaults.mockRestore(); minimum.mockRestore(); remove.mockRestore(); restore.mockRestore();
+      },
+    };
+    await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(restore).toHaveBeenCalledOnce(); expect(remove).toHaveBeenCalledOnce();
+    expect(restore.mock.invocationCallOrder[0]).toBeLessThan(remove.mock.invocationCallOrder[0]!);
+    const warmLogits = await readNativeLogits();
+    await releaseSession({ releaseRuntime: false });
+    await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
   }, 30000);
 
   it.each(['short-read', 'wrong-frontier', 'restore-trap'] as const)('clears or rejects a failed checkpoint restore without trusting partial state: %s', async failure => {
@@ -1828,21 +1845,22 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     const { batches, spy } = observeBatches({ core });
     const clear = vi.spyOn(core.api, 'llama_memory_clear');
     const next = request({ messages: [{ role: 'user', content: 'aaaaaaaabbbb' }] }); next.stop = ['A', 'B'];
-    try {
-      if (failure === 'restore-trap') {
-        await expect(generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('fixture restore trap');
-        expect(session.cache.validity).toBe('invalid'); expect(session.cache.checkpoint).toBeUndefined();
-      } else {
-        await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-        const warmLogits = await readNativeLogits();
-        expect(clear).toHaveBeenCalledOnce();
-        expect(batches.flat()).toEqual([1, ...byteTokens({ text: 'aaaaaaaabbbbGG' })]);
-        await releaseSession({ releaseRuntime: false });
-        await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-        expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
-      }
-    } finally {
-      restore.mockRestore(); position.mockRestore(); spy.mockRestore(); clear.mockRestore();
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        restore.mockRestore(); position.mockRestore(); spy.mockRestore(); clear.mockRestore();
+      },
+    };
+    if (failure === 'restore-trap') {
+      await expect(generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('fixture restore trap');
+      expect(session.cache.validity).toBe('invalid'); expect(session.cache.checkpoint).toBeUndefined();
+    } else {
+      await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      const warmLogits = await readNativeLogits();
+      expect(clear).toHaveBeenCalledOnce();
+      expect(batches.flat()).toEqual([1, ...byteTokens({ text: 'aaaaaaaabbbbGG' })]);
+      await releaseSession({ releaseRuntime: false });
+      await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+      expectLogits({ actual: warmLogits, expected: await readNativeLogits() });
     }
   }, 30000);
 
@@ -1862,21 +1880,22 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
       return nativeCapture(...args);
     });
     const free = vi.spyOn(core, 'free');
-    try {
-      const pending = generate({ request: req, signal: controller.signal, onEvent: () => {}, onProgress: () => {} });
-      const rejected = expect(pending).rejects.toThrow('aborted');
-      await vi.waitFor(() => expect(capturedPointer).toBeDefined());
-      controller.abort();
-      expect(session.cache.checkpoint).toBeUndefined();
-      expect(free.mock.calls.some(([args]) => args.pointer === capturedPointer)).toBe(false);
-      writer.resolve(); await rejected;
-      expect(free.mock.calls.filter(([args]) => args.pointer === capturedPointer)).toHaveLength(1);
-      expect(session.cache.checkpoint).toBeUndefined(); expect(session.cache.validity).toBe('invalid');
-      const retry = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      expect(retry.content.length).toBe(5); expect(session.cache.checkpoint).toBeDefined();
-    } finally {
-      writer.resolve(); capture.mockRestore(); free.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        writer.resolve(); capture.mockRestore(); free.mockRestore();
+      },
+    };
+    const pending = generate({ request: req, signal: controller.signal, onEvent: () => {}, onProgress: () => {} });
+    const rejected = expect(pending).rejects.toThrow('aborted');
+    await vi.waitFor(() => expect(capturedPointer).toBeDefined());
+    controller.abort();
+    expect(session.cache.checkpoint).toBeUndefined();
+    expect(free.mock.calls.some(([args]) => args.pointer === capturedPointer)).toBe(false);
+    writer.resolve(); await rejected;
+    expect(free.mock.calls.filter(([args]) => args.pointer === capturedPointer)).toHaveLength(1);
+    expect(session.cache.checkpoint).toBeUndefined(); expect(session.cache.validity).toBe('invalid');
+    const retry = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    expect(retry.content.length).toBe(5); expect(session.cache.checkpoint).toBeDefined();
   }, 30000);
 });
 
@@ -2416,29 +2435,30 @@ describe('bounded task yields through the native generation loop', () => {
     const controller = new AbortController();
     const chunks: string[] = []; let timer: ReturnType<typeof setTimeout> | undefined;
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    try {
-      await expect(generate({
-        request: req,
-        signal: controller.signal,
-        onEvent: ({ event }) => {
-          if (event.type === 'text') chunks.push(event.text);
-        },
-        onProgress: ({ progress }) => {
-          if (progress.phase === 'generating' && progress.completed === scheduleAt) timer = setTimeout(() => controller.abort(), 0);
-        },
-      })).rejects.toThrow('aborted');
-      const expectedDecodes = scheduleAt === 1 ? 1 : 5;
-      expect(sample).toHaveBeenCalledTimes(expectedDecodes);
-      expect(chunks.join('')).toBe('A'.repeat(expectedDecodes));
-      expect(session.cache.validity).toBe('invalid');
-      const report = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
-      expect(report.outcome).toBe('aborted'); expect(report.decodedTokens).toBe(expectedDecodes);
-      expect(report.generationYield).toMatchObject({ requestedYields: scheduleAt, completedYields: scheduleAt });
-      // A cancelled request must not leave a timer or reuse a partial cache.
-      expect((await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} })).content).toBe('A'.repeat(33));
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        if (timer !== undefined) clearTimeout(timer);
+      },
+    };
+    await expect(generate({
+      request: req,
+      signal: controller.signal,
+      onEvent: ({ event }) => {
+        if (event.type === 'text') chunks.push(event.text);
+      },
+      onProgress: ({ progress }) => {
+        if (progress.phase === 'generating' && progress.completed === scheduleAt) timer = setTimeout(() => controller.abort(), 0);
+      },
+    })).rejects.toThrow('aborted');
+    const expectedDecodes = scheduleAt === 1 ? 1 : 5;
+    expect(sample).toHaveBeenCalledTimes(expectedDecodes);
+    expect(chunks.join('')).toBe('A'.repeat(expectedDecodes));
+    expect(session.cache.validity).toBe('invalid');
+    const report = diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance!;
+    expect(report.outcome).toBe('aborted'); expect(report.decodedTokens).toBe(expectedDecodes);
+    expect(report.generationYield).toMatchObject({ requestedYields: scheduleAt, completedYields: scheduleAt });
+    // A cancelled request must not leave a timer or reuse a partial cache.
+    expect((await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} })).content).toBe('A'.repeat(33));
   }, 30000);
 
   it('checks a synchronous progress cancellation even when the next yield would be skipped', async () => {
@@ -2473,15 +2493,16 @@ describe('bounded task yields through the native generation loop', () => {
         }
       },
     });
-    try {
-      await entered.promise;
-      expect(sample).toHaveBeenCalledTimes(9);
-      const calls = decode.mock.calls.length;
-      await new Promise<void>(resolve => setTimeout(resolve, 5));
-      expect(sample).toHaveBeenCalledTimes(9); expect(decode).toHaveBeenCalledTimes(calls);
-    } finally {
-      gate.resolve(); await task;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        gate.resolve(); await task;
+      },
+    };
+    await entered.promise;
+    expect(sample).toHaveBeenCalledTimes(9);
+    const calls = decode.mock.calls.length;
+    await new Promise<void>(resolve => setTimeout(resolve, 5));
+    expect(sample).toHaveBeenCalledTimes(9); expect(decode).toHaveBeenCalledTimes(calls);
   }, 30000);
 
   it('yields every time when each decode window uses the elapsed budget', async () => {
@@ -2942,26 +2963,27 @@ describe('text generation without eager companion allocation', () => {
     host.companion = false;
     const req = { ...request({ messages: [{ role: 'user' as const, content: 'companion deferral fixture' }] }), debug: 'on' as const };
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    try {
-      const reference = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
-      const referenceLogits = await readNativeLogits(); const referencePosition = await sequencePosition();
-      const next = { ...req, messages: [...req.messages, { role: 'assistant' as const, content: reference.content }, { role: 'user' as const, content: 'continue' }] };
-      const referenceNext = await generate({ request: next, signal: undefined, onProgress: () => {}, onEvent: () => {} });
-      const referenceNextLogits = await readNativeLogits();
-      await releaseSession({ releaseRuntime: true });
-      host.companion = true; host.openCompanion.mockReset().mockRejectedValue(new Error('Text must not open the companion'));
-      log.mockClear();
-      const actual = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
-      expect(actual).toEqual(reference); expect(await readNativeLogits()).toEqual(referenceLogits);
-      expect(await sequencePosition()).toBe(referencePosition);
-      expect(diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance?.sessionPreparation).toEqual({ projector: 'deferred', releasedTextContext: false });
-      const actualNext = await generate({ request: next, signal: undefined, onProgress: () => {}, onEvent: () => {} });
-      expect(actualNext).toEqual(referenceNext); expect(await readNativeLogits()).toEqual(referenceNextLogits);
-      expect(host.openCompanion).not.toHaveBeenCalled();
-      expect(JSON.stringify(log.mock.calls)).not.toContain('companion deferral fixture');
-    } finally {
-      host.companion = false; log.mockRestore(); await releaseSession({ releaseRuntime: true });
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        host.companion = false; log.mockRestore(); await releaseSession({ releaseRuntime: true });
+      },
+    };
+    const reference = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
+    const referenceLogits = await readNativeLogits(); const referencePosition = await sequencePosition();
+    const next = { ...req, messages: [...req.messages, { role: 'assistant' as const, content: reference.content }, { role: 'user' as const, content: 'continue' }] };
+    const referenceNext = await generate({ request: next, signal: undefined, onProgress: () => {}, onEvent: () => {} });
+    const referenceNextLogits = await readNativeLogits();
+    await releaseSession({ releaseRuntime: true });
+    host.companion = true; host.openCompanion.mockReset().mockRejectedValue(new Error('Text must not open the companion'));
+    log.mockClear();
+    const actual = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
+    expect(actual).toEqual(reference); expect(await readNativeLogits()).toEqual(referenceLogits);
+    expect(await sequencePosition()).toBe(referencePosition);
+    expect(diagnosticSchema.parse(readDiagnostics({ calls: log.mock.calls }).find(item => item.event === 'generation-performance')).performance?.sessionPreparation).toEqual({ projector: 'deferred', releasedTextContext: false });
+    const actualNext = await generate({ request: next, signal: undefined, onProgress: () => {}, onEvent: () => {} });
+    expect(actualNext).toEqual(referenceNext); expect(await readNativeLogits()).toEqual(referenceNextLogits);
+    expect(host.openCompanion).not.toHaveBeenCalled();
+    expect(JSON.stringify(log.mock.calls)).not.toContain('companion deferral fixture');
   }, 30000);
 });
 

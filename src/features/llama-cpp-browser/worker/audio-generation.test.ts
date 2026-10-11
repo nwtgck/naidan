@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { synthesizeAudio, generateAudio, audioPreviewBoundary } from './audio-generation';
 import { readAudioScalar } from './audio-memory';
-import { audioNativeFixture } from '@/features/audio-generation/test-utils/native';
-import { audioResult } from '@/features/audio-generation/test-utils/wav';
+import { audioNativeFixture } from '@/features/audio-generation/test-utils/native.test-support';
+import { audioResult } from '@/features/audio-generation/test-utils/wav.test-support';
 import { defaultAudioParameters, type AudioGenerationPreview } from '@/features/audio-generation/types';
 import type { WorkerAudioInput } from './types';
 

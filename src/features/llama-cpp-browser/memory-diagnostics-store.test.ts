@@ -64,11 +64,12 @@ it('receives real MessagePort notifications alongside Comlink requests without a
   });
   const stop = observeWorkerMemory({ worker: client });
   const remote = wrapWorkerRemote<Api>({ endpoint: client });
-  try {
-    expect(await remote.ping()).toBe(42);
-    expect(await remote.ping()).toBe(42);
-    expect(memoryDiagnosticsHistories.value[0]?.samples).toHaveLength(2);
-  } finally {
-    stop(); releaseWorkerRemote({ remote }); port1.close(); port2.close();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      stop(); releaseWorkerRemote({ remote }); port1.close(); port2.close();
+    },
+  };
+  expect(await remote.ping()).toBe(42);
+  expect(await remote.ping()).toBe(42);
+  expect(memoryDiagnosticsHistories.value[0]?.samples).toHaveLength(2);
 });

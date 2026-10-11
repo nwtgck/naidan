@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 const {
   mockFakeLmDebugModeAvailability,

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Tool } from '@/01-models/tool';
 import type { ToolCall } from '@/01-models/types';
 import { toToolCallId } from '@/01-models/ids';
-import { runProviderConversationForTest } from '@/features/lm/provider-test-support';
+import { runProviderConversationForTest } from '@/features/lm/provider.test-support';
 import type { TransformersJsInferenceScope } from './inference-operation';
 import { runProviderTestInferenceOperation } from './provider-inference-test-scope';
 import type { TransformersJsInferenceOperation } from './inference-operation';

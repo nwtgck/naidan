@@ -30,12 +30,13 @@ end`);
     const finished = Promise.withResolvers<void>();
     const stream = createTextExportStream({
       produce: async ({ write }) => {
-        try {
-          for (let i = 0; i < 10000; i++) {
-            await write({ text: 'x'.repeat(64 * 1024) }); writes += 1;
-          }
-        } finally {
-          finished.resolve();
+        using _cleanupResource = {
+          [Symbol.dispose]() {
+            finished.resolve();
+          },
+        };
+        for (let i = 0; i < 10000; i++) {
+          await write({ text: 'x'.repeat(64 * 1024) }); writes += 1;
         }
       },
     });

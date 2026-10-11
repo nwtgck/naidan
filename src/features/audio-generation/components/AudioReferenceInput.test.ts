@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import AudioReferenceInput from './AudioReferenceInput.vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { referenceFile } from '@/features/audio-generation/test-utils/blob';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import { referenceFile } from '@/features/audio-generation/test-utils/blob.test-support';
 import type { prepareReferenceAudio } from '@/features/audio-generation/reference-audio';
 const prepare = vi.hoisted(() => vi.fn<typeof prepareReferenceAudio>());
 vi.mock('../reference-audio', async importOriginal => ({ ...await importOriginal<typeof import('@/features/audio-generation/reference-audio')>(), prepareReferenceAudio: prepare }));

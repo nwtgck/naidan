@@ -4,13 +4,14 @@ import { createAbortableByteStream } from './abortable-byte-stream';
 
 async function promptly<T>({ operation }: { operation: Promise<T> }): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([operation, new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => reject(new Error('Cancellation waited for producer cleanup')), 100);
-    })]);
-  } finally {
-    clearTimeout(timer);
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      clearTimeout(timer);
+    },
+  };
+  return await Promise.race([operation, new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error('Cancellation waited for producer cleanup')), 100);
+  })]);
 }
 
 describe('abortable byte stream ownership', () => {
@@ -27,14 +28,15 @@ describe('abortable byte stream ownership', () => {
     const reader = stream.getReader();
     const pending = reader.read();
     const reason = new Error('Consumer no longer needs bytes');
-    try {
-      await promptly({ operation: reader.cancel(reason) });
-      expect(await pending).toEqual({ value: undefined, done: true });
-      expect(cancel).toHaveBeenCalledExactlyOnceWith(reason);
-      expect(source.locked).toBe(false);
-    } finally {
-      cleanup.resolve(); reader.releaseLock();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        cleanup.resolve(); reader.releaseLock();
+      },
+    };
+    await promptly({ operation: reader.cancel(reason) });
+    expect(await pending).toEqual({ value: undefined, done: true });
+    expect(cancel).toHaveBeenCalledExactlyOnceWith(reason);
+    expect(source.locked).toBe(false);
   });
 
   it('reports a destination error even when producer cleanup never finishes', async () => {
@@ -48,19 +50,20 @@ describe('abortable byte stream ownership', () => {
     }, { highWaterMark: 0 });
     const stream = createAbortableByteStream({ stream: source, signal: new AbortController().signal, onCancel: undefined });
     const failure = new Error('Disk full');
-    try {
-      await expect(promptly({
-        operation: stream.pipeTo(new WritableStream({
-          write() {
-            throw failure;
-          },
-        })),
-      })).rejects.toBe(failure);
-      expect(source.locked).toBe(false);
-      expect(cancel).toHaveBeenCalledExactlyOnceWith(failure);
-    } finally {
-      cleanup.resolve();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        cleanup.resolve();
+      },
+    };
+    await expect(promptly({
+      operation: stream.pipeTo(new WritableStream({
+        write() {
+          throw failure;
+        },
+      })),
+    })).rejects.toBe(failure);
+    expect(source.locked).toBe(false);
+    expect(cancel).toHaveBeenCalledExactlyOnceWith(failure);
   });
 
   it('does not replace a destination error with a rejecting cleanup hook', async () => {
@@ -109,14 +112,15 @@ describe('abortable byte stream ownership', () => {
     const reader = stream.getReader();
     const read = reader.read();
     const reason = new Error('Stopped');
-    try {
-      abort.abort(reason);
-      await expect(read).rejects.toBe(reason);
-      expect(source.locked).toBe(false);
-      expect(cancel).toHaveBeenCalledExactlyOnceWith(reason);
-    } finally {
-      cleanup.resolve(); reader.releaseLock();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        cleanup.resolve(); reader.releaseLock();
+      },
+    };
+    abort.abort(reason);
+    await expect(read).rejects.toBe(reason);
+    expect(source.locked).toBe(false);
+    expect(cancel).toHaveBeenCalledExactlyOnceWith(reason);
   });
 
   it('keeps EOF and cancellation of a completed stream distinct', async () => {

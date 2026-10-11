@@ -47,24 +47,25 @@ describe('structured generation over the actual Comlink MessageChannel transport
       return { content: '', reasoningContent: '', toolCalls: [call], finishReason: 'stop' };
     });
     const remote = connect();
-    try {
-      const pending = remote.generate(request(), workerProxy({
-        value: async ({ event }: { event: GenerationEvent }) => {
-          events.push(event);
-          if (event.type === 'tool_call_draft') await gate.promise;
-        },
-      }), workerProxy({ value: () => {} }));
-      await vi.waitFor(() => expect(events).toHaveLength(2));
-      expect(acknowledged).toBe(false);
-      expect(events[1]).toEqual({ type: 'tool_call_draft', index: 0, name: 'lookup', arguments: { offset: 0, text: '{"city":"Tok' } });
-      gate.resolve();
-      expect(await pending).toMatchObject({ toolCalls: [call] });
-      expect(acknowledged).toBe(true);
-      expect(events.at(-1)).toEqual({ type: 'tool_call', index: 0, toolCall: call });
-    } finally {
-      gate.resolve();
-      releaseWorkerRemote({ remote });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        gate.resolve();
+        releaseWorkerRemote({ remote });
+      },
+    };
+    const pending = remote.generate(request(), workerProxy({
+      value: async ({ event }: { event: GenerationEvent }) => {
+        events.push(event);
+        if (event.type === 'tool_call_draft') await gate.promise;
+      },
+    }), workerProxy({ value: () => {} }));
+    await vi.waitFor(() => expect(events).toHaveLength(2));
+    expect(acknowledged).toBe(false);
+    expect(events[1]).toEqual({ type: 'tool_call_draft', index: 0, name: 'lookup', arguments: { offset: 0, text: '{"city":"Tok' } });
+    gate.resolve();
+    expect(await pending).toMatchObject({ toolCalls: [call] });
+    expect(acknowledged).toBe(true);
+    expect(events.at(-1)).toEqual({ type: 'tool_call', index: 0, toolCall: call });
   });
 
   it('acknowledges cloned reasoning and text before the native producer advances', async () => {
@@ -75,17 +76,18 @@ describe('structured generation over the actual Comlink MessageChannel transport
       return { content: '<think>literal</think>  ', reasoningContent: ' R\n', toolCalls: [], finishReason: 'stop' };
     });
     const remote = connect();
-    try {
-      const pending = remote.generate(request(), workerProxy({
-        value: async ({ event }: { event: GenerationEvent }) => {
-          events.push(event);if (event.type === 'reasoning') await gate.promise;
-        },
-      }), workerProxy({ value: () => {} }));
-      await vi.waitFor(() => expect(events).toHaveLength(1));expect(stage).toBe(1);gate.resolve();
-      expect(await pending).toMatchObject({ content: '<think>literal</think>  ', reasoningContent: ' R\n' });expect(stage).toBe(3);expect(events.map(e => e.type)).toEqual(['reasoning', 'text']);
-    } finally {
-      gate.resolve();releaseWorkerRemote({ remote });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        gate.resolve();releaseWorkerRemote({ remote });
+      },
+    };
+    const pending = remote.generate(request(), workerProxy({
+      value: async ({ event }: { event: GenerationEvent }) => {
+        events.push(event);if (event.type === 'reasoning') await gate.promise;
+      },
+    }), workerProxy({ value: () => {} }));
+    await vi.waitFor(() => expect(events).toHaveLength(1));expect(stage).toBe(1);gate.resolve();
+    expect(await pending).toMatchObject({ content: '<think>literal</think>  ', reasoningContent: ' R\n' });expect(stage).toBe(3);expect(events.map(e => e.type)).toEqual(['reasoning', 'text']);
   });
 
   it('delivers accepted content and confirmed calls during cancellation before closing the RPC', async () => {
@@ -97,17 +99,18 @@ describe('structured generation over the actual Comlink MessageChannel transport
       return { content: 'accepted', reasoningContent: '', toolCalls: [call], finishReason: 'stop' };
     });
     const remote = connect();
-    try {
-      const pending = remote.generate(request(), workerProxy({
-        value: async ({ event }: { event: GenerationEvent }) => {
-          events.push(event);
-        },
-      }), workerProxy({ value: () => {} }));
-      await vi.waitFor(() => expect(events).toHaveLength(1));await remote.cancelGeneration({ generationId: 1 });expect(signal?.aborted).toBe(true);
-      gate.resolve();await pending;expect(events).toEqual([{ type: 'text', text: 'accepted' }, { type: 'tool_call_start', index: 0 }, { type: 'tool_call', index: 0, toolCall: call }]);
-    } finally {
-      gate.resolve();releaseWorkerRemote({ remote });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        gate.resolve();releaseWorkerRemote({ remote });
+      },
+    };
+    const pending = remote.generate(request(), workerProxy({
+      value: async ({ event }: { event: GenerationEvent }) => {
+        events.push(event);
+      },
+    }), workerProxy({ value: () => {} }));
+    await vi.waitFor(() => expect(events).toHaveLength(1));await remote.cancelGeneration({ generationId: 1 });expect(signal?.aborted).toBe(true);
+    gate.resolve();await pending;expect(events).toEqual([{ type: 'text', text: 'accepted' }, { type: 'tool_call_start', index: 0 }, { type: 'tool_call', index: 0, toolCall: call }]);
   });
 
   it('propagates a failed content acknowledgement without sending later output or retaining the active operation', async () => {
@@ -117,18 +120,19 @@ describe('structured generation over the actual Comlink MessageChannel transport
       return { content: 'A', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
     });
     const remote = connect();
-    try {
-      await expect(remote.generate(request(), workerProxy({
-        value: async () => {
-          throw new Error('private consumer details');
-        },
-      }), workerProxy({ value: () => {} }))).rejects.toThrow('worker-failed');
-      expect(after).toBe(false);
-      native.generate.mockResolvedValueOnce({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
-      expect(await remote.generate({ ...request(), generationId: 2 }, workerProxy({ value: async () => {} }), workerProxy({ value: () => {} }))).toHaveProperty('finishReason', 'stop');
-    } finally {
-      releaseWorkerRemote({ remote });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        releaseWorkerRemote({ remote });
+      },
+    };
+    await expect(remote.generate(request(), workerProxy({
+      value: async () => {
+        throw new Error('private consumer details');
+      },
+    }), workerProxy({ value: () => {} }))).rejects.toThrow('worker-failed');
+    expect(after).toBe(false);
+    native.generate.mockResolvedValueOnce({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+    expect(await remote.generate({ ...request(), generationId: 2 }, workerProxy({ value: async () => {} }), workerProxy({ value: () => {} }))).toHaveProperty('finishReason', 'stop');
   });
 
   it.each(['complete', 'cancel', 'delivery-failure'] as const)('retains request ownership across paired delivery/decode on %s', async outcome => {
@@ -155,25 +159,26 @@ describe('structured generation over the actual Comlink MessageChannel transport
     const observed = pending.then(value => ({ type: 'ok' as const, value }), error => ({ type: 'error' as const, error: error as Error })).finally(() => {
       returned = true;
     });
-    try {
-      await started.promise; await vi.waitFor(() => expect(events).toHaveLength(1));
-      await expect(remote.generate({ ...request(), generationId: 2 }, workerProxy({ value: async () => {} }), workerProxy({ value: () => {} }))).rejects.toThrow('busy');
-      if (outcome === 'cancel') await remote.cancelGeneration({ generationId: 1 });
-      if (outcome === 'delivery-failure') deliveryGate.reject(new Error('private receiver details')); else deliveryGate.resolve();
-      await new Promise<void>(resolve => setTimeout(resolve, 5));
-      expect(advanced).toBe(false); expect(returned).toBe(false);
-      nativeGate.resolve();
-      const result = await observed;
-      if (outcome === 'complete') expect(result).toMatchObject({ type: 'ok', value: { content: 'first' } });
-      else {
-        expect(result.type).toBe('error');
-        if (result.type === 'error') expect(result.error.message).toContain(outcome === 'cancel' ? 'aborted' : 'worker-failed');
-      }
-      expect(events).toEqual([{ type: 'text', text: 'first' }]);
-      native.generate.mockResolvedValueOnce({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
-      await expect(remote.generate({ ...request(), generationId: 3 }, workerProxy({ value: async () => {} }), workerProxy({ value: () => {} }))).resolves.toHaveProperty('finishReason', 'stop');
-    } finally {
-      nativeGate.resolve(); deliveryGate.resolve(); await observed; releaseWorkerRemote({ remote });
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        nativeGate.resolve(); deliveryGate.resolve(); await observed; releaseWorkerRemote({ remote });
+      },
+    };
+    await started.promise; await vi.waitFor(() => expect(events).toHaveLength(1));
+    await expect(remote.generate({ ...request(), generationId: 2 }, workerProxy({ value: async () => {} }), workerProxy({ value: () => {} }))).rejects.toThrow('busy');
+    if (outcome === 'cancel') await remote.cancelGeneration({ generationId: 1 });
+    if (outcome === 'delivery-failure') deliveryGate.reject(new Error('private receiver details')); else deliveryGate.resolve();
+    await new Promise<void>(resolve => setTimeout(resolve, 5));
+    expect(advanced).toBe(false); expect(returned).toBe(false);
+    nativeGate.resolve();
+    const result = await observed;
+    if (outcome === 'complete') expect(result).toMatchObject({ type: 'ok', value: { content: 'first' } });
+    else {
+      expect(result.type).toBe('error');
+      if (result.type === 'error') expect(result.error.message).toContain(outcome === 'cancel' ? 'aborted' : 'worker-failed');
     }
+    expect(events).toEqual([{ type: 'text', text: 'first' }]);
+    native.generate.mockResolvedValueOnce({ content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' });
+    await expect(remote.generate({ ...request(), generationId: 3 }, workerProxy({ value: async () => {} }), workerProxy({ value: () => {} }))).resolves.toHaveProperty('finishReason', 'stop');
   });
 });

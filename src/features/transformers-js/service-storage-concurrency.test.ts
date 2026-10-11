@@ -58,30 +58,31 @@ it('rechecks the organization after model deletion and preserves a repository cr
   });
   const owner = createTransformersJsService({ createWorkerClient: factory });
   const deleting = owner.service.deleteModel({ modelId: 'hf.co/fixture/removed-model' });
-  try {
-    await parentRequested.promise;
-    expect(removed).toEqual(['/models/huggingface.co/fixture/removed-model']);
-    expect(q.held.size).toBe(0);
-    await withOpfsFileLease({
-      path: 'models/huggingface.co/fixture/new-model/resolve/main/config.json',
-      mode: 'exclusive',
-      availability: 'wait',
-      signal: undefined,
-      run: async () => {
-        await org.getDirectoryHandle('new-model', { create: true });
-      },
-    });
-    releaseParent.resolve();
-    await deleting;
-    const retained = await hf.getDirectoryHandle('fixture', { create: false });
-    await expect(retained.getDirectoryHandle('new-model', { create: false })).resolves.toBeDefined();
-    expect(removed).toEqual(['/models/huggingface.co/fixture/removed-model']);
-    expect(factory).not.toHaveBeenCalled();
-    expect(q.held.size).toBe(0);
-    expect(q.queued).toEqual([]);
-  } finally {
-    releaseParent.resolve();
-    await deleting;
-    await owner.dispose();
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      releaseParent.resolve();
+      await deleting;
+      await owner.dispose();
+    },
+  };
+  await parentRequested.promise;
+  expect(removed).toEqual(['/models/huggingface.co/fixture/removed-model']);
+  expect(q.held.size).toBe(0);
+  await withOpfsFileLease({
+    path: 'models/huggingface.co/fixture/new-model/resolve/main/config.json',
+    mode: 'exclusive',
+    availability: 'wait',
+    signal: undefined,
+    run: async () => {
+      await org.getDirectoryHandle('new-model', { create: true });
+    },
+  });
+  releaseParent.resolve();
+  await deleting;
+  const retained = await hf.getDirectoryHandle('fixture', { create: false });
+  await expect(retained.getDirectoryHandle('new-model', { create: false })).resolves.toBeDefined();
+  expect(removed).toEqual(['/models/huggingface.co/fixture/removed-model']);
+  expect(factory).not.toHaveBeenCalled();
+  expect(q.held.size).toBe(0);
+  expect(q.queued).toEqual([]);
 });

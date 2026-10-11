@@ -4,8 +4,8 @@ import { createHash } from 'node:crypto';
 import { getReadableStreamTransferSupport } from '@/utils/worker-transport';
 import { createImageDownloadFetchBridge } from './fetch-bridge';
 import { createImageDownloadWorker } from './impl';
-import { qwenRecipeFixtureBytes } from '@/features/stable-diffusion-cpp-browser/test-utils/catalog-weights';
-import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage';
+import { qwenRecipeFixtureBytes } from '@/features/stable-diffusion-cpp-browser/test-utils/catalog-weights.test-support';
+import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
 import { imageModelRecipes } from '@/features/stable-diffusion-cpp-browser/model-recipes';
 import { listImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
 import type { PrivacyFetchStreamResponse } from '@/features/privacy-fetch';
@@ -56,15 +56,16 @@ it.each(['supported', 'unsupported'] as const)('delivers the authorized broker s
     };
   });
   const bridge = createImageDownloadFetchBridge({ signal: new AbortController().signal });
-  try {
-    const writer = createImageDownloadWorker();
-    await writer.download({ files }, () => undefined, bridge.open);
-    expect(calls.fetch).toHaveBeenCalledTimes(6);
-    const saved = (await listImageRepositories({ signal: undefined })).flatMap(repo => repo.files);
-    expect(saved).toHaveLength(3); expect(saved.every(file => file.receipt)).toBe(true);
-  } finally {
-    bridge.dispose();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      bridge.dispose();
+    },
+  };
+  const writer = createImageDownloadWorker();
+  await writer.download({ files }, () => undefined, bridge.open);
+  expect(calls.fetch).toHaveBeenCalledTimes(6);
+  const saved = (await listImageRepositories({ signal: undefined })).flatMap(repo => repo.files);
+  expect(saved).toHaveLength(3); expect(saved.every(file => file.receipt)).toBe(true);
 });
 
 it('aborts a pending broker response when the owning download is paused', async () => {
@@ -72,13 +73,14 @@ it('aborts a pending broker response when the owning download is paused', async 
     request.signal.addEventListener('abort', () => reject(new DOMException('cancel', 'AbortError')), { once: true });
   }));
   const controller = new AbortController(), bridge = createImageDownloadFetchBridge({ signal: controller.signal });
-  try {
-    const writer = createImageDownloadWorker();
-    const pending = writer.download({ files }, () => undefined, bridge.open);
-    const rejected = expect(pending).rejects.toThrow();
-    await vi.waitFor(() => expect(calls.fetch).toHaveBeenCalledOnce());
-    controller.abort(); writer.cancel(); await rejected;
-  } finally {
-    bridge.dispose();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      bridge.dispose();
+    },
+  };
+  const writer = createImageDownloadWorker();
+  const pending = writer.download({ files }, () => undefined, bridge.open);
+  const rejected = expect(pending).rejects.toThrow();
+  await vi.waitFor(() => expect(calls.fetch).toHaveBeenCalledOnce());
+  controller.abort(); writer.cancel(); await rejected;
 });

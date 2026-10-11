@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { computed, ref } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view.test-support';
 import type { ImageEngineSnapshot } from '@/features/stable-diffusion-cpp-browser/engine-state';
 import type { ImageEngineStateView } from '@/features/image-generation/use-image-generation-types';
 import ImageEngineState from './ImageEngineState.vue';

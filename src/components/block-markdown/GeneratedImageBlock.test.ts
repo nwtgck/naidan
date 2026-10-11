@@ -5,7 +5,7 @@ import GeneratedImageBlock from './GeneratedImageBlock.vue';
 import { storageService } from '@/00-storage/service';
 import { useImagePreview } from '@/composables/useImagePreview';
 import { ImageDownloadHydrator } from '@/components/ImageDownloadHydrator';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 // Mock storage service
 vi.mock('../../00-storage/service', () => ({

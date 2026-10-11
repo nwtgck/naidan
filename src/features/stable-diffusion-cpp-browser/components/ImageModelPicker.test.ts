@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { DOMWrapper, mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageModelPicker from './ImageModelPicker.vue';
 import type { ImageModelChoice } from '@/features/stable-diffusion-cpp-browser/library-view';
 const choices: ImageModelChoice[] = [

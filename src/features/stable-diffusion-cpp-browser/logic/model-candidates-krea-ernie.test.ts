@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { expect, it } from 'vitest';
 import { scanImageRepositories, componentMatch, componentRequirements } from './model-candidates';
-import { ggufFixture, krea2Tensors, krea2GgufTensors, ernieImageTensors, qwenTextTensors, ministralTextTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
+import { ggufFixture, krea2Tensors, krea2GgufTensors, ernieImageTensors, qwenTextTensors, ministralTextTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights.test-support';
 import type { TensorInfo } from './model-metadata';
 
 async function candidate({ tensors, architecture }: { tensors: TensorInfo[], architecture: string | undefined }) {

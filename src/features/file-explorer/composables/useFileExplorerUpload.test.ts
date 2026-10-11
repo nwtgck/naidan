@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { FileExplorerEntry } from '@/features/file-explorer/logic/types';
 import type {
   FileExplorerAnalyzeZipUploadResponse,

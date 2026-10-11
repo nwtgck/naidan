@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, type EffectScope } from 'vue';
 import { captureAudioSettings, useAudioHistory } from './useAudioHistory';
 import { defaultAudioParameters, type AudioGenerationInput } from '@/features/audio-generation/types';
-import { audioResult } from '@/features/audio-generation/test-utils/wav';
+import { audioResult } from '@/features/audio-generation/test-utils/wav.test-support';
 const scopes: EffectScope[] = [];
 const urls = { create: vi.fn(), revoke: vi.fn() };
 

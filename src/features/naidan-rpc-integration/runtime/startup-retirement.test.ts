@@ -56,53 +56,54 @@ it.each([
     changed: () => {},
   };
   const manager = new NaidanPeerManager({ dependencies });
-  try {
-    await manager.setEnabled({ enabled: true }); await manager.reload();
-    const start = (() => {
-      switch (mode) {
-      case 'connect': return manager.connect({ id: record.id });
-      case 'pair': return manager.pair({ settings: record.transport, code: '0042', verifyPeer: async () => true, signal: new AbortController().signal });
-      default: { const exhaustive: never = mode; throw new Error(String(exhaustive)); }
-      }
-    })();
-    void start.catch(() => {});
-    await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
-    const stopping = manager.setEnabled({ enabled: false }); let settled = false;
-    void stopping.then(() => {
-      settled = true;
-    }, () => {
-      settled = true;
-    });
-    if (failureAt === 'factory') {
-      opening.reject(failure);
-      await vi.waitFor(() => expect(retireResources).toHaveBeenCalledOnce());
-      expect(settled).toBe(false); expect(abort).not.toHaveBeenCalled();
-      resourcesDone.resolve();
-      await expect(stopping).rejects.toBe(failure);
-      if (mode === 'connect') await expect(start).rejects.toThrow('cancelled');
-      else await expect(start).rejects.toMatchObject({ name: 'PipingRetirementError', cause: failure });
-      await expect(manager.setEnabled({ enabled: false })).rejects.toBe(failure);
-      expect(open).toHaveBeenCalledOnce(); expect(release).not.toHaveBeenCalled();
-      return;
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      linkClosed.resolve(); resourcesDone.resolve(); await manager.setEnabled({ enabled: false }).catch(() => {});
+    },
+  };
+  await manager.setEnabled({ enabled: true }); await manager.reload();
+  const start = (() => {
+    switch (mode) {
+    case 'connect': return manager.connect({ id: record.id });
+    case 'pair': return manager.pair({ settings: record.transport, code: '0042', verifyPeer: async () => true, signal: new AbortController().signal });
+    default: { const exhaustive: never = mode; throw new Error(String(exhaustive)); }
     }
-    opening.resolve({
-      peerIdentity: remote,
-      incomingStreams: { async *[Symbol.asyncIterator]() {} },
-      ended: new Promise(() => {}),
-      closed: linkClosed.promise,
-      openStream: async () => {
-        throw new Error('Not used');
-      },
-      abort,
-    });
-    await vi.waitFor(() => expect(abort).toHaveBeenCalledOnce());
-    expect(settled).toBe(false); expect(retireResources).not.toHaveBeenCalled(); expect(release).not.toHaveBeenCalled();
-    if (failureAt === 'closed') linkClosed.reject(failure); else linkClosed.resolve();
+  })();
+  void start.catch(() => {});
+  await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+  const stopping = manager.setEnabled({ enabled: false }); let settled = false;
+  void stopping.then(() => {
+    settled = true;
+  }, () => {
+    settled = true;
+  });
+  if (failureAt === 'factory') {
+    opening.reject(failure);
     await vi.waitFor(() => expect(retireResources).toHaveBeenCalledOnce());
-    expect(settled).toBe(false); resourcesDone.resolve();
-    await expect(stopping).rejects.toBe(failure); await expect(start).rejects.toBeDefined();
-    await expect(manager.setEnabled({ enabled: false })).rejects.toBe(failure); expect(release).not.toHaveBeenCalled();
-  } finally {
-    linkClosed.resolve(); resourcesDone.resolve(); await manager.setEnabled({ enabled: false }).catch(() => {});
+    expect(settled).toBe(false); expect(abort).not.toHaveBeenCalled();
+    resourcesDone.resolve();
+    await expect(stopping).rejects.toBe(failure);
+    if (mode === 'connect') await expect(start).rejects.toThrow('cancelled');
+    else await expect(start).rejects.toMatchObject({ name: 'PipingRetirementError', cause: failure });
+    await expect(manager.setEnabled({ enabled: false })).rejects.toBe(failure);
+    expect(open).toHaveBeenCalledOnce(); expect(release).not.toHaveBeenCalled();
+    return;
   }
+  opening.resolve({
+    peerIdentity: remote,
+    incomingStreams: { async *[Symbol.asyncIterator]() {} },
+    ended: new Promise(() => {}),
+    closed: linkClosed.promise,
+    openStream: async () => {
+      throw new Error('Not used');
+    },
+    abort,
+  });
+  await vi.waitFor(() => expect(abort).toHaveBeenCalledOnce());
+  expect(settled).toBe(false); expect(retireResources).not.toHaveBeenCalled(); expect(release).not.toHaveBeenCalled();
+  if (failureAt === 'closed') linkClosed.reject(failure); else linkClosed.resolve();
+  await vi.waitFor(() => expect(retireResources).toHaveBeenCalledOnce());
+  expect(settled).toBe(false); resourcesDone.resolve();
+  await expect(stopping).rejects.toBe(failure); await expect(start).rejects.toBeDefined();
+  await expect(manager.setEnabled({ enabled: false })).rejects.toBe(failure); expect(release).not.toHaveBeenCalled();
 });

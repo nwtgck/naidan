@@ -2,14 +2,14 @@ import type { MessageNode } from '@/01-models/types';
 import type { ChatId, MessageId } from '@/01-models/ids';
 import { idToRaw, toMessageId, toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import { ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
 
-import { setupScrollToMock } from '@/utils/test-utils';
+import { setupScrollToMock } from '@/utils/utils.test-support';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -64,7 +64,7 @@ vi.mock('@/composables/useAppPresentation', () => ({
   }),
 }));
 
-vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support', () => ({
   useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: mockCurrentChat,
     sendMessage: vi.fn(),

@@ -53,12 +53,13 @@ describe('usePWAUpdate', () => {
     const stop = watch(status, value => {
       if (value === 'ready') void update();
     }, { flush: 'sync' });
-    try {
-      setUpdateState({ next: { kind: 'ready', handler } });
-      expect(handler).toHaveBeenCalledOnce();
-    } finally {
-      stop();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        stop();
+      },
+    };
+    setUpdateState({ next: { kind: 'ready', handler } });
+    expect(handler).toHaveBeenCalledOnce();
   });
 
   it('restores the action on failure for a deliberate retry', async () => {

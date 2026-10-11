@@ -187,15 +187,16 @@ describe('streaming download Service Worker', () => {
     });
     const response = f.fetch({ mode: 'cors', clientId: 'owner', method: 'GET', range: undefined, requestUrl: f.url }).response;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      await expect(Promise.race([response.arrayBuffer(), new Promise((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error('response stayed open')), 100);
-      })])).rejects.toThrow('control channel closed');
-      await expect(source.sender.completed).rejects.toMatchObject({ name: 'AbortError' });
-      expect(source.openStream).not.toHaveBeenCalled();
-    } finally {
-      clearTimeout(timer);
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        clearTimeout(timer);
+      },
+    };
+    await expect(Promise.race([response.arrayBuffer(), new Promise((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('response stayed open')), 100);
+    })])).rejects.toThrow('control channel closed');
+    await expect(source.sender.completed).rejects.toMatchObject({ name: 'AbortError' });
+    expect(source.openStream).not.toHaveBeenCalled();
   });
 
   it('renews bounded event leases without accumulating timers or requiring byte production', async () => {

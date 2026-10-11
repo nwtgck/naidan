@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest';
 import { createModelFileSource, createModelFileReadCache, MODEL_FILE_CACHE_BYTES, MODEL_FILE_PAGE_BYTES } from './gguf-file';
-import { fixtureReader, sparseFile } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
+import { fixtureReader, sparseFile } from '@/features/stable-diffusion-cpp-browser/test-utils/weights.test-support';
 
 it('coalesces thousands of native 2-KiB reads into three bounded Blob reads', () => {
   const fixture = sparseFile({ name: 'original.gguf', header: new Uint8Array(), size: 20 * 1024 ** 3 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateAudioWav } from './wav';
-import { audioResult } from './test-utils/wav';
+import { audioResult } from './test-utils/wav.test-support';
 
 describe('native audio output validation', () => {
   it('accepts mono PCM16 and a nonzero typed-array offset', () => {

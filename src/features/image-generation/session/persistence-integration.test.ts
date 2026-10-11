@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { idToRaw, toImageGenerationAssetId, toImageGenerationSessionId, toImageGenerationTagId, type ImageGenerationSessionId } from '@/01-models/ids';
 import type { ImageGenerationAssetQuery, ImageGenerationCatalog, ImageGenerationTagReference } from '@/01-models/image-generation';
 import { SYNC_LOCK_KEY } from '@/constants';
-import { createImageGenerationStorageHarness, generationAssetFixture, generationRunFixture, generationSessionFixture } from '@/00-storage/service/image-generation/test-support';
+import { createImageGenerationStorageHarness, generationAssetFixture, generationRunFixture, generationSessionFixture } from '@/00-storage/service/image-generation/index.test-support';
 import { commitImageGenerationAsset, createImageGenerationRun, listImageGenerationRuns, listImageGenerationSessions, loadImageGenerationAsset, loadImageGenerationAssetAnnotations, loadImageGenerationCatalog, loadImageGenerationRun, loadImageGenerationSession, openImageGenerationStore, readImageGenerationSessionIndex, saveImageGenerationCatalog, saveImageGenerationSession, setImageGenerationAssetTags, updateImageGenerationRunExecution, type ImageGenerationStoreAccess } from '@/00-storage/service/image-generation';
 
 const rootPath = '/naidan-storage/experimental/image-generation';

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { audioGenerationInputSchema, audioGenerationResultSchema, defaultAudioParameters, MAX_REFERENCE_BYTES } from './types';
 import { workerAudioCallSchema } from '@/features/llama-cpp-browser/worker/types';
-import { audioResult } from './test-utils/wav';
+import { audioResult } from './test-utils/wav.test-support';
 
 function input() {
   return { ...defaultAudioParameters(), model: 'user/voice', text: 'こんにちは', reference: undefined, debug: 'off', options: { profile: 'auto' } };

@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import StandardCodeBlock from './StandardCodeBlock.vue';
 import { createHighlightWorker } from '@/features/highlight/worker/impl';
 import type { HighlightRequest, HighlightResponse } from '@/features/highlight/worker/types';

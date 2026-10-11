@@ -10,7 +10,7 @@ import { LlamaCppBrowserError, type EngineState } from '@/features/llama-cpp-bro
 import { createDownloadQueue } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { localModelAvailability } from '@/features/llama-cpp-browser/model-recovery/availability';
 import LlamaCppBrowserModelRecovery from '@/features/llama-cpp-browser/components/LlamaCppBrowserModelRecovery.vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useMissingLlamaCppBrowserModel } from './useMissingLlamaCppBrowserModel';
 
 const calls = vi.hoisted(() => ({ read: vi.fn(), plan: vi.fn(), installed: vi.fn(), download: vi.fn() }));

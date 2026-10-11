@@ -7,10 +7,10 @@ import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { Tool } from '@/01-models/tool';
 import { toAttachmentId, toBinaryObjectId, toMessageId, toToolCallId } from '@/01-models/ids';
 import { collectChatGeneration } from '@/logic/collect-chat-generation';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { LlamaCppBrowserService } from './service-contract';
 import { LlamaCppBrowserProvider } from './provider-hosted';
-import { chatRequest, createChatFixture, deliverNativeResult, finalText } from './test-utils/chat';
+import { chatRequest, createChatFixture, deliverNativeResult, finalText } from './test-utils/chat.test-support';
 const service = vi.hoisted(() => ({ generate: vi.fn<LlamaCppBrowserService['generate']>(), listModels: vi.fn<LlamaCppBrowserService['listModels']>(), runGenerationOperation: vi.fn<LlamaCppBrowserService['runGenerationOperation']>() }));
 vi.mock('@/features/llama-cpp-browser', () => ({ llamaCppBrowserService: service }));
 

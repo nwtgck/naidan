@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { h, ref } from 'vue';
 import ImageGenerationViewer from './ImageGenerationViewer.vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageDownloadMenu from './ImageDownloadMenu.vue';
 import type { ImageDownloadPreferences } from '@/features/image-generation/use-image-generation-types';
 let wrapper: VueWrapper | undefined;

@@ -6,10 +6,10 @@ import type { Request } from '@/features/stable-diffusion-cpp-browser/types';
 import type { ImageGenerationView } from './use-image-generation-types';
 import type { ImageClient } from '@/features/stable-diffusion-cpp-browser/worker/types';
 import { artifactFixture, ggufFile, parametersFixture, requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
-import { engineSnapshotFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/engine-state';
+import { engineSnapshotFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/engine-state.test-support';
 import type { ImageEngineInspection } from '@/features/stable-diffusion-cpp-browser/engine-state';
 import { snapshotImageGeneration, finishImageGenerationSnapshot } from './history/snapshot';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageGenerationEditor from './components/ImageGenerationEditor.vue';
 import ImageGenerationResults from './components/ImageGenerationResults.vue';
 import ImageGenerationProgress from './components/ImageGenerationProgress.vue';
@@ -1352,17 +1352,18 @@ it.each(['ready', 'failed'])('keeps the previous runtime view until local draft 
   const gate = Promise.withResolvers<void>();
   mocks.prepareFiles.mockReturnValueOnce(gate.promise);
   const restoring = view.restoreDraft!({ draft });
-  try {
-    await flushPromises();
-    expect(view.inferenceLocation!.kind.value).toBe('naidan_rpc');
-    if (outcome === 'ready') gate.resolve();
-    else gate.reject(new Error('inventory unavailable'));
-    await restoring;
-    expect(view.inferenceLocation!.kind.value).toBe(outcome === 'ready' ? 'local' : 'naidan_rpc');
-    expect(mocks.generate).not.toHaveBeenCalled();
-  } finally {
-    gate.resolve(); await restoring;
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      gate.resolve(); await restoring;
+    },
+  };
+  await flushPromises();
+  expect(view.inferenceLocation!.kind.value).toBe('naidan_rpc');
+  if (outcome === 'ready') gate.resolve();
+  else gate.reject(new Error('inventory unavailable'));
+  await restoring;
+  expect(view.inferenceLocation!.kind.value).toBe(outcome === 'ready' ? 'local' : 'naidan_rpc');
+  expect(mocks.generate).not.toHaveBeenCalled();
 });
 
 it('executes a multi-image submission through the common RPC loop without local inference or model scans', async () => {
@@ -1415,15 +1416,16 @@ it('retains terminally unconfirmed pixels without publishing a successful image 
   const h = await remoteView(); const original = h.generateImage.getMockImplementation()!;
   h.generateImage.mockImplementation(args => ({ ...original(args), closed: Promise.reject(new Error('lost terminal')) }));
   const { imageRecoveryStore } = await import('./execution/recovery'); const output = vi.fn(async () => {}), recovered = vi.fn(async () => {}), finished = vi.fn(async () => {});
-  try {
-    await h.view.generate({ submission: { count: 2, accepted: async () => {}, output, recovered, finished } });
-    expect(h.generateImage).toHaveBeenCalledOnce(); expect(output).not.toHaveBeenCalled(); expect(recovered).toHaveBeenCalledOnce();
-    expect(finished).toHaveBeenCalledWith({ completion: { type: 'interrupted' } });
-    wrapper!.unmount(); wrapper = undefined; expect(imageRecoveryStore.list()).toHaveLength(1);
-    expect(imageRecoveryStore.list()[0]!.record.result.confirmation).toBe('unconfirmed');
-  } finally {
-    for (const entry of imageRecoveryStore.list()) imageRecoveryStore.remove({ id: entry.id });
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      for (const entry of imageRecoveryStore.list()) imageRecoveryStore.remove({ id: entry.id });
+    },
+  };
+  await h.view.generate({ submission: { count: 2, accepted: async () => {}, output, recovered, finished } });
+  expect(h.generateImage).toHaveBeenCalledOnce(); expect(output).not.toHaveBeenCalled(); expect(recovered).toHaveBeenCalledOnce();
+  expect(finished).toHaveBeenCalledWith({ completion: { type: 'interrupted' } });
+  wrapper!.unmount(); wrapper = undefined; expect(imageRecoveryStore.list()).toHaveLength(1);
+  expect(imageRecoveryStore.list()[0]!.record.result.confirmation).toBe('unconfirmed');
 });
 
 it('retains a failed direct history save after gallery eviction and unmount without regenerating', async () => {

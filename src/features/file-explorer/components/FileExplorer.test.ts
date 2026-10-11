@@ -1,6 +1,6 @@
 import { defineComponent, h, Suspense } from 'vue';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, flushPromises } from '@vue/test-utils';
 import FileExplorer from './FileExplorer.vue';
 import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
@@ -717,18 +717,19 @@ describe('FileExplorer.vue', () => {
     await flushPromises();
     vi.useFakeTimers();
 
-    try {
-      const entry = wrapper.get('[data-testid="entry-item-touch-file.txt"]').element;
-      dispatchTouchPointerEvent({ target: entry, type: 'pointerdown', clientX: 80, clientY: 90 });
-      vi.advanceTimersByTime(600);
-      await flushPromises();
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        vi.useRealTimers();
+      },
+    };
+    const entry = wrapper.get('[data-testid="entry-item-touch-file.txt"]').element;
+    dispatchTouchPointerEvent({ target: entry, type: 'pointerdown', clientX: 80, clientY: 90 });
+    vi.advanceTimersByTime(600);
+    await flushPromises();
 
-      expect(document.body.querySelector('[data-testid="context-menu"]')).not.toBeNull();
-      expect(document.body.querySelector('[data-testid="context-menu"]')?.textContent).toContain('Download');
-      dispatchTouchPointerEvent({ target: window, type: 'pointerup', clientX: 80, clientY: 90 });
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(document.body.querySelector('[data-testid="context-menu"]')).not.toBeNull();
+    expect(document.body.querySelector('[data-testid="context-menu"]')?.textContent).toContain('Download');
+    dispatchTouchPointerEvent({ target: window, type: 'pointerup', clientX: 80, clientY: 90 });
   });
 
   it('long-pressing the list background shows the background context menu', async () => {
@@ -736,19 +737,20 @@ describe('FileExplorer.vue', () => {
     await flushPromises();
     vi.useFakeTimers();
 
-    try {
-      const background = wrapper.get('[data-testid="list-scroll-container"]').element;
-      dispatchTouchPointerEvent({ target: background, type: 'pointerdown' });
-      vi.advanceTimersByTime(600);
-      await flushPromises();
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        vi.useRealTimers();
+      },
+    };
+    const background = wrapper.get('[data-testid="list-scroll-container"]').element;
+    dispatchTouchPointerEvent({ target: background, type: 'pointerdown' });
+    vi.advanceTimersByTime(600);
+    await flushPromises();
 
-      const menu = document.body.querySelector('[data-testid="context-menu"]');
-      expect(menu).not.toBeNull();
-      expect(menu?.textContent).toContain('New File');
-      dispatchTouchPointerEvent({ target: window, type: 'pointerup' });
-    } finally {
-      vi.useRealTimers();
-    }
+    const menu = document.body.querySelector('[data-testid="context-menu"]');
+    expect(menu).not.toBeNull();
+    expect(menu?.textContent).toContain('New File');
+    dispatchTouchPointerEvent({ target: window, type: 'pointerup' });
   });
 
   it('Escape hides context menu', async () => {

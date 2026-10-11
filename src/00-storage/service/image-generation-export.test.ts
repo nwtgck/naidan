@@ -4,7 +4,7 @@ import { vi } from 'vitest';
 import { idToRaw, toImageGenerationTagId } from '@/01-models/ids';
 import * as service from './image-generation';
 import { collectImageGenerationSessionMetadata } from './image-generation-export';
-import { createImageGenerationStorageHarness, generationRunFixture, generationSessionFixture, generationAssetFixture, generationDraftFixture } from './image-generation/test-support';
+import { createImageGenerationStorageHarness, generationRunFixture, generationSessionFixture, generationAssetFixture, generationDraftFixture } from './image-generation/index.test-support';
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
 
 beforeEach(() => {

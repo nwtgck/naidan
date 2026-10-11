@@ -39,29 +39,30 @@ it.each(['cancel', 'revoke'] as const)('owns unread result streams returned afte
   const caller = new NaidanRpcPeer({ transport: transport.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: lifetime.signal });
   const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   void call.result.catch(() => {}); void call.closed.catch(() => {});
-  try {
-    await ready.promise;
-    switch (mode) {
-    case 'cancel': call.cancel({ reason: 'Stop before the handler returns' }); break;
-    case 'revoke': callee.setAllowedMethods({ contract: definition, allowedMethods: [] }); break;
-    default: { const exhaustive: never = mode; throw new Error(String(exhaustive)); }
-    }
-    await expect(call.result).rejects.toBeDefined();
-    const retirement = callee.retire(); let retired = false;
-    void retirement.then(() => {
-      retired = true;
-    });
-    result.resolve();
-    await vi.waitFor(() => {
-      expect(cancelImage).toHaveBeenCalledOnce(); expect(cancelEvents).toHaveBeenCalledOnce();
-    }, { timeout: 200 });
-    expect(pull).not.toHaveBeenCalled(); expect(retired).toBe(false);
-    first.resolve(); await new Promise(resolve => setTimeout(resolve, 0)); expect(retired).toBe(false);
-    second.resolve(); await retirement; expect(retired).toBe(true);
-  } finally {
-    result.resolve(); first.resolve(); second.resolve(); lifetime.abort(); transport.close();
-    await Promise.all([caller.retire(), callee.retire()]);
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      result.resolve(); first.resolve(); second.resolve(); lifetime.abort(); transport.close();
+      await Promise.all([caller.retire(), callee.retire()]);
+    },
+  };
+  await ready.promise;
+  switch (mode) {
+  case 'cancel': call.cancel({ reason: 'Stop before the handler returns' }); break;
+  case 'revoke': callee.setAllowedMethods({ contract: definition, allowedMethods: [] }); break;
+  default: { const exhaustive: never = mode; throw new Error(String(exhaustive)); }
   }
+  await expect(call.result).rejects.toBeDefined();
+  const retirement = callee.retire(); let retired = false;
+  void retirement.then(() => {
+    retired = true;
+  });
+  result.resolve();
+  await vi.waitFor(() => {
+    expect(cancelImage).toHaveBeenCalledOnce(); expect(cancelEvents).toHaveBeenCalledOnce();
+  }, { timeout: 200 });
+  expect(pull).not.toHaveBeenCalled(); expect(retired).toBe(false);
+  first.resolve(); await new Promise(resolve => setTimeout(resolve, 0)); expect(retired).toBe(false);
+  second.resolve(); await retirement; expect(retired).toBe(true);
 });
 
 it('late source cancellation failure stays visible while other native cleanup is joined', async () => {
@@ -98,24 +99,25 @@ it('late source cancellation failure stays visible while other native cleanup is
   const caller = new NaidanRpcPeer({ transport: transport.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: lifetime.signal });
   const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   void call.result.catch(() => {}); void call.closed.catch(() => {});
-  try {
-    await ready.promise; call.cancel({ reason: 'Stop while handler owns work' });
-    await expect(call.result).rejects.toMatchObject({ code: 'CANCELLED' });
-    result.resolve(); await failed.promise;
-    expect((await callee.ended).error).toBe(cleanupFailure);
-    let retired = false; const retirement = callee.retire();
-    void retirement.then(() => {
-      retired = true;
-    }, () => {
-      retired = true;
-    });
-    await Promise.resolve(); expect(retired).toBe(false);
-    other.resolve(); await expect(retirement).rejects.toBe(cleanupFailure);
-    await expect(call.closed).rejects.toMatchObject({ code: 'CANCELLED' });
-  } finally {
-    result.resolve(); other.resolve(); lifetime.abort(); transport.close();
-    await Promise.allSettled([caller.retire(), callee.retire()]);
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      result.resolve(); other.resolve(); lifetime.abort(); transport.close();
+      await Promise.allSettled([caller.retire(), callee.retire()]);
+    },
+  };
+  await ready.promise; call.cancel({ reason: 'Stop while handler owns work' });
+  await expect(call.result).rejects.toMatchObject({ code: 'CANCELLED' });
+  result.resolve(); await failed.promise;
+  expect((await callee.ended).error).toBe(cleanupFailure);
+  let retired = false; const retirement = callee.retire();
+  void retirement.then(() => {
+    retired = true;
+  }, () => {
+    retired = true;
+  });
+  await Promise.resolve(); expect(retired).toBe(false);
+  other.resolve(); await expect(retirement).rejects.toBe(cleanupFailure);
+  await expect(call.closed).rejects.toMatchObject({ code: 'CANCELLED' });
 });
 
 it('a late handler rejection cannot impersonate an owned retirement failure', async () => {
@@ -140,13 +142,14 @@ it('a late handler rejection cannot impersonate an owned retirement failure', as
   const caller = new NaidanRpcPeer({ transport: transport.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: stop.signal });
   const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   void call.result.catch(() => {}); void call.closed.catch(() => {});
-  try {
-    await entered.promise; call.cancel({ reason: 'Stop' });
-    await expect(call.result).rejects.toMatchObject({ code: 'CANCELLED' });
-    const retirement = callee.retire(); release.resolve(); await expect(retirement).resolves.toBeUndefined();
-  } finally {
-    release.resolve(); stop.abort(); transport.close(); await Promise.allSettled([caller.retire(), callee.retire()]);
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      release.resolve(); stop.abort(); transport.close(); await Promise.allSettled([caller.retire(), callee.retire()]);
+    },
+  };
+  await entered.promise; call.cancel({ reason: 'Stop' });
+  await expect(call.result).rejects.toMatchObject({ code: 'CANCELLED' });
+  const retirement = callee.retire(); release.resolve(); await expect(retirement).resolves.toBeUndefined();
 });
 
 it('a STOPPED write failure cannot impersonate source cleanup failure', async () => {
@@ -177,12 +180,13 @@ it('a STOPPED write failure cannot impersonate source cleanup failure', async ()
   const caller = new NaidanRpcPeer({ transport: transport.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: stop.signal });
   const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   void call.closed.catch(() => {});
-  try {
-    const value = await call.result;
-    const cancelled = value.image.cancel(); void cancelled.catch(() => {});
-    await failed.promise; await Promise.allSettled([cancelled]);
-    await expect(callee.retire()).resolves.toBeUndefined();
-  } finally {
-    stop.abort(); transport.close(); await Promise.allSettled([caller.retire(), callee.retire()]); send.mockRestore();
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      stop.abort(); transport.close(); await Promise.allSettled([caller.retire(), callee.retire()]); send.mockRestore();
+    },
+  };
+  const value = await call.result;
+  const cancelled = value.image.cancel(); void cancelled.catch(() => {});
+  await failed.promise; await Promise.allSettled([cancelled]);
+  await expect(callee.retire()).resolves.toBeUndefined();
 });

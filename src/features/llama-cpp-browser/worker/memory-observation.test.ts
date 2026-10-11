@@ -176,18 +176,19 @@ it.each([false, true])('collects ordered settings before the same-endpoint RPC s
   });
   const observer = observeMeasurementMemory({ worker: client, now: () => 2 });
   const remote = wrapWorkerRemote<Api>({ endpoint: client });
-  try {
-    if (fail) await expect(remote.complete({ fail })).rejects.toThrow('initialization failed');
-    else await remote.complete({ fail });
-    expect(observer.finish().nativeSettings).toEqual([
-      { observedMs: 2, loadedModelDescriptor: { source: 'loaded-model-native-api', layers: 64 } },
-      { observedMs: 2, contextAttempt: 1, contextEvent: 'context-start' },
-      { observedMs: 2, nativeMetric: 'n_ctx', nativeValue: 512 },
-      { observedMs: 2, contextAttempt: 1, nativeFlashAttention: { kind: 'requested', mode: 'auto' } },
-      { observedMs: 2, contextAttempt: 1, nativeFlashAttention: { kind: 'resolved', mode: 'enabled' } },
-      { observedMs: 2, contextAttempt: 1, contextEvent: 'context-ready' },
-    ]);
-  } finally {
-    observer.finish(); releaseWorkerRemote({ remote }); port1.close(); port2.close();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      observer.finish(); releaseWorkerRemote({ remote }); port1.close(); port2.close();
+    },
+  };
+  if (fail) await expect(remote.complete({ fail })).rejects.toThrow('initialization failed');
+  else await remote.complete({ fail });
+  expect(observer.finish().nativeSettings).toEqual([
+    { observedMs: 2, loadedModelDescriptor: { source: 'loaded-model-native-api', layers: 64 } },
+    { observedMs: 2, contextAttempt: 1, contextEvent: 'context-start' },
+    { observedMs: 2, nativeMetric: 'n_ctx', nativeValue: 512 },
+    { observedMs: 2, contextAttempt: 1, nativeFlashAttention: { kind: 'requested', mode: 'auto' } },
+    { observedMs: 2, contextAttempt: 1, nativeFlashAttention: { kind: 'resolved', mode: 'enabled' } },
+    { observedMs: 2, contextAttempt: 1, contextEvent: 'context-ready' },
+  ]);
 });

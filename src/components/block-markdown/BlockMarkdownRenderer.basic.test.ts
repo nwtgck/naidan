@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import BlockMarkdownRenderer from './BlockMarkdownRenderer.vue';
-import { normalizeDom } from './test-utils';
+import { normalizeDom } from './utils.test-support';
 
 describe('BlockMarkdownRenderer: Basic Syntax', () => {
   const mountRenderer = ({ content }: { content: string }) => {

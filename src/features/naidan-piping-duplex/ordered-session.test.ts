@@ -3,7 +3,7 @@ import { expect, it, onTestFinished, vi } from 'vitest';
 import { OrderedSession } from '@/features/naidan-piping-duplex/ordered-session';
 import { FiniteTransferEndpoint } from '@/features/naidan-piping-duplex/finite-transfer';
 import { FiniteMemoryRelay } from '@/features/naidan-piping-duplex/finite-memory-relay.test-support';
-import { keyPair, useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
+import { keyPair, useOfflineScope } from '@/features/naidan-piping-duplex/index.test-support';
 
 useOfflineScope();
 

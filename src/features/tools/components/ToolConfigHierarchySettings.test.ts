@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ToolConfigHierarchySettings from './ToolConfigHierarchySettings.vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { ToolConfig } from '@/01-models/tool';
 
 const featureState = vi.hoisted(() => ({ weshEnabled: true }));

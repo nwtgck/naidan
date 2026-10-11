@@ -300,39 +300,40 @@ for (const failure of ['device-lost', 'uncaptured', 'error-scope', 'abort'] as c
     });
     const diagnostic = vi.fn(), worker = createImageWorker({ reportDiagnostic: diagnostic });
     const task = worker.generate(request, vi.fn());
-    try {
-      await entered.promise; time = 5000;
-      switch (failure) {
-      case 'device-lost': lost.resolve({ reason: 'unknown', message: 'test device lost' }); break;
-      case 'uncaptured': {
-        const event = new Event('uncapturederror');
-        Object.defineProperty(event, 'error', { value: { message: 'test uncaptured error' } });
-        device.dispatchEvent(event); break;
-      }
-      case 'error-scope': scope.resolve({ message: 'test error scope' }); break;
-      case 'abort': source.callbacks().onAbort('test native abort'); break;
-      default: { const exhaustive: never = failure; throw new Error(String(exhaustive)); }
-      }
-      await Promise.resolve(); await Promise.resolve();
-      const records = diagnostic.mock.calls.map(([{ diagnostic }]) => diagnostic);
-      const fatal = records.findIndex(e => e.event === 'failed' || /^(?:device lost:|uncaptured GPU error:|GPU error scope:)/.test(e.message ?? ''));
-      expect(fatal).toBeGreaterThan(0);
-      const before = records.slice(0, fatal);
-      expect(before.find(e => e.fields.metric === 'run-wall')?.fields).toMatchObject({ runId: 42, outcome: 'failed', partialStepWallMs: 5000 });
-      expect(before.find(e => e.fields.metric === 'gpu-wait' && e.fields.scope === 'run-total' && e.fields.kind === 'queue')?.fields).toMatchObject({ runId: 42, pending: 1, settled: 0, wallSumMs: 5000 });
-      expect(before.find(e => e.fields.metric === 'gpu-counters' && e.fields.scope === 'run-total')).toBeDefined();
-      expect(done).toHaveBeenCalledOnce(); expect(mocks.close).not.toHaveBeenCalled();
-      // The real native promise may never settle. Resolve it only to complete
-      // this test, and ensure catch/finally cannot publish a second total.
-      native.reject(new Error('test native unwind'));
-      await expect(task).rejects.toThrow('test native unwind');
-      queue.resolve(); await Promise.resolve();
-      expect(diagnostic.mock.calls.filter(([e]) => e.diagnostic.fields.metric === 'run-wall')).toHaveLength(1);
-      expect(diagnostic.mock.calls.filter(([e]) => e.diagnostic.fields.metric === 'gpu-counters' && e.diagnostic.fields.scope === 'run-total')).toHaveLength(1);
-      expect(await worker.inspectEngine()).toEqual({ status: 'unavailable', reason: 'released' });
-      expect(done).toHaveBeenCalledOnce(); expect(mocks.close).not.toHaveBeenCalled();
-    } finally {
-      clock.mockRestore(); native.reject(new Error('test cleanup')); await task.catch(() => undefined);
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        clock.mockRestore(); native.reject(new Error('test cleanup')); await task.catch(() => undefined);
+      },
+    };
+    await entered.promise; time = 5000;
+    switch (failure) {
+    case 'device-lost': lost.resolve({ reason: 'unknown', message: 'test device lost' }); break;
+    case 'uncaptured': {
+      const event = new Event('uncapturederror');
+      Object.defineProperty(event, 'error', { value: { message: 'test uncaptured error' } });
+      device.dispatchEvent(event); break;
     }
+    case 'error-scope': scope.resolve({ message: 'test error scope' }); break;
+    case 'abort': source.callbacks().onAbort('test native abort'); break;
+    default: { const exhaustive: never = failure; throw new Error(String(exhaustive)); }
+    }
+    await Promise.resolve(); await Promise.resolve();
+    const records = diagnostic.mock.calls.map(([{ diagnostic }]) => diagnostic);
+    const fatal = records.findIndex(e => e.event === 'failed' || /^(?:device lost:|uncaptured GPU error:|GPU error scope:)/.test(e.message ?? ''));
+    expect(fatal).toBeGreaterThan(0);
+    const before = records.slice(0, fatal);
+    expect(before.find(e => e.fields.metric === 'run-wall')?.fields).toMatchObject({ runId: 42, outcome: 'failed', partialStepWallMs: 5000 });
+    expect(before.find(e => e.fields.metric === 'gpu-wait' && e.fields.scope === 'run-total' && e.fields.kind === 'queue')?.fields).toMatchObject({ runId: 42, pending: 1, settled: 0, wallSumMs: 5000 });
+    expect(before.find(e => e.fields.metric === 'gpu-counters' && e.fields.scope === 'run-total')).toBeDefined();
+    expect(done).toHaveBeenCalledOnce(); expect(mocks.close).not.toHaveBeenCalled();
+    // The real native promise may never settle. Resolve it only to complete
+    // this test, and ensure catch/finally cannot publish a second total.
+    native.reject(new Error('test native unwind'));
+    await expect(task).rejects.toThrow('test native unwind');
+    queue.resolve(); await Promise.resolve();
+    expect(diagnostic.mock.calls.filter(([e]) => e.diagnostic.fields.metric === 'run-wall')).toHaveLength(1);
+    expect(diagnostic.mock.calls.filter(([e]) => e.diagnostic.fields.metric === 'gpu-counters' && e.diagnostic.fields.scope === 'run-total')).toHaveLength(1);
+    expect(await worker.inspectEngine()).toEqual({ status: 'unavailable', reason: 'released' });
+    expect(done).toHaveBeenCalledOnce(); expect(mocks.close).not.toHaveBeenCalled();
   });
 }

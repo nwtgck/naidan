@@ -1,6 +1,6 @@
 import { autoTitleScheduler } from '@/composables/chat/global/auto-title-runtime';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatInput from './ChatInput.vue';
 import { computed, nextTick, ref } from 'vue';
@@ -250,7 +250,7 @@ vi.mock('../composables/useReasoning', () => ({
   useReasoning: () => mockReasoningStore,
 }));
 
-vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support', () => ({
   useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: mockCurrentChatGroup,
@@ -353,7 +353,7 @@ const mockChatStore = {
   updateChatMount: vi.fn(),
 };
 
-vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support', () => ({
   useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => mockChatStore,
 }));
 
@@ -542,30 +542,31 @@ describe('ChatInput Integration', () => {
     vi.useFakeTimers();
     const finished = Promise.withResolvers<void>();
     let titleSignal: AbortSignal | undefined;
-    try {
-      autoTitleScheduler.schedule({
-        chatId: toChatId({ raw: 'title-chat' }),
-        run: ({ signal }) => {
-          titleSignal = signal;
-          return finished.promise;
-        },
-      });
-      await vi.advanceTimersByTimeAsync(2500);
-      expect(titleSignal?.aborted).toBe(false);
-      expect(wrapper.find('[data-testid="send-button"]').exists()).toBe(true);
-      expect(wrapper.find('[data-testid="abort-button"]').exists()).toBe(false);
-      await wrapper.get('[data-testid="chat-input"]').setValue('Next message');
-      expect(titleSignal?.aborted).toBe(true);
-      await wrapper.get('[data-testid="send-button"]').trigger('click');
-      await vi.advanceTimersByTimeAsync(0);
-      expect(mockSendMessageForChat).toHaveBeenCalledOnce();
-    } finally {
-      autoTitleScheduler.reset();
-      finished.resolve();
-      await vi.advanceTimersByTimeAsync(0);
-      wrapper.unmount();
-      vi.useRealTimers();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        autoTitleScheduler.reset();
+        finished.resolve();
+        await vi.advanceTimersByTimeAsync(0);
+        wrapper.unmount();
+        vi.useRealTimers();
+      },
+    };
+    autoTitleScheduler.schedule({
+      chatId: toChatId({ raw: 'title-chat' }),
+      run: ({ signal }) => {
+        titleSignal = signal;
+        return finished.promise;
+      },
+    });
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(titleSignal?.aborted).toBe(false);
+    expect(wrapper.find('[data-testid="send-button"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="abort-button"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="chat-input"]').setValue('Next message');
+    expect(titleSignal?.aborted).toBe(true);
+    await wrapper.get('[data-testid="send-button"]').trigger('click');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockSendMessageForChat).toHaveBeenCalledOnce();
   });
 
   it('waits to auto-send until onboarding no longer blocks interaction', async () => {

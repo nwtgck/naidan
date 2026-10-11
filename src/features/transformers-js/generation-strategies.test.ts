@@ -63,29 +63,31 @@ async function pendingGptPublication() {
 describe('shared generation state publication ownership', () => {
   it('does not republish a GPT cache after its generation owner was revoked by reset', async () => {
     const fixture = await pendingGptPublication();
-    try {
-      fixture.state.generationStateOwner = {};
-      fixture.state.gptOssPastKeyValues = null;
-      fixture.completion.resolve({ stale: true });
-      await fixture.operation;
-      expect(fixture.state.gptOssPastKeyValues).toBeNull();
-    } finally {
-      fixture.generate.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        fixture.generate.mockRestore();
+      },
+    };
+    fixture.state.generationStateOwner = {};
+    fixture.state.gptOssPastKeyValues = null;
+    fixture.completion.resolve({ stale: true });
+    await fixture.operation;
+    expect(fixture.state.gptOssPastKeyValues).toBeNull();
   });
 
   it('does not overwrite a later request GPT cache when an older generation resolves', async () => {
     const fixture = await pendingGptPublication();
     const newer = { newer: true };
-    try {
-      fixture.state.generationStateOwner = {};
-      fixture.state.gptOssPastKeyValues = newer;
-      fixture.completion.resolve({ stale: true });
-      await fixture.operation;
-      expect(fixture.state.gptOssPastKeyValues).toBe(newer);
-    } finally {
-      fixture.generate.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        fixture.generate.mockRestore();
+      },
+    };
+    fixture.state.generationStateOwner = {};
+    fixture.state.gptOssPastKeyValues = newer;
+    fixture.completion.resolve({ stale: true });
+    await fixture.operation;
+    expect(fixture.state.gptOssPastKeyValues).toBe(newer);
   });
 });
 
@@ -107,35 +109,36 @@ describe('verified content-route tool publication', () => {
     const generate = vi.fn(async ({ streamer }: { streamer: { emit(text: string): void } }) => {
       streamer.emit(output); return { sequences: [], past_key_values: null };
     });
-    try {
-      const operation = selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/content' }).generate({
-        onGenerationEvent: undefined,
-        model: { generate, config: { model_type: 'synthetic' } } as never,
-        tokenizer: { all_special_ids: [7, 10, 11], decode: () => '', apply_chat_template: (_messages: unknown, options: { tokenize?: boolean }) => options.tokenize === false ? 'plain prompt' : { input_ids: { dims: [1, 2] } } } as never,
-        messages: [{ role: 'user', content: 'Use a tool.' }],
-        onChunk: ({ chunk }) => {
-          chunks.push(chunk);
-        },
-        onRawChunk: vi.fn(),
-        onToolCalls: ({ toolCalls }) => {
-          published.push(...toolCalls);
-        },
-        params: explicitParameters,
-        tools: [{ type: 'function', function: { name: 'lookup_weather', description: 'Fixed tool', parameters: { type: 'object', properties: { city: { type: 'string' } } } } }],
-        runtimeState: { activeModelId: 'synthetic/content', gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
-        stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() },
-        debugLog: vi.fn(),
-        observationSink: undefined,
-        generationCapture: undefined,
-      });
-      if (rejected) await expect(operation).rejects.toThrow('Content tool history does not support multiple calls');
-      else await operation;
-      expect(published).toHaveLength(expectedCalls);
-      expect(chunks.join('')).toBe(expectedText);
-      expect(generate).toHaveBeenCalledOnce();
-    } finally {
-      resolve.mockRestore();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        resolve.mockRestore();
+      },
+    };
+    const operation = selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/content' }).generate({
+      onGenerationEvent: undefined,
+      model: { generate, config: { model_type: 'synthetic' } } as never,
+      tokenizer: { all_special_ids: [7, 10, 11], decode: () => '', apply_chat_template: (_messages: unknown, options: { tokenize?: boolean }) => options.tokenize === false ? 'plain prompt' : { input_ids: { dims: [1, 2] } } } as never,
+      messages: [{ role: 'user', content: 'Use a tool.' }],
+      onChunk: ({ chunk }) => {
+        chunks.push(chunk);
+      },
+      onRawChunk: vi.fn(),
+      onToolCalls: ({ toolCalls }) => {
+        published.push(...toolCalls);
+      },
+      params: explicitParameters,
+      tools: [{ type: 'function', function: { name: 'lookup_weather', description: 'Fixed tool', parameters: { type: 'object', properties: { city: { type: 'string' } } } } }],
+      runtimeState: { activeModelId: 'synthetic/content', gemma4Processor: null, qwen3_5Processor: null, gptOssPastKeyValues: null, qwen3_5ConversationState: undefined, generationStateOwner: {}, qwen3_5SequenceCache: undefined },
+      stoppingCriteria: { reset: vi.fn(), interrupt: vi.fn() },
+      debugLog: vi.fn(),
+      observationSink: undefined,
+      generationCapture: undefined,
+    });
+    if (rejected) await expect(operation).rejects.toThrow('Content tool history does not support multiple calls');
+    else await operation;
+    expect(published).toHaveLength(expectedCalls);
+    expect(chunks.join('')).toBe(expectedText);
+    expect(generate).toHaveBeenCalledOnce();
   });
 });
 

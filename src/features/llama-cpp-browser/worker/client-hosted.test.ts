@@ -1,13 +1,13 @@
 import { memoryDiagnosticsHistories, TEST_ONLY as memoryHistoryTest } from '@/features/llama-cpp-browser/memory-diagnostics-store';
 import { createAudioPreviewRequests } from '@/features/audio-generation/preview-requests';
 import type { AudioPreviewEvent } from '@/features/audio-generation/types';
-import { audioResult } from '@/features/audio-generation/test-utils/wav';
+import { audioResult } from '@/features/audio-generation/test-utils/wav.test-support';
 import { defaultAudioParameters, type AudioGenerationInput } from '@/features/audio-generation/types';
 import type { Progress } from '@/features/llama-cpp-browser/types';
-import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
+import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics.test-support';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LlamaCppBrowserError, type GenerateInput } from '@/features/llama-cpp-browser/types';
-import { performanceReport } from '@/features/llama-cpp-browser/test-utils/performance';
+import { performanceReport } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
 import type { Diagnostic } from '@/features/llama-cpp-browser/debug-log';
 import { createLlamaCppWorkerClient } from './client-hosted';
 const transport = vi.hoisted(() => ({ remote: { release: vi.fn(), prepareModel: vi.fn(), requestAudioPreview: vi.fn(async () => {}), finishAudioGeneration: vi.fn(), generateAudio: vi.fn(), probeProfiles: vi.fn(), listModels: vi.fn(), importModel: vi.fn(), importDirectory: vi.fn(), removeModel: vi.fn(), generate: vi.fn(), cancelGeneration: vi.fn() }, release: vi.fn() }));

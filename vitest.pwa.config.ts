@@ -33,7 +33,7 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    setupFiles: ['./src/test-setup.ts'],
+    setupFiles: ['./src/test-setup.test-support.ts'],
     include: [
       'src/logic/pwa/**/*.test.ts',
       'src/utils/download/**/*.test.ts',

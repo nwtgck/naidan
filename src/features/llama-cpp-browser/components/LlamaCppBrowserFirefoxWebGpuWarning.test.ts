@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import LlamaCppBrowserFirefoxWebGpuWarning from './LlamaCppBrowserFirefoxWebGpuWarning.vue';
 
 const wrappers: VueWrapper[] = [];

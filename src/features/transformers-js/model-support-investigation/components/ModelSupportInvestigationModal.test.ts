@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Blob as NodeBlob } from 'node:buffer';
 import { webcrypto } from 'node:crypto';
 import { flushPromises, mount } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { toToolCallId } from '@/01-models/ids';
 import ModelSupportInvestigationModal from './ModelSupportInvestigationModal.vue';
 import ModelSupportInvestigationSession from './ModelSupportInvestigationSession.vue';
@@ -699,32 +699,33 @@ describe('ModelSupportInvestigationModal', () => {
     const sessionView = lateReadiness ? { ...originalView, ready: ready.promise } : originalView;
     evidenceMocks.dispose.mockRejectedValue(new Error('Retained export Worker termination unavailable'));
     const wrapper = mount(ModelSupportInvestigationSession, { props: { modelId: 'org/model', sessionView, ordinaryDownloadTiming: retainedTiming() } });
-    try {
-      await flushPromises();
-      const exportButton = wrapper.get<HTMLButtonElement>('[data-testid="model-support-export-retained-timing"]');
-      const startButton = wrapper.get<HTMLButtonElement>('[data-testid="model-support-investigation-start"]');
-      await exportButton.trigger('click');
-      await flushPromises();
-      ready.resolve({ status: 'complete' });
-      await flushPromises();
-      // Explicit dispatch bypasses the disabled button's click() behavior and
-      // proves the handlers also reject new Worker admission in this view.
-      exportButton.element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await flushPromises();
-      startButton.element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      await flushPromises();
-      expect(workerMocks.createClient).not.toHaveBeenCalled();
-      expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
-      expect(evidenceMocks.createClient).toHaveBeenCalledTimes(1);
-      expect(evidenceMocks.createRetainedDownloadTimingEvidence).toHaveBeenCalledTimes(1);
-      expect(startButton.attributes('disabled')).toBeDefined();
-      expect(exportButton.attributes('disabled')).toBeDefined();
-      expect(wrapper.get('[data-testid="model-support-investigation-teardown-error"]').text()).toContain('Retained export Worker termination unavailable');
-      expect(streamDownloadMocks.download).toHaveBeenCalledTimes(1);
-    } finally {
-      wrapper.unmount();
-      await flushPromises();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        wrapper.unmount();
+        await flushPromises();
+      },
+    };
+    await flushPromises();
+    const exportButton = wrapper.get<HTMLButtonElement>('[data-testid="model-support-export-retained-timing"]');
+    const startButton = wrapper.get<HTMLButtonElement>('[data-testid="model-support-investigation-start"]');
+    await exportButton.trigger('click');
+    await flushPromises();
+    ready.resolve({ status: 'complete' });
+    await flushPromises();
+    // Explicit dispatch bypasses the disabled button's click() behavior and
+    // proves the handlers also reject new Worker admission in this view.
+    exportButton.element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushPromises();
+    startButton.element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await flushPromises();
+    expect(workerMocks.createClient).not.toHaveBeenCalled();
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    expect(evidenceMocks.createClient).toHaveBeenCalledTimes(1);
+    expect(evidenceMocks.createRetainedDownloadTimingEvidence).toHaveBeenCalledTimes(1);
+    expect(startButton.attributes('disabled')).toBeDefined();
+    expect(exportButton.attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-testid="model-support-investigation-teardown-error"]').text()).toContain('Retained export Worker termination unavailable');
+    expect(streamDownloadMocks.download).toHaveBeenCalledTimes(1);
   });
 
   it('does not publish a late retained-only export after its modal owner retires', async () => {
@@ -773,21 +774,22 @@ describe('ModelSupportInvestigationModal', () => {
       return pending.promise;
     });
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
-    try {
-      await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
-      await flushPromises();
-      expect(workerMocks.interrupt).toHaveBeenCalledOnce();
-      expect(wrapper.get('[data-testid="model-support-target-error-org/model"]').text()).toContain(error);
-      expect(wrapper.text()).not.toContain('Model Support Investigation was stopped by the user');
-      await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
-      await flushPromises();
-      expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0]).toMatchObject({
-        run: { runId: 'accepted-run', modelId: 'org/model', status: 'failed', error: expect.stringContaining(error) },
-        recovery: { status: 'interrupted', interruption: { error: { message: error } } },
-      });
-    } finally {
-      wrapper.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.interrupt).toHaveBeenCalledOnce();
+    expect(wrapper.get('[data-testid="model-support-target-error-org/model"]').text()).toContain(error);
+    expect(wrapper.text()).not.toContain('Model Support Investigation was stopped by the user');
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0]).toMatchObject({
+      run: { runId: 'accepted-run', modelId: 'org/model', status: 'failed', error: expect.stringContaining(error) },
+      recovery: { status: 'interrupted', interruption: { error: { message: error } } },
+    });
   });
 
   it.each([
@@ -800,22 +802,23 @@ describe('ModelSupportInvestigationModal', () => {
       return { ...checkpoint.run, runId: invalidRunId, modelId: invalidModelId, status: 'passed', error: undefined };
     });
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
-    try {
-      await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
-      await flushPromises();
-      const targetError = wrapper.find('[data-testid="model-support-target-error-org/model"]');
-      expect(targetError.exists()).toBe(true);
-      expect(targetError.text()).toContain(error);
-      expect(wrapper.text()).not.toContain('Model Support Investigation was stopped by the user');
-      await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
-      await flushPromises();
-      expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0]).toMatchObject({
-        run: { runId: 'accepted-run', modelId: 'org/model', status: 'failed', error: expect.stringContaining(error) },
-        recovery: { status: 'interrupted', interruption: { error: { message: error } } },
-      });
-    } finally {
-      wrapper.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        wrapper.unmount();
+      },
+    };
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    const targetError = wrapper.find('[data-testid="model-support-target-error-org/model"]');
+    expect(targetError.exists()).toBe(true);
+    expect(targetError.text()).toContain(error);
+    expect(wrapper.text()).not.toContain('Model Support Investigation was stopped by the user');
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(evidenceMocks.createPartialEvidence.mock.calls[0]?.[0]).toMatchObject({
+      run: { runId: 'accepted-run', modelId: 'org/model', status: 'failed', error: expect.stringContaining(error) },
+      recovery: { status: 'interrupted', interruption: { error: { message: error } } },
+    });
   });
 
   it('reopens completed results and exports retained metadata without rerunning the investigation', async () => {
@@ -1547,16 +1550,17 @@ org/second`);
       retained,
     }));
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
-    try {
-      await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
-      await flushPromises();
-      expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
-      expect(workerMocks.dispose).not.toHaveBeenCalled();
-      expect(wrapper.text()).toContain('Investigation recording capacity is exhausted');
-    } finally {
-      budget.mockRestore();
-      wrapper.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        budget.mockRestore();
+        wrapper.unmount();
+      },
+    };
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
+    expect(workerMocks.dispose).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('Investigation recording capacity is exhausted');
   });
 
   it('holds the next target until the completed host releases pending sealing ownership', async () => {
@@ -1681,14 +1685,15 @@ org/second`);
     const measure = vi.spyOn(providerRetention, 'measureInvestigationProviderRetention').mockImplementationOnce(() => {
       throw new Error('Checkpoint retention refused');
     });
-    try {
-      expect(() => wrapper.unmount()).not.toThrow();
-      expect(workerMocks.dispose).toHaveBeenCalledOnce();
-    } finally {
-      measure.mockRestore();
-      running.reject(new Error('Disposed'));
-      await flushPromises();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        measure.mockRestore();
+        running.reject(new Error('Disposed'));
+        await flushPromises();
+      },
+    };
+    expect(() => wrapper.unmount()).not.toThrow();
+    expect(workerMocks.dispose).toHaveBeenCalledOnce();
   });
 
   it.each([undefined, null, new Error('Cleanup remains unconfirmed')])('keeps rejection state independently from the cleanup thrown value: %s', async (reason) => {
@@ -2644,28 +2649,29 @@ org/second
     });
     evidenceMocks.dispose.mockRejectedValueOnce(new Error('Concurrent export cleanup failed'));
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
-    try {
-      await wrapper.get('[data-testid="model-support-targets-input"]').setValue('org/second');
-      await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
-      await flushPromises();
-      await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
-      await flushPromises();
-      expect(streamDownloadMocks.download).toHaveBeenCalledTimes(1);
-      pending.resolve(completed);
-      await flushPromises();
-      expect(workerMocks.createClient).toHaveBeenCalledTimes(1);
-      expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(1);
-      expect(wrapper.get('[data-testid="model-support-investigation-teardown-error"]').text()).toContain('Concurrent export cleanup failed');
-      const exportButton = wrapper.get('[data-testid="model-support-investigation-download"]');
-      expect(exportButton.attributes('disabled')).toBeUndefined();
-      await exportButton.trigger('click');
-      await flushPromises();
-      expect(streamDownloadMocks.download).toHaveBeenCalledTimes(2);
-      expect(workerMocks.createClient).toHaveBeenCalledTimes(1);
-    } finally {
-      wrapper.unmount();
-      await flushPromises();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        wrapper.unmount();
+        await flushPromises();
+      },
+    };
+    await wrapper.get('[data-testid="model-support-targets-input"]').setValue('org/second');
+    await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-testid="model-support-investigation-download"]').trigger('click');
+    await flushPromises();
+    expect(streamDownloadMocks.download).toHaveBeenCalledTimes(1);
+    pending.resolve(completed);
+    await flushPromises();
+    expect(workerMocks.createClient).toHaveBeenCalledTimes(1);
+    expect(workerMocks.runPartialInvestigation).toHaveBeenCalledTimes(1);
+    expect(wrapper.get('[data-testid="model-support-investigation-teardown-error"]').text()).toContain('Concurrent export cleanup failed');
+    const exportButton = wrapper.get('[data-testid="model-support-investigation-download"]');
+    expect(exportButton.attributes('disabled')).toBeUndefined();
+    await exportButton.trigger('click');
+    await flushPromises();
+    expect(streamDownloadMocks.download).toHaveBeenCalledTimes(2);
+    expect(workerMocks.createClient).toHaveBeenCalledTimes(1);
   });
 
   it('records evidence export verification failure without downloading an archive', async () => {

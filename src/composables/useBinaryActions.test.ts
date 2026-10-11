@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useBinaryActions } from './useBinaryActions';
 import { storageService } from '@/00-storage/service';
 import { toBinaryObjectId } from '@/01-models/ids';

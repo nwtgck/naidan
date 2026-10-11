@@ -3,8 +3,8 @@ import { expect, it, vi, onTestFinished } from 'vitest';
 import { createNaidanPipingIdentity, NaidanPipingDuplexSession } from '@/features/naidan-piping-duplex';
 import type { PreparedPinnedConnection } from '@/features/naidan-piping-duplex';
 import { FiniteMemoryRelay } from '@/features/naidan-piping-duplex/finite-memory-relay.test-support';
-import { useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
-import { createPipingFetchPool } from './test-support/piping-pool';
+import { useOfflineScope } from '@/features/naidan-piping-duplex/index.test-support';
+import { createPipingFetchPool } from './test-support/piping-pool.test-support';
 
 useOfflineScope();
 

@@ -1,7 +1,7 @@
 import { generateId } from '@/01-models/id';
 import type { MessageId } from '@/01-models/ids';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
 import MessageThinking from './MessageThinking.vue';
 import type { MessageNode } from '@/01-models/types';

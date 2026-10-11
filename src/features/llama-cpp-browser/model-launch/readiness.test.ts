@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMeta, ChatGroup } from '@/01-models/types';
 import { toChatId, toChatGroupId } from '@/01-models/ids';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { assertModelLaunchReady, applicableModelLaunchTarget } from './readiness';
 import type { ChatModelLaunch, ModelLaunchTarget } from '@/01-models/llama-cpp-browser-model-launch';
 const installed = vi.fn();

@@ -22,12 +22,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  try {
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-    expect(navigator.storage.getDirectory).not.toHaveBeenCalled();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      vi.unstubAllGlobals();
+    },
+  };
+  expect(globalThis.fetch).not.toHaveBeenCalled();
+  expect(navigator.storage.getDirectory).not.toHaveBeenCalled();
 });
 
 // This fixture checks public Provider/tool mechanics with a controlled service.

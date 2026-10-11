@@ -191,14 +191,15 @@ it('does not replace an initialized manager when its resource retirement has fai
   const feature = await import('./feature');
   const failure = new Error('Previous resources have not retired');
   fixture.setEnabled.mockRejectedValue(failure);
-  try {
-    await feature.configureRpcFeature({ status: 'enabled', settings });
-    await expect(feature.getRpcManager()).rejects.toBe(failure);
-    await expect(feature.getRpcManager()).rejects.toBe(failure);
-    expect(fixture.create).toHaveBeenCalledOnce();
-  } finally {
-    fixture.setEnabled.mockResolvedValue(undefined);
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      fixture.setEnabled.mockResolvedValue(undefined);
+    },
+  };
+  await feature.configureRpcFeature({ status: 'enabled', settings });
+  await expect(feature.getRpcManager()).rejects.toBe(failure);
+  await expect(feature.getRpcManager()).rejects.toBe(failure);
+  expect(fixture.create).toHaveBeenCalledOnce();
 });
 
 it('delegates repeated readiness to the same manager instead of owning another consumed flag', async () => {

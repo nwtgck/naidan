@@ -22,11 +22,12 @@ function simulatedWebLocks() {
       const release = Promise.withResolvers<void>();
       const tail = previous.then(() => release.promise); lanes.set(name, tail);
       await previous;
-      try {
-        return await callback();
-      } finally {
-        release.resolve(); if (lanes.get(name) === tail) lanes.delete(name);
-      }
+      using _cleanupResource = {
+        [Symbol.dispose]() {
+          release.resolve(); if (lanes.get(name) === tail) lanes.delete(name);
+        },
+      };
+      return await callback();
     },
   };
 }

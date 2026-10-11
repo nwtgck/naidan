@@ -884,7 +884,18 @@ it('b', () => {});`);
     expect(productionConfig.rules['comma-spacing']).toBeUndefined();
     expect(productionConfig.rules['arrow-spacing']).toBeUndefined();
     expect(productionConfig.rules['space-before-function-paren']).toBeUndefined();
-    expect(await linter.isPathIgnored(path.join(repoRoot, 'eslint-local-rules/test-structure-spacing.test.ts'))).toBe(true);
+    // Rule implementations' tests now receive boundary checks, but not the
+    // layout and type-aware rules whose snippets they exercise as data.
+    const ruleTestPath = path.join(repoRoot, 'eslint-local-rules/test-structure-spacing.test.ts');
+    expect(await linter.isPathIgnored(ruleTestPath)).toBe(false);
+    const ruleTestConfig = await linter.calculateConfigForFile(ruleTestPath);
+    expect(ruleTestConfig.rules[ruleId]).toBeUndefined();
+    expect(ruleTestConfig.rules['comma-spacing']).toBeUndefined();
+    expect(ruleTestConfig.rules['arrow-spacing']).toBeUndefined();
+    expect(ruleTestConfig.rules['space-before-function-paren']).toBeUndefined();
+    expect(ruleTestConfig.rules['local-rules-test-resource/test-resource-management']).toEqual([2]);
+    expect(ruleTestConfig.rules['local-rules-test-imports/no-test-support-imports']).toEqual([2]);
+    // Deliberately invalid fixture files remain globally ignored.
     expect(await linter.isPathIgnored(path.join(repoRoot, 'eslint-local-rules/fixtures/example.test.ts'))).toBe(true);
   });
 
@@ -909,7 +920,7 @@ it('b', () => {});`);
   it.each([
     'src/utils/promise.ts',
     'src/utils/promise.test.ts',
-    'src/test-setup.ts',
+    'src/test-setup.test-support.ts',
     'vite.config.ts',
     'build/transformers-js-fixes/replacements.ts',
     'src/lint-rule-tmp/example.ts',

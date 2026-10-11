@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import OllamaManagementView from './OllamaManagementView.vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 const { mockCreateOllamaProvider } = vi.hoisted(() => ({
   mockCreateOllamaProvider: vi.fn(),

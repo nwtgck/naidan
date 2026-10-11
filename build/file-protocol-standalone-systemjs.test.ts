@@ -89,17 +89,18 @@ async function captureUnhandledRejections({ action }: {
   };
   process.on('unhandledRejection', listener);
   process.on('rejectionHandled', rejectionHandledListener);
-  try {
-    await action();
-    // SystemJS can report the child load rejection on the following task even
-    // though the root import Promise is already observed. Keep the user-level
-    // listener alive for that turn and assert the exact rejection below.
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    return rejections;
-  } finally {
-    process.off('unhandledRejection', listener);
-    process.off('rejectionHandled', rejectionHandledListener);
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      process.off('unhandledRejection', listener);
+      process.off('rejectionHandled', rejectionHandledListener);
+    },
+  };
+  await action();
+  // SystemJS can report the child load rejection on the following task even
+  // though the root import Promise is already observed. Keep the user-level
+  // listener alive for that turn and assert the exact rejection below.
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  return rejections;
 }
 
 async function createRealSystemJsHarness({ fixtureDirectory, scriptLoadDelayMs }: {
@@ -330,51 +331,57 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
 
   it('recovers a real file:// child load after the missing file is created', async () => {
     const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'));
-    try {
-      await fs.promises.writeFile(path.join(fixtureDirectory, 'entry.js'), `System.register(['./child.js'], function (_export) {
+    await using _cleanupResource2 = {
+      async [Symbol.asyncDispose]() {
+        await fs.promises.rm(fixtureDirectory, { recursive: true, force: true });
+      },
+    };
+    await fs.promises.writeFile(path.join(fixtureDirectory, 'entry.js'), `System.register(['./child.js'], function (_export) {
   var child;
   return {
     setters: [function (module) { child = module; }],
     execute: function () { _export('value', child.value); }
   };
 });\n`);
-      const harness = await createRealSystemJsHarness({ fixtureDirectory });
-      try {
-        const entryUrl = pathToFileURL(path.join(fixtureDirectory, 'entry.js')).href;
-        const childUrl = pathToFileURL(path.join(fixtureDirectory, 'child.js')).href;
-        const unhandledRejections = await captureUnhandledRejections({
-          action: async () => {
-            await expect(harness.system.import('./entry.js')).rejects.toThrow('Error loading');
+    const harness = await createRealSystemJsHarness({ fixtureDirectory });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        harness.dom.window.close();
+      },
+    };
+    const entryUrl = pathToFileURL(path.join(fixtureDirectory, 'entry.js')).href;
+    const childUrl = pathToFileURL(path.join(fixtureDirectory, 'child.js')).href;
+    const unhandledRejections = await captureUnhandledRejections({
+      action: async () => {
+        await expect(harness.system.import('./entry.js')).rejects.toThrow('Error loading');
 
-            const stateAfterFailure = readStandaloneInternalState({ window: harness.dom.window }).systemJsRetry;
-            expect(stateAfterFailure?.physicalScriptLoadFailureUrls).toEqual([childUrl]);
-            expect(stateAfterFailure?.deletedModuleUrls).toEqual(expect.arrayContaining([childUrl, entryUrl]));
+        const stateAfterFailure = readStandaloneInternalState({ window: harness.dom.window }).systemJsRetry;
+        expect(stateAfterFailure?.physicalScriptLoadFailureUrls).toEqual([childUrl]);
+        expect(stateAfterFailure?.deletedModuleUrls).toEqual(expect.arrayContaining([childUrl, entryUrl]));
 
-            await fs.promises.writeFile(path.join(fixtureDirectory, 'child.js'), `System.register([], function (_export) {
+        await fs.promises.writeFile(path.join(fixtureDirectory, 'child.js'), `System.register([], function (_export) {
   return { execute: function () { _export('value', 42); } };
 });\n`);
-            await expect(harness.system.import('./entry.js')).resolves.toMatchObject({ value: 42 });
-          },
-        });
-        expect(unhandledRejections).toHaveLength(1);
-        const [unhandledRejection] = unhandledRejections;
-        expect(hasErrorMessage(unhandledRejection)).toBe(true);
-        if (!hasErrorMessage(unhandledRejection)) {
-          throw new Error('Expected the captured SystemJS rejection to expose a message');
-        }
-        expect(unhandledRejection.message).toContain(`Error loading ${childUrl} from ${entryUrl}`);
-      } finally {
-        harness.dom.window.close();
-      }
-    } finally {
-      await fs.promises.rm(fixtureDirectory, { recursive: true, force: true });
+        await expect(harness.system.import('./entry.js')).resolves.toMatchObject({ value: 42 });
+      },
+    });
+    expect(unhandledRejections).toHaveLength(1);
+    const [unhandledRejection] = unhandledRejections;
+    expect(hasErrorMessage(unhandledRejection)).toBe(true);
+    if (!hasErrorMessage(unhandledRejection)) {
+      throw new Error('Expected the captured SystemJS rejection to expose a message');
     }
+    expect(unhandledRejection.message).toContain(`Error loading ${childUrl} from ${entryUrl}`);
   });
 
   it('evicts every local ancestor before retrying a failed dependency chain', async () => {
     const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'));
-    try {
-      await fs.promises.writeFile(path.join(fixtureDirectory, 'entry.js'), `System.register(['./middle.js'], function (_export) {
+    await using _cleanupResource2 = {
+      async [Symbol.asyncDispose]() {
+        await fs.promises.rm(fixtureDirectory, { recursive: true, force: true });
+      },
+    };
+    await fs.promises.writeFile(path.join(fixtureDirectory, 'entry.js'), `System.register(['./middle.js'], function (_export) {
   var middle;
   return {
     setters: [function (module) { middle = module; }],
@@ -382,7 +389,7 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
   };
 });
 `);
-      await fs.promises.writeFile(path.join(fixtureDirectory, 'middle.js'), `System.register(['./child.js'], function (_export) {
+    await fs.promises.writeFile(path.join(fixtureDirectory, 'middle.js'), `System.register(['./child.js'], function (_export) {
   var child;
   return {
     setters: [function (module) { child = module; }],
@@ -390,44 +397,46 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
   };
 });
 `);
-      const harness = await createRealSystemJsHarness({ fixtureDirectory });
-      try {
-        const entryUrl = pathToFileURL(path.join(fixtureDirectory, 'entry.js')).href;
-        const middleUrl = pathToFileURL(path.join(fixtureDirectory, 'middle.js')).href;
-        const childUrl = pathToFileURL(path.join(fixtureDirectory, 'child.js')).href;
-        await captureUnhandledRejections({
-          action: async () => {
-            await expect(harness.system.import('./entry.js')).rejects.toThrow('Error loading');
+    const harness = await createRealSystemJsHarness({ fixtureDirectory });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        harness.dom.window.close();
+      },
+    };
+    const entryUrl = pathToFileURL(path.join(fixtureDirectory, 'entry.js')).href;
+    const middleUrl = pathToFileURL(path.join(fixtureDirectory, 'middle.js')).href;
+    const childUrl = pathToFileURL(path.join(fixtureDirectory, 'child.js')).href;
+    await captureUnhandledRejections({
+      action: async () => {
+        await expect(harness.system.import('./entry.js')).rejects.toThrow('Error loading');
 
-            const stateAfterFailure = readStandaloneInternalState({ window: harness.dom.window }).systemJsRetry;
-            if (stateAfterFailure === undefined) {
-              throw new Error('Expected SystemJS retry diagnostics after a failed child load.');
-            }
-            expect(stateAfterFailure.deletedModuleUrls).toEqual(expect.arrayContaining([
-              childUrl,
-              middleUrl,
-              entryUrl,
-            ]));
+        const stateAfterFailure = readStandaloneInternalState({ window: harness.dom.window }).systemJsRetry;
+        if (stateAfterFailure === undefined) {
+          throw new Error('Expected SystemJS retry diagnostics after a failed child load.');
+        }
+        expect(stateAfterFailure.deletedModuleUrls).toEqual(expect.arrayContaining([
+          childUrl,
+          middleUrl,
+          entryUrl,
+        ]));
 
-            await fs.promises.writeFile(path.join(fixtureDirectory, 'child.js'), `System.register([], function (_export) {
+        await fs.promises.writeFile(path.join(fixtureDirectory, 'child.js'), `System.register([], function (_export) {
   return { execute: function () { _export('value', 42); } };
 });
 `);
-            await expect(harness.system.import('./entry.js')).resolves.toMatchObject({ value: 42 });
-          },
-        });
-      } finally {
-        harness.dom.window.close();
-      }
-    } finally {
-      await fs.promises.rm(fixtureDirectory, { recursive: true, force: true });
-    }
+        await expect(harness.system.import('./entry.js')).resolves.toMatchObject({ value: 42 });
+      },
+    });
   });
 
   it('evicts every loaded local ancestor in a diamond dependency graph before retrying', async () => {
     const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'));
-    try {
-      await fs.promises.writeFile(path.join(fixtureDirectory, 'entry.js'), `System.register(['./left.js', './right.js'], function (_export) {
+    await using _cleanupResource2 = {
+      async [Symbol.asyncDispose]() {
+        await fs.promises.rm(fixtureDirectory, { recursive: true, force: true });
+      },
+    };
+    await fs.promises.writeFile(path.join(fixtureDirectory, 'entry.js'), `System.register(['./left.js', './right.js'], function (_export) {
   var left;
   var right;
   return {
@@ -439,7 +448,7 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
   };
 });
 `);
-      await fs.promises.writeFile(path.join(fixtureDirectory, 'left.js'), `System.register(['./child.js'], function (_export) {
+    await fs.promises.writeFile(path.join(fixtureDirectory, 'left.js'), `System.register(['./child.js'], function (_export) {
   var child;
   return {
     setters: [function (module) { child = module; }],
@@ -447,7 +456,7 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
   };
 });
 `);
-      await fs.promises.writeFile(path.join(fixtureDirectory, 'right.js'), `System.register(['./child.js'], function (_export) {
+    await fs.promises.writeFile(path.join(fixtureDirectory, 'right.js'), `System.register(['./child.js'], function (_export) {
   var child;
   return {
     setters: [function (module) { child = module; }],
@@ -455,70 +464,70 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
   };
 });
 `);
-      const harness = await createRealSystemJsHarness({
-        fixtureDirectory,
-        scriptLoadDelayMs: ({ url }) => url.endsWith('/right.js') ? 100 : 0,
-      });
-      try {
-        const entryUrl = pathToFileURL(path.join(fixtureDirectory, 'entry.js')).href;
-        const leftUrl = pathToFileURL(path.join(fixtureDirectory, 'left.js')).href;
-        const rightUrl = pathToFileURL(path.join(fixtureDirectory, 'right.js')).href;
-        const childUrl = pathToFileURL(path.join(fixtureDirectory, 'child.js')).href;
-        await captureUnhandledRejections({
-          action: async () => {
-            await expect(harness.system.import('./entry.js')).rejects.toThrow('Error loading');
+    const harness = await createRealSystemJsHarness({
+      fixtureDirectory,
+      scriptLoadDelayMs: ({ url }) => url.endsWith('/right.js') ? 100 : 0,
+    });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        harness.dom.window.close();
+      },
+    };
+    const entryUrl = pathToFileURL(path.join(fixtureDirectory, 'entry.js')).href;
+    const leftUrl = pathToFileURL(path.join(fixtureDirectory, 'left.js')).href;
+    const rightUrl = pathToFileURL(path.join(fixtureDirectory, 'right.js')).href;
+    const childUrl = pathToFileURL(path.join(fixtureDirectory, 'child.js')).href;
+    await captureUnhandledRejections({
+      action: async () => {
+        await expect(harness.system.import('./entry.js')).rejects.toThrow('Error loading');
 
-            const stateAfterFailure = readStandaloneInternalState({ window: harness.dom.window }).systemJsRetry;
-            if (stateAfterFailure === undefined) {
-              throw new Error('Expected SystemJS retry diagnostics after a failed shared child load.');
-            }
-            expect(stateAfterFailure.deletedModuleUrls).toEqual(expect.arrayContaining([
-              childUrl,
-              leftUrl,
-              rightUrl,
-              entryUrl,
-            ]));
+        const stateAfterFailure = readStandaloneInternalState({ window: harness.dom.window }).systemJsRetry;
+        if (stateAfterFailure === undefined) {
+          throw new Error('Expected SystemJS retry diagnostics after a failed shared child load.');
+        }
+        expect(stateAfterFailure.deletedModuleUrls).toEqual(expect.arrayContaining([
+          childUrl,
+          leftUrl,
+          rightUrl,
+          entryUrl,
+        ]));
 
-            await fs.promises.writeFile(path.join(fixtureDirectory, 'child.js'), `System.register([], function (_export) {
+        await fs.promises.writeFile(path.join(fixtureDirectory, 'child.js'), `System.register([], function (_export) {
   return { execute: function () { _export('value', 21); } };
 });
 `);
-            await expect(harness.system.import('./entry.js')).resolves.toMatchObject({ value: 42 });
-          },
-        });
-      } finally {
-        harness.dom.window.close();
-      }
-    } finally {
-      await fs.promises.rm(fixtureDirectory, { recursive: true, force: true });
-    }
+        await expect(harness.system.import('./entry.js')).resolves.toMatchObject({ value: 42 });
+      },
+    });
   });
 
   it('does not evict a real module whose execute function throws an application error', async () => {
     const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'));
-    try {
-      await fs.promises.writeFile(path.join(fixtureDirectory, 'application-error.js'), `System.register([], function () {
+    await using _cleanupResource2 = {
+      async [Symbol.asyncDispose]() {
+        await fs.promises.rm(fixtureDirectory, { recursive: true, force: true });
+      },
+    };
+    await fs.promises.writeFile(path.join(fixtureDirectory, 'application-error.js'), `System.register([], function () {
   return {
     execute: function () {
       throw new Error('Application failure that says SystemJS Error#3');
     }
   };
 });\n`);
-      const harness = await createRealSystemJsHarness({ fixtureDirectory });
-      try {
-        await expect(harness.system.import('./application-error.js')).rejects.toThrow('SystemJS Error#3');
-        const state = readStandaloneInternalState({ window: harness.dom.window }).systemJsRetry;
-        expect(state).toMatchObject({
-          physicalScriptLoadFailureUrls: [],
-          deletedModuleUrls: [],
-          retryableErrorCount: 0,
-        });
-      } finally {
+    const harness = await createRealSystemJsHarness({ fixtureDirectory });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         harness.dom.window.close();
-      }
-    } finally {
-      await fs.promises.rm(fixtureDirectory, { recursive: true, force: true });
-    }
+      },
+    };
+    await expect(harness.system.import('./application-error.js')).rejects.toThrow('SystemJS Error#3');
+    const state = readStandaloneInternalState({ window: harness.dom.window }).systemJsRetry;
+    expect(state).toMatchObject({
+      physicalScriptLoadFailureUrls: [],
+      deletedModuleUrls: [],
+      retryableErrorCount: 0,
+    });
   });
 
   it('is idempotent and leaves successful imports unchanged', async () => {

@@ -1,7 +1,7 @@
 import AssistantWaitingIndicator from '@/components/AssistantWaitingIndicator.vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import type { EngineState } from '@/features/llama-cpp-browser/types';
 import LlamaCppBrowserLoadingIndicator from './LlamaCppBrowserLoadingIndicator.vue';

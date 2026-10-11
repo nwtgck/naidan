@@ -115,14 +115,10 @@ describe('chat text tokenization', () => {
       expect(allocations.get(args[1])!).toEqual(Uint8Array.from([...expected, 0]));
       return original(...args);
     });
-    const encode = vi.spyOn(TextEncoder.prototype, 'encode');
-    try {
-      await tokenizeChatText({ core, vocab: 1n, text });
-      expect(encode.mock.calls.filter(([value]) => value === text)).toHaveLength(1);
-      expect(allocations.size).toBe(0);
-    } finally {
-      encode.mockRestore();
-    }
+    using encode = vi.spyOn(TextEncoder.prototype, 'encode');
+    await tokenizeChatText({ core, vocab: 1n, text });
+    expect(encode.mock.calls.filter(([value]) => value === text)).toHaveLength(1);
+    expect(allocations.size).toBe(0);
   });
 
   it('does not retry freeing the old token buffer when resizing cleanup throws', async () => {

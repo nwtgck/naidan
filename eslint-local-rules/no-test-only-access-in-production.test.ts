@@ -159,6 +159,10 @@ describe('no-test-only-access-in-production rule', () => {
 
   it('uses narrow test-support path exemptions', () => {
     expect(isTestSupportFilename('/repo/src/example.test.ts')).toBe(true);
+    expect(isTestSupportFilename('/repo/src/example.test-support.ts')).toBe(true);
+    expect(isTestSupportFilename('/repo/src/example.test-support.js')).toBe(false);
+    expect(isTestSupportFilename('/repo/src/example.test-support.tsx')).toBe(false);
+    expect(isTestSupportFilename('/repo/src/example.test-support.ts.vue')).toBe(false);
     expect(isTestSupportFilename('/repo/src/example.test-helpers.ts')).toBe(true);
     expect(isTestSupportFilename('/repo/src/test-setup.ts')).toBe(true);
     expect(isTestSupportFilename('/repo/src/test-mocks/provider.ts')).toBe(true);

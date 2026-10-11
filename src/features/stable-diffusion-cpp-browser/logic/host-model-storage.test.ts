@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { hostModelHandles, type HostModelDirectoryHandle } from '@/00-storage/service/host-model-handles';
 import { toHostModelDirectoryId } from '@/01-models/ids';
-import { MemoryDirectory, MemoryFile } from '@/features/stable-diffusion-cpp-browser/test-utils/storage';
+import { MemoryDirectory, MemoryFile } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
 import { listHostImageRepositories, listImageRepositories } from './repository-store';
 import { saveImageCatalogFile } from './catalog-file-download';
 import type { CatalogFetch } from '@/features/stable-diffusion-cpp-browser/download-worker/fetch-types';

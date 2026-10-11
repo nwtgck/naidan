@@ -109,15 +109,16 @@ describe('persisted tool text decoding', () => {
     const task = buildApiChatMessages({ messages: [message({ bytesReference: true })], readBinaryObject: async () => blob, signal: controller.signal });
     // Attach a rejection observer before interrupting or completing the read.
     const observed = task.then(value => ({ type: 'value' as const, value }), error => ({ type: 'error' as const, error }));
-    try {
-      await vi.waitFor(() => expect(read).toHaveBeenCalledOnce(), { timeout: 500 });
-      const reason = new Error('cancelled during tool byte read');
-      controller.abort(reason);
-      pendingRead.resolve(new TextEncoder().encode('ignored').buffer);
-      expect(await observed).toEqual({ type: 'error', error: reason });
-    } finally {
-      pendingRead.resolve(new ArrayBuffer(0));
-      await observed;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        pendingRead.resolve(new ArrayBuffer(0));
+        await observed;
+      },
+    };
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce(), { timeout: 500 });
+    const reason = new Error('cancelled during tool byte read');
+    controller.abort(reason);
+    pendingRead.resolve(new TextEncoder().encode('ignored').buffer);
+    expect(await observed).toEqual({ type: 'error', error: reason });
   });
 });

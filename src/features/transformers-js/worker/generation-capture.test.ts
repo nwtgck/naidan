@@ -22,19 +22,21 @@ beforeAll(async () => {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'process')!;
   const originalProcess = globalThis.process;
   Object.defineProperty(globalThis, 'process', { configurable: true, writable: true, value: { ...originalProcess, release: { ...originalProcess.release, name: 'browser-test' } } });
-  try {
-    runtime = await importProductionTransformersArtifact({ moduleUrl: `${artifact.moduleUrl}?capture=tensor-layout` }) as Runtime;
-  } finally {
-    Object.defineProperty(globalThis, 'process', descriptor);
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      Object.defineProperty(globalThis, 'process', descriptor);
+    },
+  };
+  runtime = await importProductionTransformersArtifact({ moduleUrl: `${artifact.moduleUrl}?capture=tensor-layout` }) as Runtime;
 }, 30_000);
 
 afterAll(() => {
-  try {
-    expect(fetch).not.toHaveBeenCalled();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      vi.unstubAllGlobals();
+    },
+  };
+  expect(fetch).not.toHaveBeenCalled();
 });
 
 const run = { runId: 'synthetic-run', workerEpoch: 1 };
