@@ -4,7 +4,6 @@ import { contract, expose, procedure } from './contract';
 import { rpc } from './schema';
 import { NaidanRpcPeer } from './peer';
 import { transportPair } from './test-transport';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const definition = contract({
   name: 'test.late-result',
@@ -40,12 +39,12 @@ it.each(['cancel', 'revoke'] as const)('owns unread result streams returned afte
   const caller = new NaidanRpcPeer({ transport: transport.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: lifetime.signal });
   const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   void call.result.catch(() => {}); void call.closed.catch(() => {});
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       result.resolve(); first.resolve(); second.resolve(); lifetime.abort(); transport.close();
       await Promise.all([caller.retire(), callee.retire()]);
     },
-  });
+  };
   await ready.promise;
   switch (mode) {
   case 'cancel': call.cancel({ reason: 'Stop before the handler returns' }); break;
@@ -100,12 +99,12 @@ it('late source cancellation failure stays visible while other native cleanup is
   const caller = new NaidanRpcPeer({ transport: transport.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: lifetime.signal });
   const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   void call.result.catch(() => {}); void call.closed.catch(() => {});
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       result.resolve(); other.resolve(); lifetime.abort(); transport.close();
       await Promise.allSettled([caller.retire(), callee.retire()]);
     },
-  });
+  };
   await ready.promise; call.cancel({ reason: 'Stop while handler owns work' });
   await expect(call.result).rejects.toMatchObject({ code: 'CANCELLED' });
   result.resolve(); await failed.promise;
@@ -143,11 +142,11 @@ it('a late handler rejection cannot impersonate an owned retirement failure', as
   const caller = new NaidanRpcPeer({ transport: transport.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: stop.signal });
   const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   void call.result.catch(() => {}); void call.closed.catch(() => {});
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       release.resolve(); stop.abort(); transport.close(); await Promise.allSettled([caller.retire(), callee.retire()]);
     },
-  });
+  };
   await entered.promise; call.cancel({ reason: 'Stop' });
   await expect(call.result).rejects.toMatchObject({ code: 'CANCELLED' });
   const retirement = callee.retire(); release.resolve(); await expect(retirement).resolves.toBeUndefined();
@@ -181,11 +180,11 @@ it('a STOPPED write failure cannot impersonate source cleanup failure', async ()
   const caller = new NaidanRpcPeer({ transport: transport.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: stop.signal });
   const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   void call.closed.catch(() => {});
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       stop.abort(); transport.close(); await Promise.allSettled([caller.retire(), callee.retire()]); send.mockRestore();
     },
-  });
+  };
   const value = await call.result;
   const cancelled = value.image.cancel(); void cancelled.catch(() => {});
   await failed.promise; await Promise.allSettled([cancelled]);

@@ -31,7 +31,6 @@ import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import type { ScopedSettingChange } from '@/01-models/scoped-setting-change';
 import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes';
 import { refreshPromptApiAvailability, TEST_ONLY as promptApiRuntimeTestOnly } from '@/features/prompt-api/runtime';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 vi.mock('@/utils/idle-task', () => ({
   scheduleIdleTask: vi.fn(() => ({ cancel: vi.fn() })),
@@ -1018,11 +1017,11 @@ Question`,
 
   it('shows the neural sync effect only after a successful compact action', async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     mockActiveMessages.value = Array.from({ length: 9 }, (_, index) => (createTextNode({ id: toMessageId({ raw: `message-${index + 1}` }), role: index % 2 === 0 ? 'user' : 'assistant', text: `Message ${index + 1}`, createdAt: index + 1 }))) as MessageNode[];
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -1046,11 +1045,11 @@ Question`,
 
   it('does not show the neural sync effect when compact progress becomes complete without a local compact action', async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
@@ -1067,11 +1066,11 @@ Question`,
 
   it('clears the neural sync effect when chatId changes', async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     mockActiveMessages.value = Array.from({ length: 9 }, (_, index) => (createTextNode({ id: toMessageId({ raw: `message-${index + 1}` }), role: index % 2 === 0 ? 'user' : 'assistant', text: `Message ${index + 1}`, createdAt: index + 1 }))) as MessageNode[];
 
     wrapper = mountChatPane( {
@@ -1340,11 +1339,11 @@ Question`,
 
   it('should open the title dialog and save a manual title', async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     mockActiveMessages.value = [createTextNode({ id: toMessageId({ raw: 'm1' }), role: 'user', text: 'test', createdAt: 0 })];
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -2038,11 +2037,11 @@ describe.each([
     mockFetchAvailableModels.mockImplementationOnce(() => new Promise<void>(resolve => {
       finishModelDiscovery = resolve;
     }));
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         finishModelDiscovery?.();
       },
-    });
+    };
     wrapper = mountChatPane({
       props: { autoSendPrompt: 'hello from a link' },
       global: { plugins: [router] },

@@ -6,7 +6,6 @@ import ChatInput from './ChatInput.vue';
 import { computed, nextTick, ref } from 'vue';
 import { toVolumeId, toChatId } from '@/01-models/ids';
 import type { ChatTextSubmissionAction } from '@/logic/chat-text-submission';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -543,15 +542,15 @@ describe('ChatInput Integration', () => {
     vi.useFakeTimers();
     const finished = Promise.withResolvers<void>();
     let titleSignal: AbortSignal | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         autoTitleScheduler.reset();
         finished.resolve();
         await vi.advanceTimersByTimeAsync(0);
         wrapper.unmount();
         vi.useRealTimers();
       },
-    });
+    };
     autoTitleScheduler.schedule({
       chatId: toChatId({ raw: 'title-chat' }),
       run: ({ signal }) => {

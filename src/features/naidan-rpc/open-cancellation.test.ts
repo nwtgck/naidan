@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { contract, procedure } from './contract';
 import { NaidanRpcPeer } from './peer';
 import type { NaidanRpcDuplex, NaidanRpcTransport } from './transport';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const definition = contract({
   name: 'test.open-cancellation',
@@ -51,13 +50,13 @@ it.each(['call', 'signal', 'peer', 'deadline', 'maximum'] as const)('%s reports 
     closedCode = error.code;
   });
   const abort = vi.fn();
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       opening.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort });
       await peer.retire();
       await Promise.allSettled([call.result, call.closed]);
     },
-  });
+  };
   expect(openStream).toHaveBeenCalledOnce();
   switch (kind) {
   case 'call': call.cancel({ reason: 'User stopped this call' }); break;

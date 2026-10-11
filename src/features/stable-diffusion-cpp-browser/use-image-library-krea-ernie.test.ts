@@ -8,7 +8,6 @@ import type { listImageRepositories } from './logic/repository-store';
 import { ggufFixture, safetensorsFixture, krea2Tensors, krea2GgufTensors, ernieImageTensors, wanVaeTensors, flux2VaeTensors, qwenTextTensors, ministralTextTensors } from './test-utils/weights.test-support';
 import { benchmarkParameters } from './benchmark/plan';
 import { parametersFixture } from './test-fixtures';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 it.each([
   { id: 'krea2-turbo', flattened: false, destination: 'opfs' },
@@ -46,11 +45,11 @@ it.each([
   });
   let available = entries.slice(0, 1);
   const scope = effectScope();
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       scope.stop();
     },
-  });
+  };
   const download = vi.fn(async () => {
     available = entries;
   });

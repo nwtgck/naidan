@@ -111,7 +111,6 @@ vi.mock('@/features/stable-diffusion-cpp-browser/use-image-library', async () =>
 });
 import { useImageGeneration } from './use-image-generation-hosted';
 import { pendingImageHistory } from './history/pending-saves';
-import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 let wrapper: VueWrapper | undefined;
 let editor: VueWrapper | undefined;
 let resultsPanel: VueWrapper | undefined;
@@ -1353,11 +1352,11 @@ it.each(['ready', 'failed'])('keeps the previous runtime view until local draft 
   const gate = Promise.withResolvers<void>();
   mocks.prepareFiles.mockReturnValueOnce(gate.promise);
   const restoring = view.restoreDraft!({ draft });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       gate.resolve(); await restoring;
     },
-  });
+  };
   await flushPromises();
   expect(view.inferenceLocation!.kind.value).toBe('naidan_rpc');
   if (outcome === 'ready') gate.resolve();
@@ -1417,11 +1416,11 @@ it('retains terminally unconfirmed pixels without publishing a successful image 
   const h = await remoteView(); const original = h.generateImage.getMockImplementation()!;
   h.generateImage.mockImplementation(args => ({ ...original(args), closed: Promise.reject(new Error('lost terminal')) }));
   const { imageRecoveryStore } = await import('./execution/recovery'); const output = vi.fn(async () => {}), recovered = vi.fn(async () => {}), finished = vi.fn(async () => {});
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       for (const entry of imageRecoveryStore.list()) imageRecoveryStore.remove({ id: entry.id });
     },
-  });
+  };
   await h.view.generate({ submission: { count: 2, accepted: async () => {}, output, recovered, finished } });
   expect(h.generateImage).toHaveBeenCalledOnce(); expect(output).not.toHaveBeenCalled(); expect(recovered).toHaveBeenCalledOnce();
   expect(finished).toHaveBeenCalledWith({ completion: { type: 'interrupted' } });

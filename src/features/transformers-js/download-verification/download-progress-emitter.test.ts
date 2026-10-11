@@ -4,7 +4,6 @@ import { createDownloadProgressEmitter } from './download-progress-emitter';
 import type { ProgressInfo } from '@/features/transformers-js/types';
 import { createDownloadEtaEstimator } from '@/features/transformers-js/download-eta';
 import { createDownloadProgressTracker, publishDownloadProgress } from '@/features/transformers-js/download-progress';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -24,11 +23,11 @@ it('coalesces many samples to the latest value at 150 ms even when the observer 
       received.push(info);
     },
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       emitter.close();
     },
-  });
+  };
   emitter.publish({ info: { status: 'progress', file: 'model.onnx', loaded: 1, total: 100 } });
   await vi.advanceTimersByTimeAsync(0);
   for (let loaded = 2; loaded <= 100; loaded++) {
@@ -56,11 +55,11 @@ it('removes the pending throttle timer on close and never publishes a buffered o
       received.push(info);
     },
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       emitter.close();
     },
-  });
+  };
   emitter.publish({ info: { status: 'progress', file: 'model.onnx', loaded: 1 } });
   await vi.advanceTimersByTimeAsync(0);
   emitter.publish({ info: { status: 'progress', file: 'model.onnx', loaded: 2 } });
@@ -82,12 +81,12 @@ it('does not rearm or deliver buffered files after an observer acknowledges a cl
       return held.promise;
     },
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       emitter.close();
       held.resolve();
     },
-  });
+  };
   emitter.publish({ info: { status: 'progress', file: 'first.onnx', loaded: 1 } });
   await vi.advanceTimersByTimeAsync(0);
   emitter.publish({ info: { status: 'progress', file: 'second.onnx', loaded: 2 } });
@@ -112,11 +111,11 @@ it('preserves cumulative source-clock throughput when held acknowledgement coale
       received.push(info); eta.observe({ info }); return held.promise;
     },
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       emitter.close(); held.resolve();
     },
-  });
+  };
   emitter.publish({ info: { status: 'download', file: 'a', loaded: 0, downloadCumulativeTiming: { clockId: 'worker', sequence: 1, firstFetchStartedAtMs: 50_000, observedAtMs: 50_000, receivedBytes: 0 } } });
   await vi.advanceTimersByTimeAsync(0);
   for (let i = 1; i <= 400; i++) emitter.publish({ info: { status: 'progress', file: 'a', loaded: i, downloadCumulativeTiming: { clockId: 'worker', sequence: i + 1, firstFetchStartedAtMs: 50_000, observedAtMs: 50_000 + i * 10, receivedBytes: i } } });
@@ -137,11 +136,11 @@ it('keeps disabled timing on a terminal that replaces the failed sample while ac
       received.push(info); eta.observe({ info }); return acknowledgement.promise;
     },
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       emitter.close(); acknowledgement.resolve();
     },
-  });
+  };
   emitter.publish({ info: { status: 'progress', file: 'a', loaded: 300, downloadCumulativeTiming: { clockId: 'source', sequence: 2, firstFetchStartedAtMs: 0, observedAtMs: 3000, receivedBytes: 300 } } });
   await vi.advanceTimersByTimeAsync(0);
   expect(eta.snapshot({ remainingBytes: 300, active: true }).status).toBe('estimating');
@@ -167,11 +166,11 @@ it('reconciles source cumulative bytes with coalesced per-file terminals before 
       return held.promise;
     },
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       held.resolve(); emitter.close();
     },
-  });
+  };
   emitter.publish({ info: { status: 'download', file: 'a', loaded: 0, downloadCumulativeTiming: { clockId: 'source', sequence: 1, firstFetchStartedAtMs: 1000, observedAtMs: 1000, receivedBytes: 0 } } });
   await vi.advanceTimersByTimeAsync(0);
   emitter.publish({ info: { status: 'progress', file: 'a', loaded: 90, downloadTiming: { clockId: 'source', requestId: 1, sequence: 2, observedAtMs: 2900 } } });

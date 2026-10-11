@@ -11,7 +11,6 @@ import {
   loadData, registerLiveInstance, rootItems, unregisterLiveInstance,
 } from '@/composables/chat/global/chat-core-singletons';
 import { abortTitleGenerationForChat, generateChatTitleForChat, scheduleAutoTitleForChat } from './chat-title-flow';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const { chatRequest } = vi.hoisted(() => ({ chatRequest: vi.fn<LmProvider['chat']>() }));
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS, storageType: 'memory', endpoint: { type: 'openai', url: 'https://example.test' }, defaultModelId: 'model' });
@@ -270,12 +269,12 @@ describe('title lifecycle with real memory persistence', () => {
     chatRuntimeStore.activeTitleGenerations.clear();
     chatRuntimeStore.clearActiveTaskCounts();
     const second = generateChatTitleForChat({ chatId: chat.id, signal: undefined, titleModelIdOverride: undefined });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         firstReady.resolve(); secondReady.resolve();
         await Promise.allSettled([first, second]);
       },
-    });
+    };
     await vi.advanceTimersByTimeAsync(0);
     firstReady.resolve();
     await firstSettled;

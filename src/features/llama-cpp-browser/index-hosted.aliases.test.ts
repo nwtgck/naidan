@@ -8,7 +8,6 @@ import type { LlamaCppBrowserService } from './service-contract';
 import type { LlamaCppWorkerClient } from './worker/types';
 import { LlamaCppBrowserError, type GenerationResult } from './types';
 import type { ProfileCapabilities } from './runtime/profile-capabilities';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const worker = vi.hoisted(() => ({
   releaseRuntime: vi.fn<LlamaCppWorkerClient['releaseRuntime']>(),
@@ -65,11 +64,11 @@ async function execute({ entry, model }: { entry: Entry, model: string }) {
   });
   case 'read-only': {
     const client = hosted.createReadOnlyLlamaCppClient();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await client.dispose();
       },
-    });
+    };
     return await client.generate({ input: input({ model }), onEvent: () => {}, onProgress: () => {}, signal: undefined });
   }
   default: { const exhaustive: never = entry; throw new Error(String(exhaustive)); }

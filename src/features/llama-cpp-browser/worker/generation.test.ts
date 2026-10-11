@@ -29,7 +29,6 @@ import type { AssistantMessageNode, ChatContent, ToolMessageNode, UserMessageNod
 import { buildChatGenerationMessages } from '@/logic/build-chat-generation-messages';
 import { prepareLlamaCppRequest } from '@/features/llama-cpp-browser/message-projection';
 import { prepareChat } from './native-chat';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Select another installed artifact without requesting real GPU allocation.
 const integrationProfile = profileSchema.parse(process.env.LCORE_TEST_PROFILE ?? 'cpu-wasm32');
@@ -139,11 +138,11 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const req = { ...request({ messages: [{ role: 'user' as const, content: 'repeat fixture' }] }), maxTokens: 33, debug: 'on' as const };
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     let referenceFactory: ReturnType<typeof vi.spyOn> | undefined;
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         referenceFactory?.mockRestore(); log.mockRestore();
       },
-    });
+    };
     await releaseSession({ releaseRuntime: false });
     referenceFactory = vi.spyOn(renderingModule, 'createTokenRenderer').mockImplementation(args => factory({ ...args, cacheMode: 'disabled' }));
     const reference = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
@@ -190,11 +189,11 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       cacheMode,
     }));
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         factory.mockRestore(); log.mockRestore();
       },
-    });
+    };
     expect(await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).toEqual(expected);
     expect(await readNativeLogits()).toEqual(logits);
     expect(await sequencePosition()).toBe(position);
@@ -209,11 +208,11 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const count = await core.api.llama_vocab_n_tokens(vocab);
     const a = renderingModule.createTokenRenderer({ core, vocab, cacheMode: 'bounded' });
     const b = renderingModule.createTokenRenderer({ core, vocab, cacheMode: 'disabled' });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         a.dispose(); b.dispose();
       },
-    });
+    };
     for (let repeat = 0; repeat < 2; repeat++) {
       for (let token = 0; token < count; token++) {
         for (const special of [false, true]) expect(await a.render({ token, special })).toEqual(await b.render({ token, special }));
@@ -235,13 +234,13 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const promptBytes = new TextEncoder().encode(text).length;
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let reference: bigint | undefined; let candidate: bigint | undefined;
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         if (candidate !== undefined) core.free({ pointer: candidate });
         if (reference !== undefined) core.free({ pointer: reference });
         core.free({ pointer: prompt });
       },
-    });
+    };
     const required = -(await core.api.llama_tokenize(vocab, prompt, promptBytes, 0n, 0, 1, 1));
     expect(required).toBeGreaterThan(0); expect(required).toBeLessThan(contextTokens);
     reference = core.alloc({ bytes: required * 4 });
@@ -264,11 +263,11 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const decode = vi.spyOn(session.core.api, 'llama_decode');
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const callbacks: string[] = [];
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         tokenize.mockRestore(); decode.mockRestore(); debug.mockRestore();
       },
-    });
+    };
     const result = await generate({
       request: req,
       signal: undefined,
@@ -328,13 +327,13 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     next.stop = ['A', 'B'];
     const batch = vi.spyOn(session.core.api, 'llama_batch_get_one');
     const clear = vi.spyOn(session.core.api, 'llama_memory_clear');
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         batch.mockRestore(); clear.mockRestore();
         await releaseSession({ releaseRuntime: false });
         host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
       },
-    });
+    };
     const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     const logits = await readNativeLogits();
     expect(clear).not.toHaveBeenCalled();
@@ -355,11 +354,11 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const controller = new AbortController();
     const decode = vi.spyOn(session.core.api, 'llama_decode');
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         decode.mockRestore(); debug.mockRestore();
       },
-    });
+    };
     await expect(generate({
       request: req,
       signal: controller.signal,
@@ -384,11 +383,11 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
       await nativeFree(pointer); throw new Error('cleanup fixture');
     });
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         free.mockRestore(); debug.mockRestore();
       },
-    });
+    };
     await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('cleanup fixture');
     expect(session.cache.validity).toBe('invalid');
     const reports = readDiagnostics({ calls: debug.mock.calls }).filter(item => item.event === 'generation-performance').map(item => diagnosticSchema.parse(item));
@@ -411,14 +410,14 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const synchronize = vi.spyOn(core.api, 'llama_synchronize');
     const req = request({ messages: [{ role: 'user', content: 'aaaaaaaaXX' }] }); req.stop = ['A', 'B'];
     const original = structuredClone(req);
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         batch.mockRestore(); decode.mockRestore(); synchronize.mockRestore();
         await releaseSession({ releaseRuntime: false });
         host.bytes = Uint8Array.from(createSyntheticGguf({ chatTemplate: 'chatml' }));
         await prepareSession({ request: request({ messages: [{ role: 'user', content: 'reset fixture' }] }), signal: undefined, onProgress: () => {} });
       },
-    });
+    };
     const first = await prepareSession({ request: req, signal: undefined, onProgress: () => {} });
     expect(first.sequenceRemoval).toBe('partial');
     expect(first.slidingWindow).toBe(0);
@@ -452,11 +451,11 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockRejectedValueOnce(new TypeError('private tool schema and prompt'));
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const req = request({ messages: [{ role: 'user', content: 'private prompt' }] });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         sample.mockRestore(); debug.mockRestore();
       },
-    });
+    };
     await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('private tool');
     expect(readDiagnostics({ calls: debug.mock.calls })).toContainEqual(expect.objectContaining({ event: 'failed', stage: 'native-sample', failureKind: 'type-error' }));
     expect(JSON.stringify(debug.mock.calls)).not.toContain('private');
@@ -608,11 +607,11 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
 
   it('reloads if the filesystem identity changes without a size or timestamp change', async () => {
     const reads = host.reads; host.sameFile = false;
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         host.sameFile = true;
       },
-    });
+    };
     await generate({
       request: request({ messages: [{ role: 'user', content: 'hello' }] }),
       signal: undefined,
@@ -676,11 +675,11 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const next = request({ messages: [{ role: 'user', content: 'prefix' }, { role: 'assistant', content: firstResult.content }, { role: 'user', content: 'suffix' }] });
     next.presencePenalty = 0.1;
     const accept = vi.spyOn(core.api, 'llama_sampler_accept');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         batch.mockRestore(); clear.mockRestore(); debug.mockRestore(); accept.mockRestore();
       },
-    });
+    };
     const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     expect(clear).not.toHaveBeenCalled();
     expect(batch.mock.calls.map(call => call[2])).toEqual([7, 1, 1, 1, 1]);
@@ -754,11 +753,11 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const batch = vi.spyOn(core.api, 'llama_batch_get_one');
     const next = request({ messages: [{ role: 'user', content: 'aaaaaaaaXX' }] });
     next.stop = ['A', 'B'];
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         clear.mockRestore(); batch.mockRestore();
       },
-    });
+    };
     const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     const warmLogits = await readNativeLogits();
     const warmPosition = await sequencePosition();
@@ -800,11 +799,11 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const clear = vi.spyOn(core.api, 'llama_memory_clear');
     const remove = vi.spyOn(core.api, 'llama_memory_seq_rm');
     const first = request({ messages: [{ role: 'user', content: 'aaaaaaaa' }] }); first.stop = ['A', 'B'];
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         decode.mockRestore(); batch.mockRestore(); clear.mockRestore(); remove.mockRestore();
       },
-    });
+    };
     await expect(generate({ request: first, signal: undefined, onEvent: () => {}, onProgress: () => {} })).resolves.toEqual({
       content: '',
       reasoningContent: '',
@@ -875,11 +874,11 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     const next = request({ messages: nextMessages }); next.stop = ['A', 'B'];
     const originalRequest = structuredClone(next);
     const expectedTokens = [1, ...Array.from(new TextEncoder().encode(nextPrompt), byte => byte + 3)];
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         remove.mockRestore(); clear.mockRestore(); batch.mockRestore(); debug.mockRestore();
       },
-    });
+    };
     const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     const warmLogits = await readNativeLogits();
     expect(next).toEqual(originalRequest);
@@ -952,12 +951,12 @@ describe('Naidan generation loop with the supplied Wasm on CPU tensors', () => {
     default: { const exhaustive: never = condition; throw new Error(`Unknown unsafe cache condition: ${exhaustive}`); }
     }
     const next = request({ messages: [{ role: 'user', content: nextText }] }); next.stop = ['A', 'B'];
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         remove.mockRestore(); clear.mockRestore(); minimum.mockRestore(); maximum.mockRestore();
         hybrid.mockRestore(); recurrent.mockRestore(); batch.mockRestore();
       },
-    });
+    };
     await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     const warmLogits = await readNativeLogits();
     expect(remove).toHaveBeenCalledTimes(removalAttempted ? 1 : 0);
@@ -1056,11 +1055,11 @@ user:Q ;assistant: R
 <think>[Aborted]</think> lookup: {"value":" x "} ;tool:\uFEFF R🙂 ;`;
     for (const request of [liveRequest, restoredRequest]) {
       const chat = prepareChat({ core, model, request });
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           chat.dispose();
         },
-      });
+      };
       expect(chat.params.prompt).toBe(expectedPrompt);
     }
     // The fixture's SentencePiece tokenizer spells spaces as U+2581. Its byte
@@ -1079,11 +1078,11 @@ user:Q ;assistant: R
     const decode = vi.spyOn(core.api, 'llama_decode');
     const clear = vi.spyOn(core.api, 'llama_memory_clear');
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         batch.mockRestore(); decode.mockRestore(); clear.mockRestore(); debug.mockRestore();
       },
-    });
+    };
     const first = await generate({ request: liveRequest, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     expect(batches.flat()).toEqual(expectedTokens);
     expect(await sequencePosition()).toBe(expectedTokens.length - 1);
@@ -1142,11 +1141,11 @@ user:Q ;assistant: R
     const decode = vi.spyOn(core.api, 'llama_decode');
     const clear = vi.spyOn(core.api, 'llama_memory_clear');
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         decode.mockRestore(); clear.mockRestore(); debug.mockRestore();
       },
-    });
+    };
     const repeated = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     expect(repeated).toEqual(first);
     expect(decode).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled();
@@ -1165,11 +1164,11 @@ user:Q ;assistant: R
     const batch = vi.spyOn(core.api, 'llama_batch_get_one');
     const controller = new AbortController();
     req.stop = [];
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         decode.mockRestore(); clear.mockRestore(); batch.mockRestore();
       },
-    });
+    };
     if (failure === 'decode-error') decode.mockResolvedValueOnce(2);
     if (failure === 'decode-exception') decode.mockRejectedValueOnce(new Error('private native failure'));
     await expect(generate({
@@ -1205,11 +1204,11 @@ user:Q ;assistant: R
     const training = vi.spyOn(core.api, 'llama_model_n_ctx_train').mockResolvedValue(2048);
     const chunks: string[] = [];
     const req = { ...request({ messages: [{ role: 'user' as const, content: 'continue' }] }), maxTokens: undefined };
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         training.mockRestore(); await releaseSession({ releaseRuntime: false });
       },
-    });
+    };
     const result = await generate({
       request: req,
       signal: undefined,
@@ -1259,11 +1258,11 @@ user:Q ;assistant: R
     const initialize = vi.spyOn(core.api, 'llama_init_from_model').mockResolvedValueOnce(0n);
     const setField = vi.spyOn(core, 'setField');
     const req = request({ messages: [{ role: 'user', content: 'capacity' }] });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         training.mockRestore(); initialize.mockRestore(); setField.mockRestore();
       },
-    });
+    };
     await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     expect(setField.mock.calls.filter(([args]) => args.field === 'n_ctx').map(([args]) => args.value)).toEqual([32768, 32768]);
     expect(setField.mock.calls.filter(([args]) => args.field === 'n_batch').map(([args]) => args.value)).toEqual([512, 128]);
@@ -1278,11 +1277,11 @@ user:Q ;assistant: R
     const initialize = vi.spyOn(core.api, 'llama_init_from_model').mockRejectedValueOnce(new WebAssembly.RuntimeError('private trap'));
     const req = request({ messages: [{ role: 'user', content: 'capacity' }] });
     const loads = host.modelLoads;
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         initialize.mockRestore();
       },
-    });
+    };
     await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('private trap');
     expect(initialize).toHaveBeenCalledOnce();
     expect(sessionTesting.residentContext()).toBeUndefined();
@@ -1298,11 +1297,11 @@ user:Q ;assistant: R
     const training = vi.spyOn(core.api, 'llama_model_n_ctx_train').mockResolvedValue(trainingSize);
     const initialize = vi.spyOn(core.api, 'llama_init_from_model').mockResolvedValue(0n);
     const setField = vi.spyOn(core, 'setField');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         training.mockRestore(); initialize.mockRestore(); setField.mockRestore();
       },
-    });
+    };
     await expect(generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('runtime-error');
     expect(setField.mock.calls.filter(([args]) => args.field === 'n_ctx').map(([args]) => args.value)).toEqual(trainingSize === 0 ? [] : [32768, 32768, 16384, 8192, 4096]);
     expect(initialize).toHaveBeenCalledTimes(trainingSize === 0 ? 0 : 5);
@@ -1320,11 +1319,11 @@ describe('native image boundaries', () => {
     } finally {
       core.free({ pointer: data });
     }
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         if (bitmap !== 0n) await core.api.mtmd_bitmap_free(bitmap);
       },
-    });
+    };
     expect(bitmap).not.toBe(0n); expect(await core.api.mtmd_bitmap_get_nx(bitmap)).toBe(1);
     expect(await core.api.mtmd_bitmap_get_n_bytes(bitmap)).toBe(3n);
     expect(Array.from(core.bytes({ pointer: await core.api.mtmd_bitmap_get_data(bitmap), length: 3 }))).toEqual([10, 20, 30]);
@@ -1349,14 +1348,14 @@ describe('native image boundaries', () => {
     const params = core.allocRecord({ name: 'llama_context_params' });
     const batch = core.allocRecord({ name: 'llama_batch' });
     const token = core.alloc({ bytes: 4 }); let context = 0n;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         if (context !== 0n) await core.api.llama_free(context);
         trace.release(); unsubscribe();
         core.free({ pointer: params }); core.free({ pointer: batch }); core.free({ pointer: token }); debug.mockRestore();
         await releaseSession({ releaseRuntime: true });
       },
-    });
+    };
     await core.api.llama_context_default_params(params);
     for (const [field, value] of Object.entries({ n_ctx: 64, n_batch: 16, n_ubatch: 16, n_threads: 1, n_threads_batch: 1 })) core.setField({ name: 'llama_context_params', pointer: params, field, value });
     // The LM callback has the same native typedef as mtmd; production installs it only on mtmd.
@@ -1422,11 +1421,11 @@ describe('structured delivery from the real CPU Wasm loop', () => {
     const previews: string[] = [];
     const controller = new AbortController();
     let argumentsText = '';
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         sample.mockRestore();
       },
-    });
+    };
     const pending = generate({
       request: req,
       signal: controller.signal,
@@ -1487,12 +1486,12 @@ describe('structured delivery from the real CPU Wasm loop', () => {
     const events: GenerationEvent[] = [];
     let argumentsText = '';
     const snapshots: string[] = [];
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         prepareSpy.mockRestore();
         sample.mockRestore();
       },
-    });
+    };
     const result = await generate({
       request: req,
       signal: undefined,
@@ -1519,11 +1518,11 @@ describe('structured delivery from the real CPU Wasm loop', () => {
     const req = request({ messages: [{ role: 'user', content: 'ack' }] });req.maxTokens = 2;
     await generate({ request: { ...req, maxTokens: 1 }, onEvent: () => {}, onProgress: () => {}, signal: undefined });
     const core = host.core!;const sample = vi.spyOn(core.api, 'llama_sampler_sample');const gate = Promise.withResolvers<void>();let entered = false;
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         gate.resolve();sample.mockRestore();
       },
-    });
+    };
     const task = generate({
       request: req,
       signal: undefined,
@@ -1548,11 +1547,11 @@ describe('structured delivery from the real CPU Wasm loop', () => {
       if (sampled) throw new Error('controlled decode failure');return original(...args);
     });
     const events: import('@/features/llama-cpp-browser/types').GenerationEvent[] = [];
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         sample.mockRestore();spy.mockRestore();
       },
-    });
+    };
     await expect(generate({
       request: req,
       signal: undefined,
@@ -1590,11 +1589,11 @@ describe('structured delivery from the real CPU Wasm loop', () => {
     const tokens = [...new TextEncoder().encode(generated)].map(byte => byte + 3).concat(2);let offset = 0;
     const sample = vi.spyOn(core.api, 'llama_sampler_sample').mockImplementation(async () => tokens[offset++] ?? 2);
     const events: import('@/features/llama-cpp-browser/types').GenerationEvent[] = [];
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         sample.mockRestore();
       },
-    });
+    };
     const result = await generate({
       request: req,
       signal: undefined,
@@ -1652,11 +1651,11 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     const next = request({ messages: [{ role: 'user', content: 'aaaaaaa' }] }); next.stop = ['A', 'B'];
     const restore = vi.spyOn(session.core.api, 'llama_state_seq_set_data_ext');
     const { batches, spy } = observeBatches({ core: session.core });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         restore.mockRestore(); spy.mockRestore();
       },
-    });
+    };
     await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     expect(restore).not.toHaveBeenCalled();
     expect(batches.flat()).toEqual([1, ...byteTokens({ text: 'aaaaaaa' })]);
@@ -1695,12 +1694,12 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const free = vi.spyOn(core, 'free');
     const allocationSpies = [vi.spyOn(core, 'tryAlloc'), vi.spyOn(core, 'alloc'), vi.spyOn(core, 'allocRecord'), vi.spyOn(core, 'utf8')];
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         spy.mockRestore(); restore.mockRestore(); clear.mockRestore(); debug.mockRestore(); free.mockRestore();
         for (const allocation of allocationSpies) allocation.mockRestore();
       },
-    });
+    };
     const warm = await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     const warmLogits = await readNativeLogits();
     expect(next).toEqual(originalRequest);
@@ -1738,11 +1737,11 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     const capture = vi.spyOn(session.core.api, 'llama_state_seq_get_data_ext');
     const size = vi.spyOn(session.core.api, 'llama_state_seq_get_size_ext');
     const restore = vi.spyOn(session.core.api, 'llama_state_seq_set_data_ext');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         capture.mockRestore(); size.mockRestore(); restore.mockRestore();
       },
-    });
+    };
     for (let index = 0; index < 3; index++) {
       const retry = await generate({ request: req, signal: undefined, onEvent: () => {}, onProgress: () => {} });
       expect(retry).toEqual(initial);
@@ -1769,11 +1768,11 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     if (!checkpoint) throw new Error('Expected initial checkpoint');
     const capture = vi.spyOn(session.core.api, 'llama_state_seq_get_data_ext');
     const restore = vi.spyOn(session.core.api, 'llama_state_seq_set_data_ext');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         capture.mockRestore(); restore.mockRestore();
       },
-    });
+    };
     const continuation = request({ messages: [{ role: 'user', content: 'aaaaaaaaGG' + old.content + 'tool-result' }] });
     const continued = await generate({ request: continuation, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     expect(continued.content.length).toBe(5);
@@ -1811,11 +1810,11 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     const remove = vi.spyOn(core.api, 'llama_memory_seq_rm');
     const restore = vi.spyOn(core.api, 'llama_state_seq_set_data_ext');
     const next = request({ messages: [{ role: 'user', content: 'aaaaaaaabbbb' }] }); next.stop = ['A', 'B'];
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         defaults.mockRestore(); minimum.mockRestore(); remove.mockRestore(); restore.mockRestore();
       },
-    });
+    };
     await generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} });
     expect(restore).toHaveBeenCalledOnce(); expect(remove).toHaveBeenCalledOnce();
     expect(restore.mock.invocationCallOrder[0]).toBeLessThan(remove.mock.invocationCallOrder[0]!);
@@ -1846,11 +1845,11 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
     const { batches, spy } = observeBatches({ core });
     const clear = vi.spyOn(core.api, 'llama_memory_clear');
     const next = request({ messages: [{ role: 'user', content: 'aaaaaaaabbbb' }] }); next.stop = ['A', 'B'];
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         restore.mockRestore(); position.mockRestore(); spy.mockRestore(); clear.mockRestore();
       },
-    });
+    };
     if (failure === 'restore-trap') {
       await expect(generate({ request: next, signal: undefined, onEvent: () => {}, onProgress: () => {} })).rejects.toThrow('fixture restore trap');
       expect(session.cache.validity).toBe('invalid'); expect(session.cache.checkpoint).toBeUndefined();
@@ -1881,11 +1880,11 @@ describe('generic checkpoint reuse through the real hybrid generation runtime', 
       return nativeCapture(...args);
     });
     const free = vi.spyOn(core, 'free');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         writer.resolve(); capture.mockRestore(); free.mockRestore();
       },
-    });
+    };
     const pending = generate({ request: req, signal: controller.signal, onEvent: () => {}, onProgress: () => {} });
     const rejected = expect(pending).rejects.toThrow('aborted');
     await vi.waitFor(() => expect(capturedPointer).toBeDefined());
@@ -2436,11 +2435,11 @@ describe('bounded task yields through the native generation loop', () => {
     const controller = new AbortController();
     const chunks: string[] = []; let timer: ReturnType<typeof setTimeout> | undefined;
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         if (timer !== undefined) clearTimeout(timer);
       },
-    });
+    };
     await expect(generate({
       request: req,
       signal: controller.signal,
@@ -2494,11 +2493,11 @@ describe('bounded task yields through the native generation loop', () => {
         }
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         gate.resolve(); await task;
       },
-    });
+    };
     await entered.promise;
     expect(sample).toHaveBeenCalledTimes(9);
     const calls = decode.mock.calls.length;
@@ -2964,11 +2963,11 @@ describe('text generation without eager companion allocation', () => {
     host.companion = false;
     const req = { ...request({ messages: [{ role: 'user' as const, content: 'companion deferral fixture' }] }), debug: 'on' as const };
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         host.companion = false; log.mockRestore(); await releaseSession({ releaseRuntime: true });
       },
-    });
+    };
     const reference = await generate({ request: req, signal: undefined, onProgress: () => {}, onEvent: () => {} });
     const referenceLogits = await readNativeLogits(); const referencePosition = await sequencePosition();
     const next = { ...req, messages: [...req.messages, { role: 'assistant' as const, content: reference.content }, { role: 'user' as const, content: 'continue' }] };

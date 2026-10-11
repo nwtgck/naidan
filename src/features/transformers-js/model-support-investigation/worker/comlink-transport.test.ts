@@ -11,18 +11,17 @@ import type {
   ITransformersJsWorker,
   TransformersJsProductionInvestigationProgressCallback,
 } from "@/features/transformers-js/types";
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 async function releaseRemote({ remote, ports }: {
   remote: { [Comlink.releaseProxy]: () => void | Promise<void> },
   ports: MessageChannel,
 }): Promise<void> {
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       ports.port1.close();
       ports.port2.close();
     },
-  });
+  };
   await remote[Comlink.releaseProxy]();
 }
 
@@ -100,11 +99,11 @@ describe("Transformers.js Comlink transport contracts", () => {
     const onAttemptEvent = vi.fn();
     const onAttemptCheckpoint = vi.fn();
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await releaseRemote({ remote, ports });
       },
-    });
+    };
     const planningResult = await remote.runPartialInvestigation(
       { runId: "host-run", modelId: "org/model", externalNetworkPolicy: "allow", executionPlan: { repositoryDownload: true, modelLoad: true, generation: true, continuity: true, capabilityProbes: true } },
       Comlink.proxy(onEvent),
@@ -150,11 +149,11 @@ describe("Transformers.js Comlink transport contracts", () => {
     const remote = Comlink.wrap<ProductionRemote>(ports.port2 as unknown as Comlink.Endpoint);
     const progressCallback = vi.fn<TransformersJsProductionInvestigationProgressCallback>();
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await releaseRemote({ remote, ports });
       },
-    });
+    };
     const result = await remote.runModelSupportInvestigationScenario(
       { modelId: "org/model" } as never,
       Comlink.proxy(progressCallback),

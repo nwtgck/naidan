@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 import { createTextExportStream } from './text-export-stream';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe('streamed text export', () => {
   it('encodes split surrogate pairs, lone surrogates and Blob text without whole-output buffering', async () => {
@@ -31,11 +30,11 @@ end`);
     const finished = Promise.withResolvers<void>();
     const stream = createTextExportStream({
       produce: async ({ write }) => {
-        using _cleanupResource = createTestDisposable({
-          dispose: () => {
+        using _cleanupResource = {
+          [Symbol.dispose]() {
             finished.resolve();
           },
-        });
+        };
         for (let i = 0; i < 10000; i++) {
           await write({ text: 'x'.repeat(64 * 1024) }); writes += 1;
         }

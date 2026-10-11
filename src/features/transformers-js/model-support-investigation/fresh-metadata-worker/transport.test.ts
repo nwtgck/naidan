@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest';
 import { createFreshMetadataTransport } from './transport';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const modelId = 'fixture/public-model';
 const revision = 'a'.repeat(40);
@@ -13,11 +12,11 @@ it('records missing Content-Length and a size probe without retaining signed que
     headers: { 'Content-Range': 'bytes 0-0/100' },
   }));
   const transport = createFreshMetadataTransport({ modelId, revision, maximumBytes: 8, originalFetch, signal: new AbortController().signal, onObservation: () => undefined });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       transport.dispose();
     },
-  });
+  };
   const response = await transport.fetch(`${base}config.json?token=private-fixture-value`, { headers: { Range: 'bytes=0-0' } });
   expect(response.status).toBe(206);
   expect(new Uint8Array(await response.arrayBuffer())).toEqual(Uint8Array.of(123));
@@ -40,11 +39,11 @@ it('records missing Content-Length and a size probe without retaining signed que
 it('counts bodies across requests and rejects the chunk that crosses the operation budget', async () => {
   const originalFetch = vi.fn<typeof fetch>(async () => new Response(Uint8Array.of(1, 2)));
   const transport = createFreshMetadataTransport({ modelId, revision, maximumBytes: 3, originalFetch, signal: new AbortController().signal, onObservation: () => undefined });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       transport.dispose();
     },
-  });
+  };
   await (await transport.fetch(`${base}config.json`)).arrayBuffer();
   await expect((await transport.fetch(`${base}tokenizer.json`)).arrayBuffer()).rejects.toThrow('budget');
   expect(transport.snapshot().receivedBytes).toBe(4);
@@ -92,13 +91,13 @@ it('does not report a size probe as cancelled until its source acknowledges canc
   });
   const response = await transport.fetch(`${base}config.json`, { headers: { Range: 'bytes=0-0' } });
   const cancellation = response.body!.cancel();
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       finished.resolve();
       await cancellation;
       transport.dispose();
     },
-  });
+  };
   await started.promise;
   expect(transport.snapshot().requests[0]?.status).toBe('cancelling');
   finished.resolve();

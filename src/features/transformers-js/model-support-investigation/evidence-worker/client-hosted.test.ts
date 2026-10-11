@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IModelSupportInvestigationEvidenceWorker } from "@/features/transformers-js/model-support-investigation/evidence-worker/types";
 import type { DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
 import { readOrdinaryDownloadTimingEvidenceFile } from '@/features/transformers-js/model-support-investigation/logic/ordinary-download-timing-evidence';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({
   release: vi.fn(),
@@ -355,11 +354,11 @@ describe("createModelSupportInvestigationEvidenceWorkerClient", () => {
 
   it("never falls back to main-thread ZIP generation when Worker is unavailable", async () => {
     vi.stubGlobal("Worker", undefined);
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.stubGlobal("Worker", MockWorker);
       },
-    });
+    };
     const { createModelSupportInvestigationEvidenceWorkerClient } = await import("./client-hosted");
     expect(() => createModelSupportInvestigationEvidenceWorkerClient()).toThrow(/requires a Worker/u);
   });

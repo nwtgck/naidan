@@ -4,7 +4,6 @@ import type { TransformersJsProgressCallback, TransformersJsWorkerClient } from 
 import type { DownloadProgressCallback } from './download-progress';
 import type { RuntimeAcceptanceProgressCallback } from './download-verification/logic/runtime-acceptance-progress';
 import type { DownloadTimingCallback, DownloadAcceptanceTiming } from './download-timing';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const transfer = vi.hoisted(() => ({ resolve: vi.fn(), reuse: vi.fn(), prepare: vi.fn() }));
 vi.mock('./download-verification/logic/resolve-public-hugging-face-revision', () => ({ resolvePublicHuggingFaceRevision: transfer.resolve }));
@@ -100,12 +99,12 @@ it('does not record success or late timing while a cancelled Download is still s
   });
   const running = owner.service.downloadModel({ modelId: 'fixture/model' });
   const rejected = running.catch((error: unknown) => error);
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       release.resolve();
       await rejected;
     },
-  });
+  };
   await entered.promise;
   await owner.service.interrupt();
   const pending = owner.service.getDownloadTimingSnapshot();
@@ -137,12 +136,12 @@ it('drops a disposed service owner timing callback without resurrecting retained
     return { status: 'accepted' };
   });
   const running = owner.service.downloadModel({ modelId: 'fixture/model' }).catch((error: unknown) => error);
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       release.resolve();
       await running;
     },
-  });
+  };
   await entered.promise;
   await owner.dispose();
   expect(await running).toMatchObject({ reason: 'disposed' });
@@ -274,12 +273,12 @@ it('ignores a previous Download callback while a new operation owns the service'
   });
   const running = owner.service.downloadModel({ modelId: 'fixture/second' });
   await entered.promise;
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       release.resolve();
       await running;
     },
-  });
+  };
   const before = structuredClone(owner.service.getState());
   previous?.({ event: { kind: 'file', index: 0, info: { status: 'done', file: 'new/model.onnx', loaded: 900, total: 900 } } });
   previous?.({ event: { kind: 'phase', phase: 'failed' } });

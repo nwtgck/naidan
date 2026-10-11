@@ -1,26 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
-
-// Compile-time checks complement runtime tests: an async callback must never be
-// accepted by the synchronous adapter and silently left running after a test.
-function checkAdapterTypes() {
-  // @ts-expect-error Async cleanup requires the async adapter.
-  createTestDisposable({ dispose: async () => {} });
-  // @ts-expect-error A synchronous callback is not an asynchronous disposer.
-  createAsyncTestDisposable({ dispose: () => {} });
-}
-
-void checkAdapterTypes;
 
 describe('test-only resource cleanup', () => {
-  it('uses native runtime symbols without modifying them', () => {
-    expect(typeof Symbol.dispose).toBe('symbol');
-    expect(typeof Symbol.asyncDispose).toBe('symbol');
-    const before = Object.getOwnPropertyDescriptor(Symbol, 'dispose');
+  it('uses native runtime symbols without modifying them', async () => {
+    const before = {
+      sync: Object.getOwnPropertyDescriptor(Symbol, 'dispose'),
+      async: Object.getOwnPropertyDescriptor(Symbol, 'asyncDispose'),
+    };
     {
-      using _resource = createTestDisposable({ dispose: () => {} });
+      using _sync = { [Symbol.dispose]() {} };
+      await using _async = { async [Symbol.asyncDispose]() {} };
     }
-    expect(Object.getOwnPropertyDescriptor(Symbol, 'dispose')).toEqual(before);
+    expect(Object.getOwnPropertyDescriptor(Symbol, 'dispose')).toEqual(before.sync);
+    expect(Object.getOwnPropertyDescriptor(Symbol, 'asyncDispose')).toEqual(before.async);
   });
 
   it('restores a Vitest spy at the original block boundary', () => {
@@ -46,16 +37,16 @@ describe('test-only resource cleanup', () => {
   it('cleans up once in reverse registration order before subsequent assertions', () => {
     const events: string[] = [];
     {
-      using _first = createTestDisposable({
-        dispose: () => {
+      using _first = {
+        [Symbol.dispose]() {
           events.push('first');
         },
-      });
-      using _second = createTestDisposable({
-        dispose: () => {
+      };
+      using _second = {
+        [Symbol.dispose]() {
           events.push('second');
         },
-      });
+      };
       events.push('body');
     }
     expect(events).toEqual(['body', 'second', 'first']);
@@ -70,11 +61,11 @@ describe('test-only resource cleanup', () => {
       },
     };
     {
-      using _resource = createTestDisposable({
-        dispose: () => {
+      using _resource = {
+        [Symbol.dispose]() {
           target.close();
         },
-      });
+      };
       target.value = 'new';
     }
     expect(events).toEqual(['new']);
@@ -83,11 +74,11 @@ describe('test-only resource cleanup', () => {
   it('cleans up before an early return', () => {
     const cleanup = vi.fn(() => {});
     const run = () => {
-      using _resource = createTestDisposable({
-        dispose: () => {
+      using _resource = {
+        [Symbol.dispose]() {
           cleanup();
         },
-      });
+      };
       return 42;
     };
     expect(run()).toBe(42);
@@ -99,14 +90,14 @@ describe('test-only resource cleanup', () => {
     const release = Promise.withResolvers<void>();
     const started = Promise.withResolvers<void>();
     const operation = (async () => {
-      await using _resource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _resource = {
+        async [Symbol.asyncDispose]() {
           events.push('cleanup-start');
           started.resolve();
           await release.promise;
           events.push('cleanup-end');
         },
-      });
+      };
       events.push('body');
     })();
     await started.promise;
@@ -124,11 +115,11 @@ describe('test-only resource cleanup', () => {
     const failure = new Error('body');
     const cleaned: boolean[] = [];
     expect(() => {
-      using _resource = createTestDisposable({
-        dispose: () => {
+      using _resource = {
+        [Symbol.dispose]() {
           cleaned.push(true);
         },
-      });
+      };
       throw failure;
     }).toThrow(failure);
     expect(cleaned).toEqual([true]);
@@ -137,11 +128,11 @@ describe('test-only resource cleanup', () => {
   it('propagates an asynchronous cleanup failure', async () => {
     const failure = new Error('cleanup');
     await expect((async () => {
-      await using _resource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _resource = {
+        async [Symbol.asyncDispose]() {
           throw failure;
         },
-      });
+      };
     })()).rejects.toBe(failure);
   });
 
@@ -150,11 +141,11 @@ describe('test-only resource cleanup', () => {
     const cleanup = new Error('cleanup');
     let caught: unknown;
     try {
-      using _resource = createTestDisposable({
-        dispose: () => {
+      using _resource = {
+        [Symbol.dispose]() {
           throw cleanup;
         },
-      });
+      };
       throw body;
     } catch (error) {
       caught = error;
@@ -166,12 +157,70 @@ describe('test-only resource cleanup', () => {
     const body = new Error('body');
     const cleanup = new Error('cleanup');
     await expect((async () => {
-      await using _resource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _resource = {
+        async [Symbol.asyncDispose]() {
           throw cleanup;
         },
-      });
+      };
       throw body;
     })()).rejects.toMatchObject({ name: 'SuppressedError', error: cleanup, suppressed: body });
+  });
+
+  it('preserves composite cleanup order and stops after the first failure', () => {
+    const events: string[] = [];
+    const failure = new Error('first cleanup');
+    const first = () => {
+      events.push('first');
+      throw failure;
+    };
+    expect(() => {
+      using _resource = {
+        [Symbol.dispose]() {
+          first();
+          // The original finally block did not execute later cleanup on failure.
+          events.push('second');
+        },
+      };
+    }).toThrow(failure);
+    expect(events).toEqual(['first']);
+  });
+
+  it('keeps nested finally cleanup mandatory when earlier cleanup fails', async () => {
+    const events: string[] = [];
+    const failure = new Error('first cleanup');
+    await expect((async () => {
+      await using _resource = {
+        async [Symbol.asyncDispose]() {
+          try {
+            events.push('first');
+            throw failure;
+          } finally {
+            await Promise.resolve();
+            events.push('second');
+          }
+        },
+      };
+    })()).rejects.toBe(failure);
+    expect(events).toEqual(['first', 'second']);
+  });
+
+  it('awaits a non-native thenable returned by asynchronous cleanup', async () => {
+    const events: string[] = [];
+    const failure = new Error('thenable cleanup');
+    const thenable: PromiseLike<void> = {
+      then(onfulfilled, onrejected) {
+        events.push('then');
+        return Promise.reject(failure).then(onfulfilled, onrejected);
+      },
+    };
+    await expect((async () => {
+      await using _resource = {
+        async [Symbol.asyncDispose]() {
+          await thenable;
+        },
+      };
+      events.push('body');
+    })()).rejects.toBe(failure);
+    expect(events).toEqual(['body', 'then']);
   });
 });

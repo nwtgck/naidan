@@ -2,7 +2,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createProviderReplayTestRuntime } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
 import { createSyntheticModelBody } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
 const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
@@ -70,15 +69,15 @@ describe('ordinary offline revision selection through the actual Production Work
         await release.promise;
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await writer;
         if (originalLocks === undefined) Reflect.deleteProperty(navigator, 'locks');
         else Object.defineProperty(navigator, 'locks', originalLocks);
         await harness.close();
       },
-    });
+    };
     await entered.promise;
     await expect(harness.service.loadDownloadedModel({ modelId })).rejects.toMatchObject({ name: 'OpfsResourceBusyError' });
     expect(harness.observations.ortCalls).toEqual([]);
@@ -98,12 +97,12 @@ describe('ordinary offline revision selection through the actual Production Work
     const harness = await createRuntime();
     const { createTransformersJsWorkerClient } = await import('@/features/transformers-js/worker/client-hosted');
     const client = createTransformersJsWorkerClient();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await client.dispose();
         await harness.close();
       },
-    });
+    };
     await seedImmutable({ harness, paths: ['config.json', 'tokenizer_config.json', 'tokenizer.json', modelPath], malformedConfig: false, targetRevision: revision });
     expect(harness.observations.fs.files.delete(`${cachePrefix}main/config.json`)).toBe(true);
     await expect(client.loadDownloadedModel({
@@ -121,12 +120,12 @@ describe('ordinary offline revision selection through the actual Production Work
     const harness = await createRuntime();
     const { createTransformersJsWorkerClient } = await import('@/features/transformers-js/worker/client-hosted');
     const client = createTransformersJsWorkerClient();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await client.dispose();
         await harness.close();
       },
-    });
+    };
     await seedImmutable({ harness, paths: ['config.json', 'tokenizer_config.json', 'tokenizer.json', modelPath], malformedConfig: false, targetRevision: revision });
     harness.observations.fs.files.delete(`${cachePrefix}main/tokenizer.json`);
     await expect(client.loadDownloadedModel({
@@ -143,11 +142,11 @@ describe('ordinary offline revision selection through the actual Production Work
     const harness = await createRuntime();
     const firstRevision = '0'.repeat(40);
     const secondRevision = 'f'.repeat(40);
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     // Directory iteration observes the complete namespace first, then the
     // partial one. Its equal-or-newer stat timestamp sorts the partial one
     // first; the lexical tie breaker agrees. No wall-clock sleep is needed.
@@ -180,11 +179,11 @@ describe('ordinary offline revision selection through the actual Production Work
 
   it('does not retry another namespace when a selected native Load loses a required file', async () => {
     const harness = await createRuntime();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     await seedImmutable({ harness, paths: ['config.json', 'tokenizer_config.json', 'tokenizer.json', modelPath], malformedConfig: false, targetRevision: revision });
     const original = harness.runtime.AutoModelForCausalLM.from_pretrained.bind(harness.runtime.AutoModelForCausalLM);
     let nativeLoads = 0;
@@ -204,11 +203,11 @@ describe('ordinary offline revision selection through the actual Production Work
 
   it('plans past a partial immutable namespace before loading the complete legacy namespace', async () => {
     const harness = await createRuntime();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     // A committed core weight makes this namespace eligible for inventory,
     // but it does not supply the tokenizer required by the actual runtime.
     await seedImmutable({ harness, paths: ['config.json', modelPath], malformedConfig: false, targetRevision: revision });
@@ -223,11 +222,11 @@ describe('ordinary offline revision selection through the actual Production Work
 
   it('excludes a partial namespace with no config before any native Load', async () => {
     const harness = await createRuntime();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     await seedImmutable({ harness, paths: [modelPath], malformedConfig: false, targetRevision: revision });
     await expect(harness.service.loadDownloadedModel({ modelId })).resolves.toBeUndefined();
     expect(harness.observations.ortCalls).toHaveLength(1);
@@ -237,11 +236,11 @@ describe('ordinary offline revision selection through the actual Production Work
 
   it('does not convert native inventory I/O failure into successful legacy Load', async () => {
     const harness = await createRuntime();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     const failure = new DOMException('Transient native OPFS inspection failure', 'NotReadableError');
     vi.spyOn(navigator.storage, 'getDirectory').mockRejectedValueOnce(failure);
     await expect(harness.service.loadDownloadedModel({ modelId })).rejects.toThrow('Transient native OPFS inspection failure');
@@ -251,11 +250,11 @@ describe('ordinary offline revision selection through the actual Production Work
 
   it('treats malformed candidate metadata as terminal instead of hiding it behind another namespace', async () => {
     const harness = await createRuntime();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     await seedImmutable({ harness, paths: ['config.json', modelPath], malformedConfig: true, targetRevision: revision });
     await expect(harness.service.loadDownloadedModel({ modelId })).rejects.toThrow();
     expect(harness.observations.ortCalls).toEqual([]);

@@ -3,7 +3,6 @@ import {
   ProductionLaneTimeoutError,
   withProductionLaneTimeout,
 } from "./production-lane-timeout";
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe("withProductionLaneTimeout", () => {
   it("returns an operation that finishes before the deadline", async () => {
@@ -17,11 +16,11 @@ describe("withProductionLaneTimeout", () => {
 
   it("rejects with the last Production stage and invokes the timeout callback", async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     const onTimeout = vi.fn();
     const assertion = expect(withProductionLaneTimeout({
       operation: new Promise<string>(() => undefined),

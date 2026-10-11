@@ -7,7 +7,6 @@ import type { InferenceMessage } from '@/features/transformers-js/types';
 import { createModelSupportWeatherTool, MODEL_SUPPORT_TOOL_DEFINITIONS } from './tool-protocol-fixture';
 import { runProviderTestInferenceOperation } from '@/features/transformers-js/provider-inference-test-scope';
 import { runProviderReplayTurn } from '@/features/transformers-js/replay-models/support/provider-replay-chat';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async () => {
@@ -23,11 +22,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.unstubAllGlobals();
     },
-  });
+  };
   expect(globalThis.fetch).not.toHaveBeenCalled();
   expect(navigator.storage.getDirectory).not.toHaveBeenCalled();
 });

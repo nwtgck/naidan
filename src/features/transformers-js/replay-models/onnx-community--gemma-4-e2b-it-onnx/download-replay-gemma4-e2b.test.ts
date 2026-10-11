@@ -4,7 +4,6 @@ import { connectRawDownload } from '@/features/transformers-js/replay-models/sup
 import { metadataSizeProbeTransport } from '@/features/transformers-js/replay-models/support/download-metadata-size-probe-transport';
 import { createSyntheticModelBody, readSyntheticModelBody } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
 import { digest } from '@/features/transformers-js/replay-models/support/model-runtime-input-helpers';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -60,11 +59,11 @@ describe('Gemma 4 E2B Download replay', () => {
       const revision = '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
       h.network.mockImplementation(metadataSizeProbeTransport({ originalFetch: h.network.getMockImplementation()! }));
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(h.fs.files.size).toBe(0);
       const { result } = await h.freshMetadata();
       expect(result.summary.status, JSON.stringify(result.summary)).toBe('prepared');
@@ -128,11 +127,11 @@ describe('Gemma 4 E2B Download replay', () => {
         { path: 'onnx/vision_encoder_q4f16.onnx_data', size: 99189440 },
       ];
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(digest({ bytes: h.archive.files.get('config.json')! })).toBe('5494e6677d9e150ea20ba3101ae8a32b0f141004626f052725d8bf48991b9faa');
       expect(digest({ bytes: h.archive.files.get('tokenizer.json')! })).toBe('47bd35616c7c782aaca6ccf48c75f3461d5877170984b8836b375107d0a9f566');
       for (const artifact of expectedArtifacts) {
@@ -207,11 +206,11 @@ describe('Gemma 4 E2B Download replay', () => {
         'onnx/vision_encoder_q4f16.onnx_data',
       ];
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map([['main', revision]]) });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(digest({ bytes: h.archive.files.get('config.json')! })).toBe('5494e6677d9e150ea20ba3101ae8a32b0f141004626f052725d8bf48991b9faa');
       expect(digest({ bytes: h.archive.files.get('tokenizer.json')! })).toBe('47bd35616c7c782aaca6ccf48c75f3461d5877170984b8836b375107d0a9f566');
       await expect(h.serviceDownload()).resolves.toMatchObject({ status: 'idle', error: undefined });
@@ -284,11 +283,11 @@ describe('Gemma 4 E2B Download replay', () => {
       const revision = '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6';
       const missingPath = 'onnx/audio_encoder_q4f16.onnx_data';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       const downloaded = await h.run();
       expect(downloaded.status, JSON.stringify(downloaded)).toBe('accepted');
       expect(h.sessions.toSorted((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);
@@ -348,11 +347,11 @@ describe('Gemma 4 E2B Download replay', () => {
         ],
       };
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       const downloaded = await h.run();
       expect(downloaded.status, JSON.stringify(downloaded)).toBe('accepted');
       expect(downloaded.candidates?.selectedCandidate).toEqual(firstCandidate);
@@ -435,11 +434,11 @@ describe('Gemma 4 E2B Download replay', () => {
       const revision = '9f4bef82ea6e296bc69f8a2f5939f73af81b07a6';
       const missingPath = 'processor_config.json';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       const downloaded = await h.run();
       expect(downloaded.status, JSON.stringify(downloaded)).toBe('accepted');
       expect(h.sessions.toSorted((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);

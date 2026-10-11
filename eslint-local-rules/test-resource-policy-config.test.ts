@@ -1,15 +1,19 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { ESLint, Linter } from 'eslint';
 import * as tsParser from '@typescript-eslint/parser';
 import { rule as resourceRule } from './test-resource-management.js';
 import { rule as importsRule } from './no-test-support-imports.js';
 import { isTestFile, isTestSupportFile } from './test-resource-ast.js';
-import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
+// Resolve filesystem paths directly; Vite treats new URL(..., import.meta.url)
+// as a browser asset in the jsdom transform pipeline.
+const repoRoot = path.resolve(import.meta.dirname, '..');
 const ruleId = 'local-rules-test-resource/test-resource-management';
 
 function createEslint() {
-  return new ESLint({ overrideConfigFile: fileURLToPath(new URL('../eslint.config.js', import.meta.url)) });
+  return new ESLint({ cwd: repoRoot, overrideConfigFile: path.join(repoRoot, 'eslint.config.js') });
 }
 
 describe('test-resource policy integration', () => {

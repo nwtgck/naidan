@@ -4,7 +4,6 @@ import { bytesSource, collectBytes, computationSource, encodeDocument } from '@/
 import { prepareTranscript, receiveTranscript, receiveEvents, eventBytes, TRANSCRIPT_LIMIT } from '@/features/naidan-rpc-integration/codecs/chat-wire';
 import { validatePng } from '@/features/naidan-rpc-integration/codecs/png';
 import type { LlamaCppBrowserService } from '@/features/llama-cpp-browser/service-contract';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -46,11 +45,11 @@ it('bounds byte-buffer allocation overhead independently of tiny chunk count', a
       allocations++; return Reflect.construct(constructor, args, newTarget);
     },
   }));
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.unstubAllGlobals();
     },
-  });
+  };
   const bytes = await collectBytes({ readable, limit: length, signal: signal() });
   expect(bytes.byteLength).toBe(length);
   expect(bytes.every(byte => byte === 7)).toBe(true);
@@ -104,11 +103,11 @@ for (const consumer of ['bytes', 'events'] as const) {
       }, (error: unknown) => {
         settled = true; return error;
       });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           cleanup.resolve(); await observed;
         },
-      });
+      };
       stop.abort(reason);
       await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
       // Drain the read/catch continuations while native cancellation remains held.

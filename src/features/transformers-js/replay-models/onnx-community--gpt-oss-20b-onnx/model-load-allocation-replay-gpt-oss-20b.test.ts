@@ -5,7 +5,6 @@ import { createProviderReplayTestRuntime } from '@/features/transformers-js/repl
 import { z } from 'zod';
 import { createModelLoadAllocationRuntime, trapLargeModelAllocation, modelLoadAllocationEvidenceSchema } from '@/features/transformers-js/replay-models/support/model-load-allocation-runtime';
 import { getProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
-import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const modelId = 'onnx-community/gpt-oss-20b-ONNX';
 // Independent model-local requirements; never shrink these to fit test memory.
@@ -62,15 +61,15 @@ describe('GPT-OSS model Load allocation boundaries', () => {
     });
     const failure = new RangeError('Controlled allocation refusal before native allocation');
     const trap = trapLargeModelAllocation({ failure });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         try {
           await h.close();
         } finally {
           trap.restore();
         }
       },
-    });
+    };
     await expect(h.load()).rejects.toBe(failure);
     expect(trap.requests).toEqual([{ bytes: target.bytes, boundary: 'readResponse' }]);
     expect(targetPulls).toBe(0);
@@ -98,11 +97,11 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       },
     });
     const download = vi.spyOn(h.service, 'downloadModel');
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         download.mockRestore(); await h.close();
       },
-    });
+    };
     await expect(h.service.loadDownloadedModel({ modelId })).rejects.toThrow('Downloaded model is incomplete; no locally complete namespace was planned');
     expect(h.observations.fs.files.size).toBe(0);
     expect(h.observations.fs.activity).toEqual([]);
@@ -145,13 +144,13 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       expect((await h.registry()).filter(path => path.startsWith('onnx/')).sort()).toEqual(resources.map(item => item.path).sort());
       return h.load();
     })();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await loading.catch(() => undefined);
         await h.close();
       },
-    });
+    };
     await Promise.race([entered.promise, loading.then(() => {
       throw new Error('Load settled before the gated reader');
     })]);
@@ -205,11 +204,11 @@ describe('GPT-OSS model Load allocation boundaries', () => {
             }
             secondPull.resolve();
             await release.promise;
-            using _cleanupResource = createTestDisposable({
-              dispose: () => {
+            using _cleanupResource = {
+              [Symbol.dispose]() {
                 lateFinished.resolve();
               },
-            });
+            };
             if (!responseCancelled) controller.error(cause);
           },
           cancel() {
@@ -245,11 +244,11 @@ describe('GPT-OSS model Load allocation boundaries', () => {
     const previous = h.diagnostics();
     vi.unstubAllGlobals();
     const next = await createModelLoadAllocationRuntime({ modelId, paths: resources.map(item => item.path), response: () => new Response(new Uint8Array([7, 8]), { headers: { 'Content-Length': '2' } }) });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await next.close();
       },
-    });
+    };
     const model = await next.load();
     expect(next.raw.sessions).toHaveBeenCalledTimes(1);
     expect(next.diagnostics().events.filter(event => event.kind === 'allocation-succeeded').map(event => event.requestedBytes)).toEqual(Array(8).fill(2));
@@ -280,11 +279,11 @@ describe('GPT-OSS model Load allocation boundaries', () => {
             }
             secondPull.resolve();
             await release.promise;
-            using _cleanupResource = createTestDisposable({
-              dispose: () => {
+            using _cleanupResource = {
+              [Symbol.dispose]() {
                 lateFinished.resolve();
               },
-            });
+            };
             if (!responseCancelled) controller.error(cause);
           },
           cancel() {
@@ -320,11 +319,11 @@ describe('GPT-OSS model Load allocation boundaries', () => {
     const previous = h.diagnostics();
     vi.unstubAllGlobals();
     const next = await createModelLoadAllocationRuntime({ modelId, paths: resources.map(item => item.path), response: () => new Response(new Uint8Array([7, 8]), { headers: { 'Content-Length': '2' } }) });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await next.close();
       },
-    });
+    };
     const model = await next.load();
     expect(next.raw.sessions).toHaveBeenCalledTimes(1);
     expect(next.diagnostics().events.filter(event => event.kind === 'allocation-succeeded').map(event => event.requestedBytes)).toEqual(Array(8).fill(2));

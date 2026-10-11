@@ -2,7 +2,6 @@ import { toMessageId } from '@/01-models/ids';
 import { computed, nextTick, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatPaneSession } from './useChatPaneSession';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe('useChatPaneSession', () => {
   beforeEach(() => {
@@ -11,11 +10,11 @@ describe('useChatPaneSession', () => {
 
   it('resets compact dialog, outline, and neural sync effect when chat identity changes', async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     const chatIdentityKey = ref('chat-1:leaf-1');
     const session = useChatPaneSession({
       chatIdentityKey: computed(() => chatIdentityKey.value),
@@ -44,11 +43,11 @@ describe('useChatPaneSession', () => {
 
   it('clears the neural sync effect after the timer expires', async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     const session = useChatPaneSession({
       chatIdentityKey: computed(() => 'chat-1:leaf-1'),
     });

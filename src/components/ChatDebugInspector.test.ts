@@ -7,7 +7,6 @@ import { NetworkIcon } from 'lucide-vue-next';
 import type { MessageNode, Chat, Attachment, LmParameters } from '@/01-models/types';
 import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/01-models/ids';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
@@ -370,11 +369,11 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('keeps copy feedback scoped to the latest JSON copy request', async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     const nodeA = createNode({ id: 'A', role: 'user', content: 'A', replies: [], extra: {} });
     const chat = createMockChat([nodeA]);
     chat.currentLeafId = nodeA.id;

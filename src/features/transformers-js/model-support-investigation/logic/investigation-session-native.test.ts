@@ -18,7 +18,6 @@ import { createProductionProviderCaptureEvidence, readProductionProviderCaptureE
 import { configurationForPreset } from './investigation-config';
 import { createInvestigationSessionView, recallInvestigationSession, TEST_ONLY, type InvestigationSessionSnapshot } from './investigation-session';
 import { measureInvestigationProviderRetention } from './investigation-provider-retention';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Only the model output is synthetic. Session retention, immutable sidecars,
 // request codecs, Comlink, Evidence Worker and ZIP implementations are real.
@@ -160,13 +159,13 @@ describe('Session native evidence retention and actual Evidence Worker export', 
     const channel = new MessageChannel();
     exposeWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ api: createModelSupportInvestigationEvidenceWorker(), endpoint: channel.port1 });
     const remote = wrapWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ endpoint: channel.port2 });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         pendingRelease.resolve();
         await releaseWorkerRemote({ remote });
         channel.port1.close(); channel.port2.close();
       },
-    });
+    };
     for (const retained of [snapshot, structuredClone(snapshot)]) {
       const archive = await remote.createPartialEvidence({
         request: createModelSupportInvestigationEvidenceWorkerRequest({ run: retained.runs[0]![1], recovery: retained.recoveries[0]![1] }),

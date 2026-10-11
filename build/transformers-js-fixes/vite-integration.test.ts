@@ -8,7 +8,6 @@ import { build, createServer, optimizeDeps, resolveConfig, type InlineConfig } f
 import { buildTransformersJsFixesArtifact } from './artifact';
 import { createTransformersJsFixesViteConfig, readTransformersJsFixesPackage } from './plugin';
 import { TRANSFORMERS_JS_FIXES_PROVENANCE, transformersJsFixesSha256 } from './transform';
-import { createAsyncTestDisposable } from '../../src/utils/resource-cleanup.test-support';
 
 const projectRoot = process.cwd();
 const temporaryRoots: string[] = [];
@@ -103,11 +102,11 @@ it('serves the module Worker and unoptimized dependency with the production tran
     server: { middlewareMode: true, hmr: false, watch: null },
     optimizeDeps: { ...fixes.optimizeDeps, noDiscovery: true, exclude: ['@huggingface/transformers', ...ortExternals] },
   });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await server.close();
     },
-  });
+  };
   const entry = await server.transformRequest('/build/transformers-js-fixes/fixtures/browser-entry.ts');
   expect(entry?.code.includes('worker_file')).toBe(true);
   const worker = await server.transformRequest('/build/transformers-js-fixes/fixtures/worker-entry.ts?worker_file&type=module');

@@ -10,7 +10,6 @@ import {
   type ZipByteSink,
   type ZipCentralDirectoryStore,
 } from './index';
-import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -328,11 +327,11 @@ describe('streaming ZIP codec', () => {
       decodeEntryName: ({ bytes, isUtf8 }) => `${isUtf8 ? 'utf8' : 'raw'}:${Buffer.from(bytes).toString('hex')}`,
     });
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await reader.close();
       },
-    });
+    };
     const entries = await collectEntries({ reader });
     expect(entries).toHaveLength(1);
     const entry = entries[0];
@@ -364,11 +363,11 @@ describe('streaming ZIP codec', () => {
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await reader.close();
       },
-    });
+    };
     const entries = await collectEntries({ reader });
     expect(entries.map(entry => entry.name)).toEqual([
       'symbols-∞-∑-𝄞-🧪/',
@@ -442,11 +441,11 @@ describe('streaming ZIP codec', () => {
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await reader.close();
       },
-    });
+    };
     const entries = await collectEntries({ reader });
     expect(entries.map(entry => entry.name)).toEqual(['unicode/', nfcName, nfdName]);
     expect(textDecoder.decode(await readStreamBytes({
@@ -515,11 +514,11 @@ describe('streaming ZIP codec', () => {
       const reader = new TestStreamingZipReader({
         source: createBlobZipSource({ blob: createBlobFromBytes({ bytes }) }),
       });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await reader.close();
         },
-      });
+      };
       await expect(collectEntries({ reader })).rejects.toThrow(message);
     };
 
@@ -579,11 +578,11 @@ describe('streaming ZIP codec', () => {
     const invalidLocalReader = new TestStreamingZipReader({
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: invalidLocal }) }),
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await invalidLocalReader.close();
       },
-    });
+    };
     const entries = await collectEntries({ reader: invalidLocalReader });
     await expect(invalidLocalReader.openEntry({
       entry: findEntry({ entries, name: 'payload.txt' }),
@@ -601,11 +600,11 @@ describe('streaming ZIP codec', () => {
       const reader = new TestStreamingZipReader({
         source: createBlobZipSource({ blob: createBlobFromBytes({ bytes }) }),
       });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await reader.close();
         },
-      });
+      };
       const entries = await collectEntries({ reader });
       await expect(reader.openEntry({
         entry: findEntry({ entries, name: 'payload.txt' }),
@@ -663,11 +662,11 @@ describe('streaming ZIP codec', () => {
       const reader = new TestStreamingZipReader({
         source: createBlobZipSource({ blob: createBlobFromBytes({ bytes }) }),
       });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await reader.close();
         },
-      });
+      };
       await expect(collectEntries({ reader })).rejects.toThrow(message);
     };
 
@@ -725,11 +724,11 @@ describe('streaming ZIP codec', () => {
     const reader = new TestStreamingZipReader({
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await reader.close();
       },
-    });
+    };
     const entries = await collectEntries({ reader });
     await expect(reader.openEntry({
       entry: findEntry({ entries, name: 'payload.txt' }),
@@ -747,11 +746,11 @@ describe('streaming ZIP codec', () => {
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await reader.close();
       },
-    });
+    };
     const entries = await collectEntries({ reader });
     await expect(readStreamBytes({
       stream: await reader.openEntry({ entry: findEntry({ entries, name: 'payload.txt' }) }),
@@ -769,19 +768,19 @@ describe('streaming ZIP codec', () => {
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
 
-    await using _cleanupResource2 = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource2 = {
+      async [Symbol.asyncDispose]() {
         await reader.close();
       },
-    });
+    };
     const entries = await collectEntries({ reader });
     const stream = await reader.openEntry({ entry: findEntry({ entries, name: 'payload.txt' }) });
     const streamReader = stream.getReader();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         streamReader.releaseLock();
       },
-    });
+    };
     await expect(streamReader.read()).rejects.toThrow('ZIP entry size mismatch: payload.txt');
   });
 
@@ -831,11 +830,11 @@ describe('streaming ZIP codec', () => {
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await reader.close();
       },
-    });
+    };
     const entries = await collectEntries({ reader });
     const entry = findEntry({ entries, name: 'link.txt' });
     expect(entry.isDirectory).toBe(false);
@@ -869,11 +868,11 @@ describe('streaming ZIP codec', () => {
     };
     const reader = new TestStreamingZipReader({ source: trackedSource });
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await reader.close();
       },
-    });
+    };
     const entries = await collectEntries({ reader });
     const extracted = await readStreamBytes({
       stream: await reader.openEntry({ entry: findEntry({ entries, name: 'large-deflated.bin' }) }),
@@ -948,11 +947,11 @@ describe('streaming ZIP codec', () => {
     };
     const reader = new TestStreamingZipReader({ source });
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await reader.close();
       },
-    });
+    };
     const entries = await collectEntries({ reader });
     stallEntryData = true;
     await expect(readStreamBytes({
@@ -972,11 +971,11 @@ describe('streaming ZIP codec', () => {
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: corrupted }) }),
     });
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await reader.close();
       },
-    });
+    };
     const entries = await collectEntries({ reader });
     await expect(readStreamBytes({
       stream: await reader.openEntry({ entry: findEntry({ entries, name: 'payload.txt' }) }),
@@ -988,11 +987,11 @@ describe('streaming ZIP codec', () => {
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: new Uint8Array([1, 2, 3]) }) }),
     });
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await reader.close();
       },
-    });
+    };
     await expect(collectEntries({ reader })).rejects.toThrow('End of central directory not found');
   });
 });

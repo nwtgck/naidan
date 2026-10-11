@@ -23,7 +23,6 @@ import { parseProviderReplayTextEvidence, replayRecordedText } from '@/features/
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
 import { createSyntheticModelBody } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
 import type { StructuredPartsReplayContract } from '@/features/transformers-js/replay-models/support/provider-replay-structured-parts';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function textMessage({ id, role, text }: {
   id: string;
@@ -403,11 +402,11 @@ describe('Gemma4 E2B Provider / basic', () => {
     const captures: ProviderChatCapture[] = [];
     let capture: ProviderChatCapture | undefined;
     const replay = await createGemmaInputReplay();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     capture = captureProviderChat({
       provider: replay.harness.provider,
@@ -481,11 +480,11 @@ describe('Gemma4 E2B Provider / basic', () => {
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from(replay.sequenceTokenIds), [1, replay.sequenceTokenIds.length]), past_key_values: null };
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     capture = captureProviderChat({
       provider: harness.provider,
@@ -530,11 +529,11 @@ describe('Gemma4 E2B Provider / basic', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
       temperature: 0,
@@ -577,11 +576,11 @@ describe('Gemma4 E2B Provider / system', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
       temperature: 0,
@@ -658,11 +657,11 @@ describe('Gemma4 E2B Provider / history', () => {
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from(replay.sequenceTokenIds), [1, replay.sequenceTokenIds.length]), past_key_values: null };
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     capture = captureProviderChat({
       provider: harness.provider,
@@ -756,11 +755,11 @@ describe('Gemma4 E2B Provider / history', () => {
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from(replay.sequenceTokenIds), [1, replay.sequenceTokenIds.length]), past_key_values: null };
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     capture = captureProviderChat({
       provider: harness.provider,
@@ -808,11 +807,11 @@ describe('Gemma4 E2B Provider / history', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
       temperature: 0,
@@ -901,11 +900,11 @@ A separate synthetic Gemma conversation.<turn|>
         return next(context);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     firstCapture = captureProviderChat({
       provider: harness.provider,
@@ -1018,11 +1017,11 @@ A separate synthetic Gemma conversation.<turn|>
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     const firstSignal = new AbortController().signal;
     const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
       temperature: 0,
@@ -1149,12 +1148,12 @@ Template probe user message.<turn|>
     const replay = await createGemmaInputReplay();
     const templateMessages = [{ role: 'user' as const, content: 'Template probe user message.' }];
     const messages = [textMessage({ id: 'message_0', role: 'user', text: 'Template probe user message.' })];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
         expect(capture === undefined ? [] : capturedTextChunks({ capture, type: 'text' }), 'through awaited Worker disposal').toEqual([]);
       },
-    });
+    };
     await replay.harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
     const processor = replay.harness.observations.processors[0]!;
     const tokenizer = processor.tokenizer;
@@ -1205,11 +1204,11 @@ Template probe user message.<turn|>
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
       temperature: 0,
@@ -1250,11 +1249,11 @@ Template probe user message.<turn|>
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
       temperature: 0,
@@ -1295,11 +1294,11 @@ Template probe user message.<turn|>
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
       temperature: 0,
@@ -1340,11 +1339,11 @@ Template probe user message.<turn|>
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
       temperature: 0,
@@ -1395,11 +1394,11 @@ Partial`,
     });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
       },
-    });
+    };
     capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -1465,12 +1464,12 @@ Reason<channel|>Answer<turn|>`,
         });
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
         expect(executions).toEqual([]);
       },
-    });
+    };
     const tools: CapturedChatRequest['tools'] = toolMode === 'disabled' ? [] : [{
       name: 'probe',
       description: 'Must not execute.',
@@ -1563,12 +1562,12 @@ describe('Gemma4 E2B Provider / tools', () => {
       execute,
     };
     const replay = await createGemmaInputReplay();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
         expect(capture === undefined ? [] : capturedTextChunks({ capture, type: 'text' }), 'through awaited Worker disposal').toEqual([]);
       },
-    });
+    };
     capture = captureProviderChat({
       provider: replay.harness.provider,
       request: {
@@ -1679,11 +1678,11 @@ describe('Gemma4 E2B Provider / tools', () => {
       },
     ];
     const replay = await createGemmaInputReplay();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
       },
-    });
+    };
     expect(publicMessages.map(message => message.role)).toEqual(['user', 'assistant', 'tool']);
     await replay.harness.service.loadDownloadedModel({ modelId: scenario.modelId });
     expect(replay.harness.observations.processors).toHaveLength(1);
@@ -1848,11 +1847,11 @@ describe('Gemma4 E2B Provider / tools', () => {
       reasoning: { effort: undefined },
     };
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     turn = await runProviderReplayTurn({
       provider: harness.provider,
@@ -1911,11 +1910,11 @@ describe('Gemma4 E2B Provider / tools', () => {
       }),
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     turn = await runProviderReplayTurn({
       provider: harness.provider,
@@ -1974,11 +1973,11 @@ describe('Gemma4 E2B Provider / tools', () => {
       }),
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     turn = await runProviderReplayTurn({
       provider: harness.provider,
@@ -2045,11 +2044,11 @@ describe('Gemma4 E2B Provider / tools', () => {
       },
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     turn = await runProviderReplayTurn({
       provider: harness.provider,
@@ -2112,11 +2111,11 @@ describe('Gemma4 E2B Provider / tools', () => {
       }),
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     turn = await runProviderReplayTurn({
       provider: harness.provider,
@@ -2201,11 +2200,11 @@ describe('Gemma4 E2B Provider / tools', () => {
       execute,
     }];
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await replay.close();
       },
-    });
+    };
     replay.beginNativeRequest({ caseId, parameters });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     turn = await runProviderReplayTurn({
@@ -2270,11 +2269,11 @@ describe('Gemma4 E2B Provider / tools', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
       temperature: 0,
@@ -2396,11 +2395,11 @@ Use the synthetic tool.<turn|>
       },
     };
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     turn = await runProviderReplayTurn({
       provider: harness.provider,
@@ -2482,11 +2481,11 @@ Use the quoted value.
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let rebuiltCapture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [rebuiltCapture], close: () => harness.close() });
       },
-    });
+    };
     const user = textMessage({ id: 'synthetic_user', role: 'user', text: 'Synthetic native quote control.' });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     turn = await runProviderReplayTurn({
@@ -2621,11 +2620,11 @@ describe('Gemma4 E2B Provider / images', () => {
         expectedRgba: Uint8ClampedArray.of(0, 0, 0, 255),
         expectedPixels: new Float32Array(2520 * 768),
       });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await closeProviderReplayCaptures({ captures, close: () => control.harness.close() });
         },
-      });
+      };
       capture = captureProviderChat({
         provider: control.harness.provider,
         request: {
@@ -2679,11 +2678,11 @@ describe('Gemma4 E2B Provider / images', () => {
         expectedRgba: Uint8ClampedArray.of(255, 255, 255, 255),
         expectedPixels,
       });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await closeProviderReplayCaptures({ captures, close: () => control.harness.close() });
         },
-      });
+      };
       capture = captureProviderChat({
         provider: control.harness.provider,
         request: {
@@ -2741,11 +2740,11 @@ describe('Gemma4 E2B Provider / images', () => {
       },
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
       temperature: 0,
@@ -2946,11 +2945,11 @@ describe('Gemma4 E2B Provider / sequences', () => {
         return next(context);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     firstCapture = captureProviderChat({
       provider: harness.provider,
@@ -3055,11 +3054,11 @@ describe('Gemma4 E2B Provider / sequences', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     const firstSignal = new AbortController().signal;
     const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = {
       temperature: 0,

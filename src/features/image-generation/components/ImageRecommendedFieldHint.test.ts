@@ -5,7 +5,6 @@ import { TEST_ONLY as recommendations } from '@/features/stable-diffusion-cpp-br
 import { parametersFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import { applyImageRecommendedField, imageRecommendedHint } from '@/features/image-generation/recommended-fields';
 import ImageRecommendedFieldHint from './ImageRecommendedFieldHint.vue';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 let wrapper: VueWrapper | undefined;
 
 beforeEach(async () => {
@@ -48,11 +47,11 @@ it('changes only the requested field, keeping prompt, size and deliberate other 
 
 it('moves keyboard focus into the hint and returns it on Escape or applying the value', async () => {
   const input = document.createElement('input'); input.id = 'steps'; document.body.append(input);
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       input.remove();
     },
-  });
+  };
   const view = openHint(), trigger = view.get('[data-testid="recommended-field-hint"]');
   await trigger.trigger('click');
   expect(document.activeElement).toBe(view.get('[data-testid="recommended-field-apply"]').element);

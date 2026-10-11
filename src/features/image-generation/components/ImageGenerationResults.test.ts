@@ -6,7 +6,6 @@ import { createImageGallery } from '@/features/image-generation/image-gallery';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view.test-support';
 import ImageGenerationResults from './ImageGenerationResults.vue';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 let wrapper: VueWrapper | undefined;
 
 beforeEach(async () => {
@@ -73,11 +72,11 @@ it('keeps result images while typing a larger retention limit, including when an
     gallery.setLimit({ value });
     view.results.value = gallery.entries();
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       stop(); gallery.clear();
     },
-  });
+  };
   for (let i = 0; i < 5; i++) add();
   wrapper = mount(ImageGenerationResults, { props: { view, active: true } });
   const input = wrapper.get<HTMLInputElement>('[data-testid="image-result-limit"]');

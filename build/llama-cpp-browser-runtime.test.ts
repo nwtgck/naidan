@@ -11,7 +11,6 @@ import { createNaidanStandalonePlugin } from './file-protocol-standalone/plugin'
 import { createFileProtocolStandaloneWorkerDefinitions } from './file-protocol-standalone/worker-definitions';
 import { createRequire } from 'node:module';
 import { createStandaloneFacadeAliases } from './standalone-facades.js';
-import { createTestDisposable } from '../src/utils/resource-cleanup.test-support';
 
 async function bundleFeature({ standalone }: { standalone: boolean }): Promise<{ output: Rollup.OutputBundle, workerCores: string[] }> {
   const workerCores = new Set<string>();
@@ -34,11 +33,11 @@ async function bundleFeature({ standalone }: { standalone: boolean }): Promise<{
     writeFileSync(path.join(fixtureRoot, 'main.js'), "import * as feature from 'virtual:llama-build-fixture'; globalThis.feature = feature;");
   }
   const adapter = createLlamaCppBrowserBuild({ rootDir: process.cwd(), mode: standalone ? 'standalone' : 'hosted' });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       if (fixtureRoot) rmSync(fixtureRoot, { recursive: true, force: true });
     },
-  });
+  };
   const result = await build({
     configFile: false,
     root: fixtureRoot ?? process.cwd(),

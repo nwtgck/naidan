@@ -17,7 +17,6 @@ import { createRuntimeControlModelBytes } from '@/features/transformers-js/model
 import { getProductionTransformersArtifact, importProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 import { productionLoadReceiptSchema } from '@/features/transformers-js/runtime/production-load-receipt';
 import { productionLoadObservationSchema } from '@/features/transformers-js/worker/load-receipt';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const nativeBytes = await vi.hoisted(async () => {
   const { Buffer } = await import('node:buffer');
@@ -139,14 +138,14 @@ describe('complete Full collection through Session and actual Worker transports'
     let activeWorker: ProviderReplayTestWorker | undefined;
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let wrapper: ReturnType<typeof mount> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         releaseFirstPlanning.resolve();
         wrapper?.unmount();
         for (const worker of workers) worker.terminate();
         await harness.close();
       },
-    });
+    };
     const artifact = await getProductionTransformersArtifact();
     async function loadWorkerRuntime({ kind }: { kind: Exclude<WorkerKind, 'evidence'> }) {
       const moduleUrl = new NodeUrl(artifact.moduleUrl);

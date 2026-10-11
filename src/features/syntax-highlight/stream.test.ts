@@ -3,7 +3,6 @@ import { createCodeEditSource } from './code-edit-source';
 import { highlightSyntaxStream } from './stream';
 import { createTokenDisplay } from './token-display';
 import type { CodeEdit } from './types';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe('highlightSyntaxStream', () => {
   it('uses demand-driven edits and coalesces queued snapshots against the last consumed source', async () => {
@@ -60,11 +59,11 @@ describe('highlightSyntaxStream', () => {
   it('closes an abandoned input after a delivered edit', async () => {
     let closed = false;
     async function* input() {
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           closed = true;
         },
-      });
+      };
       yield { offset: 0, text: 'echo hello' };
       throw new Error('Consumer must not request another item');
     }

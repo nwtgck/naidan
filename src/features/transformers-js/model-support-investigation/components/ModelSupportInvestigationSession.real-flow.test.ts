@@ -18,7 +18,6 @@ import { configurationForPreset } from '@/features/transformers-js/model-support
 import { createInvestigationSessionView, recallInvestigationSession, TEST_ONLY as sessions } from '@/features/transformers-js/model-support-investigation/logic/investigation-session';
 import Session from './ModelSupportInvestigationSession.vue';
 import { DOWNLOAD_INVESTIGATION_COLLECTION_BUDGET_MS } from '@/features/transformers-js/model-support-investigation/logic/investigation-batch-budget';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const observed = vi.hoisted(() => ({
   planningApi: undefined as WorkerServerApi<IModelSupportInvestigationWorker> | undefined,
@@ -279,11 +278,11 @@ describe('real Session, planning Worker communication and Evidence export', () =
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const pending = Promise.withResolvers<{ features: string[]; limits: object }>();
     adapter.mockImplementationOnce(() => pending.promise);
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         pending.resolve({ features: [], limits: {} });
       },
-    });
+    };
     const mounted = await startBatch();
     await vi.waitFor(() => expect(adapter).toHaveBeenCalledOnce());
     await vi.waitFor(() => expect(mounted.get('[data-testid="model-support-current-operation"]').text()).toContain('environment'));
@@ -358,11 +357,11 @@ describe('real Session, planning Worker communication and Evidence export', () =
   it.each(['stop', 'skip'] as const)('honors an actual %s during a pending browser request and rejects its late completion', async action => {
     const pending = Promise.withResolvers<{ features: string[]; limits: object }>();
     adapter.mockImplementationOnce(() => pending.promise);
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         pending.resolve({ features: [], limits: {} });
       },
-    });
+    };
     const mounted = await startBatch();
     await vi.waitFor(() => expect(adapter).toHaveBeenCalledOnce());
     await vi.waitFor(() => expect(mounted.get('[data-testid="model-support-current-operation"]').text()).toContain('environment'));

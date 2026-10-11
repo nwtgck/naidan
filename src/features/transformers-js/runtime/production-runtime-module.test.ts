@@ -5,7 +5,6 @@ import { fetchProductionRuntimeModule, runtimeModuleBytesSchema, verifiedRuntime
 import { resolveHostedTransformersRuntimeAssetUrls } from './configure-hosted-runtime';
 import { createDownloadedModelWorkerFetch } from './offline-worker-fetch';
 import { productionRuntimeModuleFixtureBytes } from './fixtures/production-runtime-startup-fixture';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const identity = {
   workerLocationUrl: 'http://localhost/assets/worker.js',
@@ -178,11 +177,11 @@ it('returns the known HTTP error without waiting for a cancellation that never s
       headers: { 'Content-Type': 'text/javascript' },
     }),
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       pending.resolve();
     },
-  });
+  };
   await expect(fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch })).rejects.toThrow('complete HTTP 200');
   expect(cancel).toHaveBeenCalledOnce();
 });
@@ -200,12 +199,12 @@ it('rejects an already locked body and does not release another owner\'s reader'
   const response = new Response(originalBytes, { headers: { 'Content-Type': 'text/javascript' } });
   const owner = response.body!.getReader();
   const h = guardedResponse({ response });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await owner.cancel();
       owner.releaseLock();
     },
-  });
+  };
   await expect(fetchProductionRuntimeModule({ assets, runtimeFetch: h.runtimeFetch })).rejects.toBeInstanceOf(TypeError);
   expect(response.body?.locked).toBe(true);
 });

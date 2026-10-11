@@ -8,7 +8,6 @@ import { prepareChat, createGrammarSampler, preservedTokenIds, tokenizeChatText 
 import { createChatSampler, copyReasoningEndMatch } from './chat-sampler';
 import { createSyntheticGguf } from './test-utils/synthetic-gguf.test-support';
 import type { GenerateInput, LlamaCppProfile } from '@/features/llama-cpp-browser/types';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // A small Jinja fixture whose tool syntax is discovered by upstream's parser builder.
 const template = `\
@@ -53,11 +52,11 @@ describe.each(profiles)('native chat on %s', profile => {
     await core.api.llama_backend_init();
     core.module.FS.writeFile('/fixture.gguf', createSyntheticGguf({ chatTemplate: template }));
     const params = core.allocRecord({ name: 'llama_model_params' }); const filename = core.utf8({ text: '/fixture.gguf' });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         core.free({ pointer: params }); core.free({ pointer: filename });
       },
-    });
+    };
     await core.api.llama_model_default_params(params);
     core.setField({ name: 'llama_model_params', pointer: params, field: 'n_gpu_layers', value: 0 });
     model = await core.api.llama_model_load_from_file(filename, params);
@@ -84,19 +83,19 @@ describe.each(profiles)('native chat on %s', profile => {
         },
       }];
       const chat = prepareChat({ core, model, request: { messages: [{ role: 'user', content: 'Get Tokyo weather' }], tools: weatherTools, reasoningEffort: undefined } });
-      using _cleanupResource2 = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource2 = {
+        [Symbol.dispose]() {
           chat.dispose();
         },
-      });
+      };
       const api = core.api; const vocab = await api.llama_model_get_vocab(model);
       const cp = core.allocRecord({ name: 'llama_context_params' });
       let context = 0n;
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           if (context) await api.llama_free(context); core.free({ pointer: cp });
         },
-      });
+      };
       await api.llama_context_default_params(cp);
       for (const [field, value] of Object.entries({ n_ctx: 256, n_batch: 128, n_ubatch: 128, n_threads: 1, n_threads_batch: 1 })) core.setField({ name: 'llama_context_params', pointer: cp, field, value });
       context = await api.llama_init_from_model(model, cp); expect(context).not.toBe(0n);
@@ -149,11 +148,11 @@ describe.each(profiles)('native chat on %s', profile => {
     it('renders tool definitions, parses partial/final tool output and renders the result in the next turn', async () => {
       const messages: GenerateInput['messages'] = [{ role: 'user', content: 'Find Tokyo' }];
       const chat = prepareChat({ core, model, request: { messages, tools, reasoningEffort: 'none' } });
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           chat.dispose();
         },
-      });
+      };
       expect(chat.params.prompt).toContain('lookup'); expect(chat.params.prompt).toContain('Find Tokyo');
       const output = `\
 <tool_call>
@@ -195,22 +194,22 @@ Sunny`);
 
     it.each(['low', 'medium', 'high'] as const)('passes %s reasoning effort as a native template kwarg', effort => {
       const chat = prepareChat({ core, model, request: { messages: [{ role: 'user', content: 'Hello' }], tools: undefined, reasoningEffort: effort } });
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           chat.dispose();
         },
-      });
+      };
       expect(chat.params.prompt).toContain(`Reasoning: ${effort}`);
     });
 
     it('leaves unspecified effort to the template and does not invent a none effort string', () => {
       for (const effort of [undefined, 'none'] as const) {
         const chat = prepareChat({ core, model, request: { messages: [{ role: 'user', content: 'Hello' }], tools: undefined, reasoningEffort: effort } });
-        using _cleanupResource = createTestDisposable({
-          dispose: () => {
+        using _cleanupResource = {
+          [Symbol.dispose]() {
             chat.dispose();
           },
-        });
+        };
         expect(chat.params.prompt).not.toContain('Reasoning:');
       }
     });
@@ -218,11 +217,11 @@ Sunny`);
     it('repeatedly releases native message/vector/parser handles without invalidating the model', () => {
       for (let iteration = 0; iteration < 20; iteration++) {
         const chat = prepareChat({ core, model, request: { messages: [{ role: 'user', content: 'Hello' }], tools: undefined, reasoningEffort: 'none' } });
-        using _cleanupResource = createTestDisposable({
-          dispose: () => {
+        using _cleanupResource = {
+          [Symbol.dispose]() {
             chat.dispose();
           },
-        });
+        };
         expect(chat.parse({ text: 'Hello back', partial: false }).content).toBe('Hello back');
       }
     });
@@ -233,12 +232,12 @@ Sunny`);
     const starts = new native.llama_token_sequences(); const ends = new native.llama_token_sequences();
     const start = new native.llama_tokens(); const end = new native.llama_tokens(); const forced = new native.llama_tokens();
     let budget = 0n;
-    await using _cleanupResource2 = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource2 = {
+      async [Symbol.asyncDispose]() {
         if (budget) await api.llama_sampler_free(budget);
         forced.delete(); end.delete(); start.delete(); ends.delete(); starts.delete();
       },
-    });
+    };
     start.push_back(4); end.push_back(5); starts.push_back(start); ends.push_back(end);
     budget = native.common_reasoning_budget_init(await api.llama_model_get_vocab(model), starts, ends, forced, 2147483647, native.common_reasoning_budget_state.REASONING_BUDGET_IDLE);
     await api.llama_sampler_accept(budget, 4);
@@ -246,11 +245,11 @@ Sunny`);
     await api.llama_sampler_accept(budget, 5);
     expect(native.common_reasoning_budget_get_state(budget).value).toBe(4);
     const match = copyReasoningEndMatch({ core, budget });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         match.delete();
       },
-    });
+    };
     expect(match.size()).toBe(1); expect(match.get(0)).toBe(5); expect(Array.from(match)).toEqual([5]);
     match.set(0, 6);
     const unchanged = copyReasoningEndMatch({ core, budget });
@@ -293,15 +292,15 @@ Sunny`);
       const bytes = core.bytes({ pointer: target, length: count * 4 }); const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       return Array.from({ length: count }, (_, index) => view.getInt32(index * 4, true));
     };
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         stateSpy.mockRestore();
         if (sampler) await sampler.dispose();
         if (base) await api.llama_sampler_free(base);
         if (context) await api.llama_free(context);
         params.delete(); for (const pointer of allocations.reverse()) core.free({ pointer });
       },
-    });
+    };
     params.grammar = 'root ::= "<tool_call>" "{\\"ok\\":true}" "</tool_call>"';
     params.grammar_lazy = true; params.generation_prompt = '<think>'; params.thinking_start_tag = '<think>';
     const ends = new native.string_vector(); const triggers = new native.common_grammar_triggers(); const trigger = new native.common_grammar_trigger();
@@ -343,11 +342,11 @@ Sunny`);
   it('preserves only native single-token markers for special-token rendering', async () => {
     const params = new core.module.common_chat_params(); const markers = new core.module.string_vector();
     const piece = core.alloc({ bytes: 32 });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         core.free({ pointer: piece }); markers.delete(); params.delete();
       },
-    });
+    };
     markers.push_back('<s>'); markers.push_back('multiple ordinary tokens'); params.preserved_tokens = markers;
     const vocab = await core.api.llama_model_get_vocab(model);
     const preserved = await preservedTokenIds({ core, vocab, params });

@@ -18,7 +18,6 @@ import { verifyCapturedFullReplay } from '@/features/transformers-js/replay-mode
 import { parseProviderReplayTextEvidence, replayRecordedText } from '@/features/transformers-js/replay-models/support/provider-replay-test-causal-gate';
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
 import { createSyntheticModelBody, inspectSyntheticOrtSession } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const evidence = parseProviderReplayTextEvidence({ value: evidenceJson });
 const continuity = parseProviderReplayTextEvidence({ value: continuityJson });
@@ -133,11 +132,11 @@ describe('SmolLM2 135M Provider / basic', () => {
         throw new Error(stop);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     capture = captureProviderChat({
       provider: harness.provider,
@@ -254,11 +253,11 @@ describe('SmolLM2 135M Provider / basic', () => {
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from(replay.sequenceTokenIds), [1, replay.sequenceTokenIds.length]), past_key_values: null };
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     capture = captureProviderChat({
       provider: harness.provider,
@@ -317,11 +316,11 @@ I hope this message finds you well.`,
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
       },
-    });
+    };
     // first-turn: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -381,11 +380,11 @@ describe('SmolLM2 135M Provider / system', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
       },
-    });
+    };
     // system-user: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -456,11 +455,11 @@ describe('SmolLM2 135M Provider / history', () => {
         throw new Error(boundary);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     capture = captureProviderChat({
       provider: harness.provider,
@@ -552,11 +551,11 @@ describe('SmolLM2 135M Provider / history', () => {
         throw new Error(boundary);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     capture = captureProviderChat({
       provider: harness.provider,
@@ -656,11 +655,11 @@ describe('SmolLM2 135M Provider / history', () => {
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from(replay.sequenceTokenIds), [1, replay.sequenceTokenIds.length]), past_key_values: null };
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     capture = captureProviderChat({
       provider: harness.provider,
@@ -732,11 +731,11 @@ I hope this message finds you well.`,
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
       },
-    });
+    };
     // supplied-history: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -835,11 +834,11 @@ A separate synthetic conversation.<|im_end|>
         return next(context);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     firstCapture = captureProviderChat({
       provider: harness.provider,
@@ -947,11 +946,11 @@ A separate synthetic conversation.<|im_end|>
     });
     const captures: ProviderChatCapture[] = [];
     let firstResponse = '';
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
       },
-    });
+    };
     // first-turn: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1100,11 +1099,11 @@ describe('SmolLM2 135M Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
       },
-    });
+    };
     // reasoning-none: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1159,11 +1158,11 @@ describe('SmolLM2 135M Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
       },
-    });
+    };
     // reasoning-low: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1218,11 +1217,11 @@ describe('SmolLM2 135M Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
       },
-    });
+    };
     // reasoning-medium: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1277,11 +1276,11 @@ describe('SmolLM2 135M Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
       },
-    });
+    };
     // reasoning-high: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1368,12 +1367,12 @@ describe('SmolLM2 135M Provider / tools', () => {
     // A call-through spy observes the actual inherited method without replacing
     // its receiver, arguments, result, tokenizer instance or native tokenization.
     const templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         templateSpy.mockRestore();
         await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
       },
-    });
+    };
     const request: CapturedChatRequest = {
       model: toolInputEvidence.modelId,
       messages: [
@@ -1543,12 +1542,12 @@ describe('SmolLM2 135M Provider / tools', () => {
     // A call-through spy observes the actual inherited method without replacing
     // its receiver, arguments, result, tokenizer instance or native tokenization.
     const templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         templateSpy.mockRestore();
         await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
       },
-    });
+    };
     const request: CapturedChatRequest = {
       model: toolInputEvidence.modelId,
       messages: [
@@ -1717,8 +1716,8 @@ describe('SmolLM2 135M Provider / tools', () => {
         return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
       },
     }];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         const beforeDisposal = structuredClone(turn);
         await replay.close();
         // Compare the same clone representation on both sides: Comlink Error
@@ -1727,7 +1726,7 @@ describe('SmolLM2 135M Provider / tools', () => {
         expect(executions).toEqual([]);
         expect(lateExecutions).toEqual([]);
       },
-    });
+    };
     replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters });
     const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
       model: "HuggingFaceTB/SmolLM2-135M-Instruct",
@@ -1789,8 +1788,8 @@ describe('SmolLM2 135M Provider / tools', () => {
         return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
       },
     }];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         const beforeDisposal = structuredClone(turn);
         await replay.close();
         // Compare the same clone representation on both sides: Comlink Error
@@ -1799,7 +1798,7 @@ describe('SmolLM2 135M Provider / tools', () => {
         expect(executions).toEqual([]);
         expect(lateExecutions).toEqual([]);
       },
-    });
+    };
     replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters });
     const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
       model: "HuggingFaceTB/SmolLM2-135M-Instruct",
@@ -1861,8 +1860,8 @@ describe('SmolLM2 135M Provider / tools', () => {
         return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
       },
     }];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         const beforeDisposal = structuredClone(turn);
         await replay.close();
         // Compare the same clone representation on both sides: Comlink Error
@@ -1871,7 +1870,7 @@ describe('SmolLM2 135M Provider / tools', () => {
         expect(executions).toEqual([]);
         expect(lateExecutions).toEqual([]);
       },
-    });
+    };
     replay.beginNativeRequest({ caseId: "structured-tool-history", parameters });
     const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
       model: "HuggingFaceTB/SmolLM2-135M-Instruct",
@@ -1932,11 +1931,11 @@ describe('SmolLM2 135M Provider / images', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
       },
-    });
+    };
     // image: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -2008,14 +2007,14 @@ describe('SmolLM2 135M Provider / sequences', () => {
       execute,
     }];
     const observedTurns: Awaited<ReturnType<typeof runProviderReplayTurn>>[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         const beforeDisposal = structuredClone(observedTurns);
         await replay.close();
         expect(structuredClone(observedTurns)).toEqual(beforeDisposal);
         expect(execute).not.toHaveBeenCalled();
       },
-    });
+    };
     const toolRequest: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
       model: 'HuggingFaceTB/SmolLM2-135M-Instruct',
       parameters: { ...parameters, maxCompletionTokens: 128 },
@@ -2173,11 +2172,11 @@ I hope this message finds you well.`,
         return next(context);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
       },
-    });
+    };
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     firstCapture = captureProviderChat({
       provider: harness.provider,
@@ -2288,11 +2287,11 @@ I hope this message finds you well.`,
     });
     const captures: ProviderChatCapture[] = [];
     let firstResponse = '';
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
       },
-    });
+    };
     // first-turn: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {

@@ -7,7 +7,6 @@ import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/t
 import type { FileExplorerEntry } from '@/features/file-explorer/logic/types';
 import type { ExplorerDirectory, ExplorerChild } from '@/features/file-explorer/logic/explorer-directory';
 import { LIST_ROW_HEIGHT } from '@/features/file-explorer/logic/constants';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // ---- Mock ExplorerDirectory ----
 
@@ -718,11 +717,11 @@ describe('FileExplorer.vue', () => {
     await flushPromises();
     vi.useFakeTimers();
 
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     const entry = wrapper.get('[data-testid="entry-item-touch-file.txt"]').element;
     dispatchTouchPointerEvent({ target: entry, type: 'pointerdown', clientX: 80, clientY: 90 });
     vi.advanceTimersByTime(600);
@@ -738,11 +737,11 @@ describe('FileExplorer.vue', () => {
     await flushPromises();
     vi.useFakeTimers();
 
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     const background = wrapper.get('[data-testid="list-scroll-container"]').element;
     dispatchTouchPointerEvent({ target: background, type: 'pointerdown' });
     vi.advanceTimersByTime(600);

@@ -7,7 +7,6 @@ import { encodePeerKey } from './identity';
 import { createInferenceBudget } from '@/features/naidan-rpc-integration/handlers/inference/budget';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
 import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const registryAccess: NaidanRpcRegistryAccess = { providerGeneration: 1, registryId: undefined, persistence: 'durable' };
 
@@ -57,11 +56,11 @@ it.each([
     changed: () => {},
   };
   const manager = new NaidanPeerManager({ dependencies });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       linkClosed.resolve(); resourcesDone.resolve(); await manager.setEnabled({ enabled: false }).catch(() => {});
     },
-  });
+  };
   await manager.setEnabled({ enabled: true }); await manager.reload();
   const start = (() => {
     switch (mode) {

@@ -12,7 +12,6 @@ import { idToRaw, toChatGroupId, toProviderProfileId, toVolumeId } from '@/01-mo
 import { applyScopedSettingChangesToChatGroup } from '@/logic/scoped-setting-changes';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({
   addMountToChatGroup: vi.fn().mockResolvedValue(undefined),
@@ -150,11 +149,11 @@ describe('ChatGroupSettingsPanel.vue', () => {
     mockGroup.endpoint = { type: 'naidan_rpc', registrationId: undefined };
     mockGroup.titleGeneration = { endpoint: { type: 'naidan_rpc', registrationId: undefined }, model: { id: 'title-model' }, lmParameters: { ...EMPTY_LM_PARAMETERS } };
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount();
       },
-    });
+    };
     await flushPromises();
     for (const name of ['group-setting-endpoint-type-select', 'group-setting-title-endpoint-type-select']) {
       const select = wrapper.get(`[data-testid="${name}"]`);
@@ -1462,11 +1461,11 @@ describe('ChatGroupSettingsPanel.vue', () => {
   it.each([false, true])('propagates standalone=%s to both chat and title endpoint choices without hiding features', async standalone => {
     vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', standalone);
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount(); vi.unstubAllGlobals();
       },
-    });
+    };
     await flushPromises();
     const transformers = wrapper.findAll('select option[value="transformers_js"]');
     const llama = wrapper.findAll('select option[value="llama_cpp_browser"]');

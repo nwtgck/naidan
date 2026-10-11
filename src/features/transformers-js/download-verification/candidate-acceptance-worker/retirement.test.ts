@@ -16,7 +16,6 @@ import { resolvePublicHuggingFaceRevision } from '@/features/transformers-js/dow
 import { reuseDownloadedProductionRevision } from '@/features/transformers-js/download-verification/logic/reuse-downloaded-production-revision';
 import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
 import { writeToOpfs } from '@/features/transformers-js/utils';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Only metadata/transfer preparation and native model work are synthetic. The
 // candidate orchestration, acceptance helper, client, session and Comlink are real.
@@ -326,13 +325,13 @@ it.each(['accepted', 'rejected'] as const)('closes same-service queued and futur
   const owner = createTransformersJsService({ createWorkerClient });
   const running = owner.service.downloadModel({ modelId });
   const settled = running.then(() => undefined, (error: unknown) => error);
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       testBarrier.release.resolve();
       await settled;
       await owner.dispose().catch(() => undefined);
     },
-  });
+  };
   await testBarrier.entered.promise;
   const queued = owner.service.downloadModel({ modelId }).then(() => undefined, (error: unknown) => error);
   testBarrier.release.resolve();
@@ -355,12 +354,12 @@ it('keeps a failed acceptance owner separate from another service', async () => 
   retirementFailure = { error: new Error('Synthetic physical failure') };
   const first = createTransformersJsService({ createWorkerClient: idleProductionClient });
   const second = createTransformersJsService({ createWorkerClient: idleProductionClient });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await first.dispose().catch(() => undefined);
       await second.dispose();
     },
-  });
+  };
   await expect(first.service.downloadModel({ modelId })).rejects.toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
   await second.service.downloadModel({ modelId });
   expect(workers).toHaveLength(2);
@@ -382,11 +381,11 @@ it('registers early cached revision acceptance in the same physical-retirement o
   vi.mocked(reuseDownloadedProductionRevision).mockImplementationOnce(actual.reuseDownloadedProductionRevision);
   const createWorkerClient = vi.fn(idleProductionClient);
   const owner = createTransformersJsService({ createWorkerClient });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await owner.dispose().catch(() => undefined);
     },
-  });
+  };
   await expect(owner.service.downloadModel({ modelId })).rejects.toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
   await expect(owner.service.restart()).rejects.toBeInstanceOf(DownloadAcceptanceWorkerRetirementError);
   expect(createWorkerClient).not.toHaveBeenCalled();
@@ -405,13 +404,13 @@ it('shares physical retirement with restart during a held acceptance and never r
   const createWorkerClient = vi.fn(idleProductionClient);
   const owner = createTransformersJsService({ createWorkerClient });
   const running = owner.service.downloadModel({ modelId }).then(() => undefined, (error: unknown) => error);
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       testBarrier.release.resolve();
       await running;
       await owner.dispose().catch(() => undefined);
     },
-  });
+  };
   await testBarrier.entered.promise;
   const retirement = owner.service.restart();
   const error = await retirement.then(() => undefined, (error: unknown) => error);
@@ -436,13 +435,13 @@ it('shares physical retirement with dispose during a held acceptance and never r
   const createWorkerClient = vi.fn(idleProductionClient);
   const owner = createTransformersJsService({ createWorkerClient });
   const running = owner.service.downloadModel({ modelId }).then(() => undefined, (error: unknown) => error);
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       testBarrier.release.resolve();
       await running;
       await owner.dispose().catch(() => undefined);
     },
-  });
+  };
   await testBarrier.entered.promise;
   const retirement = owner.dispose();
   const error = await retirement.then(() => undefined, (error: unknown) => error);
@@ -470,13 +469,13 @@ it('blocks an old Download acceptance factory after held preparation outlives a 
   const createWorkerClient = vi.fn(idleProductionClient);
   const owner = createTransformersJsService({ createWorkerClient });
   const running = owner.service.downloadModel({ modelId }).then(() => undefined, (error: unknown) => error);
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       release.resolve();
       await running;
       await owner.dispose();
     },
-  });
+  };
   await entered.promise;
   await owner.service.restart();
   release.resolve();

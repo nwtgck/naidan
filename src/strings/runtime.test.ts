@@ -15,7 +15,6 @@ import {
   type StringBoundaryLoaders,
   type StringBoundaryModule,
 } from './runtime';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function resolvedModule({ module }: {
   module: StringBoundaryModule;
@@ -96,11 +95,11 @@ describe('Boundary Strings runtime', () => {
     meta.name = STANDALONE_PACKAGE_LOCALE_META_NAME;
     meta.content = 'ja';
     document.head.append(meta);
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         meta.remove();
       },
-    });
+    };
     const englishLoader = vi.fn(resolvedModule({
       module: { ChatInput__cancel: () => 'Cancel' },
     }));

@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { createInitialInvestigationCheckpoint } from './investigation-recovery';
 import { createProductionProviderCaptureOwner } from './production-provider-capture-owner';
 import { fromPlanningWorkerRun, toPlanningWorkerRun } from './planning-worker-run';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function initialRun() {
   return createInitialInvestigationCheckpoint({ modelId: 'fixture/model', runId: 'planning-capture', now: () => '2026-09-09T00:00:00.000Z' }).run;
@@ -28,11 +27,11 @@ describe('Planning Worker Provider capture ownership', () => {
       },
       traceLimits: { maximumEvents: 10, maximumCharacters: 100 },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await owner.dispose();
       },
-    });
+    };
     expect(() => toPlanningWorkerRun({ run: { ...run, productionProviderCapture: owner.snapshot() } })).toThrow('Planning Worker must not return Production Provider capture');
   });
 

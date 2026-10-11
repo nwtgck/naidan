@@ -19,7 +19,6 @@ import { createModelSupportInvestigationEvidenceWorkerRequest, readModelSupportI
 import { createModelSupportInvestigationBatchEvidenceWorkerRequest, readModelSupportInvestigationBatchEvidenceWorkerRequest } from './batch-request';
 import { createModelSupportInvestigationEvidenceWorker } from './impl';
 import type { IModelSupportInvestigationEvidenceWorker } from './types';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Synthetic transport controls, not model outputs or claims of a native Load.
 // The actual strict encoders, Comlink structured clone, ZIP writer and independent
@@ -170,13 +169,13 @@ describe('Provider and native Evidence Worker transport', () => {
     const channel = new MessageChannel();
     exposeWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ api: createModelSupportInvestigationEvidenceWorker(), endpoint: channel.port1 });
     const remote = wrapWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ endpoint: channel.port2 });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await releaseWorkerRemote({ remote });
         channel.port1.close();
         channel.port2.close();
       },
-    });
+    };
     const input = { request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery }), nativeEvidence };
     const first = await remote.createPartialEvidence(input);
     const reopened = structuredClone({ run, recovery, nativeEvidence });
@@ -226,13 +225,13 @@ describe('Provider and native Evidence Worker transport', () => {
     const channel = new MessageChannel();
     exposeWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ api: createModelSupportInvestigationEvidenceWorker(), endpoint: channel.port1 });
     const remote = wrapWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ endpoint: channel.port2 });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await releaseWorkerRemote({ remote });
         channel.port1.close();
         channel.port2.close();
       },
-    });
+    };
     for (const retainedItems of [items, structuredClone(items)]) {
       const archive = await remote.createBatchEvidence({
         request: createModelSupportInvestigationBatchEvidenceWorkerRequest({ batchId: 'paired-batch', items: retainedItems }),

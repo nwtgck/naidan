@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
 import type { ITransformersJsDownloadWorker } from '@/features/transformers-js/types';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({
   release: vi.fn(),
@@ -106,11 +105,11 @@ describe('Download Verification dedicated Worker clients', () => {
     const failure = new Error('Metadata Worker module import failed');
     const pending = client.prepareModelRuntimeArtifacts({ modelId: 'fixture/model', revision: 'a'.repeat(40), progressCallback: vi.fn() });
     MockWorker.latest.dispatchEvent(new ErrorEvent('error', { error: failure, message: failure.message }));
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await client.dispose();
       },
-    });
+    };
     await expect(pending).rejects.toBe(failure);
     expect(mocks.terminate).toHaveBeenCalledOnce();
   });
@@ -121,11 +120,11 @@ describe('Download Verification dedicated Worker clients', () => {
     const client = createDownloadVerificationModelArtifactRequestWorkerClient();
     const pending = client.observeModelArtifactRequests({ modelId: 'fixture/model', revision: 'a'.repeat(40), candidate: { device: 'webgpu', dtype: 'q4' } });
     MockWorker.latest.dispatchEvent(new MessageEvent('messageerror'));
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await client.dispose();
       },
-    });
+    };
     await expect(pending).rejects.toThrow('could not be decoded');
     expect(mocks.terminate).toHaveBeenCalledOnce();
   });

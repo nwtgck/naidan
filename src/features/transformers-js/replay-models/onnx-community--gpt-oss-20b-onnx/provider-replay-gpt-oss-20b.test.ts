@@ -23,7 +23,6 @@ import toolInputJson from './provider-template-tool-inputs.evidence.json';
 import { parseProviderReplayTextEvidence, replayRecordedText } from '@/features/transformers-js/replay-models/support/provider-replay-test-causal-gate';
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
 import { createSyntheticModelBody, inspectSyntheticOrtSession } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function textMessage({ id, role, text }: {
   id: string;
@@ -127,11 +126,11 @@ function createOwnedToolControl({ mutations, boundaries }: {
         if (!call.options.streamer) throw new Error('Missing actual native streamer');
         const put = vi.spyOn(call.options.streamer, 'put');
         const end = vi.spyOn(call.options.streamer, 'end');
-        using _cleanupResource = createTestDisposable({
-          dispose: () => {
+        using _cleanupResource = {
+          [Symbol.dispose]() {
             put.mockRestore(); end.mockRestore();
           },
-        });
+        };
         const verifyRejection = ({ value, reason }: { value: OwnedReplayCacheControl; reason: string }) => {
           expect(() => replayCapturedFullInvocationWithOwnedCache({ ...call, cacheControl: value })).toThrow(reason);
           expect(put, reason).not.toHaveBeenCalled(); expect(end, reason).not.toHaveBeenCalled();
@@ -322,11 +321,11 @@ describe('GPT-OSS 20B Provider / basic', () => {
         throw new Error(boundary);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     const capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -405,11 +404,11 @@ describe('GPT-OSS 20B Provider / basic', () => {
         throw new Error(boundary);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     const capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -491,11 +490,11 @@ describe('GPT-OSS 20B Provider / basic', () => {
         throw new Error(boundary);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     const capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -545,11 +544,11 @@ describe('GPT-OSS 20B Provider / basic', () => {
   it('refuses the recorded answer when the public caller changes the input', async () => {
     const captures: ProviderChatCapture[] = [];
     const replay = await createGptOssReplay();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
       },
-    });
+    };
     const capture = captureProviderChat({
       provider: replay.harness.provider,
       request: {
@@ -646,11 +645,11 @@ describe('GPT-OSS 20B Provider / system', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // system-user: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -700,11 +699,11 @@ describe('GPT-OSS 20B Provider / history', () => {
     const scenario = inputEvidence.cases.find(candidate => candidate.caseId === 'multi-turn-generation');
     if (!scenario) throw new Error('Missing captured GPT-OSS history input');
     const replay = await createGptOssReplay();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await replay.harness.close();
       },
-    });
+    };
     await replay.harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
     const tokenizer = await replay.harness.runtime.AutoTokenizer.from_pretrained(inputEvidence.modelId, {
       revision: inputEvidence.revision,
@@ -742,11 +741,11 @@ describe('GPT-OSS 20B Provider / history', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // supplied-history: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -862,11 +861,11 @@ describe('GPT-OSS 20B Provider / independent', () => {
         return next(context);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     const firstCapture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -964,11 +963,11 @@ describe('GPT-OSS 20B Provider / independent', () => {
     });
     const captures: ProviderChatCapture[] = [];
     let firstResponse = '';
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // first-turn: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1082,11 +1081,11 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
   it('delivers the captured analysis prefix as thinking before Provider settlement', async () => {
     const captures: ProviderChatCapture[] = [];
     const replay = await createGptOssReplay();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.harness.close() });
       },
-    });
+    };
     const capture = captureProviderChat({
       provider: replay.harness.provider,
       request: {
@@ -1154,11 +1153,11 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // reasoning-none: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1203,11 +1202,11 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // reasoning-low: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1252,11 +1251,11 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // reasoning-medium: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1301,11 +1300,11 @@ describe('GPT-OSS 20B Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // reasoning-high: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1553,11 +1552,11 @@ type lookup_weather = (_: {
         throw new Error(boundary);
       },
     });
-    await using _cleanupResource2 = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource2 = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     await harness.service.loadDownloadedModel({ modelId: toolInputEvidence.modelId });
     const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(toolInputEvidence.modelId, {
       revision: toolInputEvidence.revision,
@@ -1776,11 +1775,11 @@ type lookup_weather = (_: {
         throw new Error(boundary);
       },
     });
-    await using _cleanupResource2 = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource2 = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     await harness.service.loadDownloadedModel({ modelId: toolInputEvidence.modelId });
     const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(toolInputEvidence.modelId, {
       revision: toolInputEvidence.revision,
@@ -1924,11 +1923,11 @@ describe('GPT-OSS 20B Provider / images', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // image: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -2299,11 +2298,11 @@ Here’s the current weather in Tokyo:
     });
     const captures: ProviderChatCapture[] = [];
     let firstResponse = '';
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // first-turn: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {

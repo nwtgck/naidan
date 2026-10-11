@@ -6,7 +6,6 @@ import type { generate } from './generation';
 import type { GenerationEvent } from '@/features/llama-cpp-browser/types';
 import { createWorkerApi } from './api';
 import { createDeliveryDecode } from './delivery-decode';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 const native = vi.hoisted(() => ({ generate: vi.fn<typeof generate>() }));
 vi.mock('./generation', () => ({ generate: native.generate }));
 vi.mock('./session', () => ({ invalidateStoredModel: async () => {} }));
@@ -48,12 +47,12 @@ describe('structured generation over the actual Comlink MessageChannel transport
       return { content: '', reasoningContent: '', toolCalls: [call], finishReason: 'stop' };
     });
     const remote = connect();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         gate.resolve();
         releaseWorkerRemote({ remote });
       },
-    });
+    };
     const pending = remote.generate(request(), workerProxy({
       value: async ({ event }: { event: GenerationEvent }) => {
         events.push(event);
@@ -77,11 +76,11 @@ describe('structured generation over the actual Comlink MessageChannel transport
       return { content: '<think>literal</think>  ', reasoningContent: ' R\n', toolCalls: [], finishReason: 'stop' };
     });
     const remote = connect();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         gate.resolve();releaseWorkerRemote({ remote });
       },
-    });
+    };
     const pending = remote.generate(request(), workerProxy({
       value: async ({ event }: { event: GenerationEvent }) => {
         events.push(event);if (event.type === 'reasoning') await gate.promise;
@@ -100,11 +99,11 @@ describe('structured generation over the actual Comlink MessageChannel transport
       return { content: 'accepted', reasoningContent: '', toolCalls: [call], finishReason: 'stop' };
     });
     const remote = connect();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         gate.resolve();releaseWorkerRemote({ remote });
       },
-    });
+    };
     const pending = remote.generate(request(), workerProxy({
       value: async ({ event }: { event: GenerationEvent }) => {
         events.push(event);
@@ -121,11 +120,11 @@ describe('structured generation over the actual Comlink MessageChannel transport
       return { content: 'A', reasoningContent: '', toolCalls: [], finishReason: 'stop' };
     });
     const remote = connect();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         releaseWorkerRemote({ remote });
       },
-    });
+    };
     await expect(remote.generate(request(), workerProxy({
       value: async () => {
         throw new Error('private consumer details');
@@ -160,11 +159,11 @@ describe('structured generation over the actual Comlink MessageChannel transport
     const observed = pending.then(value => ({ type: 'ok' as const, value }), error => ({ type: 'error' as const, error: error as Error })).finally(() => {
       returned = true;
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         nativeGate.resolve(); deliveryGate.resolve(); await observed; releaseWorkerRemote({ remote });
       },
-    });
+    };
     await started.promise; await vi.waitFor(() => expect(events).toHaveLength(1));
     await expect(remote.generate({ ...request(), generationId: 2 }, workerProxy({ value: async () => {} }), workerProxy({ value: () => {} }))).rejects.toThrow('busy');
     if (outcome === 'cancel') await remote.cancelGeneration({ generationId: 1 });

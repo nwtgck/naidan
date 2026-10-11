@@ -7,7 +7,6 @@ import { FramedDuplex } from './framing';
 import { encodeProtocolHeader } from './protocol-header';
 import { NaidanRpcPeer, contract, procedure, expose, rpc } from './index';
 import { transportPair } from './test-transport';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 it('accounts full backing stores, descendant ownership and idempotent releases', () => {
   const budget = new NaidanRpcByteBudget({ capacity: 4096 }), root = budget.owner(), child = root.fork();
@@ -109,11 +108,11 @@ it('rejects oversized caller input before opening a stream and refunds failed en
   const definition = contract({ name: 'bytes.admission', methods: { run: procedure({ input: z.instanceof(Uint8Array), result: z.number(), notifications: {} }) } });
   const signal = new AbortController().signal;
   const peer = new NaidanRpcPeer({ transport: wire.a, exports: [], byteBudget: budget, signal, limits: { maxCalls: 2, maxCallTimeoutMs: undefined } });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       wire.close(); await peer.retire();
     },
-  });
+  };
   const call = peer.client({ contract: definition }).run({ input: new Uint8Array(4096), on: {}, signal, timeoutMs: undefined });
   await expect(call.result).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
   await expect(call.closed).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' });
@@ -142,11 +141,11 @@ it('keeps old native inputs charged after network retirement and refunds only fu
       },
     })],
   });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       finish.resolve(); wire.close(); await Promise.all([caller.retire(), callee.retire()]);
     },
-  });
+  };
   const call = caller.client({ contract: definition }).run({ input: new Uint8Array(8192).fill(73), on: {}, signal, timeoutMs: undefined });
   await entered.promise; await callee.retireNetwork();
   const retained = TEST_ONLY.retained({ budget }); expect(retained).toBeGreaterThanOrEqual(8192);
@@ -183,11 +182,11 @@ it('retains bytes after failed late native cleanup instead of treating a retired
       },
     })],
   });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       finish.resolve(); wire.close(); await Promise.allSettled([caller.retire(), callee.retire()]);
     },
-  });
+  };
   const call = caller.client({ contract: definition }).run({ input: new Uint8Array(8192), on: {}, signal, timeoutMs: undefined });
   const read = (await call.result).getReader().read(); void read.catch(() => {});
   await started.promise; await callee.retireNetwork();
@@ -221,11 +220,11 @@ it('releases frame, stream item and copied-result reservations across repeated s
       },
     })],
   });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       wire.close(); await Promise.all([caller.retire(), callee.retire()]);
     },
-  });
+  };
   for (let index = 0; index < 8; index++) {
     const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal, timeoutMs: undefined });
     const reader = (await call.result).getReader();
@@ -263,11 +262,11 @@ it.each(['before', 'after'] as const)('retires returned sources %s an oversized 
       },
     })],
   });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       finish.resolve(); wire.close(); await Promise.allSettled([caller.retire(), callee.retire()]);
     },
-  });
+  };
   const call = caller.client({ contract: definition }).run({ input: {}, on: {}, signal, timeoutMs: undefined });
   await started.promise; expect(cancel).toHaveBeenCalledOnce();
   let complete = false; const retirement = callee.retire().then(() => {
@@ -299,11 +298,11 @@ it('does not release an observer input until the observer actually returns', asy
       },
     })],
   });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       finish.resolve(); done.resolve(); wire.close(); await Promise.all([caller.retire(), callee.retire()]);
     },
-  });
+  };
   const call = caller.client({ contract: definition }).run({
     input: {},
     signal,

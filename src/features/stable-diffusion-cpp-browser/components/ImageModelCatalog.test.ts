@@ -8,7 +8,6 @@ import ImageModelCatalog from './ImageModelCatalog.vue';
 import { imageCatalogLoras } from '@/features/stable-diffusion-cpp-browser/lora-catalog';
 import { useImageLibrary } from '@/features/stable-diffusion-cpp-browser/use-image-library';
 import { downloadImageRecipe, type ImageRecipeDownloadRequest } from '@/features/stable-diffusion-cpp-browser/logic/catalog-download';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 let wrapper: VueWrapper | undefined;
 
 beforeEach(async () => {
@@ -31,11 +30,11 @@ it.each(['directory API', 'mutation lock'] as const)('disables OPFS acquisition 
       download,
     },
   }))!;
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       scope.stop();
     },
-  });
+  };
   wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: library } });
   const button = wrapper.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
   expect(button.element.disabled).toBe(true);

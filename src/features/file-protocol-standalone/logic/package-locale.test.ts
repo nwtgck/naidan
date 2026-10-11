@@ -7,18 +7,17 @@ import {
   STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME,
   TEST_ONLY,
 } from './package-locale';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function withDocument<T>({ html, run }: {
   html: string;
   run: ({ documentValue }: { documentValue: Document }) => T;
 }): T {
   const dom = new JSDOM(html);
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       dom.window.close();
     },
-  });
+  };
   return run({ documentValue: dom.window.document });
 }
 
@@ -68,12 +67,12 @@ describe('standalone package locale contract', () => {
   it('uses the real Worker bootstrap global when no document metadata exists', () => {
     const previous = Reflect.get(globalThis, STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME) as unknown;
     Reflect.set(globalThis, STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME, 'ja');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         if (previous === undefined) Reflect.deleteProperty(globalThis, STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME);
         else Reflect.set(globalThis, STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME, previous);
       },
-    });
+    };
     expect(TEST_ONLY.resolveStandalonePackageLocaleFromWorkerGlobal({
       value: Reflect.get(globalThis, STANDALONE_PACKAGE_LOCALE_WORKER_GLOBAL_NAME) as unknown,
     })).toBe('ja');

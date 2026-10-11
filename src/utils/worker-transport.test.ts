@@ -17,7 +17,6 @@ import {
   type WorkerServerApi,
   type WorkerTransfer,
 } from './worker-transport';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function asEndpoint({ port }: { port: NodeMessagePort }): Comlink.Endpoint {
   return port as unknown as Comlink.Endpoint;
@@ -90,13 +89,13 @@ describe('worker transport', () => {
       endpoint: asEndpoint({ port: channel.port2 }),
     });
 
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         releaseWorkerRemote({ remote });
         channel.port1.close();
         channel.port2.close();
       },
-    });
+    };
     await expect(remote.echo('hello')).resolves.toBe('hello');
   });
 
@@ -116,13 +115,13 @@ describe('worker transport', () => {
     });
     const callback = vi.fn<(value: number) => void>();
 
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         releaseWorkerRemote({ remote });
         channel.port1.close();
         channel.port2.close();
       },
-    });
+    };
     await remote.run(workerProxy({ value: callback }));
     await vi.waitFor(() => expect(callback).toHaveBeenCalledWith(42));
   });
@@ -145,14 +144,14 @@ describe('worker transport', () => {
       endpoint: asEndpoint({ port: channel.port2 }),
     });
 
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         releaseWorkerRemote({ remote });
         channel.port1.close();
         channel.port2.close();
         transferredChannel.port2.close();
       },
-    });
+    };
     await remote.attach(workerTransfer({
       value: transferredChannel.port1 as unknown as MessagePort,
       transferables: [transferredChannel.port1 as unknown as Transferable],
@@ -191,11 +190,11 @@ it('accepts only schema-checked controls on the implicit worker endpoint and rem
   const target = new EventTarget(), listener = vi.fn();
   const add = vi.spyOn(globalThis, 'addEventListener').mockImplementation((type, callback, options) => target.addEventListener(type, callback, options));
   const remove = vi.spyOn(globalThis, 'removeEventListener').mockImplementation((type, callback, options) => target.removeEventListener(type, callback, options));
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       add.mockRestore(); remove.mockRestore();
     },
-  });
+  };
   const stop = subscribeWorkerNotifications({ endpoint: undefined, schema: z.object({ type: z.literal('control'), enabled: z.boolean() }).strict(), listener });
   target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: true } }));
   target.dispatchEvent(new MessageEvent('message', { data: { type: 'control', enabled: 'bad' } }));

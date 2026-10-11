@@ -4,7 +4,6 @@ import { connectRawDownload } from '@/features/transformers-js/replay-models/sup
 import { metadataSizeProbeTransport } from '@/features/transformers-js/replay-models/support/download-metadata-size-probe-transport';
 import { readSyntheticModelBody } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
 import { digest } from '@/features/transformers-js/replay-models/support/model-runtime-input-helpers';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -36,11 +35,11 @@ describe('GPT-OSS 20B Download replay', () => {
       const revision = '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
       h.network.mockImplementation(metadataSizeProbeTransport({ originalFetch: h.network.getMockImplementation()! }));
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(h.fs.files.size).toBe(0);
       const { result } = await h.freshMetadata();
       expect(result.summary.status, JSON.stringify(result.summary)).toBe('prepared');
@@ -103,11 +102,11 @@ describe('GPT-OSS 20B Download replay', () => {
         { path: 'onnx/model_q4f16.onnx_data_6', size: 339033600 },
       ];
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(digest({ bytes: h.archive.files.get('config.json')! })).toBe('dc54cf872c059cb8f510f38770176b29211d1d83a9bebb7de0d759fe77d80948');
       expect(digest({ bytes: h.archive.files.get('tokenizer.json')! })).toBe('0614fe83cadab421296e664e1f48f4261fa8fef6e03e63bb75c20f38e37d07d3');
       for (const artifact of expectedArtifacts) {
@@ -182,11 +181,11 @@ describe('GPT-OSS 20B Download replay', () => {
         'onnx/model_q4f16.onnx_data_6',
       ];
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map([['main', revision]]) });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(digest({ bytes: h.archive.files.get('config.json')! })).toBe('dc54cf872c059cb8f510f38770176b29211d1d83a9bebb7de0d759fe77d80948');
       expect(digest({ bytes: h.archive.files.get('tokenizer.json')! })).toBe('0614fe83cadab421296e664e1f48f4261fa8fef6e03e63bb75c20f38e37d07d3');
       await expect(h.serviceDownload()).resolves.toMatchObject({ status: 'idle', error: undefined });
@@ -254,11 +253,11 @@ describe('GPT-OSS 20B Download replay', () => {
       const revision = '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7';
       const missingPath = 'onnx/model_q4f16.onnx_data_6';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       const downloaded = await h.run();
       expect(downloaded.status, JSON.stringify(downloaded)).toBe('accepted');
       expect(h.sessions.toSorted((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);
@@ -301,11 +300,11 @@ describe('GPT-OSS 20B Download replay', () => {
       const revision = '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7';
       const missingPath = 'tokenizer.json';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       const downloaded = await h.run();
       expect(downloaded.status, JSON.stringify(downloaded)).toBe('accepted');
       expect(h.sessions.toSorted((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);

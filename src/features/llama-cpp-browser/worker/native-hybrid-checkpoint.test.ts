@@ -5,7 +5,6 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createCore, type Core } from '@/features/llama-cpp-browser/runtime/core';
 import { createTinyLfm2Gguf } from './test-utils/tiny-lfm2-gguf.test-support';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 type Snapshot = { pointer: bigint, size: bigint, flags: number };
 // These llama.h ABI flags are macros, not entries in the supplied enum schema.
@@ -35,12 +34,12 @@ async function position(): Promise<number> {
 async function decode({ tokens }: { tokens: readonly number[] }): Promise<number[]> {
   const pointer = allocate({ bytes: tokens.length * 4 });
   const batch = core.allocRecord({ name: 'llama_batch' });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       core.free({ pointer: batch });
       free({ pointer });
     },
-  });
+  };
   const bytes = core.bytes({ pointer, length: tokens.length * 4 });
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   tokens.forEach((token, index) => view.setInt32(index * 4, token, true));
@@ -98,13 +97,13 @@ beforeAll(async () => {
   const filename = core.utf8({ text: '/tiny-lfm2.gguf' });
   const modelParams = core.allocRecord({ name: 'llama_model_params' });
   const contextParams = core.allocRecord({ name: 'llama_context_params' });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       core.free({ pointer: contextParams });
       core.free({ pointer: modelParams });
       core.free({ pointer: filename });
     },
-  });
+  };
   await core.api.llama_model_default_params(modelParams);
   core.setField({ name: 'llama_model_params', pointer: modelParams, field: 'n_gpu_layers', value: 0 });
   model = await core.api.llama_model_load_from_file(filename, modelParams);
@@ -141,11 +140,11 @@ describe('native hybrid checkpoints with a synthetic LFM2 GGUF', () => {
       await core.api.llama_memory_clear(memory, 1);
       await decode({ tokens: prefix });
       const boundary = await snapshot({ flags: partialOnly });
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           free({ pointer: boundary.pointer });
         },
-      });
+      };
       const fullSize = await core.api.llama_state_seq_get_size_ext(context, 0, 0);
       expect(boundary.size).toBeLessThan(fullSize);
       await decode({ tokens: oldTail });
@@ -172,21 +171,21 @@ describe('native hybrid checkpoints with a synthetic LFM2 GGUF', () => {
     await core.api.llama_memory_clear(memory, 1);
     await decode({ tokens: prefix });
     const correctFull = await snapshot({ flags: 0 });
-    using _cleanupResource2 = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource2 = {
+      [Symbol.dispose]() {
         free({ pointer: correctFull.pointer });
       },
-    });
+    };
     const correct = await decode({ tokens: suffix });
     const correctPosition = await position();
     await core.api.llama_memory_clear(memory, 1);
     await decode({ tokens: [69, 69, 69] });
     const wrongPartial = await snapshot({ flags: partialOnly });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         free({ pointer: wrongPartial.pointer });
       },
-    });
+    };
     await restore({ state: correctFull });
     await restore({ state: wrongPartial });
     expect(await position()).toBe(prefix.length - 1);
@@ -212,11 +211,11 @@ describe('native hybrid checkpoints with a synthetic LFM2 GGUF', () => {
       await decode({ tokens: prefix });
       const hostBytes = await core.api.llama_state_seq_get_size_ext(context, 0, partialOnly);
       const state = await snapshot({ flags });
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           free({ pointer: state.pointer });
         },
-      });
+      };
       // The host buffer is a handle; tensor bytes live in native backend storage.
       // This does not imply the smaller serialized size is the checkpoint's total memory cost.
       expect(state.size).toBeLessThan(hostBytes);

@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vitest';
 
 import { FILE_PROTOCOL_STANDALONE_ELEMENT_IDS } from '../../src/features/file-protocol-standalone/logic/file-protocol-standalone-protocol.js';
 import { createFileProtocolStandaloneReleaseValidationPlugin } from './release-validation.js';
-import { createAsyncTestDisposable } from '../../src/utils/resource-cleanup.test-support';
 
 function createOptions() {
   return {
@@ -51,11 +50,11 @@ describe('createFileProtocolStandaloneReleaseValidationPlugin', () => {
     const releaseReportFile = path.join(root, 'release.json');
     const uiSourceEntry = path.join(root, 'ui.ts');
     const workerSourceEntry = path.join(root, 'worker.ts');
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await fs.rm(root, { recursive: true, force: true });
       },
-    });
+    };
     await fs.mkdir(path.join(outputDirectory, 'assets'), { recursive: true });
     await Promise.all([
       fs.writeFile(path.join(outputDirectory, 'index.html'), `\

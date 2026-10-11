@@ -8,7 +8,6 @@ import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { toMessageId } from '@/01-models/ids';
 import { collectChatGeneration } from '@/logic/collect-chat-generation';
 import type { InferenceMessage } from './types';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function createClientFixture() {
   return {
@@ -51,13 +50,13 @@ describe('Transformers.js service runtime serialization', () => {
       await release.promise;
     });
     const operations: Promise<unknown>[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await Promise.allSettled(operations);
         await owner.dispose();
       },
-    });
+    };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
     const unloading = owner.service.unloadModel();
     operations.push(expect(unloading).rejects.toMatchObject({ name: 'AbortError' }));
@@ -81,12 +80,12 @@ describe('Transformers.js service runtime serialization', () => {
     });
     const operations: Promise<unknown>[] = [];
     let firstFinished = false;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve(); await Promise.allSettled(operations);
         await Promise.all([first.dispose(), second.dispose()]);
       },
-    });
+    };
     await first.service.loadDownloadedModel({ modelId: 'fixture/first' });
     await second.service.loadDownloadedModel({ modelId: 'fixture/second' });
     operations.push(first.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }).then(() => {
@@ -109,11 +108,11 @@ describe('Transformers.js service runtime serialization', () => {
       entered.resolve(); await release.promise; throw failure;
     });
     const operations: Promise<unknown>[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve(); await Promise.allSettled(operations); await owner.dispose();
       },
-    });
+    };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
     const first = owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() });
     operations.push(expect(first).rejects.toBe(failure));
@@ -136,11 +135,11 @@ describe('Transformers.js service runtime serialization', () => {
       await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
     });
     const operations: Promise<unknown>[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve(); await Promise.allSettled(operations); await owner.dispose();
       },
-    });
+    };
     const first = new AbortController();
     operations.push(collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages: [], parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: first.signal }), abortController: first }));
     await entered.promise;
@@ -175,11 +174,11 @@ describe('Transformers.js service runtime serialization', () => {
       entered.resolve(); await release.promise;
     });
     const operations: Promise<unknown>[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve(); await Promise.allSettled(operations); await owner.dispose();
       },
-    });
+    };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
     operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
     await entered.promise;
@@ -208,11 +207,11 @@ describe('Transformers.js service runtime serialization', () => {
     const client = createClientFixture();
     const factory = vi.fn(() => client);
     const owner = createTransformersJsService({ createWorkerClient: factory });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await owner.dispose();
       },
-    });
+    };
     await expect(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() })).rejects.toThrow('Model not loaded');
     expect(factory).not.toHaveBeenCalled();
   });
@@ -226,11 +225,11 @@ describe('Transformers.js service runtime serialization', () => {
       entered.resolve(); await release.promise;
     });
     const operations: Promise<unknown>[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve(); await Promise.allSettled(operations); await owner.dispose();
       },
-    });
+    };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/first' });
     operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
     await entered.promise;
@@ -257,11 +256,11 @@ describe('Transformers.js service runtime serialization', () => {
     const owner = createTransformersJsService({ createWorkerClient: factory });
     const provider = createTransformersJsProvider({ service: owner.service });
     const operations: Promise<unknown>[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         releaseDisposal.resolve(); await Promise.allSettled(operations); await owner.dispose();
       },
-    });
+    };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
     const generation = collectChatGeneration({ items: provider.chat({ model: 'fixture/model', messages: [], parameters: undefined, tools: undefined, readBinaryObject: undefined, debug: undefined, signal: abort.signal }), abortController: abort });
     operations.push(generation);
@@ -286,11 +285,11 @@ describe('Transformers.js service runtime serialization', () => {
     original.dispose.mockRejectedValue(failure);
     const factory = vi.fn<() => TransformersJsWorkerClient>().mockReturnValueOnce(original).mockReturnValue(replacement);
     const owner = createTransformersJsService({ createWorkerClient: factory });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await owner.dispose().catch(() => undefined);
       },
-    });
+    };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
     await expect(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() })).rejects.toBe(failure);
     await expect(owner.service.loadDownloadedModel({ modelId: 'fixture/next' })).rejects.toBe(failure);
@@ -312,13 +311,13 @@ describe('Transformers.js service runtime serialization', () => {
       }
     });
     const operations: Promise<unknown>[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await Promise.allSettled(operations);
         await owner.dispose();
       },
-    });
+    };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
     operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn(), continuationOwner: 'first' }));
     await entered.promise;
@@ -343,13 +342,13 @@ describe('Transformers.js service runtime serialization', () => {
       await release.promise;
     });
     const operations: Promise<unknown>[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await Promise.allSettled(operations);
         await owner.dispose();
       },
-    });
+    };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
     operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
     await entered.promise;
@@ -377,13 +376,13 @@ describe('Transformers.js service runtime serialization', () => {
       return { device: 'webgpu' };
     });
     const operations: Promise<unknown>[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await Promise.allSettled(operations);
         await owner.dispose();
       },
-    });
+    };
     operations.push(owner.service.loadDownloadedModel({ modelId: 'fixture/model' }));
     operations.push(owner.service.loadDownloadedModel({ modelId: 'fixture/model' }));
     await entered.promise;
@@ -404,13 +403,13 @@ describe('Transformers.js service runtime serialization', () => {
       await release.promise;
     });
     const operations: Promise<unknown>[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await Promise.allSettled(operations);
         await owner.dispose();
       },
-    });
+    };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/model' });
     operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
     await entered.promise;

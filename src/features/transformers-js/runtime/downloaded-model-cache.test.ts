@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDownloadedModelReadOnlyCache } from './downloaded-model-cache';
 import { getProductionTransformersArtifact, importProductionTransformersArtifact } from './fixtures/production-transformers-artifact';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 type FileNode = { bytes: string };
 interface DirectoryNode {
@@ -260,14 +259,14 @@ describe('createDownloadedModelReadOnlyCache', () => {
       useCustomCache: transformers.env.useCustomCache,
       customCache: transformers.env.customCache,
     };
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         transformers.env.allowLocalModels = previous.allowLocalModels;
         transformers.env.allowRemoteModels = previous.allowRemoteModels;
         transformers.env.useCustomCache = previous.useCustomCache;
         transformers.env.customCache = previous.customCache;
       },
-    });
+    };
     transformers.env.allowLocalModels = true;
     transformers.env.allowRemoteModels = false;
     transformers.env.useCustomCache = true;

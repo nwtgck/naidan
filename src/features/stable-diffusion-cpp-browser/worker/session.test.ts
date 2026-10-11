@@ -5,7 +5,6 @@ import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fix
 import { fixtureReader, ggufFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/weights.test-support';
 import { imageLoraRequests } from '@/features/stable-diffusion-cpp-browser/lora-form';
 import type { ImageEngineInspection } from '@/features/stable-diffusion-cpp-browser/engine-state';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 /** This is a mocked native boundary, not a model or WebGPU inference test. */
 function harness({ pointerBytes, outcome, channels }: {
@@ -820,11 +819,11 @@ it.each([4, 8] as const)('keeps image pixels until native return, updates and cl
     } else observed.push(-1);
     return original(ctx, params, imagesOut, countOut);
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.unstubAllGlobals();
     },
-  });
+  };
   await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
   value = 8; request.imageInputs = { initImage: undefined, strength: 0.4, referenceImages: [second] };
   await session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
@@ -843,11 +842,11 @@ it('settles cancellation during input decode without entering native generation 
   const session = createImageGenerationSession({ core: h.core, helpers: h.helpers, reader: h.reader });
   const request = requestFixture(); request.runId = 1;
   request.imageInputs.initImage = new File(['one'], 'image.png', { type: 'image/png' });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.unstubAllGlobals();
     },
-  });
+  };
   const run = session.generate({ run: { request, onProgress: vi.fn(), onLog: vi.fn() } });
   await vi.waitFor(() => expect(createImageBitmap).toHaveBeenCalledOnce());
   expect(session.cancel({ control: { type: 'naidan-image-cancel-v1', runId: 1 } })).toBe(true);
@@ -896,11 +895,11 @@ it.each(['projection', 'vae'] as const)('excludes input VAE tile progress and fi
     progress(2, 4, 0.1, 0n);
     return result;
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.unstubAllGlobals();
     },
-  });
+  };
   await runImageGeneration({ ...h, request, onProgress, onLog: vi.fn(), onPerformance, onPreview });
   expect(onPerformance.mock.calls.filter(([event]) => event.signal.kind === 'sampling-progress').map(([event]) => event.signal)).toEqual([
     { kind: 'sampling-progress', step: 0, steps: 13 }, { kind: 'sampling-progress', step: 1, steps: 13 },

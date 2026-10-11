@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { trapLargeModelAllocation } from './model-load-allocation-runtime';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe('allocation control safety fence', () => {
   it.each(['Uint8Array', 'ArrayBuffer', 'WebAssembly.Memory'] as const)('refuses an unexpected large %s constructor before native allocation', allocator => {
@@ -9,11 +8,11 @@ describe('allocation control safety fence', () => {
     // A broken fence must fail safely here, without allocating model-sized memory.
     const requestedBytes = 1024 * 1024 + 1;
     const trap = trapLargeModelAllocation({ failure });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         trap.restore();
       },
-    });
+    };
     const construct = () => {
       switch (allocator) {
       case 'Uint8Array': return new Uint8Array(requestedBytes);

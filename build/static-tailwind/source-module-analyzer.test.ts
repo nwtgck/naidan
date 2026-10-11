@@ -8,7 +8,6 @@ import {
   isStaticTailwindSourceFile,
   isStaticTailwindSourcePath,
 } from './source-module-analyzer';
-import { createTestDisposable } from '../../src/utils/resource-cleanup.test-support';
 
 describe('static Tailwind source path boundary', () => {
   it('keeps local stylesheet dependencies inside the boundary without treating them as analyzable modules', () => {
@@ -33,11 +32,11 @@ describe('static Tailwind source module analysis', () => {
   it('assigns every candidate to initial CSS without building a module graph in single CSS mode', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         fs.rmSync(root, { recursive: true, force: true });
       },
-    });
+    };
     fs.mkdirSync(sourceRoot, { recursive: true });
     const entryModule = path.join(sourceRoot, 'main.ts');
     const feature = path.join(sourceRoot, 'Feature.vue');
@@ -60,11 +59,11 @@ describe('static Tailwind source module analysis', () => {
   it('assigns candidates to stable source-module owners without building an import graph', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         fs.rmSync(root, { recursive: true, force: true });
       },
-    });
+    };
     fs.mkdirSync(sourceRoot, { recursive: true });
     const entryModule = path.join(sourceRoot, 'main.ts');
     const featureA = path.join(sourceRoot, 'FeatureA.vue');
@@ -98,11 +97,11 @@ describe('static Tailwind source module analysis', () => {
   it('reports Vue script macro candidates at file-relative locations with unique group IDs', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         fs.rmSync(root, { recursive: true, force: true });
       },
-    });
+    };
     fs.mkdirSync(sourceRoot, { recursive: true });
     const entryModule = path.join(sourceRoot, 'main.ts');
     const component = path.join(sourceRoot, 'MacroLocations.vue');
@@ -145,11 +144,11 @@ describe('static Tailwind source module analysis', () => {
   it('collects candidates from Vue TSX script blocks with JSX syntax intact', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         fs.rmSync(root, { recursive: true, force: true });
       },
-    });
+    };
     fs.mkdirSync(sourceRoot, { recursive: true });
     const entryModule = path.join(sourceRoot, 'main.ts');
     const component = path.join(sourceRoot, 'TsxMacro.vue');
@@ -176,11 +175,11 @@ describe('static Tailwind source module analysis', () => {
   it('reports same-line Vue template candidates at absolute source locations', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         fs.rmSync(root, { recursive: true, force: true });
       },
-    });
+    };
     fs.mkdirSync(sourceRoot, { recursive: true });
     const component = path.join(sourceRoot, 'SameLine.vue');
     fs.writeFileSync(component, '<template><div tw-class="p-2 m-1" /></template>\n');
@@ -205,11 +204,11 @@ describe('static Tailwind source module analysis', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
     const cache = createSourceModuleAnalysisCache();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         fs.rmSync(root, { recursive: true, force: true });
       },
-    });
+    };
     fs.mkdirSync(path.join(sourceRoot, 'nested'), { recursive: true });
     fs.mkdirSync(path.join(sourceRoot, 'test-tmp'), { recursive: true });
     fs.mkdirSync(path.join(sourceRoot, 'lint-rule-tmp'), { recursive: true });
@@ -248,11 +247,11 @@ describe('static Tailwind source module analysis', () => {
   it('reports Vue compiler errors using absolute SFC coordinates', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         fs.rmSync(root, { recursive: true, force: true });
       },
-    });
+    };
     fs.mkdirSync(sourceRoot, { recursive: true });
     fs.writeFileSync(
       path.join(sourceRoot, 'Invalid.vue'),
@@ -270,11 +269,11 @@ describe('static Tailwind source module analysis', () => {
   it('reports Vue script macro errors using absolute SFC coordinates', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         fs.rmSync(root, { recursive: true, force: true });
       },
-    });
+    };
     fs.mkdirSync(sourceRoot, { recursive: true });
     fs.writeFileSync(
       path.join(sourceRoot, 'InvalidMacro.vue'),
@@ -293,11 +292,11 @@ describe('static Tailwind source module analysis', () => {
   it('rejects external Vue templates instead of silently omitting their candidates', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         fs.rmSync(root, { recursive: true, force: true });
       },
-    });
+    };
     fs.mkdirSync(sourceRoot, { recursive: true });
     fs.writeFileSync(
       path.join(sourceRoot, 'External.vue'),
@@ -325,11 +324,11 @@ describe('static Tailwind source module analysis', () => {
   it('validates unreachable source modules with the same macro and template rules as transformed modules', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-analysis-'));
     const sourceRoot = path.join(root, 'src');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         fs.rmSync(root, { recursive: true, force: true });
       },
-    });
+    };
     fs.mkdirSync(sourceRoot, { recursive: true });
     const entryModule = path.join(sourceRoot, 'main.ts');
     fs.writeFileSync(entryModule, 'export const main = true;\n');

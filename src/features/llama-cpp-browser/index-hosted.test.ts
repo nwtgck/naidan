@@ -7,7 +7,6 @@ import type { LlamaCppWorkerClient } from './worker/types';
 import { LlamaCppBrowserError, type GenerationResult } from './types';
 import type { LlamaCppPerformanceScope, LlamaCppBrowserService } from './service-contract';
 import type { ProfileCapabilities } from './runtime/profile-capabilities';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 const worker = vi.hoisted(() => ({ releaseRuntime: vi.fn<LlamaCppWorkerClient['releaseRuntime']>(), prepareModel: vi.fn<LlamaCppWorkerClient['prepareModel']>(), generateAudio: vi.fn<LlamaCppWorkerClient['generateAudio']>(), subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModels: vi.fn<LlamaCppWorkerClient['listModels']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
 const factory = vi.hoisted(() => vi.fn(() => ({ ...worker })));
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
@@ -733,11 +732,11 @@ describe('investigation and read-only cache ownership', () => {
   it('does not queue investigation behind a reserved read-only invocation or evict its cache', async () => {
     const reader = (await import('./index-hosted')).createReadOnlyLlamaCppClient();
     const operation = vi.fn(async () => {});
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await reader.dispose();
       },
-    });
+    };
     const sending = reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
     await expect(service.runPerformanceOperation({ options: { profile: 'cpu-wasm32' }, signal: undefined, operation })).rejects.toThrow('busy');
     await sending;

@@ -58,7 +58,6 @@ import { finishImageGenerationSnapshot } from '@/features/image-generation/histo
 import { createImageGenerationQueryWorker } from '@/features/image-generation/session/query-worker/impl';
 import { generationQueryResultSchema } from '@/features/image-generation/session/query-worker/types';
 import { useImageGenerationWorkspace, type ImageGenerationWorkspaceView } from './use-image-generation-workspace';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({ remove: vi.fn(), confirm: vi.fn(), publish: vi.fn(), subscribe: vi.fn(), getFile: vi.fn(), storage: 'opfs' as StorageType, query: vi.fn() }));
 vi.mock('@/composables/useConfirm', () => ({ useConfirm: () => ({ showConfirm: mocks.confirm }) }));
@@ -388,11 +387,11 @@ describe('Image Generation component connections', () => {
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:pathMatch(.*)*', component: { render: () => h('div') } }] });
     await router.push('/'); await router.isReady();
     const surface = mount(ImageGenerationSidebar, { props: { navigation: { view: fixture.view, openModels, openDiagnostics, openGeneration } }, global: { plugins: [router], stubs: { SidebarDebugControls: true } } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount();
       },
-    });
+    };
     const buttons = surface.findAll('button');
     expect(buttons[1]?.attributes('data-testid')).toBe('workspace-new-session');
     await surface.get('button[title="Models"]').trigger('click');
@@ -412,11 +411,11 @@ describe('Image Generation viewer integration', () => {
       await gate.promise; return original(request);
     });
     const surface = mount(ImageGenerationAssetViewer, { props: { view: fixture.view, active: true } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         gate.resolve(); surface.unmount();
       },
-    });
+    };
     const opening = fixture.view.inspect({ tile: first }); await flushPromises();
     expect(document.querySelector('[data-testid="image-viewer"]')).not.toBeNull();
     expect(fixture.view.inspectedTile.value?.id).toBe(first.id); expect(fixture.view.inspectLoading.value).toBe(true); expect(fixture.view.details.value).toBeUndefined();
@@ -436,11 +435,11 @@ describe('Image Generation viewer integration', () => {
     fixture.view.onlyFavorite.value = true; await fixture.view.refresh({ append: false });
     const [first, second] = fixture.view.tiles.value; if (!first || !second) throw new Error('Missing images.');
     const surface = mount(ImageGenerationAssetViewer, { props: { view: fixture.view, active: true } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount();
       },
-    });
+    };
     await fixture.view.inspect({ tile: first }); await flushPromises();
     const viewer = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="image-viewer"]')!);
     expect(viewer.find('[data-testid="workspace-viewer-details"]').exists()).toBe(false);
@@ -462,11 +461,11 @@ describe('Image Generation viewer integration', () => {
   it('closes on a session change or hidden workspace and ignores a pending record after closing', async () => {
     const fixture = await ready(); await fixture.view.generate(); const first = fixture.view.tiles.value[0]!;
     const surface = mount(ImageGenerationAssetViewer, { props: { view: fixture.view, active: true } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount();
       },
-    });
+    };
     await fixture.view.inspect({ tile: first }); await flushPromises();
     await surface.setProps({ active: false }); expect(fixture.view.inspectedTile.value).toBeUndefined();
     await surface.setProps({ active: true }); expect(document.querySelector('[data-testid="image-viewer"]')).toBeNull();
@@ -510,11 +509,11 @@ describe('Image Generation live monitor', () => {
     fixture.generation.latestRun.value = { status: 'running', width: 768, height: 512 };
     fixture.generation.livePreview.value = { type: 'naidan-image-preview-v1', mode: 'projection', runId: 8, revision: 0, step: 1, steps: 8, id: 1, elapsedMs: 10, url: 'blob:active-run', width: 768, height: 512 };
     const surface = mount(ImageGenerationMonitor, { props: { workspace: fixture.view, generation: fixture.generation, active: true, compact: false } });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         gate.resolve(); await task; surface.unmount();
       },
-    });
+    };
     await fixture.view.selectSession({ sessionId: other.id });
     expect(surface.text()).toContain('Generating here'); expect(surface.text()).not.toContain('Browsing there');
     expect(surface.find('[data-testid="image-generation-current-preview"]').exists()).toBe(false);
@@ -541,11 +540,11 @@ describe('Image Generation live monitor', () => {
     });
     await fixture.view.generate();
     const surface = mount(ImageGenerationMonitor, { props: { workspace: fixture.view, generation: fixture.generation, active: true, compact: false } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount();
       },
-    });
+    };
     expect(surface.find('[data-testid="workspace-generation-monitor"]').exists()).toBe(true);
     await surface.get('[data-testid="workspace-pending-save"] button').trigger('click'); await flushPromises();
     expect(fixture.native).toHaveBeenCalledOnce(); expect(fixture.view.hasPendingSave.value).toBe(false);
@@ -564,11 +563,11 @@ describe('Image Generation existing chat panel', () => {
     vi.spyOn(generationComposition, 'useImageGenerationWorkspace').mockReturnValueOnce(fixture.view);
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: ImageGeneration, props: { generation: fixture.generation, active: true } }] });
     await router.push('/'); await router.isReady(); const surface = mount(RouterView, { global: { plugins: [router] } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount();
       },
-    });
+    };
     await flushPromises();
     const openButton = surface.get('[data-testid="workspace-open-chat"]');
     expect(openButton.text()).toBe('Connect a chat');
@@ -634,11 +633,11 @@ describe('Image Generation curation and durable assistant choice', () => {
     vi.spyOn(generationComposition, 'useImageGenerationWorkspace').mockReturnValueOnce(fixture.view);
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: ImageGeneration, props: { generation: fixture.generation, active: true } }] });
     await router.push('/'); await router.isReady(); const surface = mount(RouterView, { global: { plugins: [router] } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount();
       },
-    });
+    };
     await flushPromises();
     const preview = surface.get('[data-testid="workspace-preview-column"]');
     const gallery = surface.get('[data-testid="workspace-gallery-area"]');
@@ -713,11 +712,11 @@ describe('Image Generation curation and durable assistant choice', () => {
   it('confirms byte deletion, permits cancellation, and rejects confirmation after a session switch', async () => {
     const fixture = await ready(); await fixture.view.generate(); const tile = fixture.view.tiles.value[0]!;
     const surface = mount(ImageGenerationCurationActions, { props: { view: fixture.view, items: [tile] } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount();
       },
-    });
+    };
     mocks.confirm.mockResolvedValueOnce(false);
     await surface.get('[data-testid="workspace-bulk-delete"]').trigger('click'); await flushPromises();
     expect(mocks.remove).not.toHaveBeenCalled();
@@ -758,11 +757,11 @@ describe('Image Generation curation and durable assistant choice', () => {
     await router.push('/'); await router.isReady();
     const surface = mount(ImageGeneration, { props: { generation: fixture.generation, active: true }, global: { plugins: [router] } });
     const view = surface.vm.TEST_ONLY.view;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await view.flushDraft(); surface.unmount(); await flushPromises();
       },
-    });
+    };
     await flushPromises(); view.count.value = 2;
     fixture.native.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('second image failed'));
     await view.generate(); await flushPromises();
@@ -779,11 +778,11 @@ describe('Image Generation curation and durable assistant choice', () => {
     await fixture.view.generate(); const tile = fixture.view.tiles.value[0]!;
     const writeText = vi.fn().mockResolvedValue(undefined); Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     const surface = mount(ImageGenerationAssetViewer, { props: { view: fixture.view, active: true } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount();
       },
-    });
+    };
     await fixture.view.inspect({ tile }); await flushPromises();
     const viewer = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="image-viewer"]')!);
     await viewer.get('[data-testid="image-viewer-details-toggle"]').trigger('click');
@@ -841,11 +840,11 @@ describe('global experimental preferences and compact creation controls', () => 
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: ImageGeneration, props: { generation: fixture.generation, active: true } }] });
     await router.push('/'); await router.isReady(); const surface = mount(RouterView, { global: { plugins: [router] } });
     const writeText = vi.fn().mockResolvedValue(undefined); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount();
       },
-    });
+    };
     await flushPromises(); await surface.get('[data-testid="workspace-copy-run-prompt"]').trigger('click'); await flushPromises();
     expect(writeText).toHaveBeenLastCalledWith(prompt); expect(fixture.view.inspectedTile.value).toBeUndefined();
     expect(fixture.generation.parameters.value.prompt).toBe('different next draft');
@@ -859,11 +858,11 @@ describe('global experimental preferences and compact creation controls', () => 
     const fixture = await ready(); fixture.view.count.value = 2; await fixture.view.generate();
     await fixture.view.editTag({ tagId: undefined, name: '候補' });
     const surface = mount(ImageGenerationCurationActions, { props: { view: fixture.view, items: [...fixture.view.tiles.value] } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount();
       },
-    });
+    };
     expect(surface.find('[data-testid="workspace-bulk-tags-panel"]').exists()).toBe(false);
     await surface.get('[data-testid="workspace-bulk-tags-toggle"]').trigger('click');
     const tags = surface.get('[data-testid="workspace-bulk-tags-panel"]');
@@ -914,11 +913,11 @@ describe('global experimental preferences and compact creation controls', () => 
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { render: () => h('div') } }] });
     await router.push('/'); await router.isReady();
     const surface = mount(ImageGenerationAssistant, { props: { workspace: fixture.view, active: true, presentation: 'docked' }, global: { plugins: [router] } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount();
       },
-    });
+    };
     await flushPromises(); expect(surface.find('[data-testid="existing-chat-pane"]').exists()).toBe(false);
     expect(fixture.view.currentSession.value?.assistantChatId).toBe(a.id);
     chatChoices.value = [a]; await vi.dynamicImportSettled(); await flushPromises();
@@ -988,11 +987,11 @@ describe('session navigation, deletion and persisted chat visibility', () => {
     vi.spyOn(generationComposition, 'useImageGenerationWorkspace').mockReturnValueOnce(reopened.view);
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: ImageGeneration, props: { generation: reopened.generation, active: true } }] });
     await router.push('/'); await router.isReady(); const surface = mount(RouterView, { global: { plugins: [router] } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount();
       },
-    });
+    };
     await vi.dynamicImportSettled(); await flushPromises();
     expect(surface.get('[data-testid="workspace-open-chat"]').text()).toBe('Open chat');
     expect(surface.get('[data-testid="workspace-open-chat"]').attributes('aria-expanded')).toBe('false');
@@ -1013,11 +1012,11 @@ describe('read-only translation controls', () => {
     const writeText = vi.fn().mockResolvedValue(undefined); vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
     const surface = mount(ImageGenerationTranslationButton, { props: { workspace: fixture.view, text: original, field, active: true } });
     const published = mocks.publish.mock.calls.length;
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
       },
-    });
+    };
     await surface.get('[data-testid="view-prompt-translation"]').trigger('click'); await flushPromises();
     const dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
     expect(dialog.get('select[data-testid="translation-language"]').element).toHaveProperty('value', 'ja');
@@ -1036,11 +1035,11 @@ describe('read-only translation controls', () => {
     const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
     settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, defaultModelId: 'model' } });
     const surface = mount(ImageGenerationTranslationButton, { props: { workspace: fixture.view, text: 'before', field: 'prompt', active: true } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
       },
-    });
+    };
     await surface.get('button').trigger('click'); await flushPromises();
     const dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
     const gate = Promise.withResolvers<string>(); translationMocks.translate.mockReturnValueOnce(gate.promise);
@@ -1061,11 +1060,11 @@ describe('read-only translation controls', () => {
     const { settings, availableModels } = useSettings(); const endpoint = settings.value.endpoint, modelId = settings.value.defaultModelId;
     const globalModels = [...availableModels.value];
     const surface = mount(ImageGenerationTranslationSettings, { props: { workspace: fixture.view, scope: 'workspace' } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount();
       },
-    });
+    };
     await surface.get('[data-testid="translation-endpoint-choice"]').setValue('ollama');
     await surface.get('[data-testid="translation-endpoint-url"]').setValue('http://workspace.test');
     await surface.get('[data-testid="translation-model-input"]').setValue('workspace-model');
@@ -1087,11 +1086,11 @@ describe('read-only translation controls', () => {
     const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
     settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, experimental: { ...originalSettings.experimental, naidanRpc: 'disabled' } } });
     const surface = mount(ImageGenerationTranslationSettings, { props: { workspace: fixture.view, scope: 'workspace' }, global: { stubs: { RpcRegistrationSelect: true } } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
       },
-    });
+    };
     await flushPromises();
     expect(surface.get('[data-testid="translation-endpoint-choice"]').find('option[value="naidan_rpc"]').exists()).toBe(false);
     await fixture.view.updatePreferences({ change: { type: 'translation', translation: { endpoint: { type: 'naidan_rpc', registrationId: undefined }, modelId: 'remote-translator', lmParameters: undefined } } });
@@ -1196,11 +1195,11 @@ describe('accepted activity, compact presentation and retained translations', ()
     const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
     settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, defaultModelId: 'model' } });
     const surface = mount(ImageGenerationTranslationButton, { props: { workspace: fixture.view, text: 'before', field: 'prompt', active: true } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
       },
-    });
+    };
     await surface.get('button').trigger('click'); await flushPromises();
     let dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
     const gate = Promise.withResolvers<string>(); translationMocks.translate.mockReturnValueOnce(gate.promise);
@@ -1241,11 +1240,11 @@ it('retains the chosen translation language when reopening a previous translatio
   const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
   settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, defaultModelId: 'model' } });
   const surface = mount(ImageGenerationTranslationButton, { props: { workspace: fixture.view, text: 'cat', field: 'prompt', active: true } });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
     },
-  });
+  };
   await surface.get('button').trigger('click'); await flushPromises();
   let dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
   await dialog.get('[data-testid="translation-language"]').setValue('ja');
@@ -1266,11 +1265,11 @@ it('shows a successful translation even when the bounded history cannot retain i
   const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
   settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, defaultModelId: 'model' } });
   const surface = mount(ImageGenerationTranslationButton, { props: { workspace: fixture.view, text: 'cat', field: 'prompt', active: true } });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
     },
-  });
+  };
   await surface.get('button').trigger('click'); await flushPromises();
   const dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
   translationMocks.translate.mockResolvedValueOnce('previous success');

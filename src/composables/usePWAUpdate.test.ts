@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { watch } from 'vue';
 import { usePWAUpdate } from './usePWAUpdate';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const { status, setUpdateState, update } = usePWAUpdate();
 
@@ -54,11 +53,11 @@ describe('usePWAUpdate', () => {
     const stop = watch(status, value => {
       if (value === 'ready') void update();
     }, { flush: 'sync' });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         stop();
       },
-    });
+    };
     setUpdateState({ next: { kind: 'ready', handler } });
     expect(handler).toHaveBeenCalledOnce();
   });

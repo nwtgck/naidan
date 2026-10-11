@@ -4,7 +4,6 @@ import { PipingRetirementError } from '@/features/naidan-piping-duplex';
 import { openPipingRpc, describePipingRpcProtocolFailure } from './piping';
 import { encodePeerKey } from '@/features/naidan-rpc-integration/runtime/identity';
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 const calls = vi.hoisted(() => ({ connect: vi.fn(), pair: vi.fn(), prepare: vi.fn(), session: vi.fn() }));
 vi.mock('@/features/naidan-piping-duplex/naidan-piping-duplex-session', () => ({
   NaidanPipingDuplexSession: { pair: calls.pair, connectPinned: calls.connect, preparePinnedContact: calls.prepare },
@@ -255,11 +254,11 @@ it('keeps a post-adoption setup interruption retryable instead of permanently bl
     },
     dispose: vi.fn(),
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       oldClosed.resolve();
     },
-  });
+  };
   const candidate = await link.session!.prepareReplacement!({ signal: new AbortController().signal });
   const error: unknown = await candidate!.finish().catch(error => error);
   expect(error).toBeInstanceOf(RpcTransportInterruptedError);
@@ -293,11 +292,11 @@ it.each([401, 403, 404, 408, 429, 503])('keeps HTTP %s policy consistent when a 
     },
     dispose: vi.fn(),
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       oldClosed.resolve();
     },
-  });
+  };
   const candidate = await link.session!.prepareReplacement!({ signal: new AbortController().signal });
   const error: unknown = await candidate!.finish().catch(error => error);
   if (status === 401 || status === 403 || status === 404) expect(error).toBe(failure);
@@ -322,11 +321,11 @@ it.each([false, true])('keeps replacement cleanup failure terminal with cancella
     },
     dispose: vi.fn(),
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       oldClosed.resolve();
     },
-  });
+  };
   const candidate = await link.session!.prepareReplacement!({ signal: intent.signal });
   const finishing = candidate!.finish(), rejection = expect(finishing).rejects.toBe(failure);
   await started.promise;
@@ -348,11 +347,11 @@ it.each([undefined, null])('keeps an untyped replacement rejection (%s) retryabl
     },
     dispose: vi.fn(),
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       oldClosed.resolve();
     },
-  });
+  };
   const candidate = await link.session!.prepareReplacement!({ signal: new AbortController().signal });
   const error: unknown = await candidate!.finish().catch(error => error);
   expect(error).toBeInstanceOf(RpcTransportInterruptedError); expect(error).toMatchObject({ cause: failure });
@@ -364,11 +363,11 @@ it('does not reclassify authenticated successor metadata as a retryable setup in
   const link = await openPipingRpc({ settings, identity: a, peerKey: encodePeerKey({ bytes: b.publicKey }), code: undefined, verifyPeer: undefined, signal: new AbortController().signal });
   const invalid = createRpcProtocolAdvertisement(); new DataView(invalid.buffer).setUint32(9, 0x80000002, true);
   calls.prepare.mockResolvedValueOnce({ kind: 'candidate', assertAvailable() {}, peerPublicHandshakeData: createRpcProtocolAdvertisement(), finish: async () => sessionFor({ connection: { peerPublicHandshakeData: invalid, abort: nextAbort, closed: nextClosed.promise } }), dispose: vi.fn() });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       nextClosed.resolve(); oldClosed.resolve();
     },
-  });
+  };
   const candidate = await link.session!.prepareReplacement!({ signal: new AbortController().signal });
   const finishing = candidate!.finish().catch(error => error); let settled = false;
   void finishing.then(() => {

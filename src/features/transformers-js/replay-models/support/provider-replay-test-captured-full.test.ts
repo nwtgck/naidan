@@ -9,7 +9,6 @@ import type { ProductionProviderTraceEvent } from '@/features/transformers-js/mo
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from './provider-replay-test-runtime';
 import { captureProviderChat } from './capture-provider-chat';
 import { toMessageId } from '@/01-models/ids';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe('reviewed public contracts remain separate from immutable capture', () => {
   const evidence = parseCapturedFullReplay({ value: source });
@@ -296,11 +295,11 @@ describe('captured Full native inference gate', () => {
         return replayCapturedFullInvocation({ invocation, options, runtime, modelConfig: model.config, parameters });
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     const observed = captureProviderChat({
       provider: harness.provider,
       request: {

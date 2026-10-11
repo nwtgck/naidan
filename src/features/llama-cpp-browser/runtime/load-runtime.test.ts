@@ -5,7 +5,6 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { loadRuntime } from './load-runtime';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 afterEach(() => {
   vi.restoreAllMocks(); vi.unstubAllGlobals();
@@ -19,11 +18,11 @@ describe('prebuilt runtime loading', () => {
     vi.stubGlobal('fetch', fetcher);
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const core = await loadRuntime({ profile: 'cpu-wasm32', assetBaseURL: base.href });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await core.api.llama_backend_free();
       },
-    });
+    };
     expect(fetcher).toHaveBeenCalledOnce();
     expect(String(fetcher.mock.calls[0]?.[0])).toBe(new URL('cpu-wasm32/core.wasm.gz', base).href);
     expect(core.pointerBytes).toBe(4);

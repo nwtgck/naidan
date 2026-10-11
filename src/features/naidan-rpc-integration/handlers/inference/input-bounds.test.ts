@@ -9,7 +9,6 @@ import { transportPair } from '@/features/naidan-rpc/test-transport';
 import { naidanPeerContract } from '@/features/naidan-rpc-integration/contract';
 import { createNaidanPeerImplementation } from '@/features/naidan-rpc-integration/implementation';
 import { receiveTranscript } from '@/features/naidan-rpc-integration/codecs/chat-wire';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Structural dimension fixture, not compressed pixels or a decoder test.
 function png({ width, height }: { width: number, height: number }) {
@@ -106,11 +105,11 @@ it.each(['depth', 'repeated-image'] as const)('rejects %s over real typed RPC wi
     signal: lifetime.signal,
   });
   const caller = new NaidanRpcPeer({ transport: pair.a, exports: [], limits: { maxCalls: 2, maxCallTimeoutMs: undefined }, signal: lifetime.signal });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       lifetime.abort(); pair.close(); await Promise.all([provider.retire(), caller.retire()]);
     },
-  });
+  };
   const bytes = png({ width: 2048, height: 2048 });
   const input = (() => {
     switch (attack) {

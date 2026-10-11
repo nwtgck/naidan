@@ -7,7 +7,6 @@ import {
   createModelArtifactRequestBarrier,
   huggingFaceResolveArtifactRequest,
 } from '@/features/transformers-js/download-verification/model-artifact-request-worker/request-barrier';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 interface ActualTransformersWebEnv {
   allowLocalModels: boolean;
@@ -127,8 +126,8 @@ async function observeActualRequests({ dtype }: { dtype: 'q4f16' | 'q4' }): Prom
     error => ({ status: 'rejected' as const, error }),
   );
 
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       const reason = new Error('Artifact observation complete; no model bytes transferred');
       barrier.stop({ reason });
       try {
@@ -139,7 +138,7 @@ async function observeActualRequests({ dtype }: { dtype: 'q4f16' | 'q4' }): Prom
         barrier.dispose();
       }
     },
-  });
+  };
   const requests = await barrier.waitForQuiescence();
   return {
     artifactPaths: [...new Set(requests.map(request => request.path))].sort((a, b) => a.localeCompare(b)),

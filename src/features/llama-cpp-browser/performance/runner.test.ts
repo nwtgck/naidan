@@ -6,7 +6,6 @@ import { performanceEnvironment, performancePlan, performanceReport } from '@/fe
 import { createPerformanceRunner } from './runner';
 import { snapshotSchema } from './types';
 import { summarizePerformance } from './summary';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function setup({ models = 1, diagnostics = 'none' }: { models?: number, diagnostics?: 'none' | 'placement' } = {}) {
   const plan = performancePlan({ models, diagnostics });
@@ -25,11 +24,11 @@ function setup({ models = 1, diagnostics = 'none' }: { models?: number, diagnost
     listModels: vi.fn<LlamaCppBrowserService['listModels']>(async () => plan.models),
     runPerformanceOperation: vi.fn<LlamaCppBrowserService['runPerformanceOperation']>(async ({ options, signal, operation }) => {
       order.push('acquire');
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           order.push('release');
         },
-      });
+      };
       await operation({ scope: { options, signal: signal ?? new AbortController().signal, generate } });
     }),
   };
@@ -216,11 +215,11 @@ describe('measurement ownership and surviving failure evidence', () => {
     const test = setup({ models: 2 });
     test.service.runPerformanceOperation.mockImplementation(async ({ options, operation }) => {
       const owner = new AbortController();
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           owner.abort();
         },
-      });
+      };
       await operation({ scope: { options, signal: owner.signal, generate: test.generate } });
     });
     await test.start();

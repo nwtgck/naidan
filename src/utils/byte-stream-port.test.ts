@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi } from 'vitest';
 import { BYTE_STREAM_CHUNK_BYTES, receiveByteStream, serveByteStream } from './byte-stream-port';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function connect({ stream, signal }: { stream: ReadableStream<Uint8Array>, signal: AbortSignal | undefined }) {
   const channel = new MessageChannel();
@@ -18,11 +17,11 @@ describe('bounded byte stream ports', () => {
     vi.spyOn(channel.port1, 'postMessage').mockImplementation(() => {
       throw new Error('broken port');
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         channel.port2.close();
       },
-    });
+    };
     await expect(received.stream.getReader().read()).rejects.toThrow('broken port');
     await expect(received.completed).rejects.toThrow('broken port');
   });
@@ -120,14 +119,14 @@ describe('bounded byte stream ports', () => {
     const fixture = connect({ signal: undefined, stream });
     const reader = fixture.receiver.stream.getReader();
     const pending = reader.read();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         cleanup.resolve();
         fixture.sender.abort({ reason: new Error('Test cleanup') });
         fixture.receiver.abort({ reason: new Error('Test cleanup') });
         reader.releaseLock();
       },
-    });
+    };
     await vi.waitFor(() => expect(stream.locked).toBe(true));
     await reader.cancel();
     await pending;

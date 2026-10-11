@@ -7,7 +7,6 @@ import type { DownloadSizeWorkerApi } from './types';
 import type { TransformersJsProgressCallback } from '@/features/transformers-js/types';
 import type { ITransformersJsDownloadWorker } from '@/features/transformers-js/types';
 import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({ prepare: vi.fn(), accept: vi.fn() }));
 vi.mock('../logic/prepare-production-runtime-artifacts', () => ({
@@ -219,12 +218,12 @@ it('commits real prefetch bytes and markers in original order while the independ
   const tracker = createDownloadProgressTracker();
   const { runProductionDownloadPreparation } = await import('@/features/transformers-js/download-verification/logic/run-production-download-preparation');
   const running = runProductionDownloadPreparation({ modelId: 'fixture/model', revision, candidateOrder: [{ device: 'wasm', dtype: 'q4' }], onDownloadProgress: ({ event }) => tracker.observe({ event }) });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       releaseBody.resolve(); optionalResponse.resolve(Response.json([]));
       await running; await client.dispose();
     },
-  });
+  };
   await Promise.race([Promise.all([optionalStarted.promise, firstBodyStarted.promise]), running.then(() => {
     throw new Error('Premature orchestration settlement');
   })]);

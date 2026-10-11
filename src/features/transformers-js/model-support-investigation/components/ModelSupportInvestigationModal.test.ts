@@ -19,7 +19,6 @@ import { createInitialInvestigationCheckpoint } from '@/features/transformers-js
 import { ModelSupportInvestigationUserInterruptedError } from '@/features/transformers-js/model-support-investigation/logic/investigation-interruption';
 import type { ModelSupportInvestigationRun, ModelSupportInvestigationWorkerClient } from '@/features/transformers-js/model-support-investigation/types';
 import type { DownloadTimingSnapshot } from '@/features/transformers-js/download-timing';
-import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function retainedTiming(): DownloadTimingSnapshot {
   return {
@@ -700,12 +699,12 @@ describe('ModelSupportInvestigationModal', () => {
     const sessionView = lateReadiness ? { ...originalView, ready: ready.promise } : originalView;
     evidenceMocks.dispose.mockRejectedValue(new Error('Retained export Worker termination unavailable'));
     const wrapper = mount(ModelSupportInvestigationSession, { props: { modelId: 'org/model', sessionView, ordinaryDownloadTiming: retainedTiming() } });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         wrapper.unmount();
         await flushPromises();
       },
-    });
+    };
     await flushPromises();
     const exportButton = wrapper.get<HTMLButtonElement>('[data-testid="model-support-export-retained-timing"]');
     const startButton = wrapper.get<HTMLButtonElement>('[data-testid="model-support-investigation-start"]');
@@ -775,11 +774,11 @@ describe('ModelSupportInvestigationModal', () => {
       return pending.promise;
     });
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount();
       },
-    });
+    };
     await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
     expect(workerMocks.interrupt).toHaveBeenCalledOnce();
@@ -803,11 +802,11 @@ describe('ModelSupportInvestigationModal', () => {
       return { ...checkpoint.run, runId: invalidRunId, modelId: invalidModelId, status: 'passed', error: undefined };
     });
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount();
       },
-    });
+    };
     await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
     const targetError = wrapper.find('[data-testid="model-support-target-error-org/model"]');
@@ -1551,12 +1550,12 @@ org/second`);
       retained,
     }));
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/model' } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         budget.mockRestore();
         wrapper.unmount();
       },
-    });
+    };
     await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();
     expect(workerMocks.runPartialInvestigation).not.toHaveBeenCalled();
@@ -1686,13 +1685,13 @@ org/second`);
     const measure = vi.spyOn(providerRetention, 'measureInvestigationProviderRetention').mockImplementationOnce(() => {
       throw new Error('Checkpoint retention refused');
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         measure.mockRestore();
         running.reject(new Error('Disposed'));
         await flushPromises();
       },
-    });
+    };
     expect(() => wrapper.unmount()).not.toThrow();
     expect(workerMocks.dispose).toHaveBeenCalledOnce();
   });
@@ -2650,12 +2649,12 @@ org/second
     });
     evidenceMocks.dispose.mockRejectedValueOnce(new Error('Concurrent export cleanup failed'));
     const wrapper = mount(ModelSupportInvestigationModal, { props: { modelId: 'org/first' } });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         wrapper.unmount();
         await flushPromises();
       },
-    });
+    };
     await wrapper.get('[data-testid="model-support-targets-input"]').setValue('org/second');
     await wrapper.get('[data-testid="model-support-investigation-start"]').trigger('click');
     await flushPromises();

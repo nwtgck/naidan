@@ -14,7 +14,6 @@ import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { TEST_ONLY as CHAT_TREE_TEST_ONLY } from '@/logic/chat-tree';
 import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const { mocks } = vi.hoisted(() => ({
   mocks: {
@@ -291,11 +290,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
 
   it('should clear completed compact progress after a short delay', async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     __testOnlySetContextCompactProgress({
       chatId: toChatId({ raw: 'chat-compact' }),
       progress: {

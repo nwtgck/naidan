@@ -3,7 +3,6 @@ import JSZip from 'jszip';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEvidenceArchive, createEvidenceArchiveStream, createEvidenceFilesReader, openEvidenceArchive, setEvidenceFile } from './evidence-archive';
 import { StreamingZipReader } from '@/utils/zip-stream';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(() => {
@@ -12,12 +11,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.restoreAllMocks();
       vi.unstubAllGlobals();
     },
-  });
+  };
   expect(fetch).not.toHaveBeenCalled();
 });
 
@@ -62,11 +61,11 @@ describe('Evidence transport over the shared streaming ZIP core', () => {
     view.setUint32(centralOffset + 24, 2 * 1024 * 1024, true);
     const openEntry = vi.spyOn(StreamingZipReader.prototype, 'openEntry');
     const archive = await openEvidenceArchive({ blob: new Blob([buffer]) });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await archive.close();
       },
-    });
+    };
     await expect(archive.reader.read({ path: 'timing.json', maximumBytes: 1024 * 1024 })).rejects.toThrow('read byte budget');
     expect(openEntry).not.toHaveBeenCalled();
   });
@@ -145,11 +144,11 @@ describe('Evidence transport over the shared streaming ZIP core', () => {
     expect(bytes.slice(bodyOffset, bodyOffset + 3)).toEqual(Uint8Array.of(10, 20, 30));
     bytes[bodyOffset] = 99;
     const archive = await openEvidenceArchive({ blob: new Blob([buffer]) });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await archive.close();
       },
-    });
+    };
     await expect(archive.reader.read({ path: 'bytes.bin' })).rejects.toThrow('ZIP entry CRC mismatch: bytes.bin');
   });
 

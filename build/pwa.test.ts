@@ -14,7 +14,6 @@ import { UI_LOCALES } from '../src/01-models/ui-locale';
 
 import { serveByteStream, receiveByteStream, BYTE_STREAM_CHUNK_BYTES } from '../src/utils/byte-stream-port';
 import { downloadStatusSchema, createDownloadUrl, DOWNLOAD_ROOT } from '../src/utils/download/protocol';
-import { createAsyncTestDisposable, createTestDisposable } from '../src/utils/resource-cleanup.test-support';
 
 let root: string;
 let a: Awaited<ReturnType<typeof buildPWAFixture>>;
@@ -130,14 +129,14 @@ describe('real generated Workbox worker', () => {
       ports: [control.port2, secondHop.port2],
       data: { type: 'naidan-download/prepare', version, token, metadata: { filename: 'large.bin', size: chunks * BYTE_STREAM_CHUNK_BYTES } },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         control.port1.postMessage({ type: 'cancel' });
         sender.abort({ reason: new Error('test cleanup') }); source.abort({ reason: new Error('test cleanup') });
         control.port1.close();
         await prepared;
       },
-    });
+    };
     await vi.waitFor(() => expect(statuses).toContainEqual({ type: 'ready', version, token }));
     expect(produced).toBe(0);
     // A newly created iframe has its own ID, not the initiating page's ID.
@@ -246,11 +245,11 @@ describe('real generated Workbox worker', () => {
     const cache = await f.storage.open(`naidan-pwa-network-mode:${scope}`);
     const match = vi.spyOn(cache, 'match').mockRejectedValue(new Error('storage read failed'));
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         match.mockRestore(); logged.mockRestore();
       },
-    });
+    };
     f.deployB();
     const restarted = f.make(a);
     expect(await (await restarted.request({ url: scope, navigation: true })).text()).toContain('version-b');
@@ -281,11 +280,11 @@ describe('real generated Workbox worker', () => {
     const operation = worker.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } }).then(reply => {
       acknowledged = true; return reply;
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release(); await operation; put.mockRestore();
       },
-    });
+    };
     expect(acknowledged).toBe(false);
     expect(await (await worker.request({ url: scope, navigation: true })).text()).toContain('version-a');
     release(); expect(await operation).toBe(USE_NETWORK_MESSAGE);
@@ -329,11 +328,11 @@ describe('real generated Workbox worker', () => {
     const cache = await f.storage.open(`naidan-pwa-network-mode:${scope}`);
     const put = vi.spyOn(cache, 'put').mockRejectedValue(new Error('storage full'));
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         put.mockRestore(); logged.mockRestore();
       },
-    });
+    };
     expect(await worker.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } })).toBe(false);
     f.offline();
     expect(await (await worker.request({ url: scope, navigation: true })).text()).toContain('version-a');
@@ -359,11 +358,11 @@ describe('real generated Workbox worker', () => {
       return f.network(input, init);
     };
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.restoreAllMocks();
       },
-    });
+    };
     const worker = createWorkerHarness({ script: a.script, scope, cacheStorage: f.storage, clients: f.clients, fetch });
     await expect(worker.lifecycle('install')).rejects.toThrow();
     expect(log).toHaveBeenCalledWith('[PWA] Failed to precache an application resource.', expect.any(String), expect.any(Error));
@@ -394,11 +393,11 @@ describe('page reloads using real generated workers', () => {
     f.deployB(); const delayed = f.holdInstall();
     native.addWorker({ key: 'worker-b', script: b.script });
     const installing = native.install({ key: 'worker-b' });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         controllerA.dispose(); controllerB?.dispose(); f.release(); await installing;
       },
-    });
+    };
     await delayed;
     await vi.waitFor(() => expect(statesA.at(-1)?.kind).toBe('preparing'));
     const action = statesA.at(-1)!;
@@ -463,12 +462,12 @@ describe('page reloads using real generated workers', () => {
     const prepared = old.runtime.messageWithPorts({ clientId: 'download-page', data: { type: 'naidan-download/prepare', version: 2, token, metadata: { filename: 'in-flight.bin', size: 3 } }, ports: [control.port2, data.port2] });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let settled: Promise<PromiseSettledResult<unknown>[]> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve(); control.port1.postMessage({ type: 'cancel' });
         await prepared; sender.abort({ reason: new Error('cleanup') }); await settled; control.port1.close();
       },
-    });
+    };
     await vi.waitFor(() => expect(statuses).toContainEqual(expect.objectContaining({ type: 'ready' })));
     const result = await old.runtime.streamRequest({ url: createDownloadUrl({ base: new URL(scope), token, version: 2 }).href, clientId: 'download-page', navigation: true });
     const bytes = result.response.arrayBuffer();
@@ -493,11 +492,11 @@ describe('page reloads using real generated workers', () => {
     f.deployB(); native.addWorker({ key: 'worker-b', script: b.script }); await native.install({ key: 'worker-b' });
     f.deployC(); const delayed = f.holdInstall();
     native.addWorker({ key: 'worker-c', script: c.script }); const installation = native.install({ key: 'worker-c' });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         f.release(); await installation;
       },
-    });
+    };
     await delayed;
     native.registration({ viewer: 'page' }).waiting!.postMessage({ type: 'SKIP_WAITING' });
     await vi.waitFor(() => expect(native.workers.get('worker-b')!.state).toBe('activated'));
@@ -525,11 +524,11 @@ describe('page reloads using real generated workers', () => {
     });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let installation: Promise<void> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve(); await installation; cleanup.mockRestore();
       },
-    });
+    };
     native.registration({ viewer: 'page' }).waiting!.postMessage({ type: 'SKIP_WAITING' });
     await started.promise;
     expect(native.workers.get('worker-b')!.state).toBe('activating');

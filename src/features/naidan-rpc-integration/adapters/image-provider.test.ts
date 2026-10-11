@@ -10,7 +10,6 @@ import { naidanPeerContract } from '@/features/naidan-rpc-integration/contract';
 import { createNaidanPeerImplementation } from '@/features/naidan-rpc-integration/implementation';
 import { createInferenceBudget } from '@/features/naidan-rpc-integration/handlers/inference/budget';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const cleanup: (() => void)[] = [];
 
@@ -83,11 +82,11 @@ it('does not retain empty image chunks and preserves reused byte chunks', async 
     },
   }, { highWaterMark: 0 });
   const fixture = mockClient({ image }), copies = vi.spyOn(Uint8Array.prototype, 'slice');
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       copies.mockRestore();
     },
-  });
+  };
   const result = await start({ client: fixture.client }).result;
   if (result.status !== 'completed') throw new Error('Expected confirmed image');
   expect(new Uint8Array(await result.output.png.arrayBuffer())).toEqual(expected);

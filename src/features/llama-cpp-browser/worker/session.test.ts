@@ -9,7 +9,6 @@ import type { loadProjector, loadProjectorForBackend } from './projector';
 import type { WorkerGenerateInput } from './types';
 import * as modelReadModule from '@/features/llama-cpp-browser/runtime/model-read-cache';
 import { prepareSession, prepareGenerationSession, prepareAudioSession, releaseSession } from './session';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const host = vi.hoisted(() => ({ core: undefined as Core | undefined, directory: undefined as ModelDirectory | undefined, load: vi.fn<typeof loadProjector>(), loadAudio: vi.fn<typeof loadProjectorForBackend>() }));
 vi.mock('../runtime/load-runtime', () => ({ loadRuntime: async () => host.core }));
@@ -97,11 +96,11 @@ describe('resident projector debug changes', () => {
     });
     const samples: MemoryDiagnostic[] = [];
     const stop = subscribeMemoryDiagnostics({ listener: ({ diagnostic }) => samples.push(diagnostic) });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         stop();
       },
-    });
+    };
     await expect(prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toBe(failure);
     expect(samples.map(sample => sample.checkpoint)).toEqual(['runtime-ready', 'before-model-load', 'model-load-failed']);
     expect(samples.at(-1)?.capacityBytes).toBe(131072);
@@ -112,11 +111,11 @@ describe('resident projector debug changes', () => {
     core.module.HEAPU8 = new Uint8Array(65536);
     const samples: MemoryDiagnostic[] = [];
     const stop = subscribeMemoryDiagnostics({ listener: ({ diagnostic }) => samples.push(diagnostic) });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         stop();
       },
-    });
+    };
     await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
     await releaseSession({ releaseRuntime: false });
     expect(samples.map(sample => sample.checkpoint)).toEqual(['runtime-ready', 'before-model-load', 'model-loaded', 'context-ready', 'model-released']);
@@ -760,11 +759,11 @@ describe('measurement-only loaded descriptor ownership', () => {
     core.api.llama_model_n_layer = vi.fn(async () => 64);
     const measured = { ...request({ debug: 'off' }), measurement: { sequence: 'fresh' as const } };
     const receive = vi.fn(); const stop = subscribeDiagnostics({ debug: 'off', listener: receive });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         stop();
       },
-    });
+    };
     await prepareSession({ request: request({ debug: 'off' }), onProgress: () => {}, signal: undefined });
     expect(core.api.llama_model_n_layer).not.toHaveBeenCalled();
     await prepareSession({ request: measured, onProgress: () => {}, signal: undefined });

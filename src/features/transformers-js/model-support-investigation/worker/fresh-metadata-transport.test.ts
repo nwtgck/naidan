@@ -7,7 +7,6 @@ import type { IModelSupportInvestigationWorker, ModelSupportInvestigationPlannin
 import { freshMetadataResultSchema, type FreshMetadataResult } from '@/features/transformers-js/model-support-investigation/fresh-metadata-worker/types';
 import { createInitialInvestigationCheckpoint } from '@/features/transformers-js/model-support-investigation/logic/investigation-recovery';
 import { toPlanningWorkerRun } from '@/features/transformers-js/model-support-investigation/logic/planning-worker-run';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 type PlanningApi = Pick<IModelSupportInvestigationWorker, 'runPartialInvestigation'>;
 
@@ -61,13 +60,13 @@ it('round-trips fresh raw metadata through the real top-level Comlink callback a
   exposeWorkerRemote<PlanningApi>({ api, endpoint: nodeEndpoint(ports.port1) });
   const remote = wrapWorkerRemote<PlanningApi>({ endpoint: nodeEndpoint(ports.port2) });
   const checkpointReceived = Promise.withResolvers<{ run: ModelSupportInvestigationPlanningWorkerRun, files: Array<{ path: string, blob: Blob }> }>();
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await releaseWorkerRemote({ remote });
       ports.port1.close();
       ports.port2.close();
     },
-  });
+  };
   const run = await remote.runPartialInvestigation(
     { runId, modelId, externalNetworkPolicy: 'allow', executionPlan: { repositoryDownload: true, modelLoad: false, generation: false, continuity: false, capabilityProbes: false } },
     workerProxy({ value: () => undefined }),

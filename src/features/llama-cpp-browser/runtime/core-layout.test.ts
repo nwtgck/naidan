@@ -4,7 +4,6 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { attachCore, createCore, type Core, type CoreModule } from './core';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe('module-local native ABI layouts', () => {
   let core: Core;
@@ -49,11 +48,11 @@ describe('module-local native ABI layouts', () => {
     const bound = attachCore({ module, callMode: 'direct' });
     const a = bound.allocRecord({ name: 'llama_batch' });
     const b = bound.allocRecord({ name: 'llama_batch' });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         bound.free({ pointer: a }); bound.free({ pointer: b });
       },
-    });
+    };
     for (let i = 0; i < 100; i++) bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer: a, value: i });
     bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer: b, value: 12 });
     const layout = bound.fieldLayout({ name: 'llama_batch', field: 'n_tokens' });
@@ -85,11 +84,11 @@ describe('module-local native ABI layouts', () => {
     const pointer = bound.allocRecord({ name: 'llama_batch' });
     const layout = bound.fieldLayout({ name: 'llama_batch', field: 'n_tokens' });
     const at = Number(pointer + layout.offset);
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         bound.free({ pointer });
       },
-    });
+    };
     bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value: 1 });
     const previous = heap;
     heap = new Uint8Array(previous.length); heap.set(previous);
@@ -185,11 +184,11 @@ describe('module-local native ABI layouts', () => {
     }
     expect(counts.size).toBe(0);
     const pointer = bound.allocRecord({ name: 'llama_batch' });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         bound.free({ pointer });
       },
-    });
+    };
     bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value: 7 });
     for (const value of [0.5, NaN, Infinity, 2147483648, -2147483649]) {
       expect(() => bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value })).toThrow();

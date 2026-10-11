@@ -7,7 +7,6 @@ import { createSyntheticModelBody } from './download-synthetic-session-oracle';
 import { MODEL_SUPPORT_INVESTIGATION_MULTIMODAL_FIXTURE as image } from '@/features/transformers-js/model-support-investigation/fixtures/synthetic-multimodal-image';
 import type { GenerationCaptureClient } from '@/features/transformers-js/worker/generation-capture-protocol';
 import { loadDiagnosticsSchema } from '@/features/transformers-js/worker/load-diagnostics';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // This is a collection/transport control, not captured model inference. Only
 // native generate and browser platforms are substituted; the real Provider,
@@ -118,8 +117,8 @@ describe('Production native collection through actual Comlink', () => {
         return Reflect.construct(target, argumentsList, newTarget);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         globalThis.Uint8Array = originalUint8Array;
         try {
           await owner.dispose();
@@ -127,7 +126,7 @@ describe('Production native collection through actual Comlink', () => {
           await harness.close();
         }
       },
-    });
+    };
     const provider = await owner.run();
     globalThis.Uint8Array = originalUint8Array;
     expect(rejectedAllocations).toHaveLength(1);
@@ -293,15 +292,15 @@ describe('Production native collection through actual Comlink', () => {
         throw new Error('Unexpected replacement Worker');
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         try {
           await owner.dispose();
         } finally {
           await harness.close();
         }
       },
-    });
+    };
     const provider = await owner.run();
     expect(provider.requests).toHaveLength(13);
     expect(provider.requests.slice(0, -1).map(request => request.trace.settled?.outcome)).toEqual(Array(12).fill({ status: 'fulfilled' }));
@@ -411,8 +410,8 @@ describe('Production native collection through actual Comlink', () => {
       createUnrecordedWorkerClient: unrecorded,
     });
     const running = owner.run();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release();
         try {
           await owner.dispose();
@@ -421,7 +420,7 @@ describe('Production native collection through actual Comlink', () => {
           await harness.close();
         }
       },
-    });
+    };
     await nativeEntered;
     expect(owner.getProgress()).toMatchObject({ run: { status: 'running' }, settledRequests: 0, loadStatus: 'ready' });
     const worker = harness.observations.workers[0]!;
@@ -515,15 +514,15 @@ describe('Production native collection through actual Comlink', () => {
       },
       createUnrecordedWorkerClient: unrecorded,
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         try {
           await owner.dispose();
         } finally {
           await harness.close();
         }
       },
-    });
+    };
     const provider = await owner.run();
     expect(provider.run).toEqual({ status: 'completed' });
     expect(provider.requests.map(request => request.status)).toEqual(['settled', 'settled', 'settled']);
@@ -734,15 +733,15 @@ describe('Production native collection through actual Comlink', () => {
       },
       createUnrecordedWorkerClient: unrecorded,
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         try {
           await owner.dispose();
         } finally {
           await harness.close();
         }
       },
-    });
+    };
     const provider = await owner.run();
     expect(provider.run).toEqual({ status: 'completed' });
     expect(provider.requests.map(request => request.scenario)).toEqual([

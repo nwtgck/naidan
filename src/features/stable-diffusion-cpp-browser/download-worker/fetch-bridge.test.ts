@@ -9,7 +9,6 @@ import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-ut
 import { imageModelRecipes } from '@/features/stable-diffusion-cpp-browser/model-recipes';
 import { listImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/repository-store';
 import type { PrivacyFetchStreamResponse } from '@/features/privacy-fetch';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 const calls = vi.hoisted(() => ({ fetch: vi.fn() }));
 vi.mock('@/features/privacy-fetch', () => ({ privacyFetchStream: calls.fetch }));
 vi.mock('@/utils/worker-transport', async original => ({ ...await original<typeof import('@/utils/worker-transport')>(), getReadableStreamTransferSupport: vi.fn(async () => 'unsupported' as const) }));
@@ -57,11 +56,11 @@ it.each(['supported', 'unsupported'] as const)('delivers the authorized broker s
     };
   });
   const bridge = createImageDownloadFetchBridge({ signal: new AbortController().signal });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       bridge.dispose();
     },
-  });
+  };
   const writer = createImageDownloadWorker();
   await writer.download({ files }, () => undefined, bridge.open);
   expect(calls.fetch).toHaveBeenCalledTimes(6);
@@ -74,11 +73,11 @@ it('aborts a pending broker response when the owning download is paused', async 
     request.signal.addEventListener('abort', () => reject(new DOMException('cancel', 'AbortError')), { once: true });
   }));
   const controller = new AbortController(), bridge = createImageDownloadFetchBridge({ signal: controller.signal });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       bridge.dispose();
     },
-  });
+  };
   const writer = createImageDownloadWorker();
   const pending = writer.download({ files }, () => undefined, bridge.open);
   const rejected = expect(pending).rejects.toThrow();

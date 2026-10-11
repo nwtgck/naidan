@@ -14,7 +14,6 @@ import ownedSequence from '@/features/transformers-js/replay-models/onnx-communi
 import type { ProviderReplayCatalog } from '@/features/transformers-js/replay-models/support/provider-replay-evidence';
 import { createProviderRequestReplayWithOwnedCacheControl } from '@/features/transformers-js/replay-models/support/provider-replay-request';
 import type { OwnedReplayCacheControl } from '@/features/transformers-js/replay-models/support/provider-replay-test-captured-full';
-import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const modelId = 'onnx-community/gpt-oss-20b-ONNX';
 const caseId = 'natural-tool-representative';
@@ -114,11 +113,11 @@ async function runTurn({ persistence }: { persistence: 'live' | 'json-roundtrip'
     parametersSchema: z.object({ city: z.string() }),
     execute,
   };
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await replay.close();
     },
-  });
+  };
   replay.beginNativeRequest({ caseId, parameters });
   const outcome = await generateChatTurn({
     onToolCallDraftsChange: undefined,
@@ -219,12 +218,12 @@ describe('GPT-OSS persisted parts at the owned native continuation boundary', ()
     // The pinned template includes a clock date. Both paths use the recording's
     // date; the persistence helper exercises JSON/DTO mapping, not OPFS I/O.
     vi.setSystemTime(new Date('2026-09-10T12:00:00Z'));
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
         vi.restoreAllMocks();
       },
-    });
+    };
     const live = await runTurn({ persistence: 'live' });
     const restored = await runTurn({ persistence: 'json-roundtrip' });
     expect(restored).toEqual(live);

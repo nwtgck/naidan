@@ -4,7 +4,6 @@ import { providerReplayCatalog } from '@/features/transformers-js/replay-models/
 import { createProviderRequestReplay } from './provider-replay-request';
 import { captureProviderChat } from './capture-provider-chat';
 import { toMessageId } from '@/01-models/ids';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // A small real Provider/Worker fixture for native-plan ownership, not a public
 // scenario dispatcher. Every chat and its structured observations remain below.
@@ -29,12 +28,12 @@ describe('explicit Provider native request ownership', () => {
       stop: undefined,
       reasoning: { effort: undefined },
     };
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         put.mockRestore(); end.mockRestore();
         await replay.close();
       },
-    });
+    };
     replay.beginNativeRequest({ caseId: 'first-turn', parameters });
     // The captured native request used 16. Mutating the same object to match
     // it must not retroactively change the independently begun 17-token plan.
@@ -73,11 +72,11 @@ describe('explicit Provider native request ownership', () => {
 
   it('cannot complete a selected request without executing its native call', async () => {
     const replay = await createProviderRequestReplay(nativePlan);
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await replay.close();
       },
-    });
+    };
     expect(() => replay.assertComplete({ requests: 0, nativeCalls: 0 })).toThrow();
     replay.beginNativeRequest({
       caseId: 'first-turn',

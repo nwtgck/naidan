@@ -8,7 +8,6 @@ import {
   parseCssOwnerKey,
   writeCssOwnershipDebugFiles,
 } from './css-ownership-planner';
-import { createTestDisposable } from '../../src/utils/resource-cleanup.test-support';
 
 function createAnalysis({ candidateOwners, candidates }: {
   candidateOwners: Record<string, string[]>,
@@ -183,11 +182,11 @@ describe('static Tailwind CSS ownership planner', () => {
     ));
     const ownerKey = createCssOwnerKey({ owners });
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-debug-'));
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         fs.rmSync(directory, { recursive: true, force: true });
       },
-    });
+    };
     writeCssOwnershipDebugFiles({
       directory,
       plan: {

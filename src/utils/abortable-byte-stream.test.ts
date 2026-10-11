@@ -1,15 +1,14 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 import { createAbortableByteStream } from './abortable-byte-stream';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 async function promptly<T>({ operation }: { operation: Promise<T> }): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       clearTimeout(timer);
     },
-  });
+  };
   return await Promise.race([operation, new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => reject(new Error('Cancellation waited for producer cleanup')), 100);
   })]);
@@ -29,11 +28,11 @@ describe('abortable byte stream ownership', () => {
     const reader = stream.getReader();
     const pending = reader.read();
     const reason = new Error('Consumer no longer needs bytes');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         cleanup.resolve(); reader.releaseLock();
       },
-    });
+    };
     await promptly({ operation: reader.cancel(reason) });
     expect(await pending).toEqual({ value: undefined, done: true });
     expect(cancel).toHaveBeenCalledExactlyOnceWith(reason);
@@ -51,11 +50,11 @@ describe('abortable byte stream ownership', () => {
     }, { highWaterMark: 0 });
     const stream = createAbortableByteStream({ stream: source, signal: new AbortController().signal, onCancel: undefined });
     const failure = new Error('Disk full');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         cleanup.resolve();
       },
-    });
+    };
     await expect(promptly({
       operation: stream.pipeTo(new WritableStream({
         write() {
@@ -113,11 +112,11 @@ describe('abortable byte stream ownership', () => {
     const reader = stream.getReader();
     const read = reader.read();
     const reason = new Error('Stopped');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         cleanup.resolve(); reader.releaseLock();
       },
-    });
+    };
     abort.abort(reason);
     await expect(read).rejects.toBe(reason);
     expect(source.locked).toBe(false);

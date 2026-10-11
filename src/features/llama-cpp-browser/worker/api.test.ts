@@ -15,7 +15,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWorkerApi } from "./api";
 import type { WorkerGenerateCall } from "./types";
 import type { generate } from "./generation";
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const result = { content: '', reasoningContent: '', toolCalls: [], finishReason: 'stop' } as const;
 
@@ -212,11 +211,11 @@ describe('native diagnostic checkpoints', () => {
       default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
       }
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         debug.mockRestore();
       },
-    });
+    };
     const pending = api.generate({ ...request({ generationId: 1 }), debug: 'on' }, async () => {}, () => {}, receive);
     const settled = pending.catch(() => undefined);
     await entered.promise;
@@ -523,11 +522,11 @@ describe('generation progress mailbox integration', () => {
       return completed();
     });
     const api = createWorkerApi();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         log.mockRestore();
       },
-    });
+    };
     await expect(api.generate(request({ generationId: 1 }), async () => {}, () => {
       const error = new Error('private transport detail');
       switch (failure) {
@@ -556,11 +555,11 @@ describe('generation progress mailbox integration', () => {
     }).catch(error => {
       done = true; return error;
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         gate.resolve(); await pending; log.mockRestore();
       },
-    });
+    };
     await vi.waitFor(() => expect(seen).toEqual(['loading', 'generating']));
     expect(done).toBe(false); await expect(api.release()).rejects.toThrow('busy');
     gate.resolve(); expect(await pending).toMatchObject({ message: 'llama.cpp browser: worker-failed' });
@@ -574,11 +573,11 @@ describe('generation progress mailbox integration', () => {
       return completed();
     });
     const api = createWorkerApi();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         blocked.resolve(); log.mockRestore();
       },
-    });
+    };
     const pending = api.generate({ ...request({ generationId: 1 }), debug }, async () => {}, progress => {
       seen.push(progress.completed); return blocked.promise;
     });

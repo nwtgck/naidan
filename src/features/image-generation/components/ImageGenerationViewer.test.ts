@@ -2,7 +2,6 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import { DOMWrapper, mount, type VueWrapper } from '@vue/test-utils';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageGenerationViewer from './ImageGenerationViewer.vue';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 let wrapper: VueWrapper<InstanceType<typeof ImageGenerationViewer>> | undefined;
 
 beforeEach(async () => {
@@ -77,11 +76,11 @@ it('does not consume Escape already handled by a control or by an IME', async ()
 
 it('traps focus across editable details and links, then restores the opener on close', async () => {
   const opener = document.createElement('button'); document.body.append(opener); opener.focus();
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       opener.remove();
     },
-  });
+  };
   wrapper = mount(ImageGenerationViewer, {
     props: { count: 1, index: 0, downloadEnabled: false },
     slots: { details: '<div><input disabled><input hidden><a href="#details" data-testid="details-link">Details</a><textarea data-testid="details-last"/><details><summary>Collapsed</summary><input data-testid="hidden-input"></details></div>' },

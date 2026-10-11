@@ -13,7 +13,6 @@ import { EMPTY_LM_PARAMETERS, type AssistantMessageNode, type ChatContent, type 
 import type { InferenceGenerationEvent } from '@/features/transformers-js/generation-events';
 import type { GenerationStrategy } from '@/features/transformers-js/generation-strategies';
 import type { NativeProtocolStreamer as NativeStreamerType } from '@/features/transformers-js/models/native-protocol-streamer';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 type Context = Parameters<GenerationStrategy['generate']>[0];
 const modelId = 'onnx-community/Qwen3.5-2B-ONNX';
@@ -181,11 +180,11 @@ R
         signal: abortController.signal,
         generate: async ({ onEvent }) => {
           const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
-          await using _cleanupResource = createAsyncTestDisposable({
-            dispose: async () => {
+          await using _cleanupResource = {
+            async [Symbol.asyncDispose]() {
               await queue.finish();
             },
-          });
+          };
           await selectGenerationStrategy({ modelType: 'qwen3_5', activeModelId: modelId }).generate({
             model: { config: {}, sessions: {}, generate: nativeGenerate } as unknown as Context['model'],
             tokenizer: tokenizer as unknown as Context['tokenizer'],

@@ -4,7 +4,6 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { transformersJsService } from '..';
 import { createDownloadProgressTracker, type DownloadProgressCallback, type DownloadProgressSnapshot } from '@/features/transformers-js/download-progress';
 import TransformersJsManager from './TransformersJsManager.vue';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const preparation = vi.hoisted(() => ({ resolve: vi.fn(), reuse: vi.fn(), run: vi.fn(), dispose: vi.fn() }));
 vi.mock('../download-verification/logic/resolve-public-hugging-face-revision', () => ({ resolvePublicHuggingFaceRevision: preparation.resolve }));
@@ -71,13 +70,13 @@ it('renders initial zero before revision resolution and every planned row before
   wrapper = mount(TransformersJsManager);
   await flushPromises();
   const running = transformersJsService.downloadModel({ modelId: 'fixture/model' });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       revision.resolve({ resolvedRevision: 'a'.repeat(40) });
       finish.resolve({ status: 'accepted' });
       await running;
     },
-  });
+  };
   await flushPromises();
   expect(wrapper.get('[data-testid="download-overall-progress"]').text()).toBe('0%');
   expect(wrapper.text()).not.toContain('Resolving revision');
@@ -117,12 +116,12 @@ it('keeps actual file percentages separate from overall work and retains saving 
   wrapper = mount(TransformersJsManager);
   await flushPromises();
   const running = transformersJsService.downloadModel({ modelId: 'fixture/model' });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       finish.resolve({ status: 'accepted' });
       await running;
     },
-  });
+  };
   const observe = await entered.promise;
   observe({ event: { kind: 'candidate', index: 0, count: 2, candidate: { device: 'wasm', dtype: 'q4' } } });
   observe({ event: { kind: 'plan', index: 0, paths: ['onnx/model.onnx', 'onnx/model.onnx_data'] } });
@@ -172,12 +171,12 @@ it('retains a failed file with a nonpositive unknown length and does not turn fa
   const failure = new Error('Synthetic storage failure');
   const running = transformersJsService.downloadModel({ modelId: 'fixture/model' });
   const result = running.catch(error => error);
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       finish.reject(failure);
       await result;
     },
-  });
+  };
   const observe = await entered.promise;
   observe({ event: { kind: 'candidate', index: 0, count: 2, candidate: { device: 'wasm', dtype: 'q4' } } });
   observe({ event: { kind: 'plan', index: 0, paths: ['onnx/model.onnx'] } });
@@ -208,12 +207,12 @@ it.each(['accepted', 'failed'] as const)('retains batched size correction contex
   const running = transformersJsService.downloadModel({ modelId: 'fixture/model' });
   const result = running.catch(error => error);
   const failure = new Error('Synthetic fallback failure');
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       finish.resolve({ status: 'accepted' });
       await result;
     },
-  });
+  };
   const observe = await entered.promise;
   observe({ event: { kind: 'candidate', index: 0, count: 2, candidate: { device: 'wasm', dtype: 'q4' } } });
   observe({ event: { kind: 'plan', index: 0, paths: ['onnx/model.onnx'] } });
@@ -273,12 +272,12 @@ it('does not describe known sizes as unknown when a failed file stops the overal
   const failure = new Error('Synthetic file failure');
   const running = transformersJsService.downloadModel({ modelId: 'fixture/model' });
   const result = running.catch(error => error);
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       finish.reject(failure);
       await result;
     },
-  });
+  };
   const observe = await entered.promise;
   observe({ event: { kind: 'candidate', index: 0, count: 1, candidate: { device: 'wasm', dtype: 'q4' } } });
   observe({ event: { kind: 'plan', index: 0, paths: ['onnx/first.onnx', 'onnx/second.onnx'] } });

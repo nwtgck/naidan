@@ -3,7 +3,6 @@ import { createImageClient } from './client-hosted';
 import { requestFixture as request } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import { engineSnapshotFixture } from '@/features/stable-diffusion-cpp-browser/test-utils/engine-state.test-support';
 import type { ImageEngineInspection } from '@/features/stable-diffusion-cpp-browser/engine-state';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 const mocks = vi.hoisted(() => ({ inspect: vi.fn(), generate: vi.fn(), release: vi.fn(), terminate: vi.fn(), constructed: vi.fn(), messages: [] as unknown[], workers: [] as EventTarget[] }));
 vi.mock('@/utils/worker-transport', async importOriginal => ({ ...await importOriginal<typeof import('@/utils/worker-transport')>(), wrapWorkerRemote: () => ({ generate: mocks.generate, inspectEngine: mocks.inspect }), releaseWorkerRemote: () => mocks.release(), workerProxy: ({ value }: { value: unknown }) => value }));
 
@@ -88,11 +87,11 @@ it('retains worker after success and retires malformed responses', async () => {
 it('reports silence from the window when the Worker/native call cannot send anything', async () => {
   vi.useFakeTimers(); const onDiagnostic = vi.fn(); mocks.generate.mockImplementation(() => new Promise(() => undefined));
   const client = createImageClient(), controller = new AbortController();
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       client.dispose(); vi.useRealTimers();
     },
-  });
+  };
   const operation = client.generate({ request: request(), signal: controller.signal, onProgress: vi.fn(), onDiagnostic });
   const stopped = expect(operation).rejects.toMatchObject({ name: 'AbortError' });
   await vi.advanceTimersByTimeAsync(15000);
@@ -106,11 +105,11 @@ it('delivers validated diagnostics before the inference promise settles and reta
   vi.useFakeTimers(); mocks.generate.mockImplementation(() => new Promise(() => undefined));
   const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
   const onDiagnostic = vi.fn(), client = createImageClient(), controller = new AbortController();
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       client.dispose(); consoleLog.mockRestore(); vi.useRealTimers();
     },
-  });
+  };
   const operation = client.generate({ request: { ...request(), debug: 'on' }, signal: controller.signal, onProgress: vi.fn(), onDiagnostic });
   const stopped = expect(operation).rejects.toMatchObject({ name: 'AbortError' });
   const diagnostic = { event: 'start', stage: 'model-load', elapsedMs: 123, fields: { wasmBytes: 65536 } };

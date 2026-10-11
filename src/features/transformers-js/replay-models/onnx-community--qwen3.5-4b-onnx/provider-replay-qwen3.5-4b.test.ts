@@ -22,7 +22,6 @@ import correctedFirst from './provider-first-turn-corrected.evidence.json';
 import correctedContinuity from './provider-continuity-corrected.evidence.json';
 import correctedProvenance from './provider-corrected-continuity-provenance.evidence.json';
 import correctedSequence from './provider-corrected-continuity-sequence.evidence.json';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const modelId = 'onnx-community/Qwen3.5-4B-ONNX';
 const revision = '74d8caba2117fd5f41d655e9cc27eda1338662b3';
@@ -705,11 +704,11 @@ describe('Qwen3.5 4B Provider / basic', () => {
     const harness = await createQwen4Replay({ generate });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: harness.close });
       },
-    });
+    };
     capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -766,11 +765,11 @@ describe('Qwen3.5 4B Provider / history', () => {
       });
       // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
       let capture: ProviderChatCapture | undefined;
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await closeProviderReplayCaptures({ captures: [capture], close: control.harness.close });
         },
-      });
+      };
       capture = captureProviderChat({
         provider: control.harness.provider,
         request: {
@@ -833,11 +832,11 @@ Answer<|im_end|>`, { add_special_tokens: false });
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from(ownedSequence), [1, ownedSequence.length]), past_key_values: cache };
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: harness.close });
       },
-    });
+    };
     const parameters = {
       temperature: 0,
       topP: 1,
@@ -917,11 +916,11 @@ describe('Qwen3.5 4B Provider / reasoning', () => {
       throw new Error('Native input oracle must not generate');
     });
     const harness = await createQwen4Replay({ generate });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     await harness.service.loadDownloadedModel({ modelId });
     expect(harness.observations.processors).toHaveLength(1);
     const processor = harness.observations.processors[0]!;
@@ -960,11 +959,11 @@ describe('Qwen3.5 4B Provider / reasoning', () => {
       });
       // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
       let capture: ProviderChatCapture | undefined;
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await closeProviderReplayCaptures({ captures: [capture], close: control.harness.close });
         },
-      });
+      };
       capture = captureProviderChat({
         provider: control.harness.provider,
         request: {
@@ -998,11 +997,11 @@ describe('Qwen3.5 4B Provider / tools', () => {
   it('preserves the complete strict public tool schema independently of Qwen4 native XML and default thinking', async () => {
     const replay = await createQwen4ToolReplay();
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: replay.close });
       },
-    });
+    };
     const inputMessages = [qwen4ToolUser];
     const nativePrompt = qwen4NativeToolSystem + qwen4ToolUserText + qwen4NativeGenerationPrefix;
     expect(replay.tokenizer.apply_chat_template(inputMessages, {
@@ -1138,11 +1137,11 @@ describe('Qwen3.5 4B Provider / tools', () => {
   it('retains supplied call content and string-valued arguments through the public native mapping', async () => {
     const replay = await createQwen4ToolReplay();
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: replay.close });
       },
-    });
+    };
     const inputMessages = [qwen4ToolUser, qwen4SuppliedCall];
     // Neither this failure nor its mapped success is taken from a captured
     // invocation; both are current controls against Qwen4's original template.
@@ -1284,11 +1283,11 @@ describe('Qwen3.5 4B Provider / tools', () => {
   it('retains supplied association IDs at builder entry and serializes result content without natural generation output', async () => {
     const replay = await createQwen4ToolReplay();
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: replay.close });
       },
-    });
+    };
     const inputMessages = [qwen4ToolUser, qwen4SuppliedCall, qwen4SuppliedResult];
     expect(() => replay.tokenizer.apply_chat_template(inputMessages, {
       tokenize: false,
@@ -1443,12 +1442,12 @@ describe('Qwen3.5-4B source-derived XML type controls, not recorded inference', 
       },
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
         expect(executions).toEqual([]);
       },
-    });
+    };
     const tools: Tool[] = [{
       name: 'probe',
       description: 'Must reject invalid numeric arguments.',
@@ -1528,11 +1527,11 @@ describe('Qwen3.5-4B source-derived XML type controls, not recorded inference', 
       },
     });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     const tools: Tool[] = [{
       name: 'write_file',
       description: 'Synthetic XML schema control.',
@@ -1640,11 +1639,11 @@ describe('Qwen3.5 4B Provider / images', () => {
     });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: harness.close });
       },
-    });
+    };
     await harness.service.loadDownloadedModel({ modelId });
     expect(harness.observations.processors).toHaveLength(1);
     const processor = harness.observations.processors[0];
@@ -1800,11 +1799,11 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ['first-turn'], artifactPaths: recordedArtifacts, imagePlatform: undefined });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: replay.close });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
     replay.beginNativeRequest({ caseId: "first-turn", parameters: parameters });
@@ -1839,11 +1838,11 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ['system-user'], artifactPaths: recordedArtifacts, imagePlatform: undefined });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: replay.close });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
     replay.beginNativeRequest({ caseId: "system-user", parameters: parameters });
@@ -1882,11 +1881,11 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ['supplied-history'], artifactPaths: recordedArtifacts, imagePlatform: undefined });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: replay.close });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
     replay.beginNativeRequest({ caseId: "supplied-history", parameters: parameters });
@@ -2099,11 +2098,11 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: replay.close });
       },
-    });
+    };
     const parameters = {
       temperature: 0,
       topP: 1,
@@ -2175,11 +2174,11 @@ describe('Qwen3.5 4B Provider / recorded request contracts', () => {
   it('replays historical supplied assistant text after first-request settlement without treating it as corrected continuity', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ['first-turn', 'continuity'], artifactPaths: recordedArtifacts, imagePlatform: undefined });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: replay.close });
       },
-    });
+    };
     const firstSignal = new AbortController().signal;
     const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
     replay.beginNativeRequest({ caseId: "first-turn", parameters: firstParameters });
@@ -2253,11 +2252,11 @@ Thinking Process:
   it('keeps a new conversation independent after settled requests in the same runtime', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ['first-turn', 'continuity', 'independent-next-input'], artifactPaths: recordedArtifacts, imagePlatform: undefined });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: replay.close });
       },
-    });
+    };
     const firstSignal = new AbortController().signal;
     const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
     replay.beginNativeRequest({ caseId: "first-turn", parameters: firstParameters });
@@ -2360,11 +2359,11 @@ Thinking Process:
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ['reasoning-none'], artifactPaths: recordedArtifacts, imagePlatform: undefined });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: replay.close });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "none" } };
     replay.beginNativeRequest({ caseId: "reasoning-none", parameters: parameters });
@@ -2399,11 +2398,11 @@ Thinking Process:
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ['reasoning-low'], artifactPaths: recordedArtifacts, imagePlatform: undefined });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: replay.close });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "low" } };
     replay.beginNativeRequest({ caseId: "reasoning-low", parameters: parameters });
@@ -2438,11 +2437,11 @@ Thinking Process:
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ['reasoning-medium'], artifactPaths: recordedArtifacts, imagePlatform: undefined });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: replay.close });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "medium" } };
     replay.beginNativeRequest({ caseId: "reasoning-medium", parameters: parameters });
@@ -2477,11 +2476,11 @@ Thinking Process:
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ['reasoning-high'], artifactPaths: recordedArtifacts, imagePlatform: undefined });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: replay.close });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "high" } };
     replay.beginNativeRequest({ caseId: "reasoning-high", parameters: parameters });
@@ -2515,11 +2514,11 @@ Thinking Process:
   it('executes the recorded minimal weather call once with Tokyo arguments and continues to settlement', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ['natural-tool-minimal'], artifactPaths: recordedArtifacts, imagePlatform: undefined });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await replay.close();
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
     const executedSignals: Array<AbortSignal | undefined> = [];
@@ -2589,11 +2588,11 @@ This looks like a pleasant day in Tokyo! Enjoy the clear weather.`,
   it('executes the recorded representative weather call once with Tokyo arguments and continues to settlement', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ['natural-tool-representative'], artifactPaths: recordedArtifacts, imagePlatform: undefined });
     let turn: Awaited<ReturnType<typeof runProviderReplayTurn>> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await replay.close();
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
     const executedSignals: Array<AbortSignal | undefined> = [];
@@ -2653,11 +2652,11 @@ This looks like a pleasant day in Tokyo! Enjoy the clear weather.`,
   it('keeps supplied tool history independent after a settled tool request without executing its supplied call', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ['natural-tool-representative', 'structured-tool-history'], artifactPaths: recordedArtifacts, imagePlatform: undefined });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: replay.close });
       },
-    });
+    };
     const firstParameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
     const firstExecutedArgs: unknown[] = [];
     const firstExecutedSignals: Array<AbortSignal | undefined> = [];
@@ -2791,11 +2790,11 @@ It looks like a pleasant day in Tokyo right now!`]);
     });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: replay.close });
       },
-    });
+    };
     const signal = new AbortController().signal;
     const parameters: Parameters<typeof replay.provider.chat>[0]['parameters'] = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
     replay.beginNativeRequest({ caseId: "image", parameters: parameters });

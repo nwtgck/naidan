@@ -6,7 +6,6 @@ import AssistantProcessSequence from './AssistantProcessSequence.vue';
 import type { ChatFlowItem, SequenceStats } from '@/composables/useChatDisplayFlow';
 import type { MessageNode } from '@/01-models/types';
 import { toMessageId } from '@/01-models/ids';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -214,11 +213,11 @@ it('keeps the full long tool summary in a wrapping, keyboard-accessible toggle',
       stats: makeStats({ thinkingSteps: 3, toolCallCount: 2, toolNames: tools }),
     },
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       wrapper.unmount();
     },
-  });
+  };
   const toggle = wrapper.get('[data-testid="assistant-process-toggle"]');
   expect(toggle.element.tagName).toBe('BUTTON'); expect(toggle.attributes('type')).toBe('button');
   for (const name of tools) {

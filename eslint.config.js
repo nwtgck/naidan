@@ -94,6 +94,7 @@ import testStructureSpacing from './eslint-local-rules/test-structure-spacing.js
 const mainConfig = tseslint.config(
   {
     // Preserve upstream structure; Naidan-owned fix integration code and tests remain linted.
+    // Temporary test support is excluded from tsconfig.app.json and uses isolated lint configurations.
     // Generated, vendored and deliberate negative fixtures are not owned lint targets.
     ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/fixtures/**', 'src/test-tmp/**', 'build/transformers-js-fixes/upstream/**'],
   },

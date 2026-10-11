@@ -23,7 +23,6 @@ import evidenceJson from './provider-prefix-output.evidence.json';
 import continuityJson from './provider-supplied-history-prefix.evidence.json';
 import { parseProviderReplayTextEvidence, replayRecordedText } from '@/features/transformers-js/replay-models/support/provider-replay-test-causal-gate';
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const evidence = parseProviderReplayTextEvidence({ value: evidenceJson });
 const inputEvidence = z.object({
@@ -143,11 +142,11 @@ describe('LFM2.5 350M Provider / basic', () => {
         throw new Error(stop);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     const capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -237,11 +236,11 @@ describe('LFM2.5 350M Provider / basic', () => {
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from(replay.sequenceTokenIds), [1, replay.sequenceTokenIds.length]), past_key_values: null };
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     const capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -296,11 +295,11 @@ describe('LFM2.5 350M Provider / basic', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // first-turn: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -359,11 +358,11 @@ describe('LFM2.5 350M Provider / system', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // system-user: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -446,11 +445,11 @@ describe('LFM2.5 350M Provider / history', () => {
         throw new Error(boundary);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     // Verify the captured native control before exercising the public warm
     // Provider. Loading and this metadata lookup remain strictly offline.
     await harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
@@ -540,11 +539,11 @@ describe('LFM2.5 350M Provider / history', () => {
         throw new Error(boundary);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     // Verify the captured native control before exercising the public warm
     // Provider. Loading and this metadata lookup remain strictly offline.
     await harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
@@ -629,11 +628,11 @@ describe('LFM2.5 350M Provider / history', () => {
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from(replay.sequenceTokenIds), [1, replay.sequenceTokenIds.length]), past_key_values: null };
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     const capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -685,11 +684,11 @@ continuation:
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // supplied-history: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -794,11 +793,11 @@ A separate synthetic conversation.<|im_end|>
         return next(context);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     const firstCapture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -891,11 +890,11 @@ A separate synthetic conversation.<|im_end|>
     });
     const captures: ProviderChatCapture[] = [];
     let firstAssistant: Extract<ChatMessage, { role: 'assistant' }> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // first-turn: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1058,11 +1057,11 @@ describe('LFM2.5 350M Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // reasoning-none: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1119,11 +1118,11 @@ describe('LFM2.5 350M Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // reasoning-low: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1180,11 +1179,11 @@ describe('LFM2.5 350M Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // reasoning-medium: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1241,11 +1240,11 @@ describe('LFM2.5 350M Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // reasoning-high: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -1351,12 +1350,12 @@ describe('LFM2.5 350M Provider / tools', () => {
       },
     });
     const templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         templateSpy.mockRestore();
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     const capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -1544,12 +1543,12 @@ describe('LFM2.5 350M Provider / tools', () => {
       },
     });
     const templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         templateSpy.mockRestore();
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     const capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -2050,11 +2049,11 @@ describe('LFM2.5 350M Provider / images', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // image: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
@@ -2304,11 +2303,11 @@ describe('LFM2.5 350M Provider / sequences', () => {
         return next(context);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => harness.close() });
       },
-    });
+    };
     const firstCapture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -2411,11 +2410,11 @@ describe('LFM2.5 350M Provider / sequences', () => {
     });
     const captures: ProviderChatCapture[] = [];
     let firstAssistant: Extract<ChatMessage, { role: 'assistant' }> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures, close: () => replay.close() });
       },
-    });
+    };
     // first-turn: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {

@@ -27,7 +27,6 @@ import {
   type GenerationInvocationObservation,
   type WorkerGenerationRuntimeState,
 } from "./generation-strategies";
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 async function pendingGptPublication() {
   const gpt = await import('./models/gpt-oss');
@@ -64,11 +63,11 @@ async function pendingGptPublication() {
 describe('shared generation state publication ownership', () => {
   it('does not republish a GPT cache after its generation owner was revoked by reset', async () => {
     const fixture = await pendingGptPublication();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         fixture.generate.mockRestore();
       },
-    });
+    };
     fixture.state.generationStateOwner = {};
     fixture.state.gptOssPastKeyValues = null;
     fixture.completion.resolve({ stale: true });
@@ -79,11 +78,11 @@ describe('shared generation state publication ownership', () => {
   it('does not overwrite a later request GPT cache when an older generation resolves', async () => {
     const fixture = await pendingGptPublication();
     const newer = { newer: true };
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         fixture.generate.mockRestore();
       },
-    });
+    };
     fixture.state.generationStateOwner = {};
     fixture.state.gptOssPastKeyValues = newer;
     fixture.completion.resolve({ stale: true });
@@ -110,11 +109,11 @@ describe('verified content-route tool publication', () => {
     const generate = vi.fn(async ({ streamer }: { streamer: { emit(text: string): void } }) => {
       streamer.emit(output); return { sequences: [], past_key_values: null };
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         resolve.mockRestore();
       },
-    });
+    };
     const operation = selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/content' }).generate({
       onGenerationEvent: undefined,
       model: { generate, config: { model_type: 'synthetic' } } as never,

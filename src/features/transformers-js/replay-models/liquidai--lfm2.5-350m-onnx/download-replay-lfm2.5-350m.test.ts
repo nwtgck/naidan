@@ -4,7 +4,6 @@ import { connectRawDownload } from '@/features/transformers-js/replay-models/sup
 import { metadataSizeProbeTransport } from '@/features/transformers-js/replay-models/support/download-metadata-size-probe-transport';
 import { createSyntheticModelBody, readSyntheticModelBody } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
 import { digest } from '@/features/transformers-js/replay-models/support/model-runtime-input-helpers';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -30,11 +29,11 @@ describe('LFM2.5 350M Download replay', () => {
       const revision = 'd11593fd9eb408e322667926656598896c2d5ff9';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
       h.network.mockImplementation(metadataSizeProbeTransport({ originalFetch: h.network.getMockImplementation()! }));
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(h.fs.files.size).toBe(0);
       const { result } = await h.freshMetadata();
       expect(result.summary.status, JSON.stringify(result.summary)).toBe('prepared');
@@ -84,11 +83,11 @@ describe('LFM2.5 350M Download replay', () => {
         { path: 'onnx/model_q4f16.onnx_data', size: 254965760 },
       ];
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(digest({ bytes: h.archive.files.get('config.json')! })).toBe('544d8d604bacf4cb89383c49c9a54621afa26a6741f3f55fd8b840ca1d640419');
       expect(digest({ bytes: h.archive.files.get('tokenizer.json')! })).toBe('29d43b4be8e8a896fefd7cd836ca6d6b4eedd249f823866ce0453b368e646f49');
       for (const artifact of expectedArtifacts) {
@@ -157,11 +156,11 @@ describe('LFM2.5 350M Download replay', () => {
         'onnx/model_q4f16.onnx_data',
       ];
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map([['main', revision]]) });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(digest({ bytes: h.archive.files.get('config.json')! })).toBe('544d8d604bacf4cb89383c49c9a54621afa26a6741f3f55fd8b840ca1d640419');
       expect(digest({ bytes: h.archive.files.get('tokenizer.json')! })).toBe('29d43b4be8e8a896fefd7cd836ca6d6b4eedd249f823866ce0453b368e646f49');
       await expect(h.serviceDownload()).resolves.toMatchObject({ status: 'idle', error: undefined });
@@ -234,11 +233,11 @@ describe('LFM2.5 350M Download replay', () => {
       const revision = 'd11593fd9eb408e322667926656598896c2d5ff9';
       const missingPath = 'onnx/model_q4f16.onnx_data';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       const downloaded = await h.run();
       expect(downloaded.status, JSON.stringify(downloaded)).toBe('accepted');
       expect(h.sessions.toSorted((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);
@@ -281,11 +280,11 @@ describe('LFM2.5 350M Download replay', () => {
       const revision = 'd11593fd9eb408e322667926656598896c2d5ff9';
       const missingPath = 'tokenizer.json';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       const downloaded = await h.run();
       expect(downloaded.status, JSON.stringify(downloaded)).toBe('accepted');
       expect(h.sessions.toSorted((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);
@@ -325,11 +324,11 @@ describe('LFM2.5 350M Download replay', () => {
       const modelId = 'LiquidAI/LFM2.5-350M-ONNX';
       const revision = 'd11593fd9eb408e322667926656598896c2d5ff9';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect((await h.run()).status).toBe('accepted');
       expect(h.sessions).toEqual(expectedSessions);
       const base = `models/huggingface.co/${modelId}/resolve/${revision}/`;

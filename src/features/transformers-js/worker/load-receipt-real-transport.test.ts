@@ -2,7 +2,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { createProviderReplayTestRuntime } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Actual startup, Comlink, offline common Load and tokenizer execute. Only the
 // browser module/OPFS platform and heavyweight ORT construction are substituted.
@@ -41,15 +40,15 @@ describe('ordinary Load receipt through actual Worker communication without gene
         maxTotalStreamTokenBytes: 262144,
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         try {
           await capture.client.dispose();
         } finally {
           await harness.close();
         }
       },
-    });
+    };
     expect(await capture.client.loadDownloadedModel({ modelId, revisionSelection: { kind: 'pinned', revision: revision }, progressCallback: () => undefined }))
       .toStrictEqual({ device: 'webgpu', dtype: 'q4f16' });
     const first = await capture.takeGenerationCapture();

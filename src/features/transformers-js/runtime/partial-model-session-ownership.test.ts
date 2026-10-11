@@ -2,7 +2,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { rawRuntime } from '@/features/transformers-js/replay-models/support/model-runtime-input-helpers';
 import { readModelFixture } from '@/features/transformers-js/replay-models/support/model-runtime-fixture';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -15,11 +14,11 @@ it('releases fulfilled native session siblings after model construction fails an
     'onnx/vision_encoder_q4f16.onnx', 'onnx/vision_encoder_q4f16.onnx_data',
   ];
   const h = await rawRuntime({ archive, bodyPaths });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       h.restoreSessionSpy();
     },
-  });
+  };
   const completed: number[] = [];
   const releases = [vi.fn(async () => {
     completed.push(1);

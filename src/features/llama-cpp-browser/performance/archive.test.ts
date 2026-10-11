@@ -6,7 +6,6 @@ import { performanceArchive } from './archive';
 import { summarizePerformance, performanceFindings, trialRates } from './summary';
 import { runtimeBuildEvidence } from './runtime-evidence';
 import type { PerformanceSnapshot } from './types';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function snapshot(): PerformanceSnapshot {
   const plan = performancePlan();
@@ -54,11 +53,11 @@ describe('portable performance results', () => {
     const source = snapshot();
     source.environment.appSource = { sourceCommit: 'a'.repeat(40), workingTree };
     vi.stubGlobal('__APP_SOURCE__', { sourceCommit: 'b'.repeat(40), workingTree: 'clean' });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.unstubAllGlobals();
       },
-    });
+    };
     const zip = await JSZip.loadAsync(await (await performanceArchive({ snapshot: source })).arrayBuffer());
     const environment = JSON.parse(await zip.file('environment.json')!.async('string'));
     expect(environment.appVersion).toBe('test');

@@ -10,7 +10,6 @@ import { createDownloadVerificationCandidateAcceptanceWorkerClient } from '@/fea
 import { RequiredDownloadedResourceCleanupError } from '@/features/transformers-js/runtime/required-downloaded-resource-operation';
 import type { DownloadedModelRevisionSelection } from '@/features/transformers-js/runtime/downloaded-model-revision-selection';
 import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const workers: TransportWorker[] = [];
 const clients: Array<{ dispose(): Promise<void> }> = [];
@@ -81,13 +80,13 @@ describe('Production startup through real Comlink transport', () => {
     vi.stubGlobal('Worker', TransportWorker);
     const owner = createTransformersJsService({ createWorkerClient: createTransformersJsWorkerClient });
     const physicalFailure = new Error('Synthetic physical Worker termination failure');
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         // The fixture owns its MessagePorts even if simulated native termination
         // fails; afterEach closes them independently of the production owner.
         await owner.dispose().catch(() => undefined);
       },
-    });
+    };
     // A public restart creates the first actual client without needing any
     // model files. Then exercise its ready session over real Comlink.
     await owner.service.restart();

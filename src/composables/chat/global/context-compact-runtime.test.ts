@@ -1,7 +1,6 @@
 import { toChatId } from '@/01-models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createContextCompactRuntime } from './context-compact-runtime';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe('createContextCompactRuntime', () => {
   beforeEach(() => {
@@ -10,11 +9,11 @@ describe('createContextCompactRuntime', () => {
 
   it('clears completed progress after a short delay', async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     const runtime = createContextCompactRuntime();
 
     runtime.setProgress({
@@ -49,11 +48,11 @@ describe('createContextCompactRuntime', () => {
 
   it('replaces the reset timer when a new progress update arrives', async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     const runtime = createContextCompactRuntime();
 
     runtime.setProgress({

@@ -13,7 +13,6 @@ import { generateProductionProviderCapture } from '@/features/transformers-js/mo
 import { captureProviderChat, type CapturedChatRequest } from './capture-provider-chat';
 import { toMessageId } from '@/01-models/ids';
 import type { ChatMessage } from '@/01-models/types';
-import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const capturedSmolLoadIdentity = {
   status: 'ready',
@@ -86,12 +85,12 @@ describe('Production replay explicit image platform ownership', () => {
       }),
       imagePlatform: { platform, allowedDataUrls },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
         vi.unstubAllGlobals();
       },
-    });
+    };
     const unlisted = 'data:image/png;base64,AAAA';
     allowedDataUrls.push(unlisted);
     await expect(fetch('https://huggingface.co/synthetic/model/resolve/main/image.png')).rejects.toThrow('blocked non-runtime');
@@ -131,12 +130,12 @@ describe('Production replay explicit image platform ownership', () => {
       }),
       imagePlatform: { platform, allowedDataUrls: [dataUrl] },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
         vi.unstubAllGlobals();
       },
-    });
+    };
     const inherited = new AbortController();
     const replacement = new AbortController();
     const request = new Request(dataUrl, { headers: { 'x-image-test': 'original' }, signal: inherited.signal });
@@ -169,14 +168,14 @@ describe('Production replay explicit image platform ownership', () => {
         throw new Error('No inference in absent image test');
       },
     }));
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
         expect(globalThis.fetch).toBe(parentFetch);
         expect(workerKeys.map(key => Object.getOwnPropertyDescriptor(globalThis, key))).toEqual(beforeWorkerGlobals);
         vi.unstubAllGlobals();
       },
-    });
+    };
     expect(globalThis.self.constructor.name).toBe('DedicatedWorkerGlobalScope');
     const workerScope = Reflect.get(globalThis, 'WorkerGlobalScope');
     const dedicatedScope = Reflect.get(globalThis, 'DedicatedWorkerGlobalScope');
@@ -297,12 +296,12 @@ describe('Production replay explicit image platform ownership', () => {
       expect(globalThis.self.constructor.name).toBe('DedicatedWorkerGlobalScope');
       throw failure;
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         importer.mockRestore();
         vi.unstubAllGlobals();
       },
-    });
+    };
     await expect(createProviderReplayTestRuntime({
       ...mechanicsArguments({
         generate: async () => {
@@ -323,11 +322,11 @@ describe('Production replay explicit local cache metadata', () => {
         throw new Error('No inference for invalid setup');
       },
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         startup.mockRestore();
       },
-    });
+    };
     for (const metadataCache of [['config.json', 'config.json'], ['not-recorded.json'], ['../config.json'], ['/config.json']]) {
       await expect(createProviderReplayTestRuntime({ ...args, metadataCache })).rejects.toThrow('Unprovided or duplicate replay cache metadata');
     }
@@ -349,12 +348,12 @@ describe('Production replay construction ownership', () => {
       }
       return runtime;
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         importer.mockRestore();
         parentSpy.mockRestore();
       },
-    });
+    };
     const harness = await createProviderReplayTestRuntime(mechanicsArguments({
       generate: async () => {
         throw new Error('No inference in wrapper ownership control');
@@ -402,13 +401,13 @@ describe('Production replay construction ownership', () => {
       ownedSpy.mockRestore = throwingRestore;
       throw primary;
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         restoreOwnedSpy?.();
         importer.mockRestore();
         vi.unstubAllGlobals();
       },
-    });
+    };
     await expect(createProviderReplayTestRuntime(mechanicsArguments({
       generate: async () => {
         throw new Error('Not reached');
@@ -434,14 +433,14 @@ describe('Production replay construction ownership', () => {
     };
     const failure = new Error('Synthetic native artifact import failure');
     const importer = vi.spyOn(artifactFixture, 'importProductionTransformersArtifact').mockRejectedValueOnce(failure);
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         importer.mockRestore();
         // Also clean the pre-fix failure so it cannot contaminate another case.
         if (vi.isMockFunction(ort.InferenceSession.create)) ort.InferenceSession.create.mockRestore();
         vi.unstubAllGlobals();
       },
-    });
+    };
     await expect(createProviderReplayTestRuntime(mechanicsArguments({
       generate: async () => {
         throw new Error('Not reached');
@@ -472,8 +471,8 @@ describe('Production replay construction ownership', () => {
     vi.doMock('@/features/transformers-js/provider-hosted', () => {
       throw failure;
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         importer.mockRestore();
         vi.doUnmock('@/features/transformers-js/provider-hosted');
         vi.doUnmock('@huggingface/transformers');
@@ -483,7 +482,7 @@ describe('Production replay construction ownership', () => {
         vi.unstubAllGlobals();
         vi.resetModules();
       },
-    });
+    };
     // Vitest wraps a rejected module factory, preserving its cause. That
     // upstream wrapper must not be replaced by a cleanup error either.
     await expect(createProviderReplayTestRuntime(mechanicsArguments({
@@ -510,11 +509,11 @@ describe('Production replay native inference boundary', () => {
       throw new Error('Synthetic inference inspection');
     });
     const harness = await createProviderReplayTestRuntime(mechanicsArguments({ generate }));
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     const observed = await captureMechanicsChat({
       provider: harness.provider,
       messages: [textMessage({ id: 'probe', role: 'user', text: 'Synthetic mechanics probe' })],
@@ -545,11 +544,11 @@ describe('Production replay native inference boundary', () => {
       throw new Error('Synthetic inference inspection');
     });
     const harness = await createProviderReplayTestRuntime(mechanicsArguments({ generate }));
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     const observed = await captureMechanicsChat({
       provider: harness.provider,
       messages: [textMessage({ id: 'probe', role: 'user', text: 'Synthetic mechanics probe' })],
@@ -595,11 +594,11 @@ describe('Production replay Worker construction boundary', () => {
     });
     const once = () => calls.push('once');
     const aborted = () => calls.push('aborted');
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         worker.terminate();
       },
-    });
+    };
     worker.endpoint.addEventListener('message', once, options);
     worker.channel.port2.dispatchEvent(new MessageEvent('message', { data: 'first' }));
     worker.channel.port2.dispatchEvent(new MessageEvent('message', { data: 'second' }));
@@ -623,11 +622,11 @@ describe('Production replay Worker construction boundary', () => {
     await started.promise;
     const listener = () => {};
     const mutableOptions = { capture: false };
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         worker.terminate();
       },
-    });
+    };
     worker.endpoint.addEventListener('message', listener, mutableOptions);
     worker.endpoint.addEventListener('message', listener, true);
     worker.endpoint.removeEventListener('message', listener, true);
@@ -671,12 +670,12 @@ describe('Production replay Worker construction boundary', () => {
         completed.resolve();
       },
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         continueStartup.resolve();
         worker.terminate();
       },
-    });
+    };
     await entered.promise;
     worker.terminate();
     continueStartup.resolve();
@@ -696,11 +695,11 @@ describe('Production replay Worker construction boundary', () => {
       },
     });
     worker.addEventListener('error', event => delivered.resolve((event as MessageEvent).data));
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         worker.terminate();
       },
-    });
+    };
     expect(await delivered.promise).toBe(failure);
     expect(worker.hostMessages).toEqual([]);
     expect(worker.workerMessages).toEqual([]);
@@ -715,11 +714,11 @@ describe('Production replay Worker construction boundary', () => {
     expect(() => new Worker(new URL('../../worker/entry.ts', import.meta.url), { type: 'module' })).toThrow('Unexpected replay Worker script');
     expect(onConstructed).not.toHaveBeenCalled();
     const worker = new Worker(scriptUrl, { type: 'module' });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         worker.terminate();
       },
-    });
+    };
     await started.promise; // Observe the explicit startup event, not an RPC/callback drain.
     expect(start).toHaveBeenCalledOnce();
     expect(onConstructed).toHaveBeenCalledOnce();
@@ -783,11 +782,11 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
       requestId: 'synthetic-production-settlement',
       limits: { maximumEvents: 64, maximumCharacters: 4096 },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await traced.close();
       },
-    });
+    };
     const result = await generateProductionProviderCapture({
       provider: traced.provider,
       modelId: 'HuggingFaceTB/SmolLM2-135M-Instruct',
@@ -901,15 +900,15 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
       },
       traceLimits: { maximumEvents: 64, maximumCharacters: 4096 },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         try {
           await owner.dispose();
         } finally {
           await captured.close();
         }
       },
-    });
+    };
     const snapshot = await owner.run();
     expect(snapshot.run).toEqual({ status: 'completed' });
     expect(snapshot.requests.map(request => request.status)).toEqual(['settled', 'settled', 'settled']);
@@ -985,15 +984,15 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
       },
       traceLimits: { maximumEvents: 64, maximumCharacters: 4096 },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         try {
           await owner.dispose();
         } finally {
           await harness.close();
         }
       },
-    });
+    };
     const snapshot = await owner.run();
     expect(snapshot.run).toEqual({ status: 'stopped', reason: 'provider-rejected' });
     expect(snapshot.requests.map(request => request.status)).toEqual(['settled', 'not-started', 'not-started']);
@@ -1055,11 +1054,11 @@ describe('Production replay runtime mechanics, not captured model semantics', ()
         return new runtime.Tensor('int64', BigInt64Array.from(output), [1, output.length]);
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     const snapshot = await captureMechanicsChat({
       provider: harness.provider,
       messages: [textMessage({ id: 'mechanics-user', role: 'user', text: 'Synthetic mechanics probe' })],

@@ -6,7 +6,6 @@ import type { ITransformersJsDownloadWorker, ProgressInfo, TransformersJsPrefetc
 import type { WorkerServerApi } from '@/utils/worker-transport';
 import type { TransformersJsDownloadWorkerClient } from './client-hosted';
 import { createDownloadProgressTracker } from '@/features/transformers-js/download-progress';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const revision = 'a'.repeat(40);
 const baseUrl = `https://huggingface.co/fixture/progress/resolve/${revision}/`;
@@ -118,15 +117,15 @@ async function createTransferFixture() {
 }
 
 afterEach(async () => {
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.doUnmock('@huggingface/transformers');
       vi.doUnmock('@/utils/worker-transport');
       vi.restoreAllMocks();
       vi.unstubAllGlobals();
       vi.resetModules();
     },
-  });
+  };
   await Promise.all(ownedClients.splice(0).map(client => client.dispose()));
   for (const worker of ownedWorkers.splice(0)) worker.terminate();
 });
@@ -495,13 +494,13 @@ describe('Download progress observation does not control transfer', () => {
     }, () => {
       settled = true;
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         releaseMarker.resolve();
         releaseObserver.resolve();
         await running;
       },
-    });
+    };
     await markerEntered.promise;
     expect(settled).toBe(false);
     expect(h.fs.files.has(modelMarker)).toBe(false);
@@ -805,12 +804,12 @@ describe('Download progress observation does not control transfer', () => {
         return releaseObserver.promise;
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         releaseObserver.resolve();
         await result;
       },
-    });
+    };
     expect(coreResult({ result: await result })).toEqual(expectedResult);
     expect(notifications).toBeGreaterThan(0);
     // At most one ordinary callback may remain awaiting its remote ACK;
@@ -957,12 +956,12 @@ describe('Download progress observation does not control transfer', () => {
         return held.promise;
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         held.resolve();
         await running;
       },
-    });
+    };
     expect(coreResult({ result: await running })).toEqual(coreResult({ result: baselineResult }));
     expect(fileSnapshot({ fs: observed.fs })).toEqual(committedFiles.filter(file => file.path === dataPath || file.path === dataMarker));
     expect(baseline.requests).toEqual(urls.map(url => ({ url, method: 'GET' })));
@@ -994,12 +993,12 @@ describe('Download progress observation does not control transfer', () => {
         return held.promise;
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         held.resolve();
         await running;
       },
-    });
+    };
     expect(await running).toMatchObject({
       complete: false,
       downloadedCount: 1,

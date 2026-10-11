@@ -2,7 +2,6 @@
 import { expect, it, vi } from 'vitest';
 import { getProductionTransformersArtifact, importProductionTransformersArtifact } from './fixtures/production-transformers-artifact';
 import { readModelFixture } from '@/features/transformers-js/replay-models/support/model-runtime-fixture';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 it('enters the WASM session after a WebGPU session rejects in a browser Worker runtime', async () => {
   const artifact = await getProductionTransformersArtifact();
@@ -29,12 +28,12 @@ it('enters the WASM session after a WebGPU session rejects in a browser Worker r
   vi.stubGlobal('navigator', { userAgent: 'AppleWebKit Safari', vendor: 'Apple Computer, Inc.', gpu: {} });
   vi.stubGlobal('process', { ...actualProcess, release: { ...actualProcess.release, name: 'browser-test' } });
   vi.stubGlobal('fetch', transport);
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       create.mockRestore();
       vi.unstubAllGlobals();
     },
-  });
+  };
   // The upstream env detector keys off this constructor name, not merely the
   // presence of self. A plain object in Node bypasses its browser chain.
   expect(self.constructor.name).toBe('DedicatedWorkerGlobalScope');

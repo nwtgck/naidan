@@ -12,7 +12,6 @@ import { NaidanRpcPeer, expose } from '@/features/naidan-rpc';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
 import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const registryAccess: NaidanRpcRegistryAccess = { providerGeneration: 1, registryId: undefined, persistence: 'durable' };
 
@@ -104,11 +103,11 @@ async function setup() {
 
 it('uses a real manager, typed caller and handler once per explicit image without listing models', async () => {
   const fixture = await setup();
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await fixture.close();
     },
-  });
+  };
   expect(fixture.generateImage).not.toHaveBeenCalled();
   expect((await fixture.plan.start(fixture.args).result).status).toBe('completed');
   expect((await fixture.plan.start({ ...fixture.args, seed: '43' }).result).status).toBe('completed');
@@ -119,11 +118,11 @@ it('uses a real manager, typed caller and handler once per explicit image withou
 
 it('does not retry a denied generation or retarget a disconnected accepted plan', async () => {
   const fixture = await setup();
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await fixture.close();
     },
-  });
+  };
   fixture.provider.setAllowedMethods({ contract: naidanPeerContract, allowedMethods: [] });
   expect((await fixture.plan.start(fixture.args).result).status).toBe('failed');
   expect(fixture.generateImage).not.toHaveBeenCalled();

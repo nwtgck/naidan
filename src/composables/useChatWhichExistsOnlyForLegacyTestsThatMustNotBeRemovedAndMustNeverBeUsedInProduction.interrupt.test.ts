@@ -8,7 +8,6 @@ import { createChatGenerationStream } from '@/logic/create-chat-generation-strea
 import { getMessageText } from '@/01-models/message-text';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Mock useSettings
 vi.mock('./useSettings', () => ({
@@ -98,13 +97,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         return { type: 'interrupted', reason: 'aborted' };
       },
     }));
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         chatStore.abortChat({ chatId: undefined });
         stopped.resolve();
         await vi.waitUntil(() => !streaming.value);
       },
-    });
+    };
     expect(await sendMessage({ content: 'Hello' })).toBe(true);
     await started.promise;
     const user = chat.root.items[0]!;
@@ -156,13 +155,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         return { type: 'interrupted', reason: 'aborted' };
       },
     }));
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         chatStore.abortChat({ chatId: undefined });
         stopped.resolve();
         await vi.waitUntil(() => !streaming.value);
       },
-    });
+    };
     await sendMessage({ content: 'Hello' });
     await started.promise;
     const user = chat.root.items[0]!;

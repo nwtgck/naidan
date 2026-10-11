@@ -20,7 +20,6 @@ import {
   createBatchModelSupportEvidence,
   createPartialModelSupportEvidence,
 } from "./create-partial-evidence";
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // These serialization tests require real Web Blob/streams, not a DOM. JSZip
 // remains an independent test-only reader for the produced ZIP transport.
@@ -412,11 +411,11 @@ describe("createPartialModelSupportEvidence", () => {
       },
       traceLimits: { maximumEvents: 10, maximumCharacters: 100 },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await owner.dispose();
       },
-    });
+    };
     checkpoint.run.productionProviderCapture = owner.snapshot();
     const { blob } = await createPartialModelSupportEvidence({ run: checkpoint.run, recovery: checkpoint.recovery });
     const archive = await JSZip.loadAsync(await blob.arrayBuffer());
@@ -447,11 +446,11 @@ describe("createPartialModelSupportEvidence", () => {
       },
       traceLimits: { maximumEvents: 10, maximumCharacters: 100 },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await owner.dispose();
       },
-    });
+    };
     const capture = { ...owner.snapshot(), privatePath: '/private/not-for-export' };
     checkpoint.run.productionProviderCapture = capture;
     await expect(createPartialModelSupportEvidence({ run: checkpoint.run, recovery: checkpoint.recovery })).rejects.toThrow(/^Invalid Production Provider capture evidence$/u);

@@ -5,7 +5,6 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { createDisabledImageLibrary } from '@/features/stable-diffusion-cpp-browser/library-standalone';
 import ImageCatalogDownloadStatus from './ImageCatalogDownloadStatus.vue';
 import LlamaCppBrowserDownloadProgress from '@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadProgress.vue';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'ja' });
@@ -16,11 +15,11 @@ it('uses the existing llama progress component with the aggregate recipe total a
   view.downloading = computed(() => view.downloadState.value === 'downloading');
   view.downloadProgress.value = { phase: 'transferring', index: 1, count: 3, path: 'vae/model.safetensors', repository: 'org/vae', completed: 400, total: 1000, processed: 100, fileTotal: 100, fileCompleted: 30 };
   const wrapper = mount(ImageCatalogDownloadStatus, { props: { view, disabled: false } });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       wrapper.unmount();
     },
-  });
+  };
   expect(wrapper.find('progress').exists()).toBe(false);
   expect(wrapper.getComponent(LlamaCppBrowserDownloadProgress).props('progress')).toMatchObject({ completed: 400, total: 1000, processed: 100 });
   expect(wrapper.get('[role="progressbar"] > div').classes()).toContain('bg-blue-600');

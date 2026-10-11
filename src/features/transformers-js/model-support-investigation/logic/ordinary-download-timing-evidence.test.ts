@@ -11,7 +11,6 @@ import { createInitialInvestigationCheckpoint } from './investigation-recovery';
 import { openEvidenceArchive } from './evidence-archive';
 import { verifyGeneratedEvidenceArchive } from './verify-evidence-archive';
 import { createOrdinaryDownloadTimingEvidenceFile, ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES, readOrdinaryDownloadTimingEvidenceFile } from './ordinary-download-timing-evidence';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Synthetic lifecycle scalars, not browser performance measurements.
 function snapshot() {
@@ -47,20 +46,20 @@ describe('ordinary Download timing evidence', () => {
     const channel = new MessageChannel();
     exposeWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ api: createModelSupportInvestigationEvidenceWorker(), endpoint: channel.port1 });
     const remote = wrapWorkerRemote<IModelSupportInvestigationEvidenceWorker>({ endpoint: channel.port2 });
-    await using _cleanupResource2 = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource2 = {
+      async [Symbol.asyncDispose]() {
         await releaseWorkerRemote({ remote });
         channel.port1.close();
         channel.port2.close();
       },
-    });
+    };
     const result = await remote.createRetainedDownloadTimingEvidence({ request: createOrdinaryDownloadTimingEvidenceFile({ snapshot: snapshot(), association: { kind: 'retained-export', exportId: 'transport-export', investigation: 'not-run' } }) });
     const archive = await openEvidenceArchive({ blob: result.blob });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await archive.close();
       },
-    });
+    };
     const file = await archive.reader.read({ path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH, maximumBytes: ORDINARY_DOWNLOAD_TIMING_MAXIMUM_BYTES });
     const document = await readOrdinaryDownloadTimingEvidenceFile({ file: file! });
     expect(document.snapshot).toEqual(snapshot());
@@ -73,11 +72,11 @@ describe('ordinary Download timing evidence', () => {
     source.records[0]!.outcome = 'completed';
     const result = await createModelSupportInvestigationEvidenceWorker().createRetainedDownloadTimingEvidence({ request });
     const archive = await openEvidenceArchive({ blob: result.blob });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await archive.close();
       },
-    });
+    };
     expect(archive.reader.paths).toEqual([ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH]);
     const file = await archive.reader.read({ path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH });
     const document = await readOrdinaryDownloadTimingEvidenceFile({ file: file! });
@@ -102,11 +101,11 @@ describe('ordinary Download timing evidence', () => {
       : await worker.createPartialEvidence({ request: createModelSupportInvestigationEvidenceWorkerRequest({ run, recovery }), ordinaryDownloadTiming });
     if (mode !== 'batch') await verifyGeneratedEvidenceArchive({ blob: result.blob });
     const archive = await openEvidenceArchive({ blob: result.blob });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await archive.close();
       },
-    });
+    };
     expect(archive.reader.paths.filter(path => path.endsWith('ordinary-download-timing.json'))).toEqual([ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH]);
     const file = await archive.reader.read({ path: ORDINARY_DOWNLOAD_TIMING_EVIDENCE_PATH });
     const document = await readOrdinaryDownloadTimingEvidenceFile({ file: file! });

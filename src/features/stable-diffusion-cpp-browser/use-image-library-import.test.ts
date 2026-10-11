@@ -5,7 +5,6 @@ import { useImageLibrary } from './use-image-library';
 import { scanImageRepositories } from './logic/model-candidates';
 import type { LocalImageRepository } from './logic/repository-store';
 import { ggufFixture, zImageTensors } from './test-utils/weights.test-support';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 vi.mock('./logic/repository-input', () => ({
   imageDirectoriesFromDrop: async () => [{ name: 'first', files: [] }, { name: 'second', files: [] }],
   imageDirectoryFromFiles: vi.fn(),
@@ -27,11 +26,11 @@ it.each(['before inspection', 'during inspection'] as const)('publishes an impor
   if (timing === 'during inspection') list.mockReturnValueOnce(pending.promise);
   const scope = effectScope();
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importing, download: vi.fn() } }))!;
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       scope.stop();
     },
-  });
+  };
   const operation = library.dropDirectory({ event: { dataTransfer: {} } as DragEvent });
   if (timing === 'during inspection') {
     await vi.waitFor(() => expect(list).toHaveBeenCalledOnce());
@@ -54,11 +53,11 @@ it('settles a cancelled import publication and permits a later import without st
   });
   const scope = effectScope();
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => blocked.value, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importing, download: vi.fn() } }))!;
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       scope.stop();
     },
-  });
+  };
   const first = library.dropDirectory({ event: { dataTransfer: {} } as DragEvent });
   await new Promise(resolve => setImmediate(resolve));
   expect(library.importing.value).toBe(true);
@@ -76,11 +75,11 @@ it('refreshes successfully imported folders while preserving a later import erro
   const importRepo = vi.fn().mockResolvedValueOnce('user/first').mockRejectedValueOnce(new Error('second folder already exists'));
   const scope = effectScope();
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importRepo, download: vi.fn() } }))!;
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       scope.stop();
     },
-  });
+  };
   await library.dropDirectory({ event: { dataTransfer: {} } as DragEvent });
   expect(importRepo).toHaveBeenCalledTimes(2); expect(list).toHaveBeenCalledOnce();
   expect(library.failure.value).toBe('second folder already exists');
@@ -92,11 +91,11 @@ it('waits for an import to publish before a queued transfer starts after host op
   const download = vi.fn(async () => undefined), list = vi.fn(async () => []);
   const scope = effectScope();
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: () => importing.promise, download } }))!;
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       scope.stop();
     },
-  });
+  };
   // Unlinking one active destination holds the host owner while a different
   // destination's explicitly queued job remains ready to run.
   library.hostDirectories.busy.value = true;
@@ -126,11 +125,11 @@ it('removes a queued transfer during import without starting its download or tou
       download,
     },
   }))!;
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       scope.stop();
     },
-  });
+  };
   library.hostDirectories.busy.value = true;
   const transfer = library.downloadRecipe({ recipeId: 'z-image-turbo', selections: {} });
   const queued = library.downloadQueue.value[0]!;

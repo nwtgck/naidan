@@ -2,7 +2,6 @@
 import { createServer, type RequestListener } from 'node:http';
 import { describe, expect, it, vi } from 'vitest';
 import { createDownloadedModelWorkerFetch } from './offline-worker-fetch';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 async function loopbackServer({ listener }: { listener: RequestListener }) {
   const server = createServer(listener);
@@ -74,11 +73,11 @@ describe('createDownloadedModelWorkerFetch', () => {
         response.end('fixture');
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await server.close();
       },
-    });
+    };
     const guarded = createDownloadedModelWorkerFetch({
       originalFetch: globalThis.fetch,
       workerLocationUrl: `${server.origin}/worker.js`,
@@ -112,12 +111,12 @@ describe('createDownloadedModelWorkerFetch', () => {
         response.end();
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await allowed.close();
         await forbidden.close();
       },
-    });
+    };
     const guarded = createDownloadedModelWorkerFetch({
       originalFetch: globalThis.fetch,
       workerLocationUrl: `${allowed.origin}/worker.js`,
@@ -144,11 +143,11 @@ describe('createDownloadedModelWorkerFetch', () => {
         response.end('runtime');
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await server.close();
       },
-    });
+    };
     const guarded = createDownloadedModelWorkerFetch({
       originalFetch: globalThis.fetch,
       workerLocationUrl: `${server.origin}/worker.js`,

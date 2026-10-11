@@ -3,7 +3,6 @@ import type { Settings } from '@/01-models/types';
 import type { createRpcStopControl } from './stop-control';
 import type { NaidanRpcRegistrySnapshot } from '@/00-storage/service/naidan-rpc';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const fixture = vi.hoisted(() => ({
   create: vi.fn(),
@@ -192,11 +191,11 @@ it('does not replace an initialized manager when its resource retirement has fai
   const feature = await import('./feature');
   const failure = new Error('Previous resources have not retired');
   fixture.setEnabled.mockRejectedValue(failure);
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       fixture.setEnabled.mockResolvedValue(undefined);
     },
-  });
+  };
   await feature.configureRpcFeature({ status: 'enabled', settings });
   await expect(feature.getRpcManager()).rejects.toBe(failure);
   await expect(feature.getRpcManager()).rejects.toBe(failure);

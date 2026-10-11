@@ -5,7 +5,6 @@ import { nextTick } from 'vue';
 import ChatPaneHeader from './ChatPaneHeader.vue';
 import type { Chat, ChatGroup } from '@/01-models/types';
 import { toChatGroupId, toChatId } from '@/01-models/ids';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -232,11 +231,11 @@ describe('compact attached-chat header', () => {
     await ensureAllStringsForTest({ locale: 'ja' });
     const group = makeGroup({ name: '画像生成用の非常に長い日本語のチャットグループ名' });
     const wrapper = mountHeader({ chat: makeChat(), groups: [group] });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount();
       },
-    });
+    };
     await wrapper.setProps({ modelLabel: 'チャットグループ: hf.co/LiquidAI/LFM2.5-2.6B-GGUF:Q4_K_M' });
     const trigger = wrapper.get('[data-testid="model-trigger"]');
     expect(trigger.text()).toBe('チャットグループ: hf.co/LiquidAI/LFM2.5-2.6B-GGUF:Q4_K_M');

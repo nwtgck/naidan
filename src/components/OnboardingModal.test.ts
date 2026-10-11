@@ -20,7 +20,6 @@ import {
 } from '@/features/prompt-api/runtime';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Mock the services.
 vi.mock('../features/lm/openai', () => {
@@ -373,11 +372,11 @@ describe('OnboardingModal.vue', () => {
         },
       },
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount(); list.mockRestore();
       },
-    });
+    };
     await flushPromises();
     if (type === 'llama_cpp_browser') {
       wrapper.findComponent({ name: 'PreparedManager' }).vm.$emit('runtimeReady', true);

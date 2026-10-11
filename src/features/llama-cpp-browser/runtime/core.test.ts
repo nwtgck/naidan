@@ -6,7 +6,6 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as artifacts from './artifacts';
 import { readGpuRequests } from './webgpu-request-diagnostics';
 import { attachCore, createCore, type Core } from './core';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe('native call adaptation', () => {
   let core: Core;
@@ -85,11 +84,11 @@ describe('native call adaptation', () => {
     });
     const ccall = vi.spyOn(jspiCore.module, 'ccall');
     const pointer = jspiCore.allocRecord({ name: 'llama_model_params' });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         jspiCore.free({ pointer });
       },
-    });
+    };
     expect(load.mock.calls[0]?.[0].profile).toBe(profile);
     expect(jspiCore.createTensorPlacementReader().capability).toBe(bindings ? 'synchronous-leaf-bindings-v1' : 'tensor-layout-only');
     expect(readGpuRequests({ core: jspiCore })).toEqual({ bufferCount: 0, bufferBytes: 0, writeCount: 0, writeBytes: 0, largestWriteBytes: 0, writesAtLeast4MiB: 0 });
@@ -105,11 +104,11 @@ describe('native call adaptation', () => {
     const asyncCore = attachCore({ module: core.module, callMode: 'asyncify' });
     const ccall = vi.spyOn(core.module, 'ccall');
     const params = asyncCore.allocRecord({ name: 'llama_model_params' });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         asyncCore.free({ pointer: params });
       },
-    });
+    };
     await asyncCore.api.llama_model_default_params(params);
     expect(ccall).toHaveBeenCalledWith('lcb_llama_model_default_params', undefined, ['bigint'], [params], { async: true });
     expect(asyncCore.bytes({ pointer: params, length: asyncCore.recordSize({ name: 'llama_model_params' }) }).some(byte => byte !== 0)).toBe(true);
@@ -220,13 +219,13 @@ describe('native call adaptation', () => {
     core.setField({ name: 'ggml_init_params', pointer: params, field: 'mem_size', value: 1024n * 1024n });
     core.setField({ name: 'ggml_init_params', pointer: params, field: 'no_alloc', value: 1 });
     let context = 0n, buffer = 0n;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         if (buffer) await core.api.ggml_backend_buffer_free(buffer);
         if (context) await core.api.ggml_free(context);
         core.free({ pointer: params });
       },
-    });
+    };
     context = await core.api.ggml_init(params);
     const tensor = await core.api.ggml_new_tensor_1d(context, core.constant({ name: 'GGML_TYPE_F32' }), 16n);
     const buft = await core.api.ggml_backend_dev_buffer_type(await core.api.ggml_backend_dev_get(0n));

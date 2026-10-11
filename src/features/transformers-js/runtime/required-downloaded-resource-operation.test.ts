@@ -8,7 +8,6 @@ import {
   RequiredDownloadedResourceCleanupError,
   REQUIRED_DOWNLOADED_RESOURCE_CLEANUP_TIMEOUT_MS,
 } from './required-downloaded-resource-operation';
-import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const modelId = 'org/model';
 const revision = '0123456789abcdef0123456789abcdef01234567';
@@ -39,11 +38,11 @@ it('retains a busy lookup as a terminal busy error after upstream catches it', a
       throw busy;
     },
   });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await operation.close();
     },
-  });
+  };
   await expect(operation.cache.match(requiredUrl)).rejects.toBe(busy);
   expect(operation.assertHealthy).toThrow(busy);
   await expect(operation.fetch(requiredUrl)).rejects.toBe(busy);
@@ -56,11 +55,11 @@ it('does not replace the first required I/O failure with a later busy lookup', a
   const busy = new OpfsResourceBusyError();
   const match = vi.fn().mockRejectedValueOnce(io).mockRejectedValueOnce(busy);
   const { operation } = setup({ match });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await operation.close();
     },
-  });
+  };
   const first = await operation.cache.match(requiredUrl).catch((error: unknown) => error);
   expect(first).toMatchObject({ name: 'RequiredDownloadedModelResourceError', failure: 'io', cause: io });
   await expect(operation.cache.match(requiredUrl)).rejects.toBe(first);
@@ -227,11 +226,11 @@ it('retains optional reader release I/O after end-of-stream', async () => {
     return reader;
   });
   const { operation } = setup({ match: async () => new Response(source) });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       getReaderSpy.mockRestore();
     },
-  });
+  };
   const cached = await operation.cache.match(url);
   const error = await cached!.text().catch((error: unknown) => error);
   await operation.close();
@@ -348,11 +347,11 @@ it('permits metadata-only inspection and cancellation of an unplanned ONNX cache
       headers: { 'Content-Length': '3' },
     }),
   });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await operation.close();
     },
-  });
+  };
   const response = await operation.cache.match(url);
   expect(response?.headers.get('Content-Length')).toBe('3');
   expect(operation.assertHealthy).not.toThrow();
@@ -369,11 +368,11 @@ it('rejects an unplanned model body before reading bytes and retains its termina
     controller.enqueue(new Uint8Array([1, 2, 3])); controller.close();
   });
   const { operation, fetch } = setup({ match: async () => new Response(new ReadableStream({ pull }, { highWaterMark: 0 })) });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await operation.close();
     },
-  });
+  };
   const response = await operation.cache.match(url);
   if (response === undefined) throw new Error('Synthetic unplanned cache hit was lost');
   const outcome = await response.arrayBuffer().then(
@@ -391,11 +390,11 @@ it('rejects an unplanned model body before reading bytes and retains its termina
 
 it('keeps query and fragment out of the required resource identity', async () => {
   const { operation } = setup({ match: async () => new Response('core') });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await operation.close();
     },
-  });
+  };
   const response = await operation.cache.match(`${requiredUrl}?download=true#fragment`);
   expect(await response!.text()).toBe('core');
   expect(operation.assertHealthy).not.toThrow();
@@ -406,11 +405,11 @@ it('does not read a later planned body after an unplanned body has poisoned the 
     controller.enqueue(new Uint8Array([1])); controller.close();
   });
   const { operation } = setup({ match: async () => new Response(new ReadableStream({ pull }, { highWaterMark: 0 })) });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await operation.close();
     },
-  });
+  };
   const unplanned = await operation.cache.match(`${requiredUrl}_data`);
   const first = await unplanned!.arrayBuffer().catch((error: unknown) => error);
   expect(first).toMatchObject({ name: 'RequiredDownloadedModelResourceError', failure: 'unplanned' });
@@ -422,11 +421,11 @@ it('does not read a later planned body after an unplanned body has poisoned the 
 it('does not turn a relative local model body hit into an HF required resource', async () => {
   const pull = vi.fn();
   const { operation } = setup({ match: async () => new Response(new ReadableStream({ pull }, { highWaterMark: 0 })) });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await operation.close();
     },
-  });
+  };
   const response = await operation.cache.match(`/models/${modelId}/${requiredPath}`);
   await expect(response!.arrayBuffer()).rejects.toMatchObject({ name: 'RequiredDownloadedModelResourceError', failure: 'unplanned' });
   expect(pull).not.toHaveBeenCalled();
@@ -436,11 +435,11 @@ it('does not turn a relative local model body hit into an HF required resource',
 it('detects an encoded ONNX external suffix without aliasing its cache key', async () => {
   const pull = vi.fn();
   const { operation } = setup({ match: async () => new Response(new ReadableStream({ pull }, { highWaterMark: 0 })) });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await operation.close();
     },
-  });
+  };
   const response = await operation.cache.match(`${requiredUrl}%5fdata?download=true`);
   await expect(response!.arrayBuffer()).rejects.toMatchObject({ name: 'RequiredDownloadedModelResourceError', failure: 'unplanned', url: `${requiredUrl}%5fdata` });
   expect(pull).not.toHaveBeenCalled();
@@ -449,11 +448,11 @@ it('detects an encoded ONNX external suffix without aliasing its cache key', asy
 it('refuses a cached model body at another revision even when its filename is planned', async () => {
   const pull = vi.fn();
   const { operation } = setup({ match: async () => new Response(new ReadableStream({ pull }, { highWaterMark: 0 })) });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await operation.close();
     },
-  });
+  };
   const response = await operation.cache.match(`https://huggingface.co/${modelId}/resolve/main/${requiredPath}`);
   await expect(response!.arrayBuffer()).rejects.toMatchObject({ name: 'RequiredDownloadedModelResourceError', failure: 'unplanned' });
   expect(pull).not.toHaveBeenCalled();
@@ -461,11 +460,11 @@ it('refuses a cached model body at another revision even when its filename is pl
 
 it('does not turn readable optional JSON metadata into an unplanned model failure', async () => {
   const { operation } = setup({ match: async () => new Response('{"eos_token_id":2}') });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await operation.close();
     },
-  });
+  };
   const response = await operation.cache.match(`https://huggingface.co/${modelId}/resolve/${revision}/generation_config.json`);
   expect(await response!.json()).toEqual({ eos_token_id: 2 });
   expect(operation.assertHealthy).not.toThrow();
@@ -482,11 +481,11 @@ it('permits a required user model body through its same-origin relative resource
       throw new Error('Unexpected user-model fetch');
     }),
   });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await operation.close();
     },
-  });
+  };
   const response = await operation.cache.match(`/user/synthetic/${requiredPath}`);
   expect(await response!.text()).toBe('local core');
   expect(operation.assertHealthy).not.toThrow();

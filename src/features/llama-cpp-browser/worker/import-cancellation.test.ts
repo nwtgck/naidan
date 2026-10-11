@@ -5,7 +5,6 @@ import { memoryDirectory, ggufBytes } from '@/features/llama-cpp-browser/hugging
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser/index-hosted';
 import { createWorkerApi } from './api';
 import type { LlamaCppWorkerApi } from './types';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Keep the real service, session client, Worker API and importer connected. Only
 // Worker transport and storage are in-memory: this catches cancellation wiring
@@ -74,11 +73,11 @@ describe('local import cancellation through service and Worker boundaries', () =
       default: { const exhaustive: never = kind; throw new Error(String(exhaustive)); }
       }
     };
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         unsubscribe(); unsubscribeModels();
       },
-    });
+    };
     await expect(copy({ signal: controller.signal })).rejects.toThrow('aborted');
     expect((await userFolder()).children.size).toBe(0);
     expect(await llamaCppBrowserService.listModels({ signal: undefined })).toEqual([]);
@@ -104,11 +103,11 @@ describe('local import cancellation through service and Worker boundaries', () =
         if (state.status === 'working' && state.progress.phase === 'importing' && state.progress.completed > 0) controller.abort();
       },
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         rollback.resolve(); unsubscribe();
       },
-    });
+    };
     let settled = false;
     const first = llamaCppBrowserService.importModel({ file, signal: controller.signal }).finally(() => {
       settled = true;

@@ -13,7 +13,6 @@ import {
   type ProductionProviderCapturePlan,
   type ProductionProviderCaptureRequestIdentity,
 } from './production-provider-capture-owner';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const limits = { maximumEvents: 100, maximumCharacters: 4096 };
 const owners: Array<{ dispose(): Promise<void> }> = [];
@@ -80,12 +79,12 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.restoreAllMocks();
       vi.unstubAllGlobals();
     },
-  });
+  };
   // Controlled clients settle their pending operations in each test. Cleanup
   // failure cases are asserted locally and must not hide other owner cleanup.
   await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
@@ -126,13 +125,13 @@ describe('isolated fixed Production Provider capture owner', () => {
       loadStatus: 'idle',
     });
     const running = owner.run();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         releaseFirst.resolve();
         releaseSecond.resolve();
         await running;
       },
-    });
+    };
     await firstEntered.promise;
     const first = owner.getProgress();
     expect(first).toMatchObject({

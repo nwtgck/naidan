@@ -2,7 +2,6 @@ import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnos
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { diagnosticSchema, logDiagnostic, logFailure, logNativeDiagnostic, logOperation, subscribeDiagnostics } from './debug-log';
 import { errorCode, LlamaCppBrowserError } from './types';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -38,11 +37,11 @@ describe('private browser diagnostics', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const listener = vi.fn();
     const unsubscribe = subscribeDiagnostics({ debug: debugMode, listener });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         unsubscribe();
       },
-    });
+    };
     for (const value of [128, 64, 64]) {
       logNativeDiagnostic({ message: `llama_kv_cache:     WebGPU KV buffer size = ${value.toFixed(2)} MiB` });
     }
@@ -77,11 +76,11 @@ describe('private browser diagnostics', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const listener = vi.fn();
     const unsubscribe = subscribeDiagnostics({ debug: 'off', listener });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         unsubscribe();
       },
-    });
+    };
     logNativeDiagnostic({ message });
     expect(debug).not.toHaveBeenCalled();
     expect(listener).not.toHaveBeenCalled();
@@ -111,11 +110,11 @@ describe('private browser diagnostics', () => {
       nativePositionMax: 356,
       nativeRollbackTokens: 0,
     } as const;
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         unsubscribe();
       },
-    });
+    };
     logDiagnostic({ diagnostic });
     expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([diagnostic]);
     expect(listener).toHaveBeenCalledExactlyOnceWith({ diagnostic });
@@ -139,11 +138,11 @@ describe('private browser diagnostics', () => {
     const listener = vi.fn();
     const unsubscribe = subscribeDiagnostics({ debug: 'off', listener });
     const diagnostic = { event: 'checkpoint-created', bytes: 4096, tokens: 17, elapsedMs: 2 } as const;
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         unsubscribe();
       },
-    });
+    };
     logDiagnostic({ diagnostic });
     expect(listener).toHaveBeenCalledExactlyOnceWith({ diagnostic });
     expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([diagnostic]);
@@ -228,11 +227,11 @@ describe('native operation diagnostics', () => {
     const operation = logOperation({ diagnostic: { event: 'operation-start', stage: 'image-evaluate' } }).then(() => {
       entered = true;
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         acknowledge(); unsubscribeCurrent(); await operation;
       },
-    });
+    };
     await vi.waitFor(() => expect(entered).toBe(true), { timeout: 100 });
     expect(receive).toHaveBeenCalledOnce();
   });
@@ -289,22 +288,22 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
   ])('discards malformed or arbitrary native progress: %s', message => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: () => {} });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         unsubscribe();
       },
-    });
+    };
     logNativeDiagnostic({ message }); expect(debug).not.toHaveBeenCalled();
   });
 
   it('suppresses native technical information outside debug mode', () => {
     const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
     const unsubscribe = subscribeDiagnostics({ debug: 'off', listener: () => {} });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         unsubscribe();
       },
-    });
+    };
     logNativeDiagnostic({ message: 'llama_context: n_ctx                 = 32768' });
     logNativeDiagnostic({ message: 'clip_encode: copying image 1/1 to input buffer (nx=328, ny=92)' });
     expect(debug).not.toHaveBeenCalled();
@@ -316,11 +315,11 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
     });
     const listener = vi.fn(() => delivered); const unsubscribe = subscribeDiagnostics({ listener, debug: 'on' });
     let entered = false;
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         unsubscribe();
       },
-    });
+    };
     const operation = logOperation({ diagnostic: { event: 'operation-start', stage: 'image-evaluate', imageCount: 1, tokens: 101, positions: 101 } }).then(() => {
       entered = true;
     });
@@ -335,11 +334,11 @@ private`, 'decoding image batch 0/2, n_tokens_batch = 512',
         throw new Error('private transport error');
       },
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         unsubscribe();
       },
-    });
+    };
     await expect(logOperation({ diagnostic: { event: 'operation-start', stage: 'image-tokenize' } })).resolves.toBeUndefined();
   });
 
@@ -373,11 +372,11 @@ describe('projector diagnostic boundaries', () => {
   ])('does not accept malformed or private projector messages: %s', message => {
     const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
     const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: () => {} });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         unsubscribe();
       },
-    });
+    };
     logNativeDiagnostic({ message });
     expect(debug).not.toHaveBeenCalled();
   });

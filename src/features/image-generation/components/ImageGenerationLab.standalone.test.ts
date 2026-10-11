@@ -6,7 +6,6 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageGenerationLab from './ImageGenerationLab.vue';
 import { useImageGeneration } from '@/features/image-generation/use-image-generation-standalone';
 import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 vi.mock('@/features/stable-diffusion-cpp-browser/use-image-benchmark', () => import('@/features/stable-diffusion-cpp-browser/use-image-benchmark-standalone'));
 vi.mock('@/features/image-generation/use-image-generation', () => import('@/features/image-generation/use-image-generation-standalone'));
@@ -61,11 +60,11 @@ it('restores a pending session location before local availability would disable 
       view = useImageGeneration(); return () => h('div');
     },
   }));
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       host.unmount();
     },
-  });
+  };
   await flushPromises();
   const local = view.captureDraft!()!; expect(local.inferenceLocation).toEqual({ kind: 'local' }); expect(local.request.runtime).toBeUndefined();
   const remote = { ...local, inferenceLocation: { kind: 'naidan_rpc' as const, registration: undefined }, request: { ...local.request, parameters: { ...local.request.parameters, prompt: 'Stored remote draft' } } };

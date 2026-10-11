@@ -10,7 +10,6 @@ import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import { createLlamaCppBrowserBuild, transformBrowserCore } from '../src/features/llama-cpp-browser/build-core';
 import { createLlamaCppRuntimeAssetsPlugin } from '../src/features/llama-cpp-browser/build-runtime-assets';
-import { createAsyncTestDisposable, createTestDisposable } from '../src/utils/resource-cleanup.test-support';
 
 const repo = process.cwd();
 const profiles = ['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'webgpu-wasm64-jspi'] as const;
@@ -80,11 +79,11 @@ describe('shared browser core adapter', () => {
       plugins: [createLlamaCppBrowserBuild({ rootDir: repo, mode: 'hosted' }).corePlugin],
       server: { middlewareMode: true, fs: { allow: [repo, root] }, watch: null },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await server.close(); rmSync(root, { recursive: true, force: true });
       },
-    });
+    };
     const id = `virtual:llama-cpp-browser-core/${profile}`;
     const realPath = path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
     const resolved = await server.environments.client.pluginContainer.resolveId(id);
@@ -113,11 +112,11 @@ describe('shared browser core adapter', () => {
 
   it('rejects an unreviewed but internally consistent revision when creating the dev plugin, before the first import', () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-core-pin-'));
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         rmSync(root, { recursive: true, force: true });
       },
-    });
+    };
     const artifact = path.join(root, 'node_modules/llama-cpp-browser-core');
     cpSync(path.join(repo, 'node_modules/llama-cpp-browser-core'), artifact, { recursive: true });
     const relative = 'llama-cpp-browser-core/profiles/cpu-wasm32/browser/core.mjs';

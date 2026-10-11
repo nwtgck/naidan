@@ -4,7 +4,6 @@ import type { AssistantMessageNode } from '@/01-models/types';
 import type { ChatGenerationItem, ChatGenerationResult } from '@/01-models/lm';
 import { toMessageId, toToolCallId } from '@/01-models/ids';
 import { createChatMessageSnapshot } from '@/01-models/chat-message';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function fresh(): AssistantMessageNode {
   return { id: toMessageId({ raw: 'new' }), role: 'assistant', createdAt: 4, parts: [], modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
@@ -170,11 +169,11 @@ describe('consume nested chat generation', () => {
   it('fails a duplicate part and stops cooperative producers', async () => {
     const controller = new AbortController(); const node = fresh(); let outerClosed = false;
     const items = (async function* () {
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           outerClosed = true;
         },
-      });
+      };
       yield part({ id: 'p', index: 0, type: 'text', text: ['A'], completeness: 'complete' });
       yield part({ id: 'p', index: 1, type: 'text', text: ['B'], completeness: 'complete' });
       await new Promise<void>(resolve => {
@@ -189,11 +188,11 @@ describe('consume nested chat generation', () => {
     const fault = new Error('render failed'); const node = fresh(); const controller = new AbortController(); let childClosed = false;
     const item = part({ id: 'p', index: 0, type: 'text', text: [], completeness: 'complete' });
     item.chunks = (async function* () {
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           childClosed = true;
         },
-      });
+      };
       yield 'A'; yield 'B';
     })();
     await expect(consume({

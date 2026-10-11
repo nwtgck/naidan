@@ -1,7 +1,6 @@
 import { createCoreWebGpuNavigator } from './webgpu-dispatch';
 import { describe, expect, it, vi } from 'vitest';
 import { beginGpuMeasurement, createGpuRequestObserver, associateGpuRequests, readGpuRequests } from './webgpu-request-diagnostics';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function fixture() {
   const buffers = new WeakSet<object>();
@@ -158,11 +157,11 @@ describe('measurement-only existing queue completion observations', () => {
     const { device, observer, queue } = queueFixture({ promise });
     let now = 10;
     const finish = beginGpuMeasurement({ now: () => now });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         finish();
       },
-    });
+    };
     const commands: GPUCommandBuffer[] = [];
     device.queue.submit(commands);
     expect(device.queue.onSubmittedWorkDone()).toBe(promise);
@@ -180,11 +179,11 @@ describe('measurement-only existing queue completion observations', () => {
     const promise = Promise.reject(error);
     const { device, observer } = queueFixture({ promise });
     const finish = beginGpuMeasurement({ now: () => 10 });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         finish();
       },
-    });
+    };
     expect(device.queue.onSubmittedWorkDone()).toBe(promise);
     await expect(promise).rejects.toBe(error);
     expect(observer.snapshot()!.queue).toMatchObject({ completionWaitRejected: 1, completionWaitPending: 0 });
@@ -235,11 +234,11 @@ describe('measurement-only existing queue completion observations', () => {
         throw new Error('clock');
       },
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         finish();
       },
-    });
+    };
     expect(device.queue.onSubmittedWorkDone()).toBe(promise); await promise;
     expect(observer.snapshot()!.queue).toMatchObject({ completionWaitResolved: 1, completionWaitDurationMs: undefined, longestCompletionWaitDurationMs: undefined });
     const error = new Error('native');
@@ -298,11 +297,11 @@ it('caps outstanding native wait observers across closed request windows without
   expect(then).toHaveBeenCalledTimes(256);
   closeFirst();
   const closeSecond = beginGpuMeasurement({ now: () => 2 });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       closeSecond(); then.mockRestore();
     },
-  });
+  };
   expect(device.queue.onSubmittedWorkDone()).toBe(gate.promise);
   expect(observer.snapshot()!.queue).toMatchObject({ completionWaitCount: 1, completionWaitPending: 0, completionWaitUnobserved: 1 });
   expect(then).toHaveBeenCalledTimes(256);
@@ -323,11 +322,11 @@ it('keeps the bounded completion observer budget local to each runtime', () => {
   for (let i = 0; i < 256; i++) first.device.queue.onSubmittedWorkDone();
   closeFirst();
   const closeSecond = beginGpuMeasurement({ now: () => 1 });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       closeSecond();
     },
-  });
+  };
   first.device.queue.onSubmittedWorkDone();
   second.device.queue.onSubmittedWorkDone();
   expect(first.observer.snapshot()!.queue).toMatchObject({ completionWaitUnobserved: 1, completionWaitPending: 0 });

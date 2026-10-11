@@ -4,7 +4,6 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { EMPTY_LM_PARAMETERS, type EndpointType, type Settings } from '@/01-models/types';
 import ConnectionTab from './ConnectionTab.vue';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });
@@ -319,11 +318,11 @@ describe('ConnectionTab Ollama management integration', () => {
   it.each([false, true])('propagates standalone=%s to both chat and title endpoint choices without hiding features', async standalone => {
     vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', standalone);
     const wrapper = mount(ConnectionTab, { props: { modelValue: createSettings({ endpointType: 'ollama' }), availableModels: [], isFetchingModels: false, hasUnsavedChanges: false }, global: { stubs: globalStubs } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount(); vi.unstubAllGlobals();
       },
-    });
+    };
     await flushPromises();
     const transformers = wrapper.findAll('select option[value="transformers_js"]');
     const llama = wrapper.findAll('select option[value="llama_cpp_browser"]');
@@ -345,11 +344,11 @@ describe('Naidan RPC endpoint availability', () => {
   it('offers RPC for global chat and title only while the feature is enabled', async () => {
     const settings = createSettings({ endpointType: 'ollama' });
     const wrapper = mount(ConnectionTab, { props: { modelValue: settings, availableModels: [], isFetchingModels: false, hasUnsavedChanges: false }, global: { stubs: globalStubs } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount();
       },
-    });
+    };
     await flushPromises();
     for (const name of ['setting-provider-select', 'setting-title-endpoint-type-select']) {
       expect(wrapper.get(`[data-testid="${name}"]`).find('option[value="naidan_rpc"]').exists()).toBe(false);
@@ -365,11 +364,11 @@ describe('Naidan RPC endpoint availability', () => {
     if (typeof settings.titleGeneration !== 'object') throw new Error('Expected title settings');
     settings.titleGeneration.endpoint = { type: 'naidan_rpc', registrationId: undefined };
     const wrapper = mount(ConnectionTab, { props: { modelValue: settings, availableModels: [], isFetchingModels: false, hasUnsavedChanges: false }, global: { stubs: globalStubs } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount();
       },
-    });
+    };
     await flushPromises();
     for (const name of ['setting-provider-select', 'setting-title-endpoint-type-select']) {
       const select = wrapper.get(`[data-testid="${name}"]`);

@@ -3,7 +3,6 @@ import { mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 import ImageRepositoryImport from './ImageRepositoryImport.vue';
 import { createDisabledImageLibrary } from '@/features/stable-diffusion-cpp-browser/library-standalone';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -11,11 +10,11 @@ it('advertises copy while idle and none while busy; drop is not controlled by tr
   const downloading = ref(false), importing = ref(false);
   const view = { ...createDisabledImageLibrary(), downloading: computed(() => downloading.value), importing: computed(() => importing.value), dropDirectory: vi.fn(async () => undefined) };
   const wrapper = mount(ImageRepositoryImport, { props: { view, disabled: false } });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       wrapper.unmount();
     },
-  });
+  };
   const zone = wrapper.get('[data-testid="image-repository-drop"]');
   const transfer = { dropEffect: 'none', types: ['Files'] };
   await zone.trigger('dragover', { dataTransfer: transfer }); expect(transfer.dropEffect).toBe('copy');
@@ -28,11 +27,11 @@ it('advertises copy while idle and none while busy; drop is not controlled by tr
 it('keeps an active import cancellable when an independent operation blocks new imports', async () => {
   const view = { ...createDisabledImageLibrary(), importing: computed(() => true), cancelImport: vi.fn(), dropDirectory: vi.fn(async () => undefined) };
   const wrapper = mount(ImageRepositoryImport, { props: { view, disabled: true } });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       wrapper.unmount();
     },
-  });
+  };
   const cancel = wrapper.get<HTMLButtonElement>('[data-testid="image-cancel-import"]');
   expect(cancel.element.disabled).toBe(false);
   await cancel.trigger('click');
@@ -43,11 +42,11 @@ it('keeps an active import cancellable when an independent operation blocks new 
 
 it('keeps standalone import actions disabled when no import can be in progress', () => {
   const wrapper = mount(ImageRepositoryImport, { props: { view: createDisabledImageLibrary(), disabled: true } });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       wrapper.unmount();
     },
-  });
+  };
   expect(wrapper.get<HTMLInputElement>('input[type="file"]').element.disabled).toBe(true);
   expect(wrapper.find('[data-testid="image-cancel-import"]').exists()).toBe(false);
 });

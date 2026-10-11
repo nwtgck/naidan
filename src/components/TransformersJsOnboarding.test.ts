@@ -8,7 +8,6 @@ import { transformersJsService } from '@/features/transformers-js';
 import TransformersJsManager from '@/features/transformers-js/components/TransformersJsManager.vue';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { DEFAULT_SETTINGS, EMPTY_LM_PARAMETERS, type Settings } from '@/01-models/types';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // --- Mocks ---
 const mockAddToast = vi.fn();
@@ -363,11 +362,11 @@ describe('Transformers.js Onboarding Integration', () => {
   it('opens the standalone feature explanation without scans, model loads or enabling start', async () => {
     vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', true);
     const wrapper = mountModal({ global: { stubs: { TransformersJsManager: false } } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount(); vi.unstubAllGlobals();
       },
-    });
+    };
     await flushPromises();
     const tab = wrapper.findAll('button').find(button => button.text().includes('Transformers.js'));
     if (!tab) throw new Error('Missing discoverable feature tab');

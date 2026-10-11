@@ -7,7 +7,6 @@ import { createSyntheticModelBody, readSyntheticModelBody } from '@/features/tra
 import { digest } from '@/features/transformers-js/replay-models/support/model-runtime-input-helpers';
 import { settledReplayMetadataBytes } from '@/features/transformers-js/model-support-investigation/logic/investigation-batch-budget';
 import { createInitialInvestigationCheckpoint } from '@/features/transformers-js/model-support-investigation/logic/investigation-recovery';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Retain the former fixture configuration's bound for actual runtime imports.
 vi.setConfig({ testTimeout: 60_000 });
@@ -42,11 +41,11 @@ describe('SmolLM2 135M Download replay', () => {
         }
         return originalTransport(input, init);
       });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       const { result } = await h.freshMetadata();
       expect(result.summary).toMatchObject({ status: 'failed', preparationStage: 'configuration', failureCategory: 'syntax-error' });
       expect(result.summary.requests).toEqual([expect.objectContaining({ path: 'config.json', httpStatus: 200, status: 'complete' })]);
@@ -64,11 +63,11 @@ describe('SmolLM2 135M Download replay', () => {
       const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
       const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect((await h.run()).status).toBe('accepted');
       const beforeFiles = [...h.fs.files].map(([path, bytes]) => [path, digest({ bytes })]);
       const beforeActivity = h.fs.activity.length;
@@ -117,11 +116,11 @@ describe('SmolLM2 135M Download replay', () => {
         response.headers.delete('Content-Length');
         return response;
       });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(h.fs.files.size).toBe(0);
       const { result } = await h.freshMetadata();
       expect(result.summary.status, JSON.stringify(result.summary)).toBe('prepared');
@@ -168,11 +167,11 @@ describe('SmolLM2 135M Download replay', () => {
         response.headers.delete('Content-Length');
         return response;
       });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(h.fs.files.size).toBe(0);
       const result = await h.run();
       expect(result, JSON.stringify(result)).toMatchObject({ status: 'accepted' });
@@ -195,11 +194,11 @@ describe('SmolLM2 135M Download replay', () => {
       const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
       const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       const result = await h.run();
       expect(result.status).toBe('accepted');
       expect(result.candidates?.selectedCandidate).toEqual({ device: 'webgpu', dtype: 'q4f16' });
@@ -216,11 +215,11 @@ describe('SmolLM2 135M Download replay', () => {
       // This is explicit remote repository state, not a cache alias or a claim that
       // mutable upstream main cannot change during a real Download.
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map([['main', revision]]) });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(digest({ bytes: h.archive.files.get('config.json')! })).toBe('8eb740e8bbe4cff95ea7b4588d17a2432deb16e8075bc5828ff7ba9be94d982a');
       expect(digest({ bytes: h.archive.files.get('tokenizer.json')! })).toBe('9ca9acddb6525a194ec8ac7a87f24fbba7232a9a15ffa1af0c1224fcd888e47c');
       // Upstream inventory size is independent of the tiny synthetic model body.
@@ -277,11 +276,11 @@ describe('SmolLM2 135M Download replay', () => {
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map([['main', revision]]) });
       const tokenizerPath = `models/huggingface.co/${modelId}/resolve/${revision}/tokenizer.json`;
       h.fs.writerCloseErrors.set(tokenizerPath, new DOMException('Fixture tokenizer quota exhausted', 'QuotaExceededError'));
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       const result = await h.run();
       expect(h.fs.activity.some(item => item.path === tokenizerPath && item.operation === 'writer-close')).toBe(true);
       expect(h.requests.filter(item => item.path.startsWith('onnx/'))).toEqual([]);
@@ -294,11 +293,11 @@ describe('SmolLM2 135M Download replay', () => {
       const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
       const path = 'onnx/model_q4f16.onnx';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect((await h.run()).status).toBe('accepted');
       expect(h.sessions).toEqual(expectedSessions);
       const bodyPath = `models/huggingface.co/${modelId}/resolve/${revision}/${path}`;
@@ -321,11 +320,11 @@ describe('SmolLM2 135M Download replay', () => {
       const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
       const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map([['main', revision]]) });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       await expect(h.serviceDownload()).resolves.toMatchObject({ status: 'idle', error: undefined });
       expect(h.sessions).toEqual(expectedSessions);
       const base = `models/huggingface.co/${modelId}/resolve/${revision}/`;
@@ -352,11 +351,11 @@ describe('SmolLM2 135M Download replay', () => {
       const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
       const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map([['main', revision]]) });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect((await h.run()).status).toBe('accepted');
       expect(h.sessions).toEqual(expectedSessions);
       const boundary = h.requests.length;
@@ -451,11 +450,11 @@ describe('SmolLM2 135M Download replay', () => {
       const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
       const missingPath = 'onnx/model_q4f16.onnx';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       const downloaded = await h.run();
       expect(downloaded.status, JSON.stringify(downloaded)).toBe('accepted');
       expect(h.sessions.toSorted((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);
@@ -498,11 +497,11 @@ describe('SmolLM2 135M Download replay', () => {
       const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
       const missingPath = 'tokenizer.json';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       const downloaded = await h.run();
       expect(downloaded.status, JSON.stringify(downloaded)).toBe('accepted');
       expect(h.sessions.toSorted((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);
@@ -542,11 +541,11 @@ describe('SmolLM2 135M Download replay', () => {
       const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
       const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect((await h.run()).status).toBe('accepted');
       expect(h.sessions).toEqual(expectedSessions);
       const base = `models/huggingface.co/${modelId}/resolve/${revision}/`;
@@ -611,11 +610,11 @@ describe('SmolLM2 135M Download replay', () => {
       const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
       const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect((await h.run()).status).toBe('accepted');
       const base = `models/huggingface.co/${modelId}/resolve/${revision}/`;
       const configBody = `${base}config.json`;
@@ -670,11 +669,11 @@ describe('SmolLM2 135M Download replay', () => {
       const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
       const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect((await h.run()).status).toBe('accepted');
       const base = `models/huggingface.co/${modelId}/resolve/${revision}/`;
       const coreBody = `${base}onnx/model_q4f16.onnx`;
@@ -734,11 +733,11 @@ describe('SmolLM2 135M Download replay', () => {
       const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
       const revision = '12fd25f77366fa6b3b4b768ec3050bf629380bac';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect((await h.run()).status).toBe('accepted');
       expect(h.sessions).toEqual(expectedSessions);
       const base = `models/huggingface.co/${modelId}/resolve/${revision}/`;

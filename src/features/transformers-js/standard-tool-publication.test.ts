@@ -11,7 +11,6 @@ import { selectGenerationStrategy } from './generation-strategies';
 import { createInferenceEventDelivery } from './worker/inference-event-delivery';
 import * as standardToolProtocol from './standard-tool-call-protocol';
 import { runProviderTestInferenceOperation } from './provider-inference-test-scope';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 type Fragment = { type: 'text'; text: string } | { type: 'control'; token: string };
 vi.mock('./index', () => ({ transformersJsService: {} }));
@@ -81,11 +80,11 @@ function createPublicationFixture({ outputs, historyEncoding }: {
     }),
     async generateMessage({ messages, onEvent, params, tools }: Parameters<TransformersJsInferenceScope['generateMessage']>[0] & { signal: AbortSignal }) {
       const delivery = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await delivery.finish();
         },
-      });
+      };
       await selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/content-publication' }).generate({
         model: { generate, config: { model_type: 'synthetic' }, _prepare_generation_config: () => ({ eos_token_id: 0 }) } as never,
         tokenizer: {

@@ -13,7 +13,6 @@ import { createMemoryFiles } from './replay-models/support/download-memory-files
 import { createProviderReplayTestRuntime } from './replay-models/support/provider-replay-test-runtime';
 import type { TransformersJsWorkerClient } from './types';
 import { ProductionWorkerLifecycleError } from './worker/production-worker-session';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function createClientFixture() {
   return {
@@ -77,12 +76,12 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.restoreAllMocks();
       vi.unstubAllGlobals();
     },
-  });
+  };
   await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
   expect(forbiddenFetch).not.toHaveBeenCalled();
 });
@@ -130,12 +129,12 @@ describe('Transformers.js inference scope ownership', () => {
         },
       }),
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await operation;
       },
-    });
+    };
     expect(await secondOutcome.promise).toMatchObject({ status: 'rejected', error: expect.any(Error) });
     expect(client.generateText).toHaveBeenCalledTimes(1);
     expect(client.interrupt).not.toHaveBeenCalled();
@@ -177,14 +176,14 @@ describe('Transformers.js inference scope ownership', () => {
     });
     await callbackFinished.promise;
     const second = observe({ promise: owner.service.generateText(generationArgs({ continuationOwner: 'second' })) });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await first;
         await second;
         await child;
       },
-    });
+    };
     await Promise.resolve();
     await Promise.resolve();
     expect(firstSettled).toBe(false);
@@ -234,14 +233,14 @@ describe('Transformers.js inference scope ownership', () => {
     });
     await callbackFinished.promise;
     const second = observe({ promise: owner.service.generateText(generationArgs({ continuationOwner: 'second' })) });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await first;
         await second;
         await child;
       },
-    });
+    };
     await Promise.resolve();
     await Promise.resolve();
     expect(firstSettled).toBe(false);
@@ -285,11 +284,11 @@ describe('Transformers.js inference scope ownership', () => {
         signal: undefined,
         operation: async ({ scope }) => {
           escaped.resolve(scope);
-          using _cleanupResource = createTestDisposable({
-            dispose: () => {
+          using _cleanupResource = {
+            [Symbol.dispose]() {
               oldChildSettled.resolve();
             },
-          });
+          };
           await scope.generateText({
             ...generationArgs({ continuationOwner: 'old' }),
             onChunk: ({ chunk }) => {
@@ -305,8 +304,8 @@ describe('Transformers.js inference scope ownership', () => {
     const coalesced = observe({ promise: owner.service.restart() });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let fresh: ReturnType<typeof observe> | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         finishDispose.resolve();
         releaseOld.resolve();
         releaseFresh.resolve();
@@ -317,7 +316,7 @@ describe('Transformers.js inference scope ownership', () => {
         await waiting;
         await fresh;
       },
-    });
+    };
     await disposing.promise;
     expect(createWorkerClient).toHaveBeenCalledTimes(1);
     const retiredScope = await escaped.promise;
@@ -390,12 +389,12 @@ describe('Transformers.js inference scope ownership', () => {
       await publishCompletedCall({ onEvent, toolCall: { id: toToolCallId({ raw: 'synthetic-owned-tool' }), type: 'function', function: { name: tool.name, arguments: '{}' } } });
     });
     const oldChat = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/old', messages: [{ role: 'user', content: 'Synthetic tool request.' }], onChunk: vi.fn(), tools: [tool], onToolEvent, onToolResult }) });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         releaseTool.resolve();
         await oldChat;
       },
-    });
+    };
     const toolSignal = await toolEntered.promise;
     await owner.service.restart();
     expect(await oldChat).toMatchObject({ status: 'rejected', error: { reason: 'restarted' } });
@@ -440,12 +439,12 @@ describe('Transformers.js inference scope ownership', () => {
       await publishCompletedCall({ onEvent, toolCall: { id: toToolCallId({ raw: 'synthetic-owned-tool' }), type: 'function', function: { name: tool.name, arguments: '{}' } } });
     });
     const oldChat = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/old', messages: [{ role: 'user', content: 'Synthetic tool request.' }], onChunk: vi.fn(), tools: [tool], onToolEvent, onToolResult }) });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         releaseTool.resolve();
         await oldChat;
       },
-    });
+    };
     const toolSignal = await toolEntered.promise;
     await owner.service.restart();
     expect(await oldChat).toMatchObject({ status: 'rejected', error: { reason: 'restarted' } });
@@ -476,11 +475,11 @@ describe('Transformers.js inference scope ownership', () => {
     original.loadDownloadedModel.mockImplementation(async () => {
       trace.push('old:load');
       loadEntered.resolve();
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           loadSettled.resolve();
         },
-      });
+      };
       return await pendingLoad.promise;
     });
     original.dispose.mockImplementation(async () => {
@@ -508,14 +507,14 @@ describe('Transformers.js inference scope ownership', () => {
     void first.then(() => {
       firstSettled = true;
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         releaseDisposal.resolve();
         pendingLoad.reject(new Error('Synthetic Load test cleanup'));
         await first;
         await second;
       },
-    });
+    };
     // No Worker interrupt contract exists for Load. Cancel the owning chat;
     // the service must retire its captured client, not issue an interrupt RPC.
     abort.abort();
@@ -562,14 +561,14 @@ describe('Transformers.js inference scope ownership', () => {
     const first = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/old', messages: [], onChunk: vi.fn(), signal: abort.signal }) });
     await loadEntered.promise;
     const waiting = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/waiting', messages: [], onChunk: vi.fn() }) });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         releaseDisposal.resolve();
         pendingLoad.reject(new Error('Synthetic Load test cleanup'));
         await first;
         await waiting;
       },
-    });
+    };
     abort.abort();
     await disposalEntered.promise;
     expect(factory).toHaveBeenCalledTimes(1);
@@ -625,13 +624,13 @@ describe('Transformers.js inference scope ownership', () => {
     const first = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/old', messages: [{ role: 'user', content: 'Synthetic tool request.' }], onChunk: vi.fn(), tools: [tool], onToolResult }) });
     await toolEntered.promise;
     const second = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/next', messages: [{ role: 'user', content: 'Independent next request.' }], onChunk: vi.fn() }) });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         releaseTool.resolve();
         await first;
         await second;
       },
-    });
+    };
     expect(trace).toEqual(['load:fixture/old', 'old:initial', 'tool:entered']);
     expect(client.loadDownloadedModel).toHaveBeenCalledTimes(1);
     expect(client.generateMessage).toHaveBeenCalledTimes(1);
@@ -691,13 +690,13 @@ describe('Transformers.js inference scope ownership', () => {
     void second.then(() => {
       secondSettled = true;
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         releaseTool.resolve();
         await first;
         await second;
       },
-    });
+    };
     abort.abort();
     await Promise.resolve();
     await Promise.resolve();

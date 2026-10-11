@@ -10,7 +10,6 @@ import { applyScopedSettingChangesToChat } from '@/logic/scoped-setting-changes'
 import { EMPTY_LM_PARAMETERS, type Chat, type Endpoint, type LmParameters, type SettingsTitleGeneration, type Settings } from '@/01-models/types';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // --- Mocks ---
 const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
@@ -47,11 +46,11 @@ describe('ChatSettingsPanel.vue', () => {
     mockCurrentChat.value.endpoint = { type: 'naidan_rpc', registrationId: undefined };
     mockCurrentChat.value.titleGeneration = { endpoint: { type: 'naidan_rpc', registrationId: undefined }, model: 'same_scope', lmParameters: { ...EMPTY_LM_PARAMETERS } };
     const wrapper = mount(ChatSettingsPanel, { props: { show: true }, global: { stubs: globalStubs } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount();
       },
-    });
+    };
     await flushPromises();
     for (const name of ['chat-setting-endpoint-type-select', 'chat-setting-title-endpoint-type-select']) {
       const select = wrapper.get(`[data-testid="${name}"]`);
@@ -1856,11 +1855,11 @@ describe('ChatSettingsPanel.vue', () => {
   it.each([false, true])('propagates standalone=%s to both chat and title endpoint choices without hiding features', async standalone => {
     vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', standalone);
     const wrapper = mount(ChatSettingsPanel, { props: { show: true }, global: { stubs: globalStubs } });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount(); vi.unstubAllGlobals();
       },
-    });
+    };
     await flushPromises();
     const transformers = wrapper.findAll('select option[value="transformers_js"]');
     const llama = wrapper.findAll('select option[value="llama_cpp_browser"]');

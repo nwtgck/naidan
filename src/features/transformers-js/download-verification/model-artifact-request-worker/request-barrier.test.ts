@@ -4,7 +4,6 @@ import {
   huggingFaceResolveArtifactPath,
   huggingFaceResolveArtifactRequest,
 } from '@/features/transformers-js/download-verification/model-artifact-request-worker/request-barrier';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe('model artifact request barrier', () => {
   it.each([
@@ -31,11 +30,11 @@ describe('model artifact request barrier', () => {
 
   it('waits until observed requests have been quiet and then rejects pending fetches on stop', async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     const barrier = createModelArtifactRequestBarrier({ quiescenceMs: 50 });
     const first = barrier.observe({
       request: {

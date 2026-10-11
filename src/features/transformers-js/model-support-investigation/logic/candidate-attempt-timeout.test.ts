@@ -3,16 +3,15 @@ import {
   CandidateAttemptTimeoutError,
   withCandidateAttemptTimeout,
 } from "@/features/transformers-js/model-support-investigation/logic/candidate-attempt-timeout";
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe("withCandidateAttemptTimeout", () => {
   it("rejects with the last observed stage and runs the timeout cleanup", async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     const onTimeout = vi.fn();
     const operation = withCandidateAttemptTimeout({
       operation: new Promise<never>(() => undefined),

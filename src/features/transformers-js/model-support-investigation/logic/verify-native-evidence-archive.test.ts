@@ -8,7 +8,6 @@ import type { ProductionProviderNativeCollectionSnapshot } from './production-pr
 import { createProductionProviderCaptureEvidence } from './production-provider-capture-evidence';
 import { createProductionProviderNativeEvidence, PRODUCTION_PROVIDER_NATIVE_RUN_BINARY_BYTES } from './production-provider-native-evidence';
 import { verifyGeneratedEvidenceArchive } from './verify-evidence-archive';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 beforeEach(() => {
   vi.stubGlobal('crypto', webcrypto);
@@ -18,11 +17,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.unstubAllGlobals();
     },
-  });
+  };
   expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 

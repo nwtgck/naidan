@@ -15,7 +15,6 @@ import type { NaidanRpcStorage } from '@/00-storage/service/naidan-rpc';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey, toNaidanRpcRegistryId } from '@/01-models/ids';
 import { createInferenceBudget } from '@/features/naidan-rpc-integration/handlers/inference/budget';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const bridge = vi.hoisted(() => ({ manager: undefined as NaidanPeerManager | undefined, listeners: new Set<() => void>() }));
 // Only inject the app-owned manager. Its state machine, transport adapter,
@@ -205,11 +204,11 @@ it.each(['startup-first', 'panel-first'] as const)('connects on startup with Set
     panelRead.resolve(snapshot);
   } else {
     panelRead.resolve(snapshot);
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         startupRead.resolve(snapshot);
       },
-    });
+    };
     // The authoritative panel snapshot must not wait for an obsolete read.
     await vi.waitFor(() => expect(local.open).toHaveBeenCalledOnce());
   }

@@ -4,7 +4,6 @@ import { reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { PrintMode } from '@/composables/usePrint';
 import AppAuxiliaryUi from './AppAuxiliaryUi.vue';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const activePrintMode = ref<PrintMode>(undefined);
 
@@ -109,12 +108,12 @@ describe('AppAuxiliaryUi print teleport integration', () => {
     activePrintMode.value = 'chat';
     const { appHost, wrapper } = await mountAuxiliaryUi();
 
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount();
         appHost.remove();
       },
-    });
+    };
     await vi.waitFor(() => {
       expect(document.body.querySelector(':scope > .naidan-print-view-layer')).not.toBeNull();
     });
@@ -130,12 +129,12 @@ describe('AppAuxiliaryUi print teleport integration', () => {
     activePrintMode.value = 'chat';
     const { appHost, wrapper } = await mountAuxiliaryUi();
 
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount();
         appHost.remove();
       },
-    });
+    };
     await vi.waitFor(() => {
       expect(document.body.querySelector(':scope > .naidan-print-view-layer')).not.toBeNull();
     });
@@ -148,12 +147,12 @@ describe('AppAuxiliaryUi print teleport integration', () => {
     activePrintMode.value = 'chat';
     const { appHost, wrapper } = await mountAuxiliaryUi();
 
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount();
         appHost.remove();
       },
-    });
+    };
     await vi.waitFor(() => {
       expect(document.body.querySelector(':scope > .naidan-print-view-layer')).not.toBeNull();
     });

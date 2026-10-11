@@ -6,7 +6,6 @@ import type { Tool } from '@/01-models/tool';
 import { createProviderReplayTestRuntime } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
 import { createSyntheticModelBody } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
 import { runProviderReplayTurn } from '@/features/transformers-js/replay-models/support/provider-replay-chat';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const modelId = 'onnx-community/gpt-oss-20b-ONNX';
 const revision = '6dcc680ae66791268a1e4e96fc3bfd0e5d3662e7';
@@ -69,11 +68,11 @@ describe('GPT-OSS public conversation cache ownership', () => {
       readBinaryObject: undefined,
       parameters: { temperature: 0, topP: 1, maxCompletionTokens: 128, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
     };
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         templateSpy?.mockRestore(); await harness.close();
       },
-    });
+    };
     const first = await runProviderReplayTurn({
       provider: harness.provider,
       tools: [tool],

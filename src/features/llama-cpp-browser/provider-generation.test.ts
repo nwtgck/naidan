@@ -8,7 +8,6 @@ import { chatRequest, deliverNativeResult, finalText } from './test-utils/chat.t
 import type { GenerationCallback, GenerationEvent, GenerationResult } from './types';
 import { LlamaCppBrowserError } from './types';
 import type { LlamaCppBrowserService } from './service-contract';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function observation({ items, controller }: { items: AsyncIterable<ChatGenerationItem>, controller: AbortController }) {
   const node: AssistantMessageNode = { id: toMessageId({ raw: 'new' }), role: 'assistant', parts: [], createdAt: 1, modelId: undefined, lmParameters: undefined, interruption: undefined, replies: { items: [] } };
@@ -230,11 +229,11 @@ describe('local operation and child lifetime', () => {
     let stopped = false;let generationSignal: AbortSignal | undefined;
     const native: LlamaCppBrowserService['generate'] = async ({ onEvent, signal }) => {
       generationSignal = signal;
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           stopped = true;
         },
-      });
+      };
       for (let i = 0; i < 40; i++) await onEvent({ event: { type: 'text', text: 'A' } });return finalText({ text: 'A'.repeat(40) });
     };
     const scoped = createScopedGeneration({ scope: { generate: native, signal: new AbortController().signal } });

@@ -4,7 +4,6 @@ import { PRODUCTION_WORKER_READY, startProductionWorkerRuntime } from './product
 import { createLoadDiagnosticOperation, LOAD_DIAGNOSTIC_CHANNEL, type LoadDiagnosticMessage } from './load-diagnostics';
 
 import { createProductionRuntimeStartupFixture, installProductionRuntimeStartupPlatform, productionRuntimeModuleFixtureBytes } from '@/features/transformers-js/runtime/fixtures/production-runtime-startup-fixture';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({ wrap: vi.fn(), release: vi.fn() }));
 vi.mock('@/utils/worker-transport', () => ({
@@ -169,11 +168,11 @@ describe('Production Worker startup ownership', () => {
     });
     const first = fixture();
     const second = fixture();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         digestSpy.mockRestore();
       },
-    });
+    };
     first.worker.startup.start();
     await firstEntered.promise;
     first.session.dispose();

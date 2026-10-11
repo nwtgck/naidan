@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { serveByteStream } from '@/utils/byte-stream-port';
 import { installStreamDownloadWorker, type DownloadFetchEvent, type DownloadMessageEvent, type DownloadWorkerScope } from './service-worker';
 import { createDownloadUrl, DOWNLOAD_EVENT_LEASE_MS, type DownloadVersion } from './protocol';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -188,11 +187,11 @@ describe('streaming download Service Worker', () => {
     });
     const response = f.fetch({ mode: 'cors', clientId: 'owner', method: 'GET', range: undefined, requestUrl: f.url }).response;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         clearTimeout(timer);
       },
-    });
+    };
     await expect(Promise.race([response.arrayBuffer(), new Promise((_resolve, reject) => {
       timer = setTimeout(() => reject(new Error('response stayed open')), 100);
     })])).rejects.toThrow('control channel closed');

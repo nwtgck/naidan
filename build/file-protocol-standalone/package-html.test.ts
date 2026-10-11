@@ -5,7 +5,6 @@ import {
   insertPackageLocaleMetadata,
   PACKAGE_LOCALE_META_NAME,
 } from './plugin/package-html.js';
-import { createTestDisposable } from '../../src/utils/resource-cleanup.test-support';
 
 describe('package locale HTML metadata', () => {
   it('uses the parsed real head end instead of a literal </head> inside script text', () => {
@@ -13,11 +12,11 @@ describe('package locale HTML metadata', () => {
     const result = insertPackageLocaleMetadata({ html, locale: 'ja' });
     expect(result).toContain('<script>const x = "</head>";</script>');
     const dom = new JSDOM(result);
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         dom.window.close();
       },
-    });
+    };
     const meta = dom.window.document.querySelector(`meta[name="${PACKAGE_LOCALE_META_NAME}"]`);
     expect(meta?.getAttribute('content')).toBe('ja');
     expect(meta?.nextElementSibling?.tagName).toBe('SCRIPT');
@@ -27,11 +26,11 @@ describe('package locale HTML metadata', () => {
     const html = '<!doctype html><html><head><meta charset="utf-8"><script>globalThis.__PACKAGE_META_SEEN__ = document.querySelector(\'meta[name="naidan-package-locale"]\')?.content;</script></head><body></body></html>';
     const result = insertPackageLocaleMetadata({ html, locale: 'ja' });
     const dom = new JSDOM(result, { runScripts: 'dangerously' });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         dom.window.close();
       },
-    });
+    };
     expect((dom.window as unknown as { __PACKAGE_META_SEEN__?: string }).__PACKAGE_META_SEEN__).toBe('ja');
   });
 

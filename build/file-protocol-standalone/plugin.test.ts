@@ -9,7 +9,6 @@ import {
   createNaidanStandalonePlugin,
   naidanStandaloneWorkerProtocol,
 } from './plugin.js';
-import { createAsyncTestDisposable } from '../../src/utils/resource-cleanup.test-support';
 
 const require = createRequire(import.meta.url);
 
@@ -518,11 +517,11 @@ describe('createNaidanStandalonePlugin', () => {
 
   it('emits the complete static importScripts asset graph with stable output names', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'naidan-importscripts-policy-'));
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await fs.rm(root, { recursive: true, force: true });
       },
-    });
+    };
     await fs.mkdir(path.join(root, 'classic'));
     await fs.writeFile(
       path.join(root, 'classic', 'entry.js'),

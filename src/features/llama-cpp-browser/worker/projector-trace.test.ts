@@ -3,7 +3,6 @@ import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
 import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics.test-support';
 import { createProjectorTrace } from './projector-trace';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -28,11 +27,11 @@ describe('synchronous projector tensor tracing', () => {
       },
     } as unknown as Core;
     const unsubscribe = subscribeDiagnostics({ debug: 'on', listener: () => {} }); const trace = createProjectorTrace({ core });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         trace.release(); unsubscribe();
       },
-    });
+    };
     const pointer = pointerBytes === 4 ? -2147483648 : tensorPointer;
     expect(callback(pointer, 1, 0)).toBe(1); expect(callback(pointer, 0, 0)).toBe(1);
     const diagnostics = readDiagnostics({ calls: debug.mock.calls });

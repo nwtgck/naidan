@@ -4,7 +4,6 @@ import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { expect, it, vi } from 'vitest';
 import { getProductionTransformersArtifact, importProductionTransformersArtifact, TEST_ONLY } from './production-transformers-artifact';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 it('preserves emitted code bytes and its source map with distinct provenance identities', async () => {
   const artifact = await getProductionTransformersArtifact();
@@ -59,11 +58,11 @@ it('preserves the external ORT Tensor identity in separate browser-branch runtim
   // The web bundle's Node branch intentionally has no onnxruntime-node export.
   // Match the existing replay's browser branch before evaluating either module.
   vi.stubGlobal('process', { ...originalProcess, release: { ...originalProcess.release, name: 'browser-test' } });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.stubGlobal('process', originalProcess);
     },
-  });
+  };
   type Runtime = typeof import('@huggingface/transformers');
   const first = await importProductionTransformersArtifact({ moduleUrl: artifact.moduleUrl }) as Runtime;
   const second = await importProductionTransformersArtifact({ moduleUrl: artifact.moduleUrl }) as Runtime;

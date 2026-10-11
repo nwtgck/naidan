@@ -6,7 +6,6 @@ import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view.test-support';
 import type { PreviewFrame } from '@/features/stable-diffusion-cpp-browser/types';
 import ImageGenerationPreview from './ImageGenerationPreview.vue';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 let wrapper: VueWrapper | undefined;
 
@@ -72,11 +71,11 @@ it('keeps preview images while typing a larger retention limit, including when a
     gallery.setLimit({ value });
     view.previewSnapshots.value = gallery.entries();
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       stop(); gallery.clear();
     },
-  });
+  };
   for (let i = 0; i < 5; i++) add();
   wrapper = mount(ImageGenerationPreview, { props: { view, active: true, livePlacement: 'panel' } });
   const input = wrapper.get<HTMLInputElement>('[data-testid="image-preview-limit"]');

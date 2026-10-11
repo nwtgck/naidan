@@ -14,7 +14,6 @@ import { createTransformersJsProvider } from './provider-hosted';
 import type { InferenceGenerationCallback } from './generation-events';
 import type { TransformersJsWorkerClient } from './types';
 import { createMemoryFiles } from './replay-models/support/download-memory-files';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const owners: Array<ReturnType<typeof createTransformersJsService>> = [];
 const forbiddenFetch = vi.fn<typeof fetch>(async () => {
@@ -124,11 +123,11 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.restoreAllMocks(); vi.unstubAllGlobals();
     },
-  });
+  };
   await Promise.all(owners.splice(0).map(owner => owner.dispose())); expect(forbiddenFetch).not.toHaveBeenCalled();
 });
 
@@ -176,11 +175,11 @@ describe('hosted structured generation with the real service lane', () => {
     const second = collectChatGeneration({ items: f.provider.chat(request({ signal: competitor.signal, model: 'fixture/second', messages: [] })), abortController: competitor }).then(value => {
       nextSettled = true; return value;
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve(); await Promise.allSettled([first, second]);
       },
-    });
+    };
     await Promise.resolve(); expect(nextSettled).toBe(false); expect(f.client.loadDownloadedModel).toHaveBeenCalledOnce();
     release.resolve(); expect(await first).toEqual({ type: 'finished', next: 'user' }); await second;
     expect(f.client.generateMessage).toHaveBeenCalledTimes(3);
@@ -295,11 +294,11 @@ describe('hosted structured generation with the real service lane', () => {
     f.client.generateMessage.mockImplementationOnce(async ({ onEvent }) => {
       entered.resolve();
       await release.promise;
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           producerSettled = true;
         },
-      });
+      };
       await onEvent({ event: { type: 'part_start', kind: 'text', index: 0 } });
       // Leave a child unread so merely aborting without cancelling its bounded
       // queue cannot settle the producer or admit the next runtime operation.
@@ -331,15 +330,15 @@ describe('hosted structured generation with the real service lane', () => {
     });
     await entered.promise;
     const queued = f.owner.service.resetCache();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         // Also release the reproducer's resources when the regression is present.
         await (await escaped.promise).return?.();
         await operation;
         await queued;
       },
-    });
+    };
     await vi.waitFor(() => expect(settled).toBe(true), { timeout: 500 });
     expect(await operation).toMatchObject({ type: 'rejected', error: expect.any(Error) });
     expect(producerSettled).toBe(true);
@@ -361,11 +360,11 @@ describe('hosted structured generation with the real service lane', () => {
       },
     });
     await entered.promise;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve(); await held;
       },
-    });
+    };
     const c = new AbortController(); const other = await collectChatGeneration({ items: b.provider.chat(request({ signal: c.signal, model: 'fixture/b', messages: [] })), abortController: c });
     expect(other.text).toBe('answer'); expect(a.client.generateMessage).not.toHaveBeenCalled();
   });
@@ -420,11 +419,11 @@ describe('hosted structured generation with the real service lane', () => {
     const old = turn({ provider: f.provider, model: 'fixture/old', tools: [tool] });
     const outcome = old.run().then(value => ({ value }), error => ({ error }));
     const toolSignal = await held.promise;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve(); await outcome;
       },
-    });
+    };
     await f.owner.service.restart(); expect(toolSignal?.aborted).toBe(true);
     expect(await outcome).toMatchObject({ error: { reason: 'restarted' } });
     expect(old.controller.signal.aborted).toBe(false);
@@ -448,11 +447,11 @@ describe('hosted structured generation with the real service lane', () => {
       await onEvent({ event: { type: 'text_delta', index: 0, text: 'accepted' } });
       entered.resolve();
       await release.promise;
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           remoteSettled.resolve();
         },
-      });
+      };
       await onEvent({ event: { type: 'text_delta', index: 0, text: 'stale' } });
       await onEvent({ event: { type: 'part_end', index: 0, completeness: 'complete' } });
       await onEvent({ event: { type: 'result', result: { type: 'finished', next: 'user' } } });
@@ -460,13 +459,13 @@ describe('hosted structured generation with the real service lane', () => {
     const old = turn({ provider: f.provider, model: 'fixture/old', tools: [] });
     const outcome = old.run().then(value => ({ value }), error => ({ error }));
     await entered.promise;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await outcome;
         await remoteSettled.promise;
       },
-    });
+    };
     await f.owner.service.restart();
     expect(await outcome).toMatchObject({ error: { reason: 'restarted' } });
     const fresh = turn({ provider: f.provider, model: 'fixture/fresh', tools: [] });
@@ -504,11 +503,11 @@ describe('hosted structured generation with the real service lane', () => {
     await held.promise; first.controller.abort();
     const second = turn({ provider: f.provider, model: 'fixture/second', tools: [] });
     const pending = second.run();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve(); await Promise.allSettled([outcome, pending]);
       },
-    });
+    };
     await Promise.resolve(); expect(f.client.generateMessage).toHaveBeenCalledOnce();
     release.resolve(); expect(await outcome).toMatchObject({ error: { name: 'AbortError' } });
     expect(await pending).toEqual({ type: 'finished', next: 'user' });
@@ -529,11 +528,11 @@ describe('hosted structured generation with the real service lane', () => {
     const controller = new AbortController();
     const queued = collectChatGeneration({ items: f.provider.chat(request({ signal: controller.signal, model: 'fixture/queued', messages: [] })), abortController: controller });
     controller.abort();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve(); await held;
       },
-    });
+    };
     expect((await queued).result).toEqual({ type: 'interrupted', reason: 'aborted' });
     expect(f.client.loadDownloadedModel).not.toHaveBeenCalled(); expect(f.client.generateMessage).not.toHaveBeenCalled();
   });

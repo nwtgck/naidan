@@ -9,7 +9,6 @@ import { pinnedPeerRoutes } from './peer-routes';
 import { encodeProtocolHeader } from './protocol-header';
 import { joinBytes } from './bytes';
 import { useOfflineScope } from './index.test-support';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 useOfflineScope();
 
@@ -237,11 +236,11 @@ it.each(['monotonic', 'wall'] as const)('finishing directly cannot bypass a dela
   const sampled = clock === 'monotonic' ? performance.now() : Date.now();
   const spy = clock === 'monotonic' ? vi.spyOn(performance, 'now').mockReturnValue(sampled + 1000) : vi.spyOn(Date, 'now').mockReturnValue(sampled + 1000);
   const postsBefore = f.relay.posts.length;
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       spy.mockRestore();
     },
-  });
+  };
   await expect(f.finish({ candidate: first })).rejects.toBeDefined();
   expect(f.relay.posts).toHaveLength(postsBefore);
   expect(f.relay.posts.some(post => post.bytes[13] === 0x20)).toBe(false);

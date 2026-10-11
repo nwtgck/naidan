@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { memoryDiagnosticsHistories, observeWorkerMemory, TEST_ONLY } from './memory-diagnostics-store';
 import type { MemoryDiagnostic } from './memory-diagnostics';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 const sample: MemoryDiagnostic = { kind: 'naidan-llama-cpp-memory', instanceId: 'runtime-one', profile: 'cpu-wasm64', checkpoint: 'runtime-ready', capacityBytes: 65536, timestamp: 1000 };
 
 beforeEach(() => TEST_ONLY.reset());
@@ -65,11 +64,11 @@ it('receives real MessagePort notifications alongside Comlink requests without a
   });
   const stop = observeWorkerMemory({ worker: client });
   const remote = wrapWorkerRemote<Api>({ endpoint: client });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       stop(); releaseWorkerRemote({ remote }); port1.close(); port2.close();
     },
-  });
+  };
   expect(await remote.ping()).toBe(42);
   expect(await remote.ping()).toBe(42);
   expect(memoryDiagnosticsHistories.value[0]?.samples).toHaveLength(2);

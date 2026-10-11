@@ -9,7 +9,6 @@ import type { ToolCall } from '@/01-models/types';
 import type { Tool } from '@/01-models/tool';
 import { createTransformersJsProvider, type TransformersJsProviderService } from './provider-hosted';
 import { runProviderTestInferenceOperation } from './provider-inference-test-scope';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const ordinaryService = vi.hoisted(() => ({
   getState: vi.fn(() => {
@@ -35,11 +34,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.unstubAllGlobals();
     },
-  });
+  };
   expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 

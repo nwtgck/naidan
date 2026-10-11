@@ -9,7 +9,6 @@ import {
   iterateXargsStandardItems,
   iterateXargsTextIgnoringNulSuffixes,
 } from '@/features/wesh/commands/xargs/stream-input';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 async function collect<T>({
   values,
@@ -174,11 +173,11 @@ e`);
   it('stops the source iterator at the logical EOF marker', async () => {
     let sourceClosed = false;
     async function* source(): AsyncIterable<string> {
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           sourceClosed = true;
         },
-      });
+      };
       yield 'alpha STOP ';
       yield 'ignored';
     }

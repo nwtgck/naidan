@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { exposeWorkerRemote, releaseWorkerRemote, wrapWorkerRemote } from '@/utils/worker-transport';
 import { ProviderReplayTestWorker } from './provider-replay-test-transport';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe('native replay Worker event queue', () => {
   it('keeps an RPC queued while module evaluation has not installed the real consumer', async () => {
@@ -20,13 +19,13 @@ describe('native replay Worker event queue', () => {
     // This native adapter transfers Node MessagePorts, not browser-only Canvas
     // transferables. Its browser Worker facade retains the actual Comlink wire.
     const remote = wrapWorkerRemote<Api>({ endpoint: worker as unknown as Worker });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         entryLoaded.resolve();
         await releaseWorkerRemote({ remote });
         worker.terminate();
       },
-    });
+    };
     const pending = remote.echo({ runId: 'queued-before-entry' });
     expect(worker.hostMessages).toHaveLength(1);
     // Registering even an observational Node message listener starts delivery.

@@ -3,7 +3,6 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createTransformersJsService } from './index-hosted';
 import { withOpfsFileLease } from './runtime/opfs-access';
 import { createLockQueue } from './replay-models/support/opfs-lock-test-platform';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -59,13 +58,13 @@ it('rechecks the organization after model deletion and preserves a repository cr
   });
   const owner = createTransformersJsService({ createWorkerClient: factory });
   const deleting = owner.service.deleteModel({ modelId: 'hf.co/fixture/removed-model' });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       releaseParent.resolve();
       await deleting;
       await owner.dispose();
     },
-  });
+  };
   await parentRequested.promise;
   expect(removed).toEqual(['/models/huggingface.co/fixture/removed-model']);
   expect(q.held.size).toBe(0);

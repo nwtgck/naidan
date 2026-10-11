@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { contract, procedure } from './contract';
 import { NaidanRpcPeer } from './peer';
 import type { NaidanRpcDuplex, NaidanRpcTransport } from './transport';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const definition = contract({
   name: 'test.retirement',
@@ -212,11 +211,11 @@ it('aborts an outgoing duplex when it cannot acquire the framed stream writers',
     signal: new AbortController().signal,
   });
   const call = peer.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       locked.releaseLock(); await peer.retire();
     },
-  });
+  };
   await expect(call.result).rejects.toBeInstanceOf(TypeError); await expect(call.closed).rejects.toBeInstanceOf(TypeError);
   await peer.retire();
   expect(abort).toHaveBeenCalledOnce(); expect(readable.locked).toBe(false);
@@ -250,12 +249,12 @@ it('retains a failed late-duplex abort while still joining the other pending ope
   const abort = vi.fn(() => {
       throw failure;
     }), otherAbort = vi.fn();
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       for (const opening of openings) opening.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort: () => {} });
       await retirement.catch(() => {});
     },
-  });
+  };
   openings[0]!.resolve({ readable: new ReadableStream(), writable: new WritableStream(), closed: Promise.resolve(), abort });
   await vi.waitFor(() => expect(abort).toHaveBeenCalledOnce());
   expect(settled).toBe(false);
@@ -332,11 +331,11 @@ it('retains adopted duplex abort failures and waits for framed cleanup before re
   });
   const call = peer.client({ contract: definition }).run({ input: {}, on: {}, signal: undefined, timeoutMs: undefined });
   void call.result.catch(() => {}); void call.closed.catch(() => {});
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       ending.resolve(); await peer.retire().catch(() => {});
     },
-  });
+  };
   await written.promise; call.cancel({ reason: 'Caller cancelled an adopted call' });
   await expect(call.result).rejects.toMatchObject({ code: 'CANCELLED' });
   const retirement = peer.retire(); let settled = false;

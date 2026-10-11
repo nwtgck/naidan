@@ -5,7 +5,6 @@ import { createProviderReplayTestRuntime } from '@/features/transformers-js/repl
 import { z } from 'zod';
 import { createModelLoadAllocationRuntime, trapLargeModelAllocation, modelLoadAllocationEvidenceSchema } from '@/features/transformers-js/replay-models/support/model-load-allocation-runtime';
 import { getProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const modelId = 'HuggingFaceTB/SmolLM2-135M-Instruct';
 const resources = [{ path: 'onnx/model_q4f16.onnx', bytes: 117691126 }];
@@ -49,15 +48,15 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
     });
     const failure = new RangeError('Controlled allocation refusal before native allocation');
     const trap = trapLargeModelAllocation({ failure });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         try {
           await h.close();
         } finally {
           trap.restore();
         }
       },
-    });
+    };
     await expect(h.load()).rejects.toBe(failure);
     expect(trap.requests).toEqual([{ bytes: target.bytes, boundary: 'readResponse' }]);
     expect(targetPulls).toBe(0);
@@ -85,11 +84,11 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
       },
     });
     const download = vi.spyOn(h.service, 'downloadModel');
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         download.mockRestore(); await h.close();
       },
-    });
+    };
     await expect(h.service.loadDownloadedModel({ modelId })).rejects.toThrow('Downloaded model is incomplete; no locally complete namespace was planned');
     expect(h.observations.fs.files.size).toBe(0);
     expect(h.observations.fs.activity).toEqual([]);
@@ -132,13 +131,13 @@ describe('SmolLM2 135M model Load allocation boundaries', () => {
       expect((await h.registry()).filter(path => path.startsWith('onnx/')).sort()).toEqual(resources.map(item => item.path).sort());
       return h.load();
     })();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await loading.catch(() => undefined);
         await h.close();
       },
-    });
+    };
     await Promise.race([entered.promise, loading.then(() => {
       throw new Error('Load settled before the gated reader');
     })]);

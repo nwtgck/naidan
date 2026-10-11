@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import PrintView from './PrintView.vue';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe('PrintView component', () => {
   afterEach(() => {
@@ -21,12 +20,12 @@ describe('PrintView component', () => {
       },
     });
 
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount();
         appHost.remove();
       },
-    });
+    };
     const root = document.body.querySelector<HTMLElement>(':scope > .naidan-print-view-layer');
     expect(root).not.toBeNull();
     expect(root?.parentElement).toBe(document.body);
@@ -45,12 +44,12 @@ describe('PrintView component', () => {
 
     const wrapper = mount(PrintView, { attachTo: appHost });
 
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wrapper.unmount();
         appHost.remove();
       },
-    });
+    };
     const root = document.body.querySelector<HTMLElement>(':scope > .naidan-print-view-layer');
     expect(root).not.toBeNull();
     expect(root?.closest('.dark')).toBe(document.documentElement);

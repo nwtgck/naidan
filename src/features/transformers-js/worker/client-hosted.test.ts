@@ -4,7 +4,6 @@ import type { TransformersJsWorkerClient, InferenceMessage, WorkerToolDefinition
 import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import { toToolCallId } from '@/01-models/ids';
 import type { GenerationCaptureRequest } from './generation-capture-protocol';
-import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({
   release: vi.fn(),
@@ -115,8 +114,8 @@ describe('Transformers.js Worker client cleanup', () => {
     const firstTools = vi.fn();
     const second = vi.fn();
     const secondTools = vi.fn();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await client.dispose();
         for (const callback of callbacks) {
           callback.chunk[comlink.releaseProxy]();
@@ -125,7 +124,7 @@ describe('Transformers.js Worker client cleanup', () => {
         channel.port1.close();
         channel.port2.close();
       },
-    });
+    };
     await MockWorker.latest.publishReady();
     const firstCall = client.generateText({ messages: [], onChunk: first, onToolCalls: firstTools, params: undefined, tools: undefined });
     if (outcome === 'rejected') await expect(firstCall).rejects.toThrow('First generation failed');
@@ -174,15 +173,15 @@ describe('Transformers.js Worker client cleanup', () => {
     reasoning.text = 'edited'; reasoning.completeness = 'partial';
     content[0]!.text = 'edited'; functionCall.arguments = '{"edited":true}';
     params.stop.push('later'); tools[0]!.function.description = 'edited';
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await client.dispose();
         await pending.catch(() => undefined);
         for (const proxy of proxies) proxy[comlink.releaseProxy]();
         for (const proxy of toolProxies) proxy[comlink.releaseProxy]();
         channel.port1.close(); channel.port2.close();
       },
-    });
+    };
     await MockWorker.latest.publishReady();
     await pending;
     expect(received).toEqual([{ ...original, owner: 'accepted-owner' }]);
@@ -211,15 +210,15 @@ describe('Transformers.js Worker client cleanup', () => {
     const { createTransformersJsWorkerClient } = await import('./client-hosted');
     const client = createTransformersJsWorkerClient();
     const received: string[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await client.dispose();
         remoteCallback?.[comlink.releaseProxy]();
         channel.port1.close();
         channel.port2.close();
       },
-    });
+    };
     await MockWorker.latest.publishReady();
     const pending = client.generateText({
       messages: [],
@@ -278,11 +277,11 @@ describe('investigation-owned generation capture client', () => {
     mocks.wrap.mockReturnValue({ generateText, takeGenerationCapture });
     const { createTransformersJsWorkerClient } = await import('./client-hosted');
     const client = createTransformersJsWorkerClient();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await client.dispose();
       },
-    });
+    };
     await MockWorker.latest.publishReady();
     await generate({ client });
     expect(generateText).toHaveBeenCalledExactlyOnceWith(
@@ -298,11 +297,11 @@ describe('investigation-owned generation capture client', () => {
     const { createTransformersJsWorkerClient } = await import('./client-hosted');
     const client = createTransformersJsWorkerClient();
     const continuationOwner = 'f28f6802-947c-4b9d-bc99-223d8d469f4b';
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await client.dispose();
       },
-    });
+    };
     await MockWorker.latest.publishReady();
     await client.generateText({ messages: [], onChunk: () => undefined, onToolCalls: () => undefined, params: undefined, tools: undefined, continuationOwner });
     expect(generateText).toHaveBeenCalledExactlyOnceWith([], expect.any(Function), expect.any(Function), undefined, undefined, undefined, continuationOwner);
@@ -322,11 +321,11 @@ describe('investigation-owned generation capture client', () => {
       limits,
       getActiveRequest,
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await owner.client.dispose();
       },
-    });
+    };
     const first = generate({ client: owner.client });
     expect(getActiveRequest).toHaveBeenCalledOnce();
     expect(generateText).not.toHaveBeenCalled();
@@ -358,11 +357,11 @@ describe('investigation-owned generation capture client', () => {
       limits: { ...captureLimits, maxCalls: 1 },
       getActiveRequest,
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await owner.client.dispose();
       },
-    });
+    };
     await MockWorker.latest.publishReady();
     await generate({ client: owner.client });
     await generate({ client: owner.client });
@@ -390,11 +389,11 @@ describe('investigation-owned generation capture client', () => {
         throw new Error('Synthetic observer failure');
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await owner.client.dispose();
       },
-    });
+    };
     await MockWorker.latest.publishReady();
     await expect(generate({ client: owner.client })).rejects.toBe(original);
     expect(generateText.mock.calls[0]![5]).toBeUndefined();
@@ -411,11 +410,11 @@ describe('investigation-owned generation capture client', () => {
       limits: captureLimits,
       getActiveRequest: () => ({ runId: 'other-run', requestId: 'first-request' }),
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await owner.client.dispose();
       },
-    });
+    };
     await MockWorker.latest.publishReady();
     await expect(generate({ client: owner.client })).resolves.toBeUndefined();
     expect(generateText.mock.calls[0]![5]).toBeUndefined();
@@ -454,11 +453,11 @@ describe('investigation-owned generation capture client', () => {
       limits: captureLimits,
       getActiveRequest: () => undefined,
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await owner.client.dispose();
       },
-    });
+    };
     await MockWorker.latest.publishReady();
     await expect(owner.takeGenerationCapture()).rejects.toThrow(/^Invalid generation capture response$/u);
     expect(takeGenerationCapture).toHaveBeenCalledOnce();
@@ -475,11 +474,11 @@ describe('investigation-owned generation capture client', () => {
       limits: captureLimits,
       getActiveRequest: () => undefined,
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await owner.client.dispose();
       },
-    });
+    };
     await MockWorker.latest.publishReady();
     await expect(owner.client.loadDownloadedModel({ modelId: 'org/synthetic-model', revisionSelection: { kind: 'pinned', revision: 'main' }, progressCallback: () => undefined })).rejects.toBe(original);
     expect(owner.getCaptureLifetime().loadRequests).toEqual([{ requestedModelId: 'org/synthetic-model', requestedRevision: 'main', revisionSelection: { kind: 'pinned', revision: 'main' } }]);
@@ -509,11 +508,11 @@ describe('investigation-owned generation capture client', () => {
       limits: captureLimits,
       getActiveRequest: () => undefined,
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await owner.client.dispose();
       },
-    });
+    };
     await MockWorker.latest.publishReady();
     await expect(owner.takeGenerationCapture()).rejects.toThrow(/^Invalid generation capture response$/u);
   });
@@ -541,11 +540,11 @@ describe('investigation-owned generation capture client', () => {
       limits: captureLimits,
       getActiveRequest: () => undefined,
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await owner.client.dispose();
       },
-    });
+    };
     await MockWorker.latest.publishReady();
     await expect(owner.takeGenerationCapture()).rejects.toThrow(/^Invalid generation capture response$/u);
   });
@@ -560,12 +559,12 @@ describe('investigation-owned generation capture client', () => {
       limits: captureLimits,
       getActiveRequest,
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await owner.client.dispose();
         vi.stubGlobal('Worker', MockWorker);
       },
-    });
+    };
     await expect(generate({ client: owner.client })).rejects.toThrow('not available in this environment');
     await expect(owner.takeGenerationCapture()).rejects.toThrow('not available in this environment');
     expect(owner.getCaptureLifetime()).toEqual({
@@ -624,15 +623,15 @@ describe('structured generation through the real Comlink callback boundary', () 
     C.expose(api, channel.port1); mocks.wrap.mockReturnValue(C.wrap<typeof api>(channel.port2));
     const { createTransformersJsWorkerClient } = await import('./client-hosted'); const client = createTransformersJsWorkerClient();
     const first = vi.fn(); const second = vi.fn();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve(); await client.dispose();
         for (const callback of remoteCallbacks) {
           callback.event[C.releaseProxy](); callback.chunk[C.releaseProxy](); callback.calls[C.releaseProxy]();
         }
         channel.port1.close(); channel.port2.close();
       },
-    });
+    };
     const pending = client.generateMessage({ messages: input, params: undefined, tools: undefined, continuationOwner: 'scope', onEvent: first });
     input[0]!.content = 'mutated'; input[0]!.reasoning!.text = 'mutated';
     await MockWorker.latest.publishReady(); await entered.promise;
@@ -654,11 +653,11 @@ describe('structured generation through the real Comlink callback boundary', () 
     };
     C.expose(api, channel.port1); mocks.wrap.mockReturnValue(C.wrap<typeof api>(channel.port2));
     const { createTransformersJsWorkerClient } = await import('./client-hosted'); const client = createTransformersJsWorkerClient(); const sink = vi.fn();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await client.dispose(); for (const callback of retained) callback[C.releaseProxy](); channel.port1.close(); channel.port2.close();
       },
-    });
+    };
     await MockWorker.latest.publishReady();
     await expect(client.generateMessage({ messages: [], params: undefined, tools: undefined, continuationOwner: undefined, onEvent: sink })).rejects.toThrow();
     expect(sink).not.toHaveBeenCalled();
@@ -677,11 +676,11 @@ describe('structured generation through the real Comlink callback boundary', () 
       // that survives physical retirement in this controlled MessageChannel.
       async generateText(_messages: unknown, chunk: typeof retained[number], calls: typeof retained[number], _params: unknown, _tools: unknown, _capture: unknown, _owner: unknown, event: Callback) {
         retained.push(chunk, calls, event);
-        using _cleanupResource = createTestDisposable({
-          dispose: () => {
+        using _cleanupResource = {
+          [Symbol.dispose]() {
             remoteSettled.resolve();
           },
-        });
+        };
         await event({ event: { type: 'text_delta', index: 0, text: 'accepted' } });
         await event({ event: { type: 'text_delta', index: 0, text: 'retired' } });
       },
@@ -699,8 +698,8 @@ describe('structured generation through the real Comlink callback boundary', () 
       () => ({ type: 'resolved' as const }),
       (error: unknown) => ({ type: 'rejected' as const, error }),
     );
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await client.dispose().catch(() => undefined);
         await outcome;
@@ -709,7 +708,7 @@ describe('structured generation through the real Comlink callback boundary', () 
         channel.port1.close();
         channel.port2.close();
       },
-    });
+    };
     await MockWorker.latest.publishReady();
     await accepted.promise;
     switch (retirement) {

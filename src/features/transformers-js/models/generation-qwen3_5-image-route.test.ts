@@ -6,7 +6,6 @@ import { createProviderReplayTestImagePlatform } from '@/features/transformers-j
 import { createSyntheticModelBody } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
 import { downloadRuntimeAcceptanceIdentity } from '@/features/transformers-js/download-verification/evidence/runtime-acceptance-identity';
 import { createReplayImageAttachment, runProviderReplayTurn } from '@/features/transformers-js/replay-models/support/provider-replay-chat';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const modelId = 'onnx-community/Qwen3.5-2B-ONNX';
 const revision = 'b1fc7ca3afafcb8e4b13d29715a6b9ea5af1d1cb';
@@ -57,11 +56,11 @@ describe('Qwen image generation session ownership', () => {
         maxTotalStreamTokenBytes: 262144,
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await capture.client.dispose(); await harness.close();
       },
-    });
+    };
     await capture.client.loadDownloadedModel({ modelId, revisionSelection: { kind: 'pinned', revision: revision }, progressCallback: () => undefined });
     const result = await capture.takeGenerationCapture();
     if (result.status !== 'not-started' || result.loadObservation?.outcome.status !== 'accepted') throw new Error('Expected actual Load receipt before generation');
@@ -131,11 +130,11 @@ describe('Qwen image generation session ownership', () => {
         }
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     const turn = await runProviderReplayTurn({
       provider: harness.provider,
       tools: [],
@@ -173,11 +172,11 @@ describe('Qwen image generation session ownership', () => {
       return new runtime.Tensor('int64', BigInt64Array.from([...options.input_ids.data as BigInt64Array, 40n]), [1, options.input_ids.dims[1]! + 1]);
     });
     const harness = await createRouteRuntime({ paths: textArtifacts, generate });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     const onChange = vi.fn<NonNullable<Parameters<typeof runProviderReplayTurn>[0]['onChange']>>();
     const request = {
       model: modelId,
@@ -233,11 +232,11 @@ describe('Qwen image generation session ownership', () => {
       throw new Error('Generation must not start');
     });
     const harness = await createRouteRuntime({ paths: ['onnx/embed_tokens_q4f16.onnx'], generate });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await harness.close();
       },
-    });
+    };
     await expect(harness.service.loadDownloadedModel({ modelId })).rejects.toThrow('Downloaded model is incomplete');
     expect(harness.observations.ortCalls).toEqual([]);
     expect(generate).not.toHaveBeenCalled();
@@ -256,11 +255,11 @@ describe('Qwen image generation session ownership', () => {
       return original(...args);
     });
     const textLoad = vi.spyOn(harness.runtime.AutoModelForCausalLM, 'from_pretrained');
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         imageLoad.mockRestore(); textLoad.mockRestore(); await harness.close();
       },
-    });
+    };
     await expect(harness.service.loadDownloadedModel({ modelId })).rejects.toThrow();
     expect(imageLoad).toHaveBeenCalledTimes(1);
     expect(textLoad).not.toHaveBeenCalled();

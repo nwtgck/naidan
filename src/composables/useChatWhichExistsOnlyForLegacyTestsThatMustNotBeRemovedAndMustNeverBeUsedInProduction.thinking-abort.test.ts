@@ -8,7 +8,6 @@ import { createChatGenerationStream } from '@/logic/create-chat-generation-strea
 import { getMessageText } from '@/01-models/message-text';
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 // Mock useSettings
 vi.mock('./useSettings', () => ({
@@ -95,13 +94,13 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         return { type: 'interrupted', reason: 'aborted' };
       },
     }));
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         abortChat({ chatId: undefined });
         stopped.resolve();
         await vi.waitUntil(() => !streaming.value);
       },
-    });
+    };
     await sendMessage({ content: 'Hello' });
     await started.promise;
     const assistant = chat.root.items[0]!.replies.items[0]!;

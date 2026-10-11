@@ -4,7 +4,6 @@ import { connectRawDownload } from '@/features/transformers-js/replay-models/sup
 import { metadataSizeProbeTransport } from '@/features/transformers-js/replay-models/support/download-metadata-size-probe-transport';
 import { createSyntheticModelBody, readSyntheticModelBody } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
 import { digest } from '@/features/transformers-js/replay-models/support/model-runtime-input-helpers';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -31,11 +30,11 @@ describe('LFM2.5 2.6B Download replay', () => {
       const revision = '66826372fd4fa166f53be0371c9315745c07cace';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
       h.network.mockImplementation(metadataSizeProbeTransport({ originalFetch: h.network.getMockImplementation()! }));
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(h.fs.files.size).toBe(0);
       const { result } = await h.freshMetadata();
       expect(result.summary.status, JSON.stringify(result.summary)).toBe('prepared');
@@ -87,11 +86,11 @@ describe('LFM2.5 2.6B Download replay', () => {
         { path: 'onnx/model_q4f16.onnx_data_1', size: 469958656 },
       ];
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(digest({ bytes: h.archive.files.get('config.json')! })).toBe('3df9ebb278bf43eddd8a240086449f197976a1783d6c4d2bfe9eaec4920f4184');
       expect(digest({ bytes: h.archive.files.get('tokenizer.json')! })).toBe('695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41');
       for (const artifact of expectedArtifacts) {
@@ -161,11 +160,11 @@ describe('LFM2.5 2.6B Download replay', () => {
         'onnx/model_q4f16.onnx_data_1',
       ];
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map([['main', revision]]) });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       expect(digest({ bytes: h.archive.files.get('config.json')! })).toBe('3df9ebb278bf43eddd8a240086449f197976a1783d6c4d2bfe9eaec4920f4184');
       expect(digest({ bytes: h.archive.files.get('tokenizer.json')! })).toBe('695be7802a0e4b8a81048f0ff5ebb7fc811a0ba5a6be63dbb24deb5a81096f41');
       await expect(h.serviceDownload()).resolves.toMatchObject({ status: 'idle', error: undefined });
@@ -238,11 +237,11 @@ describe('LFM2.5 2.6B Download replay', () => {
       const revision = '66826372fd4fa166f53be0371c9315745c07cace';
       const missingPath = 'onnx/model_q4f16.onnx_data_1';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       const downloaded = await h.run();
       expect(downloaded.status, JSON.stringify(downloaded)).toBe('accepted');
       expect(h.sessions.toSorted((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);
@@ -285,11 +284,11 @@ describe('LFM2.5 2.6B Download replay', () => {
       const revision = '66826372fd4fa166f53be0371c9315745c07cace';
       const missingPath = 'tokenizer.json';
       const h = await connectRawDownload({ modelId, revision, remoteRefs: new Map() });
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           await h.close();
         },
-      });
+      };
       const downloaded = await h.run();
       expect(downloaded.status, JSON.stringify(downloaded)).toBe('accepted');
       expect(h.sessions.toSorted((left, right) => left.corePath.localeCompare(right.corePath))).toEqual(expectedSessions);

@@ -8,7 +8,6 @@ import { transportPair } from '@/features/naidan-rpc/test-transport';
 import { createInferenceBudget } from '@/features/naidan-rpc-integration/handlers/inference/budget';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey } from '@/01-models/ids';
 import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const registryAccess: NaidanRpcRegistryAccess = { providerGeneration: 1, registryId: undefined, persistence: 'durable' };
 
@@ -95,11 +94,11 @@ function fixture({ cleanupFailure, count, incoming, onAbort }: { cleanupFailure:
 
 it('finishes management teardown after the lower connection ends itself', async () => {
   const state = fixture({ cleanupFailure: undefined, count: 1 });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await state.cleanup();
     },
-  });
+  };
   await state.manager.setEnabled({ enabled: true }); await state.manager.reload();
   await state.manager.connect({ id: state.records[0]!.id });
   state.links[0]!.pair.close(); state.links[0]!.closed.resolve();
@@ -109,11 +108,11 @@ it('finishes management teardown after the lower connection ends itself', async 
 
 it('does not finish disconnect on RPC cleanup failure before the borrowed link is closed', async () => {
   const failure = new Error('Iterator cleanup failed'), state = fixture({ cleanupFailure: failure, count: 1 });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await state.cleanup();
     },
-  });
+  };
   await state.manager.setEnabled({ enabled: true }); await state.manager.reload();
   const id = state.records[0]!.id; await state.manager.connect({ id });
   const stopping = state.manager.disconnect({ id }); let settled = false;
@@ -133,11 +132,11 @@ it('does not finish disconnect on RPC cleanup failure before the borrowed link i
 it('master OFF joins every link and resource before returning a retained cleanup failure', async () => {
   const failure = new Error('First link cleanup failed'), state = fixture({ cleanupFailure: failure, count: 2 });
   const resourceEnd = Promise.withResolvers<void>(); state.retireResources.mockReturnValue(resourceEnd.promise);
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       resourceEnd.resolve(); await state.cleanup();
     },
-  });
+  };
   await state.manager.setEnabled({ enabled: true }); await state.manager.reload();
   for (const registration of state.records) await state.manager.connect({ id: registration.id });
   const stopping = state.manager.setEnabled({ enabled: false }); let settled = false;
@@ -160,11 +159,11 @@ it('master OFF joins every link and resource before returning a retained cleanup
 
 it('publishes one disconnect barrier before synchronous cancellation observers reenter', async () => {
   const state = fixture({ cleanupFailure: undefined, count: 1 });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await state.cleanup();
     },
-  });
+  };
   await state.manager.setEnabled({ enabled: true }); await state.manager.reload();
   const id = state.records[0]!.id; await state.manager.connect({ id });
   let reentered: Promise<void> | undefined;
@@ -178,11 +177,11 @@ it('publishes one disconnect barrier before synchronous cancellation observers r
 
 it('a synchronous link abort failure still waits for that link and remains a disconnect failure', async () => {
   const state = fixture({ cleanupFailure: undefined, count: 1 }), failure = new Error('Link abort failed');
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await state.cleanup();
     },
-  });
+  };
   await state.manager.setEnabled({ enabled: true }); await state.manager.reload();
   const id = state.records[0]!.id; await state.manager.connect({ id });
   state.links[0]!.abort.mockImplementation(() => {
@@ -207,11 +206,11 @@ it('a synchronous link abort failure still waits for that link and remains a dis
 it('publishes one master OFF barrier before synchronous link abort observers reenter', async () => {
   const state = fixture({ cleanupFailure: undefined, count: 2 });
   const resourceEnd = Promise.withResolvers<void>(); state.retireResources.mockReturnValue(resourceEnd.promise);
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       resourceEnd.resolve(); await state.cleanup();
     },
-  });
+  };
   await state.manager.setEnabled({ enabled: true }); await state.manager.reload();
   for (const registration of state.records) await state.manager.connect({ id: registration.id });
   let reentered: Promise<void> | undefined;
@@ -229,11 +228,11 @@ it('publishes one master OFF barrier before synchronous link abort observers ree
 it('a throwing link abort does not skip the other connection or resources on master OFF', async () => {
   const state = fixture({ cleanupFailure: undefined, count: 2 }), failure = new Error('Link abort failed');
   const resourceEnd = Promise.withResolvers<void>(); state.retireResources.mockReturnValue(resourceEnd.promise);
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       resourceEnd.resolve(); await state.cleanup();
     },
-  });
+  };
   await state.manager.setEnabled({ enabled: true }); await state.manager.reload();
   for (const registration of state.records) await state.manager.connect({ id: registration.id });
   state.links[0]!.abort.mockImplementation(() => {
@@ -279,11 +278,11 @@ it('RPC logical end starts manager transport abort before held raw cleanup can r
       return releaseAbort.promise;
     },
   });
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       releaseAbort.resolve(); await state.cleanup();
     },
-  });
+  };
   await state.manager.setEnabled({ enabled: true }); await state.manager.reload();
   const id = state.records[0]!.id; await state.manager.connect({ id });
   incoming.resolve({ readable, writable, closed: new Promise(() => {}), abort() {} });

@@ -18,7 +18,6 @@ import type { WorkerServerApi } from '@/utils/worker-transport';
 import type {
   ITransformersJsWorker,
 } from "@/features/transformers-js/types";
-import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({
   releaseProxy: Symbol("releaseProxy"),
@@ -541,14 +540,14 @@ describe("createModelSupportInvestigationWorkerClient", () => {
         return client.runPartialInvestigation({ modelId: target, configuration: configurationForPreset({ preset: 'download-focused' }), replayMetadataBudgetBytes: 1024, onEvent: vi.fn(), onCheckpoint: checkpoints });
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         for (const client of clients) await client.dispose();
         lateResult.resolve({ summary: firstSummary, files: [] });
         await flow;
         vi.useRealTimers();
       },
-    });
+    };
     await firstStarted.promise;
     await vi.advanceTimersByTimeAsync(FRESH_METADATA_TIMEOUT_MS);
     const results = await flow;
@@ -603,13 +602,13 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const client = createModelSupportInvestigationWorkerClient();
     const outcome = client.runPartialInvestigation({ modelId: 'org/model', configuration: configurationForPreset({ preset: 'download-focused' }), onEvent: vi.fn(), onCheckpoint })
       .then(() => undefined, (error: unknown) => error);
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         held.resolve({ summary: completed, files: [] });
         await client.dispose();
         await outcome;
       },
-    });
+    };
     await started.promise;
     await client.interrupt();
     expect(await outcome).toMatchObject({ name: 'ModelSupportInvestigationUserInterruptedError' });
@@ -673,11 +672,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
   it("terminates planning when a heavy planning boundary never completes", async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     const planningRemote = remote({
       runPartialInvestigation: vi.fn((_modelId, onEvent) => {
         onEvent({
@@ -863,11 +862,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
   it('keeps replay sidecars through completed checkpoints and bounds a hung planning release', async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     const blob = new Blob(['{}']);
     const sidecars = [{ path: 'config.json', blob }];
     const planning = planningRun();
@@ -1371,11 +1370,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       productionLaneTimeoutMs: undefined,
     });
     const outcome = operation.then(run => ({ run, error: undefined }), error => ({ run: undefined, error }));
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await client.dispose(); await outcome;
       },
-    });
+    };
     await vi.waitFor(() => expect(mocks.workerInstances).toHaveLength(2));
     expect(production.loadDownloadedModel).not.toHaveBeenCalled();
     expect(production.generateText).not.toHaveBeenCalled();
@@ -1426,11 +1425,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       onCheckpoint: vi.fn(),
       productionLaneTimeoutMs: 10,
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await client.dispose(); vi.useRealTimers();
       },
-    });
+    };
     await vi.waitFor(() => expect(mocks.workerInstances).toHaveLength(2));
     await vi.advanceTimersByTimeAsync(10);
     const result = await operation;
@@ -1457,11 +1456,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
       onCheckpoint: vi.fn(),
       productionLaneTimeoutMs: 10,
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await client.dispose(); vi.useRealTimers();
       },
-    });
+    };
     await entered.promise;
     await vi.advanceTimersByTimeAsync(10);
     const result = await operation;
@@ -1587,11 +1586,11 @@ describe("createModelSupportInvestigationWorkerClient", () => {
 
   it("terminates a timed-out candidate Worker and continues with the next eligible candidate", async () => {
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.useRealTimers();
       },
-    });
+    };
     const planningRemote = remote({
       runPartialInvestigation: vi.fn(async () => planningRun()),
     });
@@ -1972,13 +1971,13 @@ describe("createModelSupportInvestigationWorkerClient", () => {
     const { createModelSupportInvestigationWorkerClient } = await import('./client-hosted');
     const client = createModelSupportInvestigationWorkerClient();
     const outcome = client.runPartialInvestigation({ modelId: 'org/model', configuration: modelLoadOnlyConfiguration(), onEvent, onCheckpoint }).catch(error => error);
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         // Also close the pre-fix failing test's deliberately held operation.
         await client.interrupt();
         await outcome;
       },
-    });
+    };
     await vi.waitFor(() => expect(mocks.completeRuntimeEvidence).toHaveBeenCalledOnce());
     await client.dispose();
     expect(runtimeSignal?.aborted).toBe(true);

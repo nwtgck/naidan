@@ -18,7 +18,6 @@ import { parseProviderReplayTextEvidence, replayRecordedText } from '@/features/
 import { createProviderReplayTestRuntime, type ProviderReplayGenerate } from '@/features/transformers-js/replay-models/support/provider-replay-test-runtime';
 import { createSyntheticModelBody, inspectSyntheticOrtSession } from '@/features/transformers-js/replay-models/support/download-synthetic-session-oracle';
 import { captureProviderChat, type ProviderChatCapture, type CapturedChatRequest } from '@/features/transformers-js/replay-models/support/capture-provider-chat';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const evidence = parseProviderReplayTextEvidence({ value: evidenceJson });
 const continuity = parseProviderReplayTextEvidence({ value: continuityJson });
@@ -133,11 +132,11 @@ describe('SmolLM2 1.7B Provider / basic', () => {
     });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
       },
-    });
+    };
     capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -244,11 +243,11 @@ describe('SmolLM2 1.7B Provider / basic', () => {
     });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
       },
-    });
+    };
     capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -297,11 +296,11 @@ Sure, here's a sample message for a template:
   it('basic: delivers the recorded first-turn text through structured parts before settlement', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
       },
-    });
+    };
     // first-turn: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
@@ -342,11 +341,11 @@ describe('SmolLM2 1.7B Provider / system', () => {
   it('system: preserves instructions and delivers the recorded text through structured parts', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["system-user"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
       },
-    });
+    };
     // system-user: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
@@ -403,11 +402,11 @@ describe('SmolLM2 1.7B Provider / history', () => {
     });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
       },
-    });
+    };
     capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -492,11 +491,11 @@ describe('SmolLM2 1.7B Provider / history', () => {
     });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
       },
-    });
+    };
     capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -595,11 +594,11 @@ describe('SmolLM2 1.7B Provider / history', () => {
     });
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
       },
-    });
+    };
     capture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -659,11 +658,11 @@ I'm excited to help you with your project or idea.`]);
   it('history: preserves supplied history and delivers the recorded text through structured parts', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["supplied-history"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
       },
-    });
+    };
     // supplied-history: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
@@ -745,11 +744,11 @@ A separate synthetic conversation.<|im_end|>
       },
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
       },
-    });
+    };
     const firstCapture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -844,11 +843,11 @@ A separate synthetic conversation.<|im_end|>
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn", "continuity", "independent-next-input"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     const captures: ProviderChatCapture[] = [];
     let firstResponse = '';
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
       },
-    });
+    };
     // first-turn: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
@@ -947,11 +946,11 @@ describe('SmolLM2 1.7B Provider / reasoning', () => {
   it('reasoning: preserves the recorded none-effort request and structured text', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-none"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
       },
-    });
+    };
     // reasoning-none: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "none" } };
@@ -987,11 +986,11 @@ describe('SmolLM2 1.7B Provider / reasoning', () => {
   it('reasoning: preserves the recorded low-effort request and structured text', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-low"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
       },
-    });
+    };
     // reasoning-low: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "low" } };
@@ -1027,11 +1026,11 @@ describe('SmolLM2 1.7B Provider / reasoning', () => {
   it('reasoning: preserves the recorded medium-effort request and structured text', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-medium"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
       },
-    });
+    };
     // reasoning-medium: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "medium" } };
@@ -1067,11 +1066,11 @@ describe('SmolLM2 1.7B Provider / reasoning', () => {
   it('reasoning: preserves the recorded high-effort request and structured text', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["reasoning-high"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
       },
-    });
+    };
     // reasoning-high: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: "high" } };
@@ -1144,12 +1143,12 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     const templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         templateSpy.mockRestore();
         await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
       },
-    });
+    };
     const request: CapturedChatRequest = {
       model: toolInputEvidence.modelId,
       messages: [
@@ -1311,12 +1310,12 @@ describe('SmolLM2 1.7B Provider / tools', () => {
     const templateSpy = vi.spyOn(harness.runtime.PreTrainedTokenizer.prototype, 'apply_chat_template');
     // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         templateSpy.mockRestore();
         await closeProviderReplayCaptures({ captures: [capture], close: () => harness.close() });
       },
-    });
+    };
     const request: CapturedChatRequest = {
       model: toolInputEvidence.modelId,
       messages: [
@@ -1467,8 +1466,8 @@ describe('SmolLM2 1.7B Provider / tools', () => {
         return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
       },
     }];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         const beforeDisposal = structuredClone(turn);
         await replay.close();
         // Compare the same clone representation on both sides: Comlink Error
@@ -1477,7 +1476,7 @@ describe('SmolLM2 1.7B Provider / tools', () => {
         expect(executions).toEqual([]);
         expect(lateExecutions).toEqual([]);
       },
-    });
+    };
     replay.beginNativeRequest({ caseId: "natural-tool-minimal", parameters });
     const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
       model: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
@@ -1529,8 +1528,8 @@ describe('SmolLM2 1.7B Provider / tools', () => {
         return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
       },
     }];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         const beforeDisposal = structuredClone(turn);
         await replay.close();
         // Compare the same clone representation on both sides: Comlink Error
@@ -1539,7 +1538,7 @@ describe('SmolLM2 1.7B Provider / tools', () => {
         expect(executions).toEqual([]);
         expect(lateExecutions).toEqual([]);
       },
-    });
+    };
     replay.beginNativeRequest({ caseId: "natural-tool-representative", parameters });
     const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
       model: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
@@ -1591,8 +1590,8 @@ describe('SmolLM2 1.7B Provider / tools', () => {
         return { status: 'success', content: '{"temperatureC":20,"condition":"clear"}' };
       },
     }];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         const beforeDisposal = structuredClone(turn);
         await replay.close();
         // Compare the same clone representation on both sides: Comlink Error
@@ -1601,7 +1600,7 @@ describe('SmolLM2 1.7B Provider / tools', () => {
         expect(executions).toEqual([]);
         expect(lateExecutions).toEqual([]);
       },
-    });
+    };
     replay.beginNativeRequest({ caseId: "structured-tool-history", parameters });
     const request: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
       model: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
@@ -1648,11 +1647,11 @@ describe('SmolLM2 1.7B Provider / images', () => {
   it('images: rejects the recorded image-bearing input before text-only native generation', async () => {
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["image"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     let capture: ProviderChatCapture | undefined;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: [capture], close: () => replay.close() });
       },
-    });
+    };
     // image: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };
@@ -1713,14 +1712,14 @@ describe('SmolLM2 1.7B Provider / sequences', () => {
       execute,
     }];
     const observedTurns: Awaited<ReturnType<typeof runProviderReplayTurn>>[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         const beforeDisposal = structuredClone(observedTurns);
         await replay.close();
         expect(structuredClone(observedTurns)).toEqual(beforeDisposal);
         expect(execute).not.toHaveBeenCalled();
       },
-    });
+    };
     const toolRequest: Omit<CapturedChatRequest, 'tools' | 'signal'> = {
       model: 'HuggingFaceTB/SmolLM2-1.7B-Instruct',
       parameters: { ...parameters, maxCompletionTokens: 128 },
@@ -1877,11 +1876,11 @@ Sure, here's a sample message for a template:
       },
     });
     const captures: ProviderChatCapture[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => harness.close() });
       },
-    });
+    };
     const firstCapture = captureProviderChat({
       provider: harness.provider,
       request: {
@@ -1975,11 +1974,11 @@ Sure, here's a sample message for a template:
     const replay = await createProviderRequestReplay({ catalog: providerReplayCatalog, caseIds: ["first-turn", "continuity"], artifactPaths: ["onnx/model_q4f16.onnx"], imagePlatform: undefined });
     const captures: ProviderChatCapture[] = [];
     let firstResponse = '';
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await closeProviderReplayCaptures({ captures: captures, close: () => replay.close() });
       },
-    });
+    };
     // first-turn: public inputs and settled expectations are owned by this model.
     {
       const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = { temperature: 0, topP: 1, maxCompletionTokens: 16, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } };

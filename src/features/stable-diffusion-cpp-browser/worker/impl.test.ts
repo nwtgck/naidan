@@ -4,7 +4,6 @@ import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fix
 import type { CoreFactory } from './core-types';
 import type { createImageGenerationSession } from './session';
 import type { PreviewControl } from '@/features/stable-diffusion-cpp-browser/types';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 const mocks = vi.hoisted(() => ({ inspect: vi.fn(), load: vi.fn(), generate: vi.fn<ReturnType<typeof createImageGenerationSession>['generate']>(), createSession: vi.fn(), updatePreview: vi.fn(), close: vi.fn(), cancel: vi.fn(), encode: vi.fn() }));
 vi.mock('./core-loader', () => ({ loadCoreFactory: mocks.load }));
 vi.mock('./session', () => ({ createImageGenerationSession: mocks.createSession }));
@@ -301,11 +300,11 @@ for (const failure of ['device-lost', 'uncaptured', 'error-scope', 'abort'] as c
     });
     const diagnostic = vi.fn(), worker = createImageWorker({ reportDiagnostic: diagnostic });
     const task = worker.generate(request, vi.fn());
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         clock.mockRestore(); native.reject(new Error('test cleanup')); await task.catch(() => undefined);
       },
-    });
+    };
     await entered.promise; time = 5000;
     switch (failure) {
     case 'device-lost': lost.resolve({ reason: 'unknown', message: 'test device lost' }); break;

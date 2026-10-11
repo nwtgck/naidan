@@ -8,7 +8,6 @@ import ImageModelLibrary from '@/features/stable-diffusion-cpp-browser/component
 import { ggufFile } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import type { ModelInventory } from '@/features/stable-diffusion-cpp-browser/logic/model-candidates';
 import { benchmarkManifest } from '@/features/stable-diffusion-cpp-browser/benchmark/archive';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 vi.mock('@/features/stable-diffusion-cpp-browser/inventory-worker/client', () => ({ inspectImageInventory: (...args: unknown[]) => mocks.inspect(...args) }));
 vi.mock('@/features/stable-diffusion-cpp-browser/capabilities', () => ({ initialProfile: () => 'webgpu-wasm32-asyncify', supportsJspi: () => false, supportsMemory64: () => false }));
 const mocks = vi.hoisted(() => ({ create: vi.fn(), generate: vi.fn(), dispose: vi.fn(), release: vi.fn(), cancel: vi.fn(), inspect: vi.fn(), updatePreview: vi.fn() }));
@@ -179,11 +178,11 @@ it('keeps copy/save diagnostics usable while a native request is indefinitely pe
       finish = resolve;
     });
   });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard); else Reflect.deleteProperty(navigator, 'clipboard');
     },
-  });
+  };
   wrapper = mount(ImageGenerationLab); await flushPromises();
   await wrapper.get('[data-testid="image-debug-mode"]').setValue(true);
   wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'private prompt';

@@ -4,7 +4,6 @@ import { promiseAllKeyed } from '@/utils/promise';
 import { createNaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
 import { establishNaidanPipingKeys } from '@/features/naidan-piping-duplex/key-context';
 import { keyPair, mailbox, useOfflineScope } from '@/features/naidan-piping-duplex/index.test-support';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 useOfflineScope();
 
@@ -50,11 +49,11 @@ async function rejectedHandshake({ failure }: { failure: 'pin' | 'binding' | 'fi
   // The failing side wakes the other; no test waits for an unrelated timeout to pass.
   void left.catch(error => stop.abort(error)); void right.catch(error => stop.abort(error));
   const timer = setTimeout(() => stop.abort(new Error('Test key exchange did not terminate')), 5000);
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       clearTimeout(timer); stop.abort();
     },
-  });
+  };
   const results = await promiseAllKeyed({ left: Promise.allSettled([left]), right: Promise.allSettled([right]) });
   const l = results.left[0]!, r = results.right[0]!;
   if (l.status === 'fulfilled') l.value.dispose();

@@ -20,7 +20,6 @@ import { readSystemJsLicenseDependency } from './file-protocol-standalone/system
 import { boundaryModuleId, packModuleId } from './boundary-strings/virtual-modules';
 import { BOUNDARY_STRING_LOCALES } from './boundary-strings/message-catalog';
 import { createZipPackages } from './zip-packages';
-import { createTestDisposable } from '../src/utils/resource-cleanup.test-support';
 
 const repo = process.cwd();
 const coreId = path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/browser/core.mjs');
@@ -117,11 +116,11 @@ int unrelated;`;
 
   it.each([false, 'oxc'] as const)('validates and packages the real two-Worker graph with minify=%s in every locale ZIP', async minify => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-llama-package-'));
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         rmSync(root, { recursive: true, force: true });
       },
-    });
+    };
     const outputDirectory = path.join(root, 'dist');
     writeFileSync(path.join(root, 'index.html'), '<!doctype html><html><head><meta charset="UTF-8"></head><body><script type="module" src="./main.ts"></script></body></html>');
     // A seven-message synthetic boundary exercises the real locale packager,

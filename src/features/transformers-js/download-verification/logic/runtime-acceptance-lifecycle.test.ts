@@ -8,7 +8,6 @@ import type { TransformersJsProgressCallback } from '@/features/transformers-js/
 import { withCacheAcceptanceDeadline } from '@/features/transformers-js/model-support-investigation/logic/cache-acceptance-deadline';
 import { runInvestigationTargetsSequentially } from '@/features/transformers-js/model-support-investigation/logic/run-investigation-targets-sequentially';
 import { createInitialInvestigationCheckpoint } from '@/features/transformers-js/model-support-investigation/logic/investigation-recovery';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({
   verify: vi.fn(),
@@ -101,11 +100,11 @@ describe('MSI cache acceptance cancellation through the real orchestration chain
     mocks.dispose.mockResolvedValue(undefined);
     mocks.create.mockReturnValue({ verifyDownloadedModelRevision: mocks.verify, dispose: mocks.dispose });
     const visited: string[] = [];
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         pending.resolve({ device: 'webgpu', dtype: 'q4' });
       },
-    });
+    };
     const executions = await runInvestigationTargetsSequentially({
       targets: ['fixture/lifecycle', 'fixture/next'],
       shouldInterrupt: () => false,
@@ -170,13 +169,13 @@ describe('MSI cache acceptance cancellation through the real orchestration chain
       }),
     }).then(value => ({ status: 'resolved' as const, value }), error => ({ status: 'rejected' as const, error }));
     const reason = new Error('User stopped this model');
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         // Drain the deliberately held mock even when the pre-fix assertion fails.
         pending.resolve({ device: 'webgpu', dtype: 'q4f16' });
         await outcome;
       },
-    });
+    };
     await vi.waitFor(() => expect(mocks.verify).toHaveBeenCalledTimes(1));
     if (cancellation === 'user') controller.abort(reason);
     await vi.waitFor(() => expect(mocks.dispose).toHaveBeenCalledTimes(1));

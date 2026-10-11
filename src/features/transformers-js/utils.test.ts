@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { REJECTED_RESOURCE_RESPONSE_CLEANUP_TIMEOUT_MS, writeIncompleteOpfsFile, writeToOpfs, writeToOpfsWithStaging } from './utils';
 import { withOpfsFileLease } from './runtime/opfs-access';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 class MemoryFileHandle {
   readonly kind = 'file' as const;
@@ -175,12 +174,12 @@ describe('OPFS writes', () => {
       },
     }));
     vi.useFakeTimers();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         never.resolve();
         vi.useRealTimers();
       },
-    });
+    };
     const operation = withOpfsFileLease({
       path,
       mode: 'exclusive',
@@ -223,24 +222,24 @@ describe('OPFS writes', () => {
       signal: undefined,
       run: async ({ lease }) => {
         leaseActive = true;
-        using _cleanupResource = createTestDisposable({
-          dispose: () => {
+        using _cleanupResource = {
+          [Symbol.dispose]() {
             leaseActive = false;
           },
-        });
+        };
         return await writeIncompleteOpfsFile({ path, response, lease });
       },
     });
     const outcome = operation.catch(error => error).finally(() => {
       settled = true;
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         releaseAbort.resolve();
         reader.releaseLock();
         await outcome;
       },
-    });
+    };
     await abortEntered.promise;
     expect(settled).toBe(false);
     expect(leaseActive).toBe(true);
@@ -322,12 +321,12 @@ describe('OPFS writes', () => {
   it('bounds only rejected-response cleanup when cancellation never settles without publishing a file', async () => {
     vi.useFakeTimers();
     const cancellation = Promise.withResolvers<void>();
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         cancellation.resolve();
         vi.useRealTimers();
       },
-    });
+    };
     const cancel = vi.fn(() => cancellation.promise);
     const response = new Response(new ReadableStream({ cancel }, { highWaterMark: 0 }), { status: 206 });
     let settled = false;

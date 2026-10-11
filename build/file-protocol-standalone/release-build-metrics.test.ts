@@ -5,7 +5,6 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { collectStandaloneWorkerBudgetFailures, createStandaloneWorkerMetricsPlan, measureStandaloneWorkerMetricsFromDisk } from './release-build-metrics.js';
-import { createAsyncTestDisposable } from '../../src/utils/resource-cleanup.test-support';
 
 const files = [
   'assets/ui.js',
@@ -84,11 +83,11 @@ describe('createStandaloneWorkerMetricsPlan', () => {
       'file-protocol-standalone/system.min.js': 7,
       'assets/ui.css': 3,
     } as const;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await fs.rm(root, { recursive: true, force: true });
       },
-    });
+    };
     await Promise.all(Object.entries(sizedFiles).map(async ([fileName, bytes]) => {
       const absolute = path.join(root, fileName);
       await fs.mkdir(path.dirname(absolute), { recursive: true });

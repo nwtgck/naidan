@@ -5,7 +5,6 @@ import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import { huggingFaceModelId } from '@/01-models/llama-cpp-browser-model-launch';
 import { idToRaw, toChatGroupId, toChatId } from '@/01-models/ids';
 import { LOCK_METADATA, SYNC_LOCK_KEY, LOCK_CHAT_CONTENT_PREFIX } from '@/constants';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Storage tests do not exercise application string loading.
 vi.mock('@/strings', () => ({ ensureStrings: new Proxy({}, { get: () => async () => 'test storage error' }) }));
 // eslint-disable-next-line local-rules/enforce-dependency-directions -- Replace application notifications only; storage and lock implementations are real.
@@ -23,11 +22,11 @@ function simulatedWebLocks() {
       const release = Promise.withResolvers<void>();
       const tail = previous.then(() => release.promise); lanes.set(name, tail);
       await previous;
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           release.resolve(); if (lanes.get(name) === tail) lanes.delete(name);
         },
-      });
+      };
       return await callback();
     },
   };

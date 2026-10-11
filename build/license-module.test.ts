@@ -13,7 +13,6 @@ import {
   createLicenseModulePlugins,
   NAIDAN_LICENSE_MODULE_ID,
 } from './license-module';
-import { createAsyncTestDisposable } from '../src/utils/resource-cleanup.test-support';
 
 const require = createRequire(import.meta.url);
 const fixtureRoots: string[] = [];
@@ -179,11 +178,11 @@ describe('createLicenseModulePlugins', () => {
         getAdditionalDependencies: () => [createSyntheticDependency({ version: 'dev-additional' })],
       })],
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await server.close();
       },
-    });
+    };
     const loaded = await server.ssrLoadModule(NAIDAN_LICENSE_MODULE_ID) as {
       default: readonly BuildLicenseDependency[],
     };

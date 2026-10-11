@@ -2,7 +2,6 @@
 import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 import { getProductionTransformersArtifact, importProductionTransformersArtifact } from '@/features/transformers-js/runtime/fixtures/production-transformers-artifact';
 import { canReuseQwenSequenceCache, retainQwenSequenceCache, QWEN_SEQUENCE_CACHE_MAX_TOKENS } from './qwen3_5-cache';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 let runtime: typeof import('@huggingface/transformers');
 const fetch = vi.fn(() => {
@@ -14,11 +13,11 @@ beforeAll(async () => {
   const artifact = await getProductionTransformersArtifact();
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'process')!;
   Object.defineProperty(globalThis, 'process', { configurable: true, value: { ...process, release: { ...process.release, name: 'browser-test' } } });
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       Object.defineProperty(globalThis, 'process', descriptor);
     },
-  });
+  };
   runtime = await importProductionTransformersArtifact({ moduleUrl: `${artifact.moduleUrl}?qwen-cache=native-tensor` }) as typeof runtime;
 }, 30_000);
 

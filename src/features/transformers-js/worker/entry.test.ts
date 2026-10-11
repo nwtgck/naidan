@@ -17,7 +17,6 @@ import { toToolCallId } from '@/01-models/ids';
 import type { GenerationStrategy } from '@/features/transformers-js/generation-strategies';
 import { applyTransformersJsFixes } from '../../../../build/transformers-js-fixes/transform';
 import { bundledJinjaTemplate } from '../../../../build/transformers-js-fixes/jinja-template-fixture';
-import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const captureRequest: GenerationCaptureRequest = {
   context: { runId: 'synthetic-run', workerEpoch: 1, requestId: 'first', generationCallId: 1 },
@@ -561,12 +560,12 @@ describe('transformers-js.worker', () => {
       returned();
       return { dispose };
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await writer;
       },
-    });
+    };
     await entered.promise;
     await expect(worker.loadDownloadedModel('org/repo', { kind: 'pinned', revision: undefined }, vi.fn())).rejects.toMatchObject({ name: 'OpfsResourceBusyError' });
     expect(returned).toHaveBeenCalledOnce();
@@ -595,11 +594,11 @@ describe('transformers-js.worker', () => {
         throw new Error('The cache-miss boundary unexpectedly returned');
       });
 
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.mocked(AutoModelForCausalLM.from_pretrained).mockReset();
       },
-    });
+    };
     const failure = await workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: revision }, vi.fn())
       .then(() => undefined, (error: unknown) => error);
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenCalledTimes(1);
@@ -716,11 +715,11 @@ describe('transformers-js.worker', () => {
       await env.customCache.match(requiredUrl).catch(() => undefined);
       return apparentModel;
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.mocked(AutoModelForCausalLM.from_pretrained).mockReset();
       },
-    });
+    };
     await expect(workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: revision }, vi.fn())).rejects.toMatchObject({
       name: 'RequiredDownloadedModelResourceError',
       failure: 'missing',
@@ -767,11 +766,11 @@ describe('transformers-js.worker', () => {
       return apparentModel;
     });
     vi.mocked(AutoTokenizer.from_pretrained).mockResolvedValue({} as Awaited<ReturnType<typeof AutoTokenizer.from_pretrained>>);
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         vi.mocked(AutoModelForCausalLM.from_pretrained).mockReset();
       },
-    });
+    };
     await expect(workerObj.loadDownloadedModel('org/repo', { kind: 'pinned', revision: revision }, vi.fn())).rejects.toMatchObject({
       name: 'RequiredDownloadedModelResourceError',
       failure: 'io',
@@ -2115,11 +2114,11 @@ describe('transformers-js.worker', () => {
       behavior: { fullGet: 'synthetic', syntheticFullGetBytes: 8192 },
     });
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await server.close();
       },
-    });
+    };
     const fixtureFetch = vi.fn(rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl }));
     vi.stubGlobal('fetch', fixtureFetch);
     global.self = {
@@ -2242,11 +2241,11 @@ describe('transformers-js.worker', () => {
       },
     });
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await Promise.all([runtimeServer.close(), modelServer.close()]);
       },
-    });
+    };
     const runtimeFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: runtimeServer.baseUrl });
     const modelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: modelServer.baseUrl });
     const fixtureFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -2332,11 +2331,11 @@ describe('transformers-js.worker', () => {
     });
 
     let modelAttempt: 'failed' | 'resumed' = 'failed';
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await Promise.all([runtimeServer.close(), failedModelServer.close(), resumedModelServer.close()]);
       },
-    });
+    };
     const runtimeFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: runtimeServer.baseUrl });
     const failedModelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: failedModelServer.baseUrl });
     const resumedModelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: resumedModelServer.baseUrl });
@@ -2459,11 +2458,11 @@ describe('transformers-js.worker', () => {
     });
 
     let shardAttempt: 'failed' | 'resumed' = 'failed';
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await Promise.all([runtimeServer.close(), modelServer.close(), failedShardServer.close()]);
       },
-    });
+    };
     const runtimeFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: runtimeServer.baseUrl });
     const modelFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: modelServer.baseUrl });
     const failedShardFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: failedShardServer.baseUrl });
@@ -2576,11 +2575,11 @@ describe('transformers-js.worker', () => {
       behavior: { fullGet: 'synthetic', syntheticFullGetBytes: 8192 },
     });
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await server.close();
       },
-    });
+    };
     const fixtureFetch = vi.fn(rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl }));
     vi.stubGlobal('fetch', fixtureFetch);
     global.self = {
@@ -2811,11 +2810,11 @@ describe('transformers-js.worker', () => {
       behavior: { fullGet: 'synthetic', syntheticFullGetBytes: 8192 },
     });
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await server.close();
       },
-    });
+    };
     const fixtureFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl });
     vi.stubGlobal('fetch', fixtureFetch);
     global.self = {
@@ -2866,11 +2865,11 @@ describe('transformers-js.worker', () => {
       },
     });
 
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await server.close();
       },
-    });
+    };
     const fixtureFetch = rewriteHuggingFaceFetchToFixtureServer({ baseUrl: server.baseUrl });
     vi.stubGlobal('fetch', fixtureFetch);
     global.self = {
@@ -3149,14 +3148,14 @@ describe('transformers-js.worker', () => {
       tokensToEmit = ['Synthetic output.'];
       const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
       const pending = worker.generateText([], callback, vi.fn(), undefined, undefined);
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           release.resolve();
           await pending;
           channel.port1.close();
           channel.port2.close();
         },
-      });
+      };
       expect(await Promise.race([
         pending.then(() => 'settled'),
         entered.promise.then(() => 'callback-entered'),
@@ -3191,14 +3190,14 @@ describe('transformers-js.worker', () => {
       const worker = workerObj as WorkerServerApi<ITransformersJsWorker>;
       const pending = worker.generateText([], callback, vi.fn(), undefined, undefined, captureRequest);
       const rejected = expect(pending).rejects.toThrow('Chunk recipient rejected delivery');
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           finishInference.resolve();
           await rejected;
           channel.port1.close();
           channel.port2.close();
         },
-      });
+      };
       await interrupted.promise;
       expect(received).toEqual(['first']);
       finishInference.resolve();
@@ -3770,11 +3769,11 @@ Use shell tools.<|im_end|>
         },
       });
       const chunk = vi.fn(); const calls = vi.fn(); let settled = false;
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           release.resolve(); select.mockRestore();
         },
-      });
+      };
       const pending = workerObj.generateText([], chunk, calls, undefined, undefined, undefined, undefined,
         async ({ event }: { event: import('@/features/transformers-js/generation-events').InferenceGenerationEvent }) => {
           received.push(event); if (received.length === 1) {
@@ -3801,11 +3800,11 @@ Use shell tools.<|im_end|>
       const sink = vi.fn(async () => {
         throw fault;
       });
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           select.mockRestore();
         },
-      });
+      };
       await expect(workerObj.generateText([], vi.fn(), vi.fn(), undefined, undefined, undefined, undefined, sink)).rejects.toBe(fault);
       expect(sink).toHaveBeenCalledOnce(); expect(mockInterruptFn).toHaveBeenCalled();
     });
@@ -3949,11 +3948,11 @@ Use shell tools.<|im_end|>
         emitted.resolve(); return callback.promise;
       }, vi.fn(), undefined, undefined);
       const olderOutcome = older.catch(error => error as unknown);
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           callback.resolve(); await olderOutcome; observation.restore();
         },
-      });
+      };
       await emitted.promise;
       tokensToEmit = [];
       await worker.generateText([{ role: 'user', content: 'new' }], vi.fn(), vi.fn(), undefined, undefined);
@@ -3979,11 +3978,11 @@ Use shell tools.<|im_end|>
       });
       const pending = worker.generateText([{ role: 'user', content: 'old' }], vi.fn(), vi.fn(), undefined, undefined);
       const criterion = await entered.promise;
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           complete.resolve({ past_key_values: {} }); await pending;
         },
-      });
+      };
       expect(criterion.interrupted).toBe(false);
       await worker.interrupt();
       expect(criterion.interrupted).toBe(true);
@@ -4009,11 +4008,11 @@ Use shell tools.<|im_end|>
         emitted.resolve(); return callback.promise;
       }, vi.fn(), undefined, undefined);
       const outcome = older.catch(error => error as unknown);
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           callback.resolve(); native.resolve({ past_key_values: {} }); await outcome;
         },
-      });
+      };
       await emitted.promise;
       await worker.generateText([{ role: 'user', content: 'new' }], vi.fn(), vi.fn(), undefined, undefined);
       const oldCriterion = mockModel.generate.mock.calls[0]![0].stopping_criteria[0];
@@ -4034,11 +4033,11 @@ Use shell tools.<|im_end|>
         entered.resolve(); return complete.promise;
       });
       const pending = worker.generateText([{ role: 'user', content: 'pending' }], vi.fn(), vi.fn(), undefined, undefined);
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           complete.resolve({ past_key_values: {} }); await pending; observation.restore();
         },
-      });
+      };
       await entered.promise;
       await worker.resetCache();
       complete.resolve({ past_key_values: {} });
@@ -4057,11 +4056,11 @@ Use shell tools.<|im_end|>
         entered.resolve(); return complete.promise;
       });
       const pending = worker.generateText([{ role: 'user', content: 'pending' }], vi.fn(), vi.fn(), undefined, undefined);
-      await using _cleanupResource = createAsyncTestDisposable({
-        dispose: async () => {
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
           complete.resolve({ past_key_values: {} }); await pending; observation.restore();
         },
-      });
+      };
       await entered.promise;
       await worker.unloadModel();
       complete.resolve({ past_key_values: {} });

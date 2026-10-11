@@ -10,7 +10,6 @@ import {
   createSystemJsFileScriptLoaderPatchSource,
   createSystemJsPhysicalLoadRecoverySource,
 } from './file-protocol-standalone/file-protocol-startup-support';
-import { createTestDisposable, createAsyncTestDisposable } from '../src/utils/resource-cleanup.test-support';
 
 const require = createRequire(import.meta.url);
 
@@ -90,12 +89,12 @@ async function captureUnhandledRejections({ action }: {
   };
   process.on('unhandledRejection', listener);
   process.on('rejectionHandled', rejectionHandledListener);
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       process.off('unhandledRejection', listener);
       process.off('rejectionHandled', rejectionHandledListener);
     },
-  });
+  };
   await action();
   // SystemJS can report the child load rejection on the following task even
   // though the root import Promise is already observed. Keep the user-level
@@ -332,11 +331,11 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
 
   it('recovers a real file:// child load after the missing file is created', async () => {
     const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'));
-    await using _cleanupResource2 = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource2 = {
+      async [Symbol.asyncDispose]() {
         await fs.promises.rm(fixtureDirectory, { recursive: true, force: true });
       },
-    });
+    };
     await fs.promises.writeFile(path.join(fixtureDirectory, 'entry.js'), `System.register(['./child.js'], function (_export) {
   var child;
   return {
@@ -345,11 +344,11 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
   };
 });\n`);
     const harness = await createRealSystemJsHarness({ fixtureDirectory });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         harness.dom.window.close();
       },
-    });
+    };
     const entryUrl = pathToFileURL(path.join(fixtureDirectory, 'entry.js')).href;
     const childUrl = pathToFileURL(path.join(fixtureDirectory, 'child.js')).href;
     const unhandledRejections = await captureUnhandledRejections({
@@ -377,11 +376,11 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
 
   it('evicts every local ancestor before retrying a failed dependency chain', async () => {
     const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'));
-    await using _cleanupResource2 = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource2 = {
+      async [Symbol.asyncDispose]() {
         await fs.promises.rm(fixtureDirectory, { recursive: true, force: true });
       },
-    });
+    };
     await fs.promises.writeFile(path.join(fixtureDirectory, 'entry.js'), `System.register(['./middle.js'], function (_export) {
   var middle;
   return {
@@ -399,11 +398,11 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
 });
 `);
     const harness = await createRealSystemJsHarness({ fixtureDirectory });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         harness.dom.window.close();
       },
-    });
+    };
     const entryUrl = pathToFileURL(path.join(fixtureDirectory, 'entry.js')).href;
     const middleUrl = pathToFileURL(path.join(fixtureDirectory, 'middle.js')).href;
     const childUrl = pathToFileURL(path.join(fixtureDirectory, 'child.js')).href;
@@ -432,11 +431,11 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
 
   it('evicts every loaded local ancestor in a diamond dependency graph before retrying', async () => {
     const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'));
-    await using _cleanupResource2 = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource2 = {
+      async [Symbol.asyncDispose]() {
         await fs.promises.rm(fixtureDirectory, { recursive: true, force: true });
       },
-    });
+    };
     await fs.promises.writeFile(path.join(fixtureDirectory, 'entry.js'), `System.register(['./left.js', './right.js'], function (_export) {
   var left;
   var right;
@@ -469,11 +468,11 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
       fixtureDirectory,
       scriptLoadDelayMs: ({ url }) => url.endsWith('/right.js') ? 100 : 0,
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         harness.dom.window.close();
       },
-    });
+    };
     const entryUrl = pathToFileURL(path.join(fixtureDirectory, 'entry.js')).href;
     const leftUrl = pathToFileURL(path.join(fixtureDirectory, 'left.js')).href;
     const rightUrl = pathToFileURL(path.join(fixtureDirectory, 'right.js')).href;
@@ -504,11 +503,11 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
 
   it('does not evict a real module whose execute function throws an application error', async () => {
     const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'));
-    await using _cleanupResource2 = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource2 = {
+      async [Symbol.asyncDispose]() {
         await fs.promises.rm(fixtureDirectory, { recursive: true, force: true });
       },
-    });
+    };
     await fs.promises.writeFile(path.join(fixtureDirectory, 'application-error.js'), `System.register([], function () {
   return {
     execute: function () {
@@ -517,11 +516,11 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
   };
 });\n`);
     const harness = await createRealSystemJsHarness({ fixtureDirectory });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         harness.dom.window.close();
       },
-    });
+    };
     await expect(harness.system.import('./application-error.js')).rejects.toThrow('SystemJS Error#3');
     const state = readStandaloneInternalState({ window: harness.dom.window }).systemJsRetry;
     expect(state).toMatchObject({

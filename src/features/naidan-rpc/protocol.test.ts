@@ -7,7 +7,6 @@ import { FramedDuplex, frameSchema } from '@/features/naidan-rpc/framing';
 import { encode, Reference } from '@/features/naidan-rpc/codec';
 import { FRAME_BYTES, ITEM_FRAGMENT_BYTES, BYTE_PULL_BYTES, VALUE_BYTES } from './primitives';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
-import { createAsyncTestDisposable, createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const cleanups: (() => void)[] = [];
 
@@ -97,12 +96,12 @@ it('retains only arrived payload bytes when six peers declare maximum-sized fram
       return Reflect.construct(constructor, args);
     },
   }));
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       for (const channel of channels) await channel.stop({ error: new Error('Finished') });
       await Promise.all(pending); vi.unstubAllGlobals();
     },
-  });
+  };
   for (let index = 0; index < 6; index++) {
     const header = new Original(4); new DataView(header.buffer).setUint32(0, FRAME_BYTES, false);
     const wire = new FramedDuplex({
@@ -192,11 +191,11 @@ it.each(['wrong-type', 'reference'] as const)('retires an awaiting callback afte
       allowedMethods: ['run'],
       implementation: {
         async run({ input }) {
-          using _cleanupResource = createTestDisposable({
-            dispose: () => {
+          using _cleanupResource = {
+            [Symbol.dispose]() {
               completed.resolve();
             },
-          });
+          };
           return await input(3);
         },
       },
@@ -237,11 +236,11 @@ it('strips finite envelope extensions after inspecting their raw capability refe
         abort: () => {},
       },
     });
-    using _cleanupResource = createTestDisposable({
-      dispose: () => {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         wire.release();
       },
-    });
+    };
     return await wire.read();
   };
   await expect(read({ value: { type: 'accept', scope: 'input', ids: [], extension: { future: true } } })).resolves.toEqual({ type: 'accept', scope: 'input', ids: [] });

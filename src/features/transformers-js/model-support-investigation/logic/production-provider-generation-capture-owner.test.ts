@@ -4,7 +4,6 @@ import type { TransformersJsWorkerClient } from '@/features/transformers-js/type
 import type { GenerationCaptureReadResult, GenerationCaptureRequest } from '@/features/transformers-js/worker/generation-capture-protocol';
 import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
 import { createProductionProviderGenerationCaptureOwner } from './production-provider-generation-capture-owner';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 type OwnerArguments = Parameters<typeof createProductionProviderGenerationCaptureOwner>[0];
 const owners: Array<{ dispose(): Promise<void> }> = [];
@@ -117,12 +116,12 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.restoreAllMocks();
       vi.unstubAllGlobals();
     },
-  });
+  };
   await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
   expect(globalThis.fetch).not.toHaveBeenCalled();
   expect(fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
@@ -201,12 +200,12 @@ describe('Provider native generation collection ownership', () => {
       return capture;
     });
     const running = owner.run();
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         releaseDisposal.resolve();
         await running;
       },
-    });
+    };
     // The real service has already selected fatal recovery and is waiting on
     // its old client's disposal. Abort/detach must not reacquire recording
     // authority when that in-progress recovery creates its replacement.
@@ -442,12 +441,12 @@ describe('Provider native generation collection ownership', () => {
     });
     const running = owner.run();
     await entered.promise;
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await running;
       },
-    });
+    };
     await expect(owner.collectNative()).rejects.toThrow('requires the Provider script to have stopped');
     expect(captures[0]!.takeGenerationCapture).not.toHaveBeenCalled();
     expect(captures[0]!.client.interrupt).not.toHaveBeenCalled();

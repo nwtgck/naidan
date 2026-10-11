@@ -17,7 +17,6 @@ import {
   naidanSysfsRemoteChatMetaPayloadSchema,
 } from '@/features/wesh/naidan-sysfs/remote-reader-schema';
 import { toChatGroupId, toChatId, toMessageId } from '@/01-models/ids';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 describe('file-explorer.worker.impl', () => {
   let worker: ReturnType<typeof createFileExplorerWorker>;
@@ -37,13 +36,13 @@ describe('file-explorer.worker.impl', () => {
     const { sessionId } = await worker.prepareSession({ request: { root: descriptor } });
     const directory = kind === 'wesh-mounts' ? '/mount' : '/';
     const path = kind === 'wesh-mounts' ? '/mount/model.gguf' : '/model.gguf';
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await worker.disposeSession({ request: { sessionId } });
         vi.restoreAllMocks();
         vi.unstubAllGlobals();
       },
-    });
+    };
     const listing = await worker.readDirectory({ request: { sessionId, path: directory } });
     expect(listing.entries[0]!.size).toBe(1);
     handle.content = new Uint8Array([4, 5, 6]);
@@ -77,12 +76,12 @@ describe('file-explorer.worker.impl', () => {
     });
     vi.spyOn(WeshVFS.prototype, 'getNativeHandle').mockResolvedValue(null);
     const open = vi.spyOn(WeshVFS.prototype, 'open');
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         await worker.disposeSession({ request: { sessionId } });
         vi.restoreAllMocks();
       },
-    });
+    };
     expect(await worker.prepareFileDownload({ request: { sessionId, path: '/mount/file' } })).toEqual({ kind: 'stream' });
     expect(open).not.toHaveBeenCalled();
   });
@@ -520,12 +519,12 @@ describe('file-explorer.worker.impl', () => {
       });
       return handle;
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         opened.mockRestore(); nativeHandle.mockRestore();
         await worker.disposeSession({ request: { sessionId } });
       },
-    });
+    };
     expect(await worker.readPreview({ request: { sessionId, path: '/preview/large.txt', mode: 'bounded' } }))
       .toMatchObject({ kind: 'text', oversized: true, rawText: '' });
     expect(bytesRead).toBe(TEXT_PREVIEW_SIZE_LIMIT + 1);

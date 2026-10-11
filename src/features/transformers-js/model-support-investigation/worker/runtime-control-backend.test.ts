@@ -12,7 +12,6 @@ import { getProductionTransformersArtifact, importProductionTransformersArtifact
 import { createModelSupportInvestigationEvidenceWorker } from '@/features/transformers-js/model-support-investigation/evidence-worker/impl';
 import { createModelSupportInvestigationEvidenceWorkerRequest } from '@/features/transformers-js/model-support-investigation/evidence-worker/request';
 import { fromPlanningWorkerRun } from '@/features/transformers-js/model-support-investigation/logic/planning-worker-run';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 it.each(['valid', 'short', 'invalid-magic', 'hash-mismatch'] as const)('binds Planning controls to the selected Safari runtime and verified bytes: %s', async bodyKind => {
   const artifact = await getProductionTransformersArtifact();
@@ -75,8 +74,8 @@ it.each(['valid', 'short', 'invalid-magic', 'hash-mismatch'] as const)('binds Pl
   const checkpoints: ModelSupportInvestigationRun[] = [];
   const stoppedAfterControls = new Error('Fixture stops before repository or model work');
   const importedModules: string[] = [];
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       rootCreate.mockRestore();
       webGpuCreate.mockRestore();
       for (const key of Object.keys(rootOrt.env.wasm)) Reflect.deleteProperty(rootOrt.env.wasm, key);
@@ -93,7 +92,7 @@ it.each(['valid', 'short', 'invalid-magic', 'hash-mismatch'] as const)('binds Pl
       vi.unstubAllGlobals();
       vi.resetModules();
     },
-  });
+  };
   vi.stubGlobal('self', Object.assign(new DedicatedWorkerGlobalScope(), { location: new URL(identity.workerLocationUrl), fetch: transport }));
   vi.stubGlobal('navigator', { userAgent: identity.userAgent, vendor: '', hardwareConcurrency: 1, gpu: {} });
   vi.stubGlobal('fetch', transport);

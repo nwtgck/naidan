@@ -13,7 +13,6 @@ import type { GenerationStrategy } from '@/features/transformers-js/generation-s
 import type { NativeProtocolStreamer as NativeStreamerType } from '@/features/transformers-js/models/native-protocol-streamer';
 // eslint-disable-next-line no-restricted-imports -- Types for the original runtime loaded only inside this offline model fixture.
 import type * as Tjs from '@huggingface/transformers';
-import { createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 type Context = Parameters<GenerationStrategy['generate']>[0];
 const modelId = "LiquidAI/LFM2.5-350M-ONNX";
@@ -68,11 +67,11 @@ describe("LFM2.5 350M original tokenizer and structured standard generation", ()
         signal: controller.signal,
         generate: async ({ onEvent }) => {
           const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
-          await using _cleanupResource = createAsyncTestDisposable({
-            dispose: async () => {
+          await using _cleanupResource = {
+            async [Symbol.asyncDispose]() {
               await queue.finish();
             },
-          });
+          };
           const strategy = selectGenerationStrategy({ modelType: "lfm2", activeModelId: modelId }); expect(strategy.kind).toBe('standard');
           await strategy.generate({
             model,
@@ -178,11 +177,11 @@ Next<|im_end|>
           signal: controller.signal,
           generate: async ({ onEvent }) => {
             const queue = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
-            await using _cleanupResource = createAsyncTestDisposable({
-              dispose: async () => {
+            await using _cleanupResource = {
+              async [Symbol.asyncDispose]() {
                 await queue.finish();
               },
-            });
+            };
             await selectGenerationStrategy({ modelType: 'lfm2', activeModelId: modelId }).generate({
               model,
               tokenizer,

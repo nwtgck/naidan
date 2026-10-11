@@ -5,7 +5,6 @@ import { collectBytes } from '@/features/naidan-rpc-integration/codecs/transfer'
 import { createInferenceBudget } from './budget';
 import { createImageResponse } from './image-response';
 import type { ImageExecutionOutput } from '@/features/image-generation/execution/types';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 function output(): ImageExecutionOutput {
   const bytes = new Uint8Array(33); bytes.set([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -15,11 +14,11 @@ function output(): ImageExecutionOutput {
 
 async function collect<T>({ stream }: { stream: ReadableStream<T> }): Promise<T[]> {
   const reader = stream.getReader(); const values: T[] = [];
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       reader.releaseLock();
     },
-  });
+  };
   for (;;) {
     const next = await reader.read(); if (next.done) return values; values.push(next.value);
   }

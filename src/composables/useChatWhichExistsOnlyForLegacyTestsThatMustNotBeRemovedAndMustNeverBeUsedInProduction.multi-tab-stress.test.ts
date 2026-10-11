@@ -4,7 +4,6 @@ import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeU
 import { storageService } from '@/00-storage/service';
 import type { Chat, Hierarchy } from '@/01-models/types';
 import { toChatId, toMessageId } from '@/01-models/ids';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 /**
  * Multi-Tab Stress & Glitch Tests
@@ -186,11 +185,11 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         // Use a very short interval for the test
         if (now - lastSave > 10 && !isSaving) {
           isSaving = true;
-          using _cleanupResource = createTestDisposable({
-            dispose: () => {
+          using _cleanupResource = {
+            [Symbol.dispose]() {
               isSaving = false;
             },
-          });
+          };
           await storageService.updateChatContent({
             id: chat.id,
             updater: ({ current }) => ({

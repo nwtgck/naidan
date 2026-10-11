@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { build, createServer, normalizePath, preview, type Plugin, type PreviewServer, type ViteDevServer } from 'vite';
 import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './dev-server-isolation';
-import { createAsyncTestDisposable } from '../src/utils/resource-cleanup.test-support';
 
 // Vite injects /@vite/env, then its client alias rewrites that import to the
 // installed env module's /@fs URL. Resolve the package, not a machine's path.
@@ -174,15 +173,15 @@ describe('development isolation through real Vite middleware', () => {
   });
 
   afterAll(async () => {
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         try {
           await server?.close();
         } finally {
           if (root !== undefined) await rm(root, { recursive: true, force: true });
         }
       },
-    });
+    };
     http.closeAllConnections();
     if (http.listening) await new Promise<void>((resolve, reject) => http.close(error => error ? reject(error) : resolve()));
   });
@@ -237,8 +236,8 @@ describe('development isolation through real Vite middleware', () => {
       },
     });
     const listener = createHttpServer(baseline.middlewares);
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         try {
           listener.closeAllConnections();
           if (listener.listening) await new Promise<void>((resolve, reject) => listener.close(error => error ? reject(error) : resolve()));
@@ -246,7 +245,7 @@ describe('development isolation through real Vite middleware', () => {
           await baseline.close();
         }
       },
-    });
+    };
     await new Promise<void>((resolve, reject) => {
       listener.once('error', reject);
       listener.listen(0, '127.0.0.1', resolve);
@@ -285,15 +284,15 @@ describe('preview isolation through the real Vite preview server', () => {
   });
 
   afterAll(async () => {
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         try {
           await server?.close();
         } finally {
           if (root !== undefined) await rm(root, { recursive: true, force: true });
         }
       },
-    });
+    };
     if (server !== undefined && 'closeAllConnections' in server.httpServer) {
       server.httpServer.closeAllConnections();
     }
@@ -327,8 +326,8 @@ describe('preview isolation through the real Vite preview server', () => {
         cors: { origin: 'https://fixture.invalid' },
       },
     });
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         try {
           if ('closeAllConnections' in baseline.httpServer) {
             baseline.httpServer.closeAllConnections();
@@ -337,7 +336,7 @@ describe('preview isolation through the real Vite preview server', () => {
           await baseline.close();
         }
       },
-    });
+    };
     const address = baseline.httpServer.address();
     if (address === null || typeof address === 'string') throw new Error('Missing baseline preview listener');
     await assertResponseUnchanged({
@@ -349,11 +348,11 @@ describe('preview isolation through the real Vite preview server', () => {
 
 it('does not change production bundle output', async () => {
   const root = await fixture();
-  await using _cleanupResource = createAsyncTestDisposable({
-    dispose: async () => {
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
       await rm(root, { recursive: true, force: true });
     },
-  });
+  };
   const outputs: string[][] = [];
   const configurations: Array<{ root: string; outDir: string; pluginNames: string[] }> = [];
   for (const plugins of [[], [createDevServerIsolationPlugin()]]) {

@@ -7,18 +7,17 @@ import { expect, it } from 'vitest';
 import { build } from 'vite';
 import { createNaidanStandalonePlugin } from './file-protocol-standalone/plugin';
 import { createFileProtocolStandaloneWorkerDefinitions } from './file-protocol-standalone/worker-definitions';
-import { createTestDisposable } from '../src/utils/resource-cleanup.test-support';
 
 const projectRoot = path.resolve(import.meta.dirname, '..');
 const require = createRequire(import.meta.url);
 
 it('packages the real image query workers and clients through the standalone SystemJS graph without inference modules', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-image-query-standalone-'));
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       fs.rmSync(root, { recursive: true, force: true });
     },
-  });
+  };
   fs.symlinkSync(path.join(projectRoot, 'node_modules'), path.join(root, 'node_modules'), 'dir');
   fs.writeFileSync(path.join(root, 'index.html'), '<!doctype html><html><head></head><body><script type="module" src="/main.ts"></script></body></html>');
   fs.writeFileSync(path.join(root, 'main.ts'), `\

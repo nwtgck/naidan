@@ -7,7 +7,6 @@ import { scanImageRepositories } from './logic/model-candidates';
 import { safetensorsFixture, tensor } from './test-utils/weights.test-support';
 import { MemoryDirectory } from './test-utils/storage.test-support';
 import { imageLoraRequests } from './lora-form';
-import { createTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('@/00-storage/service/host-model-handles', () => ({ hostModelHandles: { get: mocks.get } }));
@@ -28,11 +27,11 @@ it('offers an adapter-only OPFS import and markerless host files separately with
   const list = async () => [...await listImageRepositories({ signal: undefined }), ...await listHostImageRepositories({ directories: [{ id: 'one', name: 'first-root' }, { id: 'two', name: 'second-root' }], signal: undefined })];
   const scope = effectScope();
   const library = scope.run(() => useImageLibrary({ downloadsBlocked: () => false, blocked: () => false, onSelection: vi.fn(), dependencies: { list, scan: scanImageRepositories, import: importImageRepository, download: vi.fn() } }))!;
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       scope.stop();
     },
-  });
+  };
   await library.refresh();
   const saved = library.savedLoras.value;
   expect(library.failure.value).toBe(''); expect(library.issues.value).toEqual([]);

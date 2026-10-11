@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createRefreshCoordinator } from './refresh-coordinator';
-import { createTestDisposable } from '../../src/utils/resource-cleanup.test-support';
 
 type Deferred = {
   promise: Promise<void>;
@@ -76,11 +75,11 @@ describe('static Tailwind refresh coordinator', () => {
       concurrentRefreshes += 1;
       maximumConcurrentRefreshes = Math.max(maximumConcurrentRefreshes, concurrentRefreshes);
       const callIndex = refresh.mock.calls.length;
-      using _cleanupResource = createTestDisposable({
-        dispose: () => {
+      using _cleanupResource = {
+        [Symbol.dispose]() {
           concurrentRefreshes -= 1;
         },
-      });
+      };
       await (callIndex === 1 ? firstRefresh.promise : secondRefresh.promise);
     });
     const coordinator = createRefreshCoordinator({ refresh });

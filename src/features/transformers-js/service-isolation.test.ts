@@ -8,7 +8,6 @@ import { toToolCallId } from '@/01-models/ids';
 import type { resolvePublicHuggingFaceRevision } from './download-verification/logic/resolve-public-hugging-face-revision';
 import type { reuseDownloadedProductionRevision } from './download-verification/logic/reuse-downloaded-production-revision';
 import type { runProductionDownloadPreparation } from './download-verification/logic/run-production-download-preparation';
-import { createTestDisposable, createAsyncTestDisposable } from '@/utils/resource-cleanup.test-support';
 
 const download = vi.hoisted(() => ({
   resolve: vi.fn<typeof resolvePublicHuggingFaceRevision>(),
@@ -64,11 +63,11 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  using _cleanupResource = createTestDisposable({
-    dispose: () => {
+  using _cleanupResource = {
+    [Symbol.dispose]() {
       vi.unstubAllGlobals();
     },
-  });
+  };
   // All fixture clients are local and finite. A deliberately rejected dispose
   // is already asserted by its test and must not prevent other owner cleanup.
   await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
@@ -94,11 +93,11 @@ describe('Transformers.js service instance ownership', () => {
     const next = owner.service.generateText({ messages: accepted, onChunk: vi.fn(), onToolCalls: vi.fn(), continuationOwner: 'reasoning-owner' });
     reasoning.text = 'edited'; reasoning.completeness = 'partial';
     accepted[0]!.content = 'edited';
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve(); await Promise.allSettled([first, next]);
       },
-    });
+    };
     expect(client.generateText).toHaveBeenCalledTimes(1);
     release.resolve(); await Promise.all([first, next]);
     const sent = client.generateText.mock.calls[1]![0];
@@ -123,12 +122,12 @@ describe('Transformers.js service instance ownership', () => {
       downloadSettled = true;
     });
     const operations: Promise<unknown>[] = [downloading];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         release.resolve();
         await Promise.allSettled(operations);
       },
-    });
+    };
     await entered.promise;
     await owner.service.interrupt();
     const nextLoad = owner.service.loadDownloadedModel({ modelId: 'fixture/next' });
@@ -182,11 +181,11 @@ describe('Transformers.js service instance ownership', () => {
       },
     });
     const operations: Promise<unknown>[] = [];
-    await using _cleanupResource = createAsyncTestDisposable({
-      dispose: async () => {
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
         releaseGeneration.resolve(); releaseDownload.resolve(); await Promise.allSettled(operations);
       },
-    });
+    };
     await owner.service.loadDownloadedModel({ modelId: 'fixture/loaded' });
     operations.push(owner.service.generateText({ messages: [], onChunk: vi.fn(), onToolCalls: vi.fn() }));
     await generationEntered.promise;
