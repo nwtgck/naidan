@@ -11,12 +11,13 @@ import { SCALAR, UNKNOWN } from '../analysis/values.ts';
 import { isCallableValue, isRecordValue, isScalarValue } from '../analysis/value-guards.ts';
 
 export type NativeModelContext = {
+  recordWrite: (input: { receiver: Value, node: ts.Node }) => void,
   config: EffectsConfig,
   recordOperation: (input: Omit<OperationDecision, 'file' | 'start' | 'length' | 'owner'> & { owner: ContractOwner | undefined, node: ts.Node }) => void,
   observeVueCallback: (input: { callable: FunctionValue, node: ts.Node }) => void,
   registerWatcherCleanup: (input: { callback: FunctionValue, owner: ContractOwner | undefined, node: ts.Node }) => void,
   consumeWatcherCleanup: (input: { callback: FunctionValue, owner: ContractOwner | undefined, node: ts.Node }) => void,
-  invokeDetached: (input: { callable: FunctionValue, args: readonly Value[], owner: ContractOwner | undefined, node: ts.Node }) => Value,
+  invokeDetached: (input: { callable: Value, args: readonly Value[], owner: ContractOwner | undefined, node: ts.Node }) => Value,
   addEffects: (input: { owner: ContractOwner | undefined, effects: readonly Effect[], node: ts.Node, reason: string }) => void,
   native: (input: { name: string, receiver: Value | undefined }) => Value,
   issue: (input: { node: ts.Node, code: EffectDiagnostic['code'], message: string }) => void,
@@ -53,7 +54,8 @@ function initialReadableStreamPullPossible({ node }: { node: ts.Node }): boolean
 export function evaluateNative({ context, callable, args, owner, node }: {
   context: NativeModelContext, callable: Extract<Value, { kind: 'native' }>, args: readonly Value[], owner: ContractOwner | undefined, node: ts.Node,
 }): Value {
-  const { name, receiver, kind: _kind, ...rest } = callable;
+  // Return-origin evidence does not change the existing native operation contract.
+  const { name, receiver, kind: _kind, returnOrigin: _returnOrigin, ...rest } = callable;
   rest satisfies Record<PropertyKey, never>;
   const promise = ({ value }: { value: Value }): Value => ({ kind: 'promise', value });
   const native = ({ value }: { value: string }) => context.native({ name: value, receiver: undefined });
@@ -159,7 +161,7 @@ export function evaluateNative({ context, callable, args, owner, node }: {
   if (['Promise.then', 'Promise.catch', 'Promise.finally'].includes(name) && receiver?.kind === 'promise') {
     const outcomes: Value[] = [];
     for (const callback of args) {
-      if (isCallableValue(callback)) outcomes.push(context.settle({ value: context.invoke({ callable: callback, args: [receiver.value], owner, node }), node }));
+      if (isCallableValue(callback)) outcomes.push(context.settle({ value: context.invokeDetached({ callable: callback, args: [receiver.value], owner, node }), node }));
       else if (!isScalarValue(callback)) context.issue({ node, code: 'unsupported', message: 'Unresolved Promise callback.' });
     }
     if (name === 'Promise.finally') return promise({ value: receiver.value });
@@ -168,7 +170,7 @@ export function evaluateNative({ context, callable, args, owner, node }: {
     return promise({ value: result });
   }
   if (['setTimeout', 'setInterval', 'queueMicrotask', 'requestAnimationFrame'].includes(name)) {
-    if (args[0] !== undefined) context.invoke({ callable: args[0], args: [], owner, node });
+    if (args[0] !== undefined) context.invokeDetached({ callable: args[0], args: [], owner, node });
     return SCALAR;
   }
   if (['clearTimeout', 'clearInterval', 'cancelAnimationFrame'].includes(name)) return SCALAR;
@@ -186,6 +188,7 @@ export function evaluateNative({ context, callable, args, owner, node }: {
         const destination = target.fields.get(key);
         if (destination === undefined || destination.access !== 'writable') context.issue({ node, code: 'unsupported', message: `No writable Object.assign slot for ${key}.` });
         else {
+          context.recordWrite({ receiver: target, node });
           context.replacementShape({ source: field.value, target: destination.value, node, depth: 0 });
           context.compatible({ source: field.value, target: destination.value, node, mode: 'shared' });
         }

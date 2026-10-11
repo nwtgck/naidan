@@ -6,23 +6,19 @@ import { printEffect } from '../contracts/effects.ts';
 import { createFixture } from '../test-support/project-fixture.ts';
 
 function inspect({ source, globals, dom }: { source: string, globals?: string, dom?: false }): EffectsAnalysis {
-  const fixture = createFixture({
+  using fixture = createFixture({
     files: { 'main.ts': source, ...(globals === undefined ? {} : { 'globals.d.ts': globals }) },
     entries: ['main.ts', ...(globals === undefined ? [] : ['globals.d.ts'])],
   });
-  try {
-    if (dom === false) {
-      const file = path.join(fixture.root, 'tsconfig.json');
-      const config = JSON.parse(fs.readFileSync(file, 'utf8'));
-      config.compilerOptions.lib = ['ES2023'];
-      fs.writeFileSync(file, JSON.stringify(config));
-    }
-    const analysis = fixture.check();
-    expect(analysis.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
-    return analysis;
-  } finally {
-    fixture.dispose();
+  if (dom === false) {
+    const file = path.join(fixture.root, 'tsconfig.json');
+    const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+    config.compilerOptions.lib = ['ES2023'];
+    fs.writeFileSync(file, JSON.stringify(config));
   }
+  const analysis = fixture.check();
+  expect(analysis.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
+  return analysis;
 }
 
 function row({ analysis, label }: { analysis: EffectsAnalysis, label: string }): readonly string[] {

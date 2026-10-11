@@ -4,12 +4,8 @@ import { planEffectFix } from '../fixes/plan.ts';
 import { printEffect } from '../contracts/effects.ts';
 
 function analyze({ source }: { source: string }) {
-  const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-  try {
-    return fixture.check();
-  } finally {
-    fixture.dispose();
-  }
+  using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+  return fixture.check();
 }
 
 const writer = '/** @effects ["localstorage.write(*)"] */ function writer() { localStorage.clear(); }';
@@ -226,7 +222,7 @@ function entry() { service.publish(); }
     expect(() => planEffectFix({ analysis: result })).toThrow();
   });
 
-  it('does not turn a method return type into a verified native receiver', () => {
+  it('preserves a static filesystem return contract while class dispatch remains unverified', () => {
     const result = analyze({
       source: `\
 class Service {
@@ -245,9 +241,11 @@ async function entry({ input }: { input: FileSystemFileHandle }) {
     });
     expect(result.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
     const entry = result.owners.find(owner => owner.label === 'entry');
-    expect((result.solution.rows.get(entry!.id) ?? []).map(effect => printEffect({ effect }))).toEqual(['localstorage.write(*)']);
-    expect(result.diagnostics.some(item => item.message === 'Unverified property access: createWritable.')).toBe(true);
-    expect(result.diagnostics.some(item => item.message === 'Unverified property access: write.')).toBe(true);
+    expect((result.solution.rows.get(entry!.id) ?? []).map(effect => printEffect({ effect }))).toEqual(['hostfs.write(*)', 'localstorage.write(*)', 'opfs.write(*)']);
+    expect(result.diagnostics.some(item => item.message === 'Unsupported effect statement: ClassDeclaration.')).toBe(true);
+    expect(result.diagnostics.some(item => item.message === 'Class instance construction, fields and method dispatch remain unverified.')).toBe(true);
+    expect(result.diagnostics.some(item => item.message === 'The call target has no checked effect contract.')).toBe(true);
+    expect(result.diagnostics.some(item => item.message === 'Unverified property access: echo.')).toBe(true);
     expect(() => planEffectFix({ analysis: result })).toThrow();
   });
 

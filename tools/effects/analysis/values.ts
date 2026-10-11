@@ -9,6 +9,7 @@ export type ContractOwner = EffectNode & {
   role: 'implementation' | 'slot' | 'signature' | 'symbolic' | 'module' | 'body',
   callbackPaths: ReadonlySet<string>,
   parameterBoundary?: 'boundary-string',
+  intrinsicUndefinedReturn?: true,
 };
 export type FunctionValue = {
   kind: 'function',
@@ -17,15 +18,17 @@ export type FunctionValue = {
   returns: Value,
   declaration: ts.SignatureDeclaration | undefined,
   transport: 'local' | 'worker',
+  returnOrigin?: 'unverified',
 };
 export type Field = { value: Value, access: 'writable' | 'readonly' };
 export type Value =
   | { kind: 'unknown', reason: string, budgetTypePath?: readonly string[] }
   | { kind: 'scalar', keys: readonly string[] | undefined, truthiness: 'unknown' | 'truthy' | 'falsy', allowsUndefined?: true, knownUndefined?: true, stringEvidence?: StringEvidence }
   | FunctionValue
-  | { kind: 'record', fields: ReadonlyMap<string, Field>, shape: 'closed' | 'open', reflected: Value | undefined, indexValue: Value | undefined }
+  // Type-based records keep their alias identity across source-evidence erasure.
+  | { kind: 'record', identity?: symbol, fields: ReadonlyMap<string, Field>, shape: 'closed' | 'open', reflected: Value | undefined, indexValue: Value | undefined }
   | { kind: 'promise', value: Value }
-  | { kind: 'native', name: string, receiver: Value | undefined }
+  | { kind: 'native', name: string, receiver: Value | undefined, returnOrigin?: 'unverified' }
   | { kind: 'choice', values: readonly Value[] };
 
 export const SCALAR: Value = { kind: 'scalar', keys: undefined, truthiness: 'unknown' };

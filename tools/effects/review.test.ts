@@ -3,16 +3,12 @@ import { createFixture } from './test-support/project-fixture.ts';
 import { reviewEffects } from './review.ts';
 
 function review({ source, label, budget }: { source: string, label: string, budget: number }) {
-  const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-  try {
-    const analysis = fixture.check();
-    expect(analysis.diagnostics.filter(item => item.code !== 'missing' && item.code !== 'exceeds')).toEqual([]);
-    const result = reviewEffects({ analysis, budget });
-    expect(reviewEffects({ analysis, budget })).toEqual(result);
-    return result.find(entry => entry.label === label)!;
-  } finally {
-    fixture.dispose();
-  }
+  using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+  const analysis = fixture.check();
+  expect(analysis.diagnostics.filter(item => item.code !== 'missing' && item.code !== 'exceeds')).toEqual([]);
+  const result = reviewEffects({ analysis, budget });
+  expect(reviewEffects({ analysis, budget })).toEqual(result);
+  return result.find(entry => entry.label === label)!;
 }
 
 describe('effect contract review is explanatory, not an automatic unexpected-effect policy', () => {
@@ -30,7 +26,7 @@ describe('effect contract review is explanatory, not an automatic unexpected-eff
   });
 
   it('keeps a dependency witness after the whole chain has been fixed', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 function save() { localStorage.clear(); }
@@ -40,20 +36,16 @@ function entry() { middle(); }
       },
       entries: ['main.ts'],
     });
-    try {
-      const before = fixture.check();
-      const beforeResult = reviewEffects({ analysis: before, budget: 100 }).find(entry => entry.label === 'entry')!;
-      expect(beforeResult.missing).toEqual(['localstorage.write(*)']);
-      const result = fixture.fix();
-      expect(result.analysis.diagnostics).toEqual([]);
-      const afterResult = reviewEffects({ analysis: result.analysis, budget: 100 }).find(entry => entry.label === 'entry')!;
-      expect(afterResult.missing).toEqual([]);
-      expect(afterResult.witnesses[0]?.basis).toBe('modeled-operation');
-      expect(afterResult.witnesses[0]?.path.map(step => step.label)).toEqual(['entry', 'middle', 'save']);
-      expect(fixture.fix().changedFiles).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    const before = fixture.check();
+    const beforeResult = reviewEffects({ analysis: before, budget: 100 }).find(entry => entry.label === 'entry')!;
+    expect(beforeResult.missing).toEqual(['localstorage.write(*)']);
+    const result = fixture.fix();
+    expect(result.analysis.diagnostics).toEqual([]);
+    const afterResult = reviewEffects({ analysis: result.analysis, budget: 100 }).find(entry => entry.label === 'entry')!;
+    expect(afterResult.missing).toEqual([]);
+    expect(afterResult.witnesses[0]?.basis).toBe('modeled-operation');
+    expect(afterResult.witnesses[0]?.path.map(step => step.label)).toEqual(['entry', 'middle', 'save']);
+    expect(fixture.fix().changedFiles).toEqual([]);
   });
 
   it('does not trace a suppressed operation back into a caller', () => {
@@ -132,31 +124,23 @@ function c() { a(); localStorage.clear(); }
   });
 
   it('validates the review budget without changing the analysis', () => {
-    const fixture = createFixture({ files: { 'main.ts': '/** @effects [] */ function a() {}' }, entries: ['main.ts'] });
-    try {
-      const analysis = fixture.check();
-      for (const budget of [0, -1, 0.5, NaN, Infinity]) expect(() => reviewEffects({ analysis, budget })).toThrow('budget');
-      expect(analysis.diagnostics).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = createFixture({ files: { 'main.ts': '/** @effects [] */ function a() {}' }, entries: ['main.ts'] });
+    const analysis = fixture.check();
+    for (const budget of [0, -1, 0.5, NaN, Infinity]) expect(() => reviewEffects({ analysis, budget })).toThrow('budget');
+    expect(analysis.diagnostics).toEqual([]);
   });
 });
 
 describe('effect review guards', () => {
   it('does not shrink an already broad declaration just because a native model became more precise', () => {
     const source = '/** @effects ["indexeddb.read(*)","indexeddb.write(*)"] */ function compare() { indexedDB.cmp(1, 2); }';
-    const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-    try {
-      const result = fixture.fix();
-      expect(result.analysis.diagnostics).toEqual([]);
-      expect(result.changedFiles).toEqual([]);
-      const entry = reviewEffects({ analysis: result.analysis, budget: 100 }).find(item => item.label === 'compare')!;
-      expect(entry.outward).toEqual(['indexeddb.read(*)', 'indexeddb.write(*)']);
-      expect(entry.witnesses.every(item => item.basis === 'declared-upper-bound')).toBe(true);
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+    const result = fixture.fix();
+    expect(result.analysis.diagnostics).toEqual([]);
+    expect(result.changedFiles).toEqual([]);
+    const entry = reviewEffects({ analysis: result.analysis, budget: 100 }).find(item => item.label === 'compare')!;
+    expect(entry.outward).toEqual(['indexeddb.read(*)', 'indexeddb.write(*)']);
+    expect(entry.witnesses.every(item => item.basis === 'declared-upper-bound')).toBe(true);
   });
 
   it('retains ordinary call propagation through a named arrow and a function-valued property', () => {

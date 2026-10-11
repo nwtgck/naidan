@@ -11,6 +11,18 @@ function primitiveLiteral({ expression }: { expression: ts.Expression }): boolea
     || ts.isVoidExpression(expression) && ts.isNumericLiteral(expression.expression) && expression.expression.text === '0';
 }
 
+/** TypeScript identity distinguishes the global value from same-spelled bindings. */
+export function returnsIntrinsicUndefined({ declaration, checker }: { declaration: ts.SignatureDeclaration, checker: ts.TypeChecker }): boolean {
+  if ((!ts.isArrowFunction(declaration) && !ts.isFunctionDeclaration(declaration) && !ts.isFunctionExpression(declaration)) || declaration.body === undefined) return false;
+  const body = declaration.body;
+  const statement = ts.isBlock(body) && body.statements.length === 1 ? body.statements[0] : undefined;
+  let expression = !ts.isBlock(body) ? body : statement !== undefined && ts.isReturnStatement(statement) ? statement.expression : undefined;
+  while (expression !== undefined && ts.isParenthesizedExpression(expression)) expression = expression.expression;
+  if (expression === undefined || !ts.isIdentifier(expression) || expression.text !== 'undefined') return false;
+  const symbol = checker.getSymbolAtLocation(expression);
+  return symbol?.name === 'undefined' && (symbol.declarations ?? []).length === 0 && (symbol.flags & ts.SymbolFlags.Transient) !== 0;
+}
+
 /** Existing Strings import/call validation protects this exact message domain. */
 export function boundaryStringMessages({ root, sources }: { root: string, sources: readonly ts.SourceFile[] }): ReadonlySet<ts.Node> {
   const paths = createBoundaryStringProjectPaths({ root });
@@ -80,6 +92,7 @@ export function mayOmitEffectAnnotation({ owner }: { owner: ContractOwner }): bo
   if ((!ts.isArrowFunction(node) && !ts.isFunctionDeclaration(node) && !ts.isFunctionExpression(node)) || node.body === undefined) return false;
   if (!ts.isArrowFunction(node) && node.asteriskToken !== undefined) return false;
   if (node.parameters.length !== 0) return owner.parameterBoundary === 'boundary-string' && messageTemplate({ node });
+  if (owner.intrinsicUndefinedReturn === true) return true;
   if (!ts.isBlock(node.body)) return primitiveLiteral({ expression: node.body });
   if (node.body.statements.length === 0) return true;
   const statement = node.body.statements.length === 1 ? node.body.statements[0] : undefined;

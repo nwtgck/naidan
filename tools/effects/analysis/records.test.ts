@@ -3,12 +3,8 @@ import { createFixture } from '../test-support/project-fixture.ts';
 import { printEffect } from '../contracts/effects.ts';
 
 function analyze({ source }: { source: string }) {
-  const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-  try {
-    return fixture.check();
-  } finally {
-    fixture.dispose();
-  }
+  using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+  return fixture.check();
 }
 
 describe('conditional own-property contracts', () => {
@@ -64,6 +60,29 @@ function use({ enabled }: { enabled: boolean }) {
     expect(result.diagnostics.some(item => item.code === 'unsupported' && item.message.includes('Object spread needs'))).toBe(true);
   });
 
+  it.each([
+    ['unknown spread', '...input', 2],
+    ['computed key', '[key]: true', 1],
+    ['accessor', 'get hidden() { return true; }', 1],
+    ['prototype mutation', '__proto__: input', 1],
+  ])('does not certify the remaining fields after an unresolved %s', (_name, member, spreadDiagnostics) => {
+    const result = analyze({
+      source: `\
+/** @effects ["localstorage.write(*)"] */
+function entry({ input, key }: { input: object, key: string }) {
+  const partial = { ${member}, /** @effects ["localstorage.write(*)"] */ save() { localStorage.clear(); } };
+  const copied = { ...partial };
+  partial.save();
+  void copied;
+}
+`,
+    });
+    expect(result.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
+    expect(result.diagnostics.filter(item => item.code === 'unsupported' && item.message.startsWith('Object spread needs'))).toHaveLength(spreadDiagnostics);
+    const owner = result.owners.find(item => item.label === 'entry')!;
+    expect(result.solution.rows.get(owner.id)?.map(effect => printEffect({ effect }))).toEqual(['localstorage.write(*)']);
+  });
+
   it('does not drop expression effects when the resulting record is conditional', () => {
     const result = analyze({
       source: `\
@@ -89,13 +108,9 @@ function execute() { run(); }
   });
 
   it('does not treat an ambient function declaration as a checked implementation', () => {
-    const fixture = createFixture({ files: { 'ambient.d.ts': 'export declare function run(): void;', 'main.ts': "import { run } from './ambient'; function use() { run(); }" }, entries: ['main.ts'] });
-    try {
-      expect(fixture.check().diagnostics.some(item => item.code === 'boundary')).toBe(true);
-      expect(() => fixture.fix()).toThrow();
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = createFixture({ files: { 'ambient.d.ts': 'export declare function run(): void;', 'main.ts': "import { run } from './ambient'; function use() { run(); }" }, entries: ['main.ts'] });
+    expect(fixture.check().diagnostics.some(item => item.code === 'boundary')).toBe(true);
+    expect(() => fixture.fix()).toThrow();
   });
 });
 

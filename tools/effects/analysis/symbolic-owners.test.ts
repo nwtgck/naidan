@@ -14,24 +14,20 @@ describe('symbolic callback owners', () => {
       '/** @effects ["call(arg0.left.run)"] */ function first({ left }: { left: Operations }) { left.run(); }',
       '/** @effects ["call(arg0.right.run)"] */ function second({ right }: { right: Operations }) { right.run(); }',
     ];
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: { 'main.ts': 'interface Operations { run(): void; }\n' + (reverse ? functions.reverse() : functions).join('\n') },
       entries: ['main.ts'],
     });
-    try {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const analysis = fixture.check();
-        expect(analysis.diagnostics).toEqual([]);
-        expect(row({ analysis, label: 'first' })).toEqual(['call(arg0.left.run)']);
-        expect(row({ analysis, label: 'second' })).toEqual(['call(arg0.right.run)']);
-      }
-    } finally {
-      fixture.dispose();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const analysis = fixture.check();
+      expect(analysis.diagnostics).toEqual([]);
+      expect(row({ analysis, label: 'first' })).toEqual(['call(arg0.left.run)']);
+      expect(row({ analysis, label: 'second' })).toEqual(['call(arg0.right.run)']);
     }
   });
 
   it('keeps two paths through the same interface distinct within one caller', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 interface Operations { run(): void; }
@@ -41,17 +37,13 @@ function both({ left, right }: { left: Operations; right: Operations }) { left.r
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(row({ analysis, label: 'both' })).toEqual(['call(arg0.left.run)', 'call(arg0.right.run)']);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(row({ analysis, label: 'both' })).toEqual(['call(arg0.left.run)', 'call(arg0.right.run)']);
   });
 
   it('does not turn a concrete method signature into a caller parameter', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 interface Operations { run(): void; }
@@ -63,20 +55,16 @@ function empty() { const ops: Operations = { run: () => {} }; invoke({ ops }); }
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.map(item => [item.code, item.message])).toEqual([
-        ['missing', 'Missing @effects contract for run.'],
-      ]);
-      expect(row({ analysis, label: 'invoke' })).toEqual(['call(arg0.ops.run)']);
-      expect(row({ analysis, label: 'empty' })).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.map(item => [item.code, item.message])).toEqual([
+      ['missing', 'Missing @effects contract for run.'],
+    ]);
+    expect(row({ analysis, label: 'invoke' })).toEqual(['call(arg0.ops.run)']);
+    expect(row({ analysis, label: 'empty' })).toEqual([]);
   });
 
   it('substitutes each shared-interface callback without leaking another caller path', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 interface Operations { run(): void; }
@@ -92,18 +80,14 @@ function sessionEntry() { second({ right: { /** @effects ["sessionstorage.write(
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(row({ analysis, label: 'localEntry' })).toEqual(['localstorage.write(*)']);
-      expect(row({ analysis, label: 'sessionEntry' })).toEqual(['sessionstorage.write(*)']);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(row({ analysis, label: 'localEntry' })).toEqual(['localstorage.write(*)']);
+    expect(row({ analysis, label: 'sessionEntry' })).toEqual(['sessionstorage.write(*)']);
   });
 
   it('retains a fixed explicit interface contract across callers', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 interface Operations { /** @effects ["hoge"] */ run(): void; }
@@ -115,18 +99,14 @@ function second({ right }: { right: Operations }) { right.run(); }
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(row({ analysis, label: 'first' })).toEqual(['hoge']);
-      expect(row({ analysis, label: 'second' })).toEqual(['hoge']);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(row({ analysis, label: 'first' })).toEqual(['hoge']);
+    expect(row({ analysis, label: 'second' })).toEqual(['hoge']);
   });
 
   it('binds an optional callback without merging its path into the callee', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 /** @effects ["call(arg0.operation)"] */
@@ -141,21 +121,17 @@ function entry() { dispose({ /** @effects ["localstorage.write(*)"] */ beforeRel
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(row({ analysis, label: 'runCleanupStep' })).toEqual(['call(arg0.operation)']);
-      expect(row({ analysis, label: 'dispose' })).toEqual(['call(arg0.beforeRelease)']);
-      expect(row({ analysis, label: 'entry' })).toEqual(['localstorage.write(*)']);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(row({ analysis, label: 'runCleanupStep' })).toEqual(['call(arg0.operation)']);
+    expect(row({ analysis, label: 'dispose' })).toEqual(['call(arg0.beforeRelease)']);
+    expect(row({ analysis, label: 'entry' })).toEqual(['localstorage.write(*)']);
   });
 
   it.each(['argument', 'parameter'])('keeps multiple callable %s alternatives unsupported', boundary => {
     const single = '(input: string) => void';
     const multiple = '((input: string) => void) | ((input: string, other?: number) => void)';
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 /** @effects ["call(arg0.operation)"] */
@@ -168,17 +144,13 @@ function forward({ operation }: { operation: ${boundary === 'argument' ? multipl
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
-      expect(analysis.diagnostics.some(item => item.code === 'unsupported' && item.message === `Ambiguous callback ${boundary} alternatives require an explicit contract.`)).toBe(true);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
+    expect(analysis.diagnostics.some(item => item.code === 'unsupported' && item.message === `Ambiguous callback ${boundary} alternatives require an explicit contract.`)).toBe(true);
   });
 
   it('substitutes a known absent optional callback without leaking its lexical path', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 /** @effects ["call(arg0.operation)"] */
@@ -193,13 +165,9 @@ function entry() { dispose({ beforeRelease: undefined }); }
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(row({ analysis, label: 'dispose' })).toEqual(['call(arg0.beforeRelease)']);
-      expect(row({ analysis, label: 'entry' })).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(row({ analysis, label: 'dispose' })).toEqual(['call(arg0.beforeRelease)']);
+    expect(row({ analysis, label: 'entry' })).toEqual([]);
   });
 });

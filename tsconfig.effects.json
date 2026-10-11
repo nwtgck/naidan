@@ -14,5 +14,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["effects.config.ts", "tools/effects/**/*.ts", "eslint-local-rules/effects.ts", "eslint-local-rules/effects.test.ts", "vitest.effects.config.ts"]
+  "include": ["effects.config.ts", "tools/effects/**/*.ts", "eslint-local-rules/effects.ts", "vitest.effects.config.ts"]
 }

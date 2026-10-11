@@ -59,20 +59,16 @@ function effectRows({ analysis, label }: { analysis: EffectsAnalysis, label: str
 
 describe('reviewed literal-entry worker transport', () => {
   it('discovers the entry and keeps sibling methods separate', () => {
-    const fixture = workerFixture({ edits: {} });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(analysis.coverage.files.some(file => file.endsWith('/entry.ts'))).toBe(true);
-      expect(effectRows({ analysis, label: 'inspect' })).toEqual([['localstorage.read(*)']]);
-      expect(effectRows({ analysis, label: 'save' })).toEqual([['localstorage.write(*)']]);
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = workerFixture({ edits: {} });
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(analysis.coverage.files.some(file => file.endsWith('/entry.ts'))).toBe(true);
+    expect(effectRows({ analysis, label: 'inspect' })).toEqual([['localstorage.read(*)']]);
+    expect(effectRows({ analysis, label: 'save' })).toEqual([['localstorage.write(*)']]);
   });
 
   it('retains the DOM constructor through a type-only Worker augmentation', () => {
-    const fixture = workerFixture({
+    using fixture = workerFixture({
       edits: {
         'augmentation.d.ts': 'export {}; declare global { interface Worker {} }',
         'client.ts': client.replace("import type { Service }", `\
@@ -80,20 +76,16 @@ import type {} from './augmentation';
 import type { Service }`),
       },
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(analysis.coverage.files.some(file => file.endsWith('/entry.ts'))).toBe(true);
-      expect(effectRows({ analysis, label: '<module>' })[0]).toEqual(['network.http(*)']);
-      expect(effectRows({ analysis, label: 'inspect' })).toEqual([['localstorage.read(*)']]);
-      expect(effectRows({ analysis, label: 'save' })).toEqual([['localstorage.write(*)']]);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(analysis.coverage.files.some(file => file.endsWith('/entry.ts'))).toBe(true);
+    expect(effectRows({ analysis, label: '<module>' })[0]).toEqual(['network.http(*)']);
+    expect(effectRows({ analysis, label: 'inspect' })).toEqual([['localstorage.read(*)']]);
+    expect(effectRows({ analysis, label: 'save' })).toEqual([['localstorage.write(*)']]);
   });
 
   it('does not model members added by a Worker type augmentation', () => {
-    const fixture = workerFixture({
+    using fixture = workerFixture({
       edits: {
         'augmentation.d.ts': 'export {}; declare global { interface Worker { customOperation(): void; } }',
         'client.ts': client.replace("import type { Service }", `\
@@ -101,18 +93,14 @@ import type {} from './augmentation';
 import type { Service }`) + '\nendpoint.customOperation();',
       },
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
-      expect(analysis.coverage.files.some(file => file.endsWith('/entry.ts'))).toBe(true);
-      expect(analysis.diagnostics.some(item => item.code === 'unsupported' && item.message.includes('customOperation'))).toBe(true);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
+    expect(analysis.coverage.files.some(file => file.endsWith('/entry.ts'))).toBe(true);
+    expect(analysis.diagnostics.some(item => item.code === 'unsupported' && item.message.includes('customOperation'))).toBe(true);
   });
 
   it('does not identify a local Worker constructor as the DOM binding', () => {
-    const fixture = workerFixture({
+    using fixture = workerFixture({
       edits: {
         'client.ts': `\
 class Worker { constructor(_url: URL, _options: WorkerOptions) {} }
@@ -121,53 +109,41 @@ void endpoint;
 `,
       },
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
-      expect(analysis.coverage.files.some(file => file.endsWith('/entry.ts'))).toBe(false);
-      expect(effectRows({ analysis, label: '<module>' })).toEqual([[]]);
-      expect(analysis.diagnostics.some(item => item.code === 'unsupported')).toBe(true);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
+    expect(analysis.coverage.files.some(file => file.endsWith('/entry.ts'))).toBe(false);
+    expect(effectRows({ analysis, label: '<module>' })).toEqual([[]]);
+    expect(analysis.diagnostics.some(item => item.code === 'unsupported')).toBe(true);
   });
 
   it('keeps a runtime replacement of the global Worker unresolved', () => {
-    const fixture = workerFixture({
+    using fixture = workerFixture({
       edits: {
         'client.ts': client.replace('const endpoint =', `\
 declare const replacement: typeof Worker; Worker = replacement;
 const endpoint =`),
       },
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
-      expect(analysis.diagnostics.some(item => item.code === 'unsupported' || item.code === 'boundary')).toBe(true);
-      expect(() => fixture.fix()).toThrow();
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
+    expect(analysis.diagnostics.some(item => item.code === 'unsupported' || item.code === 'boundary')).toBe(true);
+    expect(() => fixture.fix()).toThrow();
   });
 
   it('propagates a new provider operation through the shared contract and fixes once', () => {
-    const fixture = workerFixture({ edits: { 'entry.ts': provider.replace("return localStorage.getItem", "fetch('/extra'); return localStorage.getItem") } });
-    try {
-      const before = fixture.check();
-      expect(before.diagnostics.filter(item => !['missing', 'exceeds'].includes(item.code))).toEqual([]);
-      expect(effectRows({ analysis: before, label: 'inspect' })[0]).toContain('network.http(*)');
-      expect(effectRows({ analysis: before, label: 'save' })[0]).not.toContain('network.http(*)');
-      const fixed = fixture.fix();
-      expect(fixed.analysis.diagnostics).toEqual([]);
-      expect(fixed.changedFiles.map(file => path.basename(file)).sort()).toEqual(['client.ts', 'contract.ts', 'entry.ts']);
-      expect(fixture.fix().changedFiles).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = workerFixture({ edits: { 'entry.ts': provider.replace("return localStorage.getItem", "fetch('/extra'); return localStorage.getItem") } });
+    const before = fixture.check();
+    expect(before.diagnostics.filter(item => !['missing', 'exceeds'].includes(item.code))).toEqual([]);
+    expect(effectRows({ analysis: before, label: 'inspect' })[0]).toContain('network.http(*)');
+    expect(effectRows({ analysis: before, label: 'save' })[0]).not.toContain('network.http(*)');
+    const fixed = fixture.fix();
+    expect(fixed.analysis.diagnostics).toEqual([]);
+    expect(fixed.changedFiles.map(file => path.basename(file)).sort()).toEqual(['client.ts', 'contract.ts', 'entry.ts']);
+    expect(fixture.fix().changedFiles).toEqual([]);
   });
 
   it('charges entry startup to worker creation, not to every remote method', () => {
-    const fixture = workerFixture({
+    using fixture = workerFixture({
       edits: {
         'entry.ts': provider + "\nfetch('/startup');",
         'client.ts': client.replace("const endpoint =", `\
@@ -178,30 +154,22 @@ return wrapWorkerRemote<Service>({ endpoint }); }
 const remote = create();`),
       },
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.filter(item => !['missing', 'exceeds'].includes(item.code))).toEqual([]);
-      expect(effectRows({ analysis, label: 'create' })[0]).toContain('network.http(*)');
-      expect(effectRows({ analysis, label: 'inspect' })[0]).not.toContain('network.http(*)');
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.filter(item => !['missing', 'exceeds'].includes(item.code))).toEqual([]);
+    expect(effectRows({ analysis, label: 'create' })[0]).toContain('network.http(*)');
+    expect(effectRows({ analysis, label: 'inspect' })[0]).not.toContain('network.http(*)');
   });
 
   it('rejects a structurally identical but different shared declaration', () => {
-    const fixture = workerFixture({ edits: { 'other.ts': contract, 'entry.ts': provider.replace("'./contract'", "'./other'") } });
-    try {
-      const result = fixture.check();
-      expect(result.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
-      expect(result.diagnostics.some(item => item.code === 'boundary' && item.message.includes('same shared'))).toBe(true);
-      expect(() => fixture.fix()).toThrow();
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = workerFixture({ edits: { 'other.ts': contract, 'entry.ts': provider.replace("'./contract'", "'./other'") } });
+    const result = fixture.check();
+    expect(result.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
+    expect(result.diagnostics.some(item => item.code === 'boundary' && item.message.includes('same shared'))).toBe(true);
+    expect(() => fixture.fix()).toThrow();
   });
 
   it('does not ignore a callable hidden from the exposed shared type', () => {
-    const fixture = workerFixture({
+    using fixture = workerFixture({
       edits: {
         'entry.ts': provider.replace("const service = {", `\
 const original = {
@@ -210,25 +178,17 @@ const service: Service = original;
 exposeWorkerRemote<Service>`),
       },
     });
-    try {
-      expect(fixture.check().diagnostics.some(item => item.message.includes('Undeclared worker member: extra'))).toBe(true);
-    } finally {
-      fixture.dispose();
-    }
+    expect(fixture.check().diagnostics.some(item => item.message.includes('Undeclared worker member: extra'))).toBe(true);
   });
 
   it('rejects wrapping an endpoint without a verified creation identity', () => {
-    const fixture = workerFixture({ edits: { 'client.ts': client.replace("const endpoint = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module' });", 'declare const endpoint: Worker;') } });
-    try {
-      expect(fixture.check().diagnostics.some(item => item.message.includes('endpoint has no verified'))).toBe(true);
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = workerFixture({ edits: { 'client.ts': client.replace("const endpoint = new Worker(new URL('./entry.ts', import.meta.url), { type: 'module' });", 'declare const endpoint: Worker;') } });
+    expect(fixture.check().diagnostics.some(item => item.message.includes('endpoint has no verified'))).toBe(true);
   });
 
   it('rejects unverified reverse callbacks instead of treating them as cloneable values', () => {
     const valueContract = 'export interface Service { /** @effects [] */ use(value: { x: string }): void; }';
-    const fixture = workerFixture({
+    using fixture = workerFixture({
       edits: {
         'contract.ts': valueContract,
         'entry.ts': `import type { Service } from './contract';
@@ -240,15 +200,11 @@ const view: { x: string } = original;
 /** @effects [] */ function call() { remote.use(view); }`,
       },
     });
-    try {
-      expect(fixture.check().diagnostics.some(item => item.message.includes('worker argument serialization'))).toBe(true);
-    } finally {
-      fixture.dispose();
-    }
+    expect(fixture.check().diagnostics.some(item => item.message.includes('worker argument serialization'))).toBe(true);
   });
 
   it('preserves transport checks through a typed function alias', () => {
-    const fixture = workerFixture({
+    using fixture = workerFixture({
       edits: {
         'client.ts': client + `
 /** @effects ["localstorage.write(*)"] */
@@ -258,28 +214,20 @@ function call() { alias({ toString: () => localStorage.clear() } as unknown as s
 `,
       },
     });
-    try {
-      const result = fixture.check();
-      expect(result.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
-      expect(result.diagnostics.some(item => item.code === 'unsupported' || item.code === 'boundary')).toBe(true);
-    } finally {
-      fixture.dispose();
-    }
+    const result = fixture.check();
+    expect(result.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
+    expect(result.diagnostics.some(item => item.code === 'unsupported' || item.code === 'boundary')).toBe(true);
   });
 
   it('pins transport model bytes before analysis', () => {
-    const fixture = workerFixture({ edits: {} });
-    try {
-      fs.appendFileSync(path.join(fixture.root, 'transport.d.ts'), '\n// changed');
-      expect(() => fixture.check()).toThrow('Reviewed effect model changed');
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = workerFixture({ edits: {} });
+    fs.appendFileSync(path.join(fixture.root, 'transport.d.ts'), '\n// changed');
+    expect(() => fixture.check()).toThrow('Reviewed effect model changed');
   });
 
   it('rechecks Vue callback provenance after a remote method crosses a typed alias', () => {
     const vue = 'export declare function onMounted(callback: () => void): void;';
-    const fixture = workerFixture({
+    using fixture = workerFixture({
       edits: {
         'vue.d.ts': vue,
         'client.ts': client + `\
@@ -291,18 +239,14 @@ function install() { onMounted(alias); }
       },
     });
     fixture.config.vueModels = [{ file: 'vue.d.ts', sha256: digest({ content: vue }) }];
-    try {
-      const result = fixture.check();
-      expect(result.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
-      expect(result.diagnostics.some(item => item.code === 'boundary' && item.message.includes('Vue callback registration cannot use a remote method'))).toBe(true);
-      expect(() => fixture.fix()).toThrow();
-    } finally {
-      fixture.dispose();
-    }
+    const result = fixture.check();
+    expect(result.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
+    expect(result.diagnostics.some(item => item.code === 'boundary' && item.message.includes('Vue callback registration cannot use a remote method'))).toBe(true);
+    expect(() => fixture.fix()).toThrow();
   });
 
   it('rejects higher-order remote forwarding that is not yet modeled', () => {
-    const fixture = workerFixture({
+    using fixture = workerFixture({
       edits: {
         'client.ts': client + `
 /** @effects ["call(arg0)"] */
@@ -312,11 +256,7 @@ function wrapper() { invoke(remote.read); }
 `,
       },
     });
-    try {
-      expect(fixture.check().diagnostics.some(item => item.message.includes('Higher-order remote forwarding'))).toBe(true);
-    } finally {
-      fixture.dispose();
-    }
+    expect(fixture.check().diagnostics.some(item => item.message.includes('Higher-order remote forwarding'))).toBe(true);
   });
 });
 
@@ -328,68 +268,52 @@ describe('unsafe exceptions at reviewed worker boundaries', () => {
   const maskedClient = client.replace('["localstorage.read(*)"]', '[]');
 
   it('uses the provider public contract without losing its auditable body', () => {
-    const fixture = workerFixture({ edits: { 'entry.ts': maskedProvider, 'contract.ts': maskedContract, 'client.ts': maskedClient } });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(effectRows({ analysis, label: 'inspect' })).toEqual([[]]);
-      expect(effectRows({ analysis, label: 'save' })).toEqual([['localstorage.write(*)']]);
-      expect(analysis.unsafeSuppressions[0]?.suppressed.map(effect => printEffect({ effect }))).toEqual(['localstorage.read(*)']);
-      expect(fixture.fix().changedFiles).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = workerFixture({ edits: { 'entry.ts': maskedProvider, 'contract.ts': maskedContract, 'client.ts': maskedClient } });
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(effectRows({ analysis, label: 'inspect' })).toEqual([[]]);
+    expect(effectRows({ analysis, label: 'save' })).toEqual([['localstorage.write(*)']]);
+    expect(analysis.unsafeSuppressions[0]?.suppressed.map(effect => printEffect({ effect }))).toEqual(['localstorage.read(*)']);
+    expect(fixture.fix().changedFiles).toEqual([]);
   });
 
   it('retains network additions through a masked provider and fixes the shared declaration', () => {
-    const fixture = workerFixture({
+    using fixture = workerFixture({
       edits: {
         'entry.ts': maskedProvider.replace('read() {', "read() { fetch('/unexpected');"),
         'contract.ts': maskedContract,
         'client.ts': maskedClient,
       },
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.filter(item => item.code !== 'exceeds')).toEqual([]);
-      expect(effectRows({ analysis, label: 'inspect' })).toEqual([['network.http(*)']]);
-      expect(effectRows({ analysis, label: 'save' })).toEqual([['localstorage.write(*)']]);
-      const fixed = fixture.fix();
-      expect(fixed.analysis.diagnostics).toEqual([]);
-      expect(fixed.changedFiles.map(file => path.basename(file)).sort()).toEqual(['client.ts', 'contract.ts', 'entry.ts']);
-      expect(fs.readFileSync(path.join(fixture.root, 'entry.ts'), 'utf8')).toContain(exception);
-      expect(fixture.fix().changedFiles).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.filter(item => item.code !== 'exceeds')).toEqual([]);
+    expect(effectRows({ analysis, label: 'inspect' })).toEqual([['network.http(*)']]);
+    expect(effectRows({ analysis, label: 'save' })).toEqual([['localstorage.write(*)']]);
+    const fixed = fixture.fix();
+    expect(fixed.analysis.diagnostics).toEqual([]);
+    expect(fixed.changedFiles.map(file => path.basename(file)).sort()).toEqual(['client.ts', 'contract.ts', 'entry.ts']);
+    expect(fs.readFileSync(path.join(fixture.root, 'entry.ts'), 'utf8')).toContain(exception);
+    expect(fixture.fix().changedFiles).toEqual([]);
   });
 
   it('cannot use a shared type declaration to exempt a provider body', () => {
-    const fixture = workerFixture({ edits: { 'contract.ts': maskedContract.replace('  read():', `  ${exception}\n  read():`) } });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.some(item => item.code === 'boundary')).toBe(true);
-      expect(() => fixture.fix()).toThrow();
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = workerFixture({ edits: { 'contract.ts': maskedContract.replace('  read():', `  ${exception}\n  read():`) } });
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.some(item => item.code === 'boundary')).toBe(true);
+    expect(() => fixture.fix()).toThrow();
   });
 
   it('keeps provider checking enabled when only the client wrapper masks the call', () => {
-    const fixture = workerFixture({
+    using fixture = workerFixture({
       edits: {
         'entry.ts': provider.replace('/** @effects ["localstorage.read(*)"] */', '/** @effects [] */'),
         'client.ts': maskedClient.replace('export async function inspect()', `${exception}\nexport async function inspect()`),
       },
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.filter(item => item.code === 'exceeds').map(item => path.basename(item.file))).toEqual(['entry.ts']);
-      expect(effectRows({ analysis, label: 'inspect' })).toEqual([[]]);
-      fixture.fix();
-      expect(fixture.check().diagnostics).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.filter(item => item.code === 'exceeds').map(item => path.basename(item.file))).toEqual(['entry.ts']);
+    expect(effectRows({ analysis, label: 'inspect' })).toEqual([[]]);
+    fixture.fix();
+    expect(fixture.check().diagnostics).toEqual([]);
   });
 });

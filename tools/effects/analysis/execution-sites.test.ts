@@ -5,12 +5,8 @@ import { printEffect } from '../contracts/effects.ts';
 import { createFixture } from '../test-support/project-fixture.ts';
 
 function checkSource({ source }: { source: string }) {
-  const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-  try {
-    return fixture.check();
-  } finally {
-    fixture.dispose();
-  }
+  using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+  return fixture.check();
 }
 
 describe('executed binding defaults and iteration assignments', () => {
@@ -50,16 +46,12 @@ function main() { const { run = write } = { run: read }; run(); }
   });
 
   it('fixes and checks an anonymous default callback independently', () => {
-    const fixture = createFixture({ files: { 'main.ts': 'function main() { const { run = () => { localStorage.clear(); } } = {}; run(); }' }, entries: ['main.ts'] });
-    try {
-      const result = fixture.fix();
-      expect(result.analysis.diagnostics).toEqual([]);
-      expect(result.analysis.coverage.functions).toBe(2);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8').match(/@effects \["localstorage.write\(\*\)"\]/g)).toHaveLength(2);
-      expect(fixture.fix().changedFiles).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = createFixture({ files: { 'main.ts': 'function main() { const { run = () => { localStorage.clear(); } } = {}; run(); }' }, entries: ['main.ts'] });
+    const result = fixture.fix();
+    expect(result.analysis.diagnostics).toEqual([]);
+    expect(result.analysis.coverage.functions).toBe(2);
+    expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8').match(/@effects \["localstorage.write\(\*\)"\]/g)).toHaveLength(2);
+    expect(fixture.fix().changedFiles).toEqual([]);
   });
 
   it('does not certify an unresolved optional callable through its fallback', () => {
@@ -137,17 +129,13 @@ function main() { const { run = write } = { run: read }; run(); }
 
 describe('body-less function declarations retain existing boundary requirements', () => {
   it('refuses a .ts ambient function instead of trusting its annotation', () => {
-    const fixture = createFixture({ files: { 'main.ts': '/** @effects [] */ declare function send(): void; /** @effects [] */ function main() { send(); }' }, entries: ['main.ts'] });
-    try {
-      expect(fixture.check().diagnostics.some(item => item.code === 'boundary')).toBe(true);
-      expect(() => fixture.fix()).toThrow('refused');
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = createFixture({ files: { 'main.ts': '/** @effects [] */ declare function send(): void; /** @effects [] */ function main() { send(); }' }, entries: ['main.ts'] });
+    expect(fixture.check().diagnostics.some(item => item.code === 'boundary')).toBe(true);
+    expect(() => fixture.fix()).toThrow('refused');
   });
 
   it('refuses an overload whose body effects would otherwise disappear from its caller', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 /** @effects [] */ function send(): void;
@@ -157,13 +145,9 @@ describe('body-less function declarations retain existing boundary requirements'
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
-      expect(analysis.diagnostics.some(item => item.code === 'unsupported' && item.message.includes('without a body'))).toBe(true);
-      expect(() => fixture.fix()).toThrow('refused');
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
+    expect(analysis.diagnostics.some(item => item.code === 'unsupported' && item.message.includes('without a body'))).toBe(true);
+    expect(() => fixture.fix()).toThrow('refused');
   });
 });

@@ -23,7 +23,7 @@ function emptyOwners({ analysis }: { analysis: EffectsAnalysis }): number {
 
 describe('known absent callback arguments', () => {
   it('substitutes undefined like a checked empty callback without erasing the callee slot', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': cleanup + `\
 /** @effects [] */ function noop() {}
@@ -33,23 +33,19 @@ describe('known absent callback arguments', () => {
       },
       entries: ['main.ts'],
     });
-    try {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const analysis = fixture.check();
-        expect(analysis.diagnostics).toEqual([]);
-        expect(row({ analysis, label: 'dispose' })).toEqual(['call(arg0.beforeRelease)']);
-        expect(row({ analysis, label: 'absent' })).toEqual([]);
-        expect(row({ analysis, label: 'explicit' })).toEqual([]);
-        expect(emptyOwners({ analysis })).toBe(1);
-        expect(analysis.coverage.functions).toBe(5);
-      }
-    } finally {
-      fixture.dispose();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const analysis = fixture.check();
+      expect(analysis.diagnostics).toEqual([]);
+      expect(row({ analysis, label: 'dispose' })).toEqual(['call(arg0.beforeRelease)']);
+      expect(row({ analysis, label: 'absent' })).toEqual([]);
+      expect(row({ analysis, label: 'explicit' })).toEqual([]);
+      expect(emptyOwners({ analysis })).toBe(1);
+      expect(analysis.coverage.functions).toBe(5);
     }
   });
 
   it('preserves direct const and conditional evidence and keeps a writer separate', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': cleanup + `\
 /** @effects ["localstorage.write(*)"] */ function writer() { localStorage.clear(); }
@@ -63,19 +59,15 @@ describe('known absent callback arguments', () => {
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(row({ analysis, label: 'absent' })).toEqual([]);
-      expect(row({ analysis, label: 'present' })).toEqual(['localstorage.write(*)']);
-      expect(emptyOwners({ analysis })).toBe(1);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(row({ analysis, label: 'absent' })).toEqual([]);
+    expect(row({ analysis, label: 'present' })).toEqual(['localstorage.write(*)']);
+    expect(emptyOwners({ analysis })).toBe(1);
   });
 
   it('substitutes omitted optional record callbacks without leaving their lexical path in a caller', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 interface Contact { confirm(): void; }
@@ -93,18 +85,14 @@ function runCleanupStep({ operation }: { operation: () => void }) { operation();
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(row({ analysis, label: 'establish' })).toEqual(['call(arg0.contact.confirm)', 'call(arg0.verifyPeer)']);
-      expect(row({ analysis, label: 'entry' })).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(row({ analysis, label: 'establish' })).toEqual(['call(arg0.contact.confirm)', 'call(arg0.verifyPeer)']);
+    expect(row({ analysis, label: 'entry' })).toEqual([]);
   });
 
   it('evaluates a void operand before using its undefined result', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': cleanup + `\
 /** @effects ["localstorage.write(*)"] */ function writer() { localStorage.clear(); }
@@ -113,13 +101,9 @@ function runCleanupStep({ operation }: { operation: () => void }) { operation();
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(row({ analysis, label: 'entry' })).toEqual(['localstorage.write(*)']);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(row({ analysis, label: 'entry' })).toEqual(['localstorage.write(*)']);
   });
 
   it.each([
@@ -131,7 +115,7 @@ function runCleanupStep({ operation }: { operation: () => void }) { operation();
     'const args = { beforeRelease: undefined }; const alias = args; alias.beforeRelease = 12 as unknown as undefined;',
   ])('forgets absence in mutable storage: %s', setup => {
     const actual = setup.includes('const args') ? 'args' : setup.includes('const combined') ? '{ beforeRelease: combined }' : '{ beforeRelease: value }';
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': cleanup + `\
 /** @effects [] */ function entry({ flag }: { flag: boolean }) { ${setup} dispose(${actual}); }
@@ -139,15 +123,11 @@ function runCleanupStep({ operation }: { operation: () => void }) { operation();
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.some(item => item.code === 'typescript')).toBe(false);
-      expect(analysis.diagnostics.some(item => item.code === 'unsupported')).toBe(true);
-      expect(row({ analysis, label: 'entry' })).toContain('call(arg0.beforeRelease)');
-      expect(emptyOwners({ analysis })).toBe(0);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.some(item => item.code === 'typescript')).toBe(false);
+    expect(analysis.diagnostics.some(item => item.code === 'unsupported')).toBe(true);
+    expect(row({ analysis, label: 'entry' })).toContain('call(arg0.beforeRelease)');
+    expect(emptyOwners({ analysis })).toBe(0);
   });
 
   it.each([
@@ -156,7 +136,7 @@ function runCleanupStep({ operation }: { operation: () => void }) { operation();
     'typedReturn()',
     'voidReturn() as undefined',
   ])('does not turn a scalar or return-type claim into absence: %s', actual => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': cleanup + `\
 /** @effects [] */ function typedReturn(): undefined { return 12 as unknown as undefined; }
@@ -166,19 +146,15 @@ function runCleanupStep({ operation }: { operation: () => void }) { operation();
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.some(item => item.code === 'typescript')).toBe(false);
-      expect(analysis.diagnostics.some(item => item.code === 'unsupported')).toBe(true);
-      expect(row({ analysis, label: 'entry' })).toContain('call(arg0.beforeRelease)');
-      expect(emptyOwners({ analysis })).toBe(0);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.some(item => item.code === 'typescript')).toBe(false);
+    expect(analysis.diagnostics.some(item => item.code === 'unsupported')).toBe(true);
+    expect(row({ analysis, label: 'entry' })).toContain('call(arg0.beforeRelease)');
+    expect(emptyOwners({ analysis })).toBe(0);
   });
 
   it('keeps a writer reachable through a mutable value instead of narrowing with its initial falsiness', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': cleanup + `\
 /** @effects ["localstorage.write(*)"] */ function writer() { localStorage.clear(); }
@@ -191,19 +167,15 @@ function runCleanupStep({ operation }: { operation: () => void }) { operation();
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.some(item => item.code === 'typescript')).toBe(false);
-      expect(analysis.diagnostics.some(item => item.code === 'exceeds')).toBe(true);
-      expect(row({ analysis, label: 'entry' })).toEqual(['localstorage.write(*)']);
-      expect(emptyOwners({ analysis })).toBe(0);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.some(item => item.code === 'typescript')).toBe(false);
+    expect(analysis.diagnostics.some(item => item.code === 'exceeds')).toBe(true);
+    expect(row({ analysis, label: 'entry' })).toEqual(['localstorage.write(*)']);
+    expect(emptyOwners({ analysis })).toBe(0);
   });
 
   it('keeps a shadowing callback named undefined and a cast writer executable', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': cleanup + `\
 /** @effects ["localstorage.write(*)"] */ function writer() { localStorage.clear(); }
@@ -215,19 +187,15 @@ function runCleanupStep({ operation }: { operation: () => void }) { operation();
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(row({ analysis, label: 'shadow' })).toEqual(['call(arg0.undefined)']);
-      expect(row({ analysis, label: 'entry' })).toEqual(['localstorage.write(*)']);
-      expect(emptyOwners({ analysis })).toBe(0);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(row({ analysis, label: 'shadow' })).toEqual(['call(arg0.undefined)']);
+    expect(row({ analysis, label: 'entry' })).toEqual(['localstorage.write(*)']);
+    expect(emptyOwners({ analysis })).toBe(0);
   });
 
   it('does not choose one of multiple optional callable contracts', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 /** @effects ["call(arg0.callback)"] */
@@ -239,12 +207,8 @@ function use({ callback }: { callback: ((value: string) => void) | ((value: stri
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.some(item => item.code === 'unsupported')).toBe(true);
-      expect(emptyOwners({ analysis })).toBe(0);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.some(item => item.code === 'unsupported')).toBe(true);
+    expect(emptyOwners({ analysis })).toBe(0);
   });
 });

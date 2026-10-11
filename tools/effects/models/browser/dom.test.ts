@@ -6,12 +6,8 @@ import { printEffect } from '../../contracts/effects.ts';
 import { runEffectTidy } from '../../maintenance/tidy.ts';
 
 function inspect({ source }: { source: string }) {
-  const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-  try {
-    return fixture.check();
-  } finally {
-    fixture.dispose();
-  }
+  using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+  return fixture.check();
 }
 
 function row({ source }: { source: string }) {
@@ -171,32 +167,24 @@ describe('DOM boundaries do not turn unsupported execution into none', () => {
 
 describe('image origins participate in maintenance', () => {
   it('widens callers in one plan and does not add runtime statements', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'image.ts': `export function display() { const image = new Image(); image.src = 'https://other.invalid/a'; }`,
         'main.ts': `import { display } from './image'; export function entry() { display(); }`,
       },
       entries: ['main.ts'],
     });
-    try {
-      const fixed = fixture.fix();
-      expect(fixed.analysis.diagnostics).toEqual([]);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('@effects ["network.http(*)"]');
-      expect(fixture.fix().changedFiles).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    const fixed = fixture.fix();
+    expect(fixed.analysis.diagnostics).toEqual([]);
+    expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('@effects ["network.http(*)"]');
+    expect(fixture.fix().changedFiles).toEqual([]);
   });
 
   it('keeps unsupported document execution unfixable', () => {
     const source = `function entry() { window.open('data:text/html,<script>1</script>'); }`;
-    const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-    try {
-      expect(() => fixture.fix()).toThrow();
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toBe(source);
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+    expect(() => fixture.fix()).toThrow();
+    expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toBe(source);
   });
 });
 
@@ -207,23 +195,19 @@ describe('DOM policy preservation and explicit tidy', () => {
 export function localImage() { const image = new Image(); image.src = 'blob:null/token'; }
 export const actions = { /** @effects ["network.http(*)"] */ run: () => {} };
 `;
-    const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-    try {
-      const input = { root: fixture.root, config: fixture.config, files: ['main.ts'], inputSnapshots: new Map<string, string>() };
-      const preview = runEffectTidy({ ...input, write: 'preview' });
-      expect(preview.changes).toHaveLength(1);
-      expect(preview.changes[0]?.after).toEqual([]);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toBe(source);
-      const written = runEffectTidy({ ...input, write: 'write' });
-      expect(written.changedFiles).toHaveLength(1);
-      const text = fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8');
-      expect(text).toContain('/** @effects [] */');
-      expect(text).toContain('/** @effects ["network.http(*)"] */ run');
-      expect(fixture.fix().changedFiles).toEqual([]);
-      expect(runEffectTidy({ ...input, write: 'preview' }).changes).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+    const input = { root: fixture.root, config: fixture.config, files: ['main.ts'], inputSnapshots: new Map<string, string>() };
+    const preview = runEffectTidy({ ...input, write: 'preview' });
+    expect(preview.changes).toHaveLength(1);
+    expect(preview.changes[0]?.after).toEqual([]);
+    expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toBe(source);
+    const written = runEffectTidy({ ...input, write: 'write' });
+    expect(written.changedFiles).toHaveLength(1);
+    const text = fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8');
+    expect(text).toContain('/** @effects [] */');
+    expect(text).toContain('/** @effects ["network.http(*)"] */ run');
+    expect(fixture.fix().changedFiles).toEqual([]);
+    expect(runEffectTidy({ ...input, write: 'preview' }).changes).toEqual([]);
   });
 
   it('does not let image-network suppression hide unsupported document execution', () => {

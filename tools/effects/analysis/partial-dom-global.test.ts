@@ -29,32 +29,28 @@ const cases = [
 describe('partial DOM candidates in mixed ambient globals', () => {
   it.each(cases)('$name', item => {
     const source = item.source ?? `export {}; /** @effects [] */ async function entry() { ${item.body} }`;
-    const fixture = createFixture({ files: { 'main.ts': source, ...(item.globals ? { 'globals.d.ts': item.globals } : {}) }, entries: ['main.ts', ...(item.globals ? ['globals.d.ts'] : [])] });
-    try {
-      const configPath = path.join(fixture.root, 'tsconfig.json');
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      if (item.dom === false) config.compilerOptions.lib = ['ES2023'];
-      if (item.node) {
-        config.compilerOptions.types = ['node'];
-        config.compilerOptions.typeRoots = [path.resolve('node_modules/@types')];
-      }
-      if (item.skipLibCheck === false) config.compilerOptions.skipLibCheck = false;
-      fs.writeFileSync(configPath, JSON.stringify(config));
-      if (item.budget !== undefined) fixture.config.analysisBudget = item.budget;
-      const analysis = fixture.check();
-      const owner = analysis.owners.find(candidate => candidate.label === 'entry' && candidate.role === 'implementation')!;
-      const row = (analysis.solution.rows.get(owner.id) ?? []).map(effect => printEffect({ effect }));
-      expect(row).toEqual(item.expected);
-      const types = analysis.diagnostics.filter(diagnostic => diagnostic.code === 'typescript');
-      if (item.invalid) expect(types.some(diagnostic => diagnostic.message.includes('Subsequent variable declarations'))).toBe(true);
-      else expect(types).toEqual([]);
-      if (item.globals || item.node) {
-        expect(() => planVerifiedEffectFix({ analysis, root: fixture.root })).toThrow();
-        expect(analysis.diagnostics.some(diagnostic => diagnostic.code === 'boundary')).toBe(true);
-      }
-      if (item.name === 'callback legality and low budget') expect([...owner.callbackPaths]).toEqual(['call(arg0.verifyPeer)']);
-    } finally {
-      fixture.dispose();
+    using fixture = createFixture({ files: { 'main.ts': source, ...(item.globals ? { 'globals.d.ts': item.globals } : {}) }, entries: ['main.ts', ...(item.globals ? ['globals.d.ts'] : [])] });
+    const configPath = path.join(fixture.root, 'tsconfig.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    if (item.dom === false) config.compilerOptions.lib = ['ES2023'];
+    if (item.node) {
+      config.compilerOptions.types = ['node'];
+      config.compilerOptions.typeRoots = [path.resolve('node_modules/@types')];
     }
+    if (item.skipLibCheck === false) config.compilerOptions.skipLibCheck = false;
+    fs.writeFileSync(configPath, JSON.stringify(config));
+    if (item.budget !== undefined) fixture.config.analysisBudget = item.budget;
+    const analysis = fixture.check();
+    const owner = analysis.owners.find(candidate => candidate.label === 'entry' && candidate.role === 'implementation')!;
+    const row = (analysis.solution.rows.get(owner.id) ?? []).map(effect => printEffect({ effect }));
+    expect(row).toEqual(item.expected);
+    const types = analysis.diagnostics.filter(diagnostic => diagnostic.code === 'typescript');
+    if (item.invalid) expect(types.some(diagnostic => diagnostic.message.includes('Subsequent variable declarations'))).toBe(true);
+    else expect(types).toEqual([]);
+    if (item.globals || item.node) {
+      expect(() => planVerifiedEffectFix({ analysis, root: fixture.root })).toThrow();
+      expect(analysis.diagnostics.some(diagnostic => diagnostic.code === 'boundary')).toBe(true);
+    }
+    if (item.name === 'callback legality and low budget') expect([...owner.callbackPaths]).toEqual(['call(arg0.verifyPeer)']);
   });
 });

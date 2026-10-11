@@ -11,7 +11,7 @@ export declare function watch<T>(source: Ref<T>, callback: (value: T) => void): 
 
 describe('Vue contract replacement adversaries', () => {
   it('rejects replacing a watch handle while an earlier alias still uses its old lifetime bound', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'framework.d.ts': declaration,
         'main.ts': `\
@@ -25,14 +25,10 @@ function stop() { handle(); }
       entries: ['main.ts'],
     });
     fixture.config.vueModels = [{ file: 'framework.d.ts', sha256: digest({ content: declaration }) }];
-    try {
-      const result = fixture.check();
-      expect(result.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
-      expect(result.diagnostics.some(item => item.code === 'unsupported' && item.message.startsWith('Replacing a Vue watch handle'))).toBe(true);
-      expect(result.diagnostics.some(item => item.code === 'unsupported' && item.message.startsWith('Runtime import initialization'))).toBe(true);
-      expect(() => fixture.fix()).toThrow();
-    } finally {
-      fixture.dispose();
-    }
+    const result = fixture.check();
+    expect(result.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
+    expect(result.diagnostics.some(item => item.code === 'unsupported' && item.message.startsWith('Replacing a Vue watch handle'))).toBe(true);
+    expect(result.diagnostics.some(item => item.code === 'unsupported' && item.message.startsWith('Runtime import initialization'))).toBe(true);
+    expect(() => fixture.fix()).toThrow();
   });
 });

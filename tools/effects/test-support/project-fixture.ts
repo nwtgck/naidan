@@ -12,6 +12,7 @@ export function createFixture({ files, entries }: { files: Readonly<Record<strin
   check: () => ReturnType<typeof analyzeEffects>,
   fix: () => ReturnType<typeof runEffects>,
   dispose: () => void,
+  [Symbol.dispose]: () => void,
 } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-effects-'));
   for (const [relative, content] of Object.entries(files)) {
@@ -42,6 +43,7 @@ export function createFixture({ files, entries }: { files: Readonly<Record<strin
     workerTransports: [],
     vueModels: [],
   };
+  const dispose = () => fs.rmSync(root, { recursive: true, force: true });
   return {
     root,
     config,
@@ -52,6 +54,7 @@ export function createFixture({ files, entries }: { files: Readonly<Record<strin
       return result;
     },
     fix: () => runEffects({ root, config, mode: 'fix', inputSnapshots: new Map() }),
-    dispose: () => fs.rmSync(root, { recursive: true, force: true }),
+    dispose,
+    [Symbol.dispose]: dispose,
   };
 }

@@ -21,24 +21,20 @@ describe('runtime witnesses for implicit operations', () => {
   ])('does not certify a TypeScript-valid hidden conversion: %s', expression => {
     const source = `${hooks}
 /** @effects [] */ function run() { ${expression} }\nrun();`;
-    const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
-      expect(analysis.diagnostics.some(item => item.code === 'unsupported')).toBe(true);
-      let writes = 0;
-      const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.None } }).outputText;
-      vm.runInNewContext(output, {
-        localStorage: {
-          clear: () => {
-            writes++;
-          },
+    using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.filter(item => item.code === 'typescript')).toEqual([]);
+    expect(analysis.diagnostics.some(item => item.code === 'unsupported')).toBe(true);
+    let writes = 0;
+    const output = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.None } }).outputText;
+    vm.runInNewContext(output, {
+      localStorage: {
+        clear: () => {
+          writes++;
         },
-      }, { timeout: 1000 });
-      expect(writes).toBe(1);
-    } finally {
-      fixture.dispose();
-    }
+      },
+    }, { timeout: 1000 });
+    expect(writes).toBe(1);
   });
 
   it('charges executing a stored function, not installing it', () => {
@@ -48,22 +44,18 @@ const actions = { /** @effects ["localstorage.write(*)","hoge"] */ run: () => {}
 /** @effects [] */ function install() { actions.run = writer; }
 /** @effects ["localstorage.write(*)","hoge"] */ function execute() { actions.run(); }
 `;
-    const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-    try {
-      expect(fixture.check().diagnostics).toEqual([]);
-      let writes = 0;
-      const context = vm.createContext({
-        localStorage: {
-          clear: () => {
-            writes++;
-          },
+    using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+    expect(fixture.check().diagnostics).toEqual([]);
+    let writes = 0;
+    const context = vm.createContext({
+      localStorage: {
+        clear: () => {
+          writes++;
         },
-      });
-      vm.runInContext(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.None } }).outputText, context, { timeout: 1000 });
-      vm.runInContext('install()', context, { timeout: 1000 }); expect(writes).toBe(0);
-      vm.runInContext('execute()', context, { timeout: 1000 }); expect(writes).toBe(1);
-    } finally {
-      fixture.dispose();
-    }
+      },
+    });
+    vm.runInContext(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.None } }).outputText, context, { timeout: 1000 });
+    vm.runInContext('install()', context, { timeout: 1000 }); expect(writes).toBe(0);
+    vm.runInContext('execute()', context, { timeout: 1000 }); expect(writes).toBe(1);
   });
 });

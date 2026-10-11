@@ -211,23 +211,19 @@ function stop() { fetch('/stop'); handle.stop(); }
   });
 
   it('keeps nested callback violations and does not silently fix unknown cleanup behavior', () => {
-    const fixture = vueFixture({
+    using fixture = vueFixture({
       source: `\
 const handle = watchEffect(() => { onWatcherCleanup(() => { new Proxy({}, {}); }); });
 function stop() { handle(); }
 `,
       extra: {},
     });
-    try {
-      expect(fixture.check().diagnostics.some(item => item.code === 'unsupported')).toBe(true);
-      expect(() => fixture.fix()).toThrow();
-    } finally {
-      fixture.dispose();
-    }
+    expect(fixture.check().diagnostics.some(item => item.code === 'unsupported')).toBe(true);
+    expect(() => fixture.fix()).toThrow();
   });
 
   it('explains cleanup through helpers, fixes once and never writes synthetic annotations', () => {
-    const fixture = vueFixture({
+    using fixture = vueFixture({
       source: `\
 function register() { onWatcherCleanup(() => { localStorage.clear(); }); }
 const handle = watchEffect(() => { register(); });
@@ -235,17 +231,13 @@ function stop() { handle(); }
 `,
       extra: {},
     });
-    try {
-      const result = fixture.fix();
-      expect(result.analysis.diagnostics).toEqual([]);
-      const source = fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8');
-      expect(source).not.toContain('<watch cleanup>');
-      expect(fixture.fix().changedFiles).toEqual([]);
-      const review = reviewEffects({ analysis: result.analysis, budget: 100 }).find(item => item.label === 'stop')!;
-      expect(review.witnesses[0]?.path.some(item => item.reason?.includes('cleanup'))).toBe(true);
-    } finally {
-      fixture.dispose();
-    }
+    const result = fixture.fix();
+    expect(result.analysis.diagnostics).toEqual([]);
+    const source = fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8');
+    expect(source).not.toContain('<watch cleanup>');
+    expect(fixture.fix().changedFiles).toEqual([]);
+    const review = reviewEffects({ analysis: result.analysis, budget: 100 }).find(item => item.label === 'stop')!;
+    expect(review.witnesses[0]?.path.some(item => item.reason?.includes('cleanup'))).toBe(true);
   });
 
   it('retains cleanup registered by an inner watch source getter in the active outer watcher', () => {

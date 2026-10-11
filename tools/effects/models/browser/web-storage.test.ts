@@ -4,12 +4,8 @@ import { printEffect } from '../../contracts/effects.ts';
 import { planEffectFix } from '../../fixes/plan.ts';
 
 function inspect({ source }: { source: string }) {
-  const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-  try {
-    return fixture.check();
-  } finally {
-    fixture.dispose();
-  }
+  using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+  return fixture.check();
 }
 
 function effects({ source }: { source: string }) {
@@ -172,10 +168,14 @@ function entry({ window }: { window: Window }) { write({ storage: window.localSt
   expect(() => planEffectFix({ analysis: result })).toThrow();
 });
 
-it.each(['Storage', "Pick<Storage, 'setItem'>"])('does not make an arbitrary %s parameter native', type => {
+it.each([
+  { type: 'Storage', diagnostic: 'unsupported' },
+  { type: "Pick<Storage, 'setItem'>", diagnostic: 'exceeds' },
+])('does not make an arbitrary $type parameter native', ({ type, diagnostic }) => {
   const result = inspect({ source: `/** @effects [] */ function entry({ storage }: { storage: ${type} }) { storage.setItem('theme', 'dark'); }` });
   expect(result.diagnostics.some(item => item.code === 'typescript')).toBe(false);
-  expect(result.diagnostics.some(item => item.code === 'unsupported' && item.message.startsWith('Built-in type '))).toBe(true);
+  expect(result.diagnostics.some(item => item.code === diagnostic)).toBe(true);
   expect(result.modelDecisions.some(item => item.rule === 'localstorage.write-method' || item.rule === 'sessionstorage.write-method')).toBe(false);
-  expect(() => planEffectFix({ analysis: result })).toThrow();
+  if (type === 'Storage') expect(() => planEffectFix({ analysis: result })).toThrow();
+  else expect(planEffectFix({ analysis: result }).edits[0]?.after).toContain('@effects ["call(arg0.storage.setItem)"]');
 });

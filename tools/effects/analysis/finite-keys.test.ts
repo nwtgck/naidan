@@ -10,7 +10,7 @@ function row({ analysis, label }: { analysis: EffectsAnalysis, label: string }):
 
 describe('finite property keys', () => {
   it('keeps a choice of literal scalar fields safe for template conversion', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 /** @effects [] */ function entry({ key }: { key: 'left' | 'right' }) {
@@ -21,17 +21,13 @@ describe('finite property keys', () => {
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(row({ analysis, label: 'entry' })).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(row({ analysis, label: 'entry' })).toEqual([]);
   });
 
   it('retains communication performed while evaluating a finite key', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 /** @effects ["localstorage.write(*)"] */ function selectKey(): 'left' | 'right' { localStorage.clear(); return 'left'; }
@@ -43,17 +39,13 @@ describe('finite property keys', () => {
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(row({ analysis, label: 'entry' })).toEqual(['localstorage.write(*)']);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(row({ analysis, label: 'entry' })).toEqual(['localstorage.write(*)']);
   });
 
   it('does not treat a possible object conversion hook as a scalar alternative', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 /** @effects ["localstorage.write(*)"] */ function convert() { localStorage.clear(); return 'Right'; }
@@ -65,17 +57,13 @@ describe('finite property keys', () => {
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.some(item => item.code === 'typescript')).toBe(false);
-      expect(analysis.diagnostics.some(item => item.code === 'unsupported' && item.message === 'Template conversion may execute user-defined hooks.')).toBe(true);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.some(item => item.code === 'typescript')).toBe(false);
+    expect(analysis.diagnostics.some(item => item.code === 'unsupported' && item.message === 'Template conversion may execute user-defined hooks.')).toBe(true);
   });
 
   it('retains both callable alternatives and their communication', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 /** @effects ["localstorage.write(*)"] */ function local() { localStorage.clear(); }
@@ -88,12 +76,8 @@ describe('finite property keys', () => {
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics).toEqual([]);
-      expect(row({ analysis, label: 'entry' })).toEqual(['localstorage.write(*)', 'sessionstorage.write(*)']);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics).toEqual([]);
+    expect(row({ analysis, label: 'entry' })).toEqual(['localstorage.write(*)', 'sessionstorage.write(*)']);
   });
 });

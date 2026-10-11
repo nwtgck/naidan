@@ -10,12 +10,8 @@ import { createEffectsProgram, typescriptDiagnostics } from '../project.ts';
 import { planUnresolvedEffectFix } from '../maintenance/unverified.ts';
 
 function checkSource({ source }: { source: string }) {
-  const fixture = createFixture({ files: { 'source.ts': source }, entries: ['source.ts'] });
-  try {
-    return fixture.check();
-  } finally {
-    fixture.dispose();
-  }
+  using fixture = createFixture({ files: { 'source.ts': source }, entries: ['source.ts'] });
+  return fixture.check();
 }
 
 describe('production effect analysis', () => {
@@ -30,25 +26,21 @@ describe('production effect analysis', () => {
     { source: '/** @effects ["call(arg0.operation)"] */ function run(value: any) { void value; }', syntax: 1 },
   ])('distinguishes budget-blocked references from invalid contracts: $source', ({ source, syntax }) => {
     const prelude = Array.from({ length: 8 }, (_, index) => `const value${index}: number = ${index};`).join('\n');
-    const fixture = createFixture({ files: { 'main.ts': prelude + '\n' + source }, entries: ['main.ts'] });
-    try {
-      const ordinary = fixture.check();
-      expect(ordinary.diagnostics.filter(item => item.code === 'syntax')).toHaveLength(syntax);
-      fixture.config.analysisBudget = 4;
-      const limited = fixture.check();
-      expect(limited.diagnostics.filter(item => item.code === 'syntax')).toHaveLength(syntax);
-      expect(limited.diagnostics.some(item => item.message.includes('budget prevented validation'))).toBe(syntax === 0);
-      expect(limited.owners.filter(owner => owner.role === 'implementation').every(owner => owner.callbackPaths.size === 0)).toBe(true);
-      expect(limited.owners.map(owner => owner.declared)).toEqual(ordinary.owners.filter(owner => owner.role !== 'symbolic').map(owner => owner.declared));
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = createFixture({ files: { 'main.ts': prelude + '\n' + source }, entries: ['main.ts'] });
+    const ordinary = fixture.check();
+    expect(ordinary.diagnostics.filter(item => item.code === 'syntax')).toHaveLength(syntax);
+    fixture.config.analysisBudget = 4;
+    const limited = fixture.check();
+    expect(limited.diagnostics.filter(item => item.code === 'syntax')).toHaveLength(syntax);
+    expect(limited.diagnostics.some(item => item.message.includes('budget prevented validation'))).toBe(syntax === 0);
+    expect(limited.owners.filter(owner => owner.role === 'implementation').every(owner => owner.callbackPaths.size === 0)).toBe(true);
+    expect(limited.owners.map(owner => owner.declared)).toEqual(ordinary.owners.filter(owner => owner.role !== 'symbolic').map(owner => owner.declared));
   });
 
   it('retains atomic message types and modeled native reads after the type budget is exhausted', () => {
     let payload = 'string';
     for (let depth = 0; depth < 16; depth++) payload = `{ next: ${payload} }`;
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': 'import "./pressure"; import "./message"; import "./native"; import "./unknown";',
         'pressure.ts': `/** @effects [] */ export function pressure({ payload }: { payload: ${payload} }) {}`,
@@ -58,24 +50,20 @@ describe('production effect analysis', () => {
       },
       entries: ['main.ts'],
     });
-    try {
-      const program = createEffectsProgram({ root: fixture.root, config: fixture.config, overlays: new Map() });
-      const low = analyzeEffects({ root: fixture.root, config: { ...fixture.config, analysisBudget: 10 }, program });
-      const high = analyzeEffects({ root: fixture.root, config: fixture.config, program });
-      expect(low.diagnostics.some(item => item.file === path.join(fixture.root, 'pressure.ts') && item.message === 'Effect type expansion exceeded its explicit analysis budget.')).toBe(true);
-      expect(low.diagnostics.filter(item => item.file === path.join(fixture.root, 'message.ts'))).toEqual([]);
-      const nativeRow = ({ analysis }: { analysis: ReturnType<typeof analyzeEffects> }) => analysis.owners.find(owner => owner.label === 'read' && owner.role === 'implementation')!.direct.map(effect => printEffect({ effect }));
-      expect(nativeRow({ analysis: low })).toEqual(['hostfs.read(*)', 'opfs.read(*)']);
-      expect(nativeRow({ analysis: low })).toEqual(nativeRow({ analysis: high }));
-      const unknown = path.join(fixture.root, 'unknown.ts');
-      expect(low.diagnostics.filter(item => item.file === unknown)).toEqual(high.diagnostics.filter(item => item.file === unknown));
-      expect(low.diagnostics.some(item => item.file === unknown && item.message === 'Template conversion may execute user-defined hooks.')).toBe(true);
-      const plan = planUnresolvedEffectFix({ analysis: low, root: fixture.root, files: low.coverage.files, mode: 'fix' });
-      expect(plan.edits.some(edit => edit.file === path.join(fixture.root, 'message.ts'))).toBe(false);
-      expect(() => planEffectFix({ analysis: low })).toThrow();
-    } finally {
-      fixture.dispose();
-    }
+    const program = createEffectsProgram({ root: fixture.root, config: fixture.config, overlays: new Map() });
+    const low = analyzeEffects({ root: fixture.root, config: { ...fixture.config, analysisBudget: 10 }, program });
+    const high = analyzeEffects({ root: fixture.root, config: fixture.config, program });
+    expect(low.diagnostics.some(item => item.file === path.join(fixture.root, 'pressure.ts') && item.message === 'Effect type expansion exceeded its explicit analysis budget.')).toBe(true);
+    expect(low.diagnostics.filter(item => item.file === path.join(fixture.root, 'message.ts'))).toEqual([]);
+    const nativeRow = ({ analysis }: { analysis: ReturnType<typeof analyzeEffects> }) => analysis.owners.find(owner => owner.label === 'read' && owner.role === 'implementation')!.direct.map(effect => printEffect({ effect }));
+    expect(nativeRow({ analysis: low })).toEqual(['hostfs.read(*)', 'opfs.read(*)']);
+    expect(nativeRow({ analysis: low })).toEqual(nativeRow({ analysis: high }));
+    const unknown = path.join(fixture.root, 'unknown.ts');
+    expect(low.diagnostics.filter(item => item.file === unknown)).toEqual(high.diagnostics.filter(item => item.file === unknown));
+    expect(low.diagnostics.some(item => item.file === unknown && item.message === 'Template conversion may execute user-defined hooks.')).toBe(true);
+    const plan = planUnresolvedEffectFix({ analysis: low, root: fixture.root, files: low.coverage.files, mode: 'fix' });
+    expect(plan.edits.some(edit => edit.file === path.join(fixture.root, 'message.ts'))).toBe(false);
+    expect(() => planEffectFix({ analysis: low })).toThrow();
   });
 
   it.each([
@@ -94,31 +82,27 @@ export async function entry({ ${argument} }: { ${parameter} }) {
   const writer = await handle.createWritable(); await writer.write("bytes");
 }
 `;
-    const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-    try {
-      const program = createEffectsProgram({ root: fixture.root, config: fixture.config, overlays: new Map() });
-      expect(typescriptDiagnostics({ program })).toEqual([]);
-      const low = analyzeEffects({ root: fixture.root, config: { ...fixture.config, analysisBudget: 64 }, program });
-      const high = analyzeEffects({ root: fixture.root, config: fixture.config, program });
-      const entry = ({ analysis }: { analysis: ReturnType<typeof analyzeEffects> }) => analysis.owners.find(owner => owner.label === 'entry' && owner.role === 'implementation')!;
-      const lowEntry = entry({ analysis: low });
-      const effects = ['hostfs.read(*)', 'hostfs.write(*)', 'opfs.read(*)', 'opfs.write(*)'];
-      expect(lowEntry.direct.map(effect => printEffect({ effect }))).toEqual(effects);
-      expect(lowEntry.direct).toEqual(entry({ analysis: high }).direct);
-      expect(lowEntry.declared.map(effect => printEffect({ effect }))).toEqual(['network.http(*)']);
-      expect([...lowEntry.callbackPaths]).toEqual([]);
-      expect(low.diagnostics.some(item => item.message === 'Effect type expansion exceeded its explicit analysis budget.')).toBe(true);
-      expect(low.diagnostics.some(item => item.code === 'unsupported' && item.message.includes('Unverified property access'))).toBe(true);
-      expect(() => planEffectFix({ analysis: low })).toThrow();
-      const draft = planUnresolvedEffectFix({ analysis: low, root: fixture.root, files: low.coverage.files, mode: 'fix' });
-      const edited = draft.edits.find(edit => edit.file === path.join(fixture.root, 'main.ts'))!.after;
-      expect(edited).toContain('UNVERIFIED effect candidates');
-      expect(edited).toContain('network.http(*)');
-      for (const effect of effects) expect(edited).toContain(effect);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toBe(source);
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+    const program = createEffectsProgram({ root: fixture.root, config: fixture.config, overlays: new Map() });
+    expect(typescriptDiagnostics({ program })).toEqual([]);
+    const low = analyzeEffects({ root: fixture.root, config: { ...fixture.config, analysisBudget: 64 }, program });
+    const high = analyzeEffects({ root: fixture.root, config: fixture.config, program });
+    const entry = ({ analysis }: { analysis: ReturnType<typeof analyzeEffects> }) => analysis.owners.find(owner => owner.label === 'entry' && owner.role === 'implementation')!;
+    const lowEntry = entry({ analysis: low });
+    const effects = ['hostfs.read(*)', 'hostfs.write(*)', 'opfs.read(*)', 'opfs.write(*)'];
+    expect(lowEntry.direct.map(effect => printEffect({ effect }))).toEqual(effects);
+    expect(lowEntry.direct).toEqual(entry({ analysis: high }).direct);
+    expect(lowEntry.declared.map(effect => printEffect({ effect }))).toEqual(['network.http(*)']);
+    expect([...lowEntry.callbackPaths]).toEqual([]);
+    expect(low.diagnostics.some(item => item.message === 'Effect type expansion exceeded its explicit analysis budget.')).toBe(true);
+    expect(low.diagnostics.some(item => item.code === 'unsupported' && item.message.includes('Unverified property access'))).toBe(true);
+    expect(() => planEffectFix({ analysis: low })).toThrow();
+    const draft = planUnresolvedEffectFix({ analysis: low, root: fixture.root, files: low.coverage.files, mode: 'fix' });
+    const edited = draft.edits.find(edit => edit.file === path.join(fixture.root, 'main.ts'))!.after;
+    expect(edited).toContain('UNVERIFIED effect candidates');
+    expect(edited).toContain('network.http(*)');
+    for (const effect of effects) expect(edited).toContain(effect);
+    expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toBe(source);
   });
 
   it.each([
@@ -134,7 +118,7 @@ export async function entry({ ${argument} }: { ${parameter} }) {
     { name: 'predicate from custom type', source: 'interface FakeHandle { getFile(): Promise<File>; } function isFile(value: FakeHandle): value is FileSystemFileHandle { return true; } export function entry({ handle }: { handle: FakeHandle }) { if (isFile(handle)) void handle.getFile(); }' },
   ])('does not recover budget-blocked native identity through $name', ({ source }) => {
     const fields = Array.from({ length: 128 }, (_, index) => `field${index}: number`).join(',');
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 /** @effects [] */ function pressure({ payload }: { payload: { ${fields} } }) { void payload; }
@@ -142,18 +126,14 @@ export async function entry({ ${argument} }: { ${parameter} }) {
       },
       entries: ['main.ts'],
     });
-    try {
-      const program = createEffectsProgram({ root: fixture.root, config: fixture.config, overlays: new Map() });
-      expect(typescriptDiagnostics({ program })).toEqual([]);
-      const low = analyzeEffects({ root: fixture.root, config: { ...fixture.config, analysisBudget: 64 }, program });
-      const entry = low.owners.find(owner => owner.label === 'entry' && owner.role === 'implementation')!;
-      expect(entry.direct).toEqual([]);
-      expect(low.solution.rows.get(entry.id)).toEqual([]);
-      expect(low.diagnostics.some(item => item.message === 'Effect type expansion exceeded its explicit analysis budget.')).toBe(true);
-      expect(() => planEffectFix({ analysis: low })).toThrow();
-    } finally {
-      fixture.dispose();
-    }
+    const program = createEffectsProgram({ root: fixture.root, config: fixture.config, overlays: new Map() });
+    expect(typescriptDiagnostics({ program })).toEqual([]);
+    const low = analyzeEffects({ root: fixture.root, config: { ...fixture.config, analysisBudget: 64 }, program });
+    const entry = low.owners.find(owner => owner.label === 'entry' && owner.role === 'implementation')!;
+    expect(entry.direct).toEqual([]);
+    expect(low.solution.rows.get(entry.id)).toEqual([]);
+    expect(low.diagnostics.some(item => item.message === 'Effect type expansion exceeded its explicit analysis budget.')).toBe(true);
+    expect(() => planEffectFix({ analysis: low })).toThrow();
   });
 
   it('keeps known effects and author bounds when type expansion exhausts its budget', async () => {
@@ -165,31 +145,27 @@ export function send({ payload }: { payload: { a: { value: string }, b: { value:
 }
 send({ payload: { a: { value: "a" }, b: { value: "b" }, c: { value: "c" }, d: { value: "d" } } });
 `;
-    const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-    try {
-      const ordinary = fixture.check();
-      expect(ordinary.diagnostics.filter(diagnostic => diagnostic.code === 'unsupported' || diagnostic.code === 'typescript')).toEqual([]);
-      expect(ordinary.owners.map(owner => ordinary.solution.rows.get(owner.id)?.map(effect => printEffect({ effect })))).toEqual(Array(2).fill(['localstorage.write(*)', 'network.http(*)']));
-      fs.writeFileSync(path.join(fixture.root, 'effects.config.ts'), 'export default ' + JSON.stringify({ ...fixture.config, analysisBudget: 3 }) + ';');
-      const blocked = await executeEffectsCommand({ root: fixture.root, argv: ['fix', '--json'] });
-      expect(blocked.exitCode).toBe(2);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toBe(source);
-      const candidate = await executeEffectsCommand({ root: fixture.root, argv: ['fix', '--allow-unresolved', '--json'] });
-      expect(candidate.exitCode).toBe(0);
-      const report = JSON.parse(candidate.stdout);
-      expect(report.verification).toBe('unverified');
-      expect(report.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'unsupported', message: 'Effect type expansion exceeded its explicit analysis budget.' })]));
-      expect(report.contracts).toEqual(expect.arrayContaining([
-        expect.objectContaining({ label: 'send', effects: ['localstorage.write(*)', 'network.http(*)'] }),
-        expect.objectContaining({ label: '<module>', effects: ['localstorage.write(*)', 'network.http(*)'] }),
-      ]));
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('UNVERIFIED effect candidates');
-      const checked = await executeEffectsCommand({ root: fixture.root, argv: ['check', '--json'] });
-      expect(checked.exitCode).toBe(1);
-      expect(JSON.parse(checked.stdout).diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'unsupported', message: 'Effect type expansion exceeded its explicit analysis budget.' })]));
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+    const ordinary = fixture.check();
+    expect(ordinary.diagnostics.filter(diagnostic => diagnostic.code === 'unsupported' || diagnostic.code === 'typescript')).toEqual([]);
+    expect(ordinary.owners.map(owner => ordinary.solution.rows.get(owner.id)?.map(effect => printEffect({ effect })))).toEqual(Array(2).fill(['localstorage.write(*)', 'network.http(*)']));
+    fs.writeFileSync(path.join(fixture.root, 'effects.config.ts'), 'export default ' + JSON.stringify({ ...fixture.config, analysisBudget: 3 }) + ';');
+    const blocked = await executeEffectsCommand({ root: fixture.root, argv: ['fix', '--json'] });
+    expect(blocked.exitCode).toBe(2);
+    expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toBe(source);
+    const candidate = await executeEffectsCommand({ root: fixture.root, argv: ['fix', '--allow-unresolved', '--json'] });
+    expect(candidate.exitCode).toBe(0);
+    const report = JSON.parse(candidate.stdout);
+    expect(report.verification).toBe('unverified');
+    expect(report.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'unsupported', message: 'Effect type expansion exceeded its explicit analysis budget.' })]));
+    expect(report.contracts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'send', effects: ['localstorage.write(*)', 'network.http(*)'] }),
+      expect.objectContaining({ label: '<module>', effects: ['localstorage.write(*)', 'network.http(*)'] }),
+    ]));
+    expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('UNVERIFIED effect candidates');
+    const checked = await executeEffectsCommand({ root: fixture.root, argv: ['check', '--json'] });
+    expect(checked.exitCode).toBe(1);
+    expect(JSON.parse(checked.stdout).diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'unsupported', message: 'Effect type expansion exceeded its explicit analysis budget.' })]));
   }, 30_000);
 
   it.each(['localStorage', 'sessionStorage'])('detects native writes and propagation: %s', storage => {
@@ -309,7 +285,7 @@ function install({ key }: { key: 'inspect' | 'save' }) { actions[key] = writer; 
   });
 
   it('preserves call targets through import, re-export and alias', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'storage.ts': 'export function save() { localStorage.clear(); }',
         'barrel.ts': "export { save as persist } from './storage';",
@@ -317,21 +293,17 @@ function install({ key }: { key: 'inspect' | 'save' }) { actions[key] = writer; 
       },
       entries: ['main.ts'],
     });
-    try {
-      const analysis = fixture.check();
-      expect(analysis.diagnostics.filter(diagnostic => diagnostic.code === 'unsupported' || diagnostic.code === 'typescript')).toEqual([]);
-      expect(analysis.owners.filter(owner => owner.role !== 'module').length).toBe(2);
-      const fixed = fixture.fix();
-      expect(fixed.analysis.diagnostics).toEqual([]);
-      expect(fixed.changedFiles).toHaveLength(2);
-      expect(fixture.fix().changedFiles).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    expect(analysis.diagnostics.filter(diagnostic => diagnostic.code === 'unsupported' || diagnostic.code === 'typescript')).toEqual([]);
+    expect(analysis.owners.filter(owner => owner.role !== 'module').length).toBe(2);
+    const fixed = fixture.fix();
+    expect(fixed.analysis.diagnostics).toEqual([]);
+    expect(fixed.changedFiles).toHaveLength(2);
+    expect(fixture.fix().changedFiles).toEqual([]);
   });
 
   it('keeps an existing explanation and does not turn its example into a contract', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `\
 /** Example only:
@@ -344,16 +316,12 @@ function save() { localStorage.clear(); }
       },
       entries: ['main.ts'],
     });
-    try {
-      const result = fixture.fix();
-      expect(result.analysis.diagnostics).toEqual([]);
-      const output = fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8');
-      expect(output).toContain('// @effects ["network.http(*)"]');
-      expect(output).toContain('/** @effects ["localstorage.write(*)"] */');
-      expect(fixture.fix().changedFiles).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    const result = fixture.fix();
+    expect(result.analysis.diagnostics).toEqual([]);
+    const output = fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8');
+    expect(output).toContain('// @effects ["network.http(*)"]');
+    expect(output).toContain('/** @effects ["localstorage.write(*)"] */');
+    expect(fixture.fix().changedFiles).toEqual([]);
   });
 
   it('reads multiline dedicated declarations', () => {
@@ -393,22 +361,14 @@ function save() { localStorage.setItem('x', localStorage.getItem('x') ?? ''); }
   });
 
   it('does not require or fix contracts in ordinary test files', () => {
-    const fixture = createFixture({ files: { 'main.test.ts': 'function testBody() { localStorage.clear(); }' }, entries: ['main.test.ts'] });
-    try {
-      expect(fixture.check().diagnostics).toEqual([]);
-      expect(fixture.fix().changedFiles).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = createFixture({ files: { 'main.test.ts': 'function testBody() { localStorage.clear(); }' }, entries: ['main.test.ts'] });
+    expect(fixture.check().diagnostics).toEqual([]);
+    expect(fixture.fix().changedFiles).toEqual([]);
   });
 
   it('does not make a production import of a test become pure', () => {
-    const fixture = createFixture({ files: { 'main.ts': "import './test.test';", 'test.test.ts': 'localStorage.clear();' }, entries: ['main.ts'] });
-    try {
-      expect(fixture.check().diagnostics.some(diagnostic => diagnostic.code === 'boundary')).toBe(true);
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = createFixture({ files: { 'main.ts': "import './test.test';", 'test.test.ts': 'localStorage.clear();' }, entries: ['main.ts'] });
+    expect(fixture.check().diagnostics.some(diagnostic => diagnostic.code === 'boundary')).toBe(true);
   });
 
   it.each(['true', 'false'])('classifies OPFS create=%s without merging read and write', create => {
@@ -443,11 +403,7 @@ function main() { memory.write(); }
   });
 
   it('refuses to fix ordinary TypeScript errors', () => {
-    const fixture = createFixture({ files: { 'main.ts': 'function main(): number { return "bad"; }' }, entries: ['main.ts'] });
-    try {
-      expect(() => fixture.fix()).toThrow('refused');
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = createFixture({ files: { 'main.ts': 'function main(): number { return "bad"; }' }, entries: ['main.ts'] });
+    expect(() => fixture.fix()).toThrow('refused');
   });
 });

@@ -4,12 +4,8 @@ import { printEffect } from '../../contracts/effects.ts';
 import { planEffectFix } from '../../fixes/plan.ts';
 
 function inspect({ source }: { source: string }) {
-  const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-  try {
-    return fixture.check();
-  } finally {
-    fixture.dispose();
-  }
+  using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+  return fixture.check();
 }
 
 describe('Web Locks argument conversion and callback propagation', () => {

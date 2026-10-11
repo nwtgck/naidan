@@ -3,12 +3,8 @@ import { createFixture } from '../test-support/project-fixture.ts';
 import { printEffect } from '../contracts/effects.ts';
 
 function inspect({ source }: { source: string }) {
-  const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-  try {
-    return fixture.check();
-  } finally {
-    fixture.dispose();
-  }
+  using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+  return fixture.check();
 }
 
 const startupCases = [

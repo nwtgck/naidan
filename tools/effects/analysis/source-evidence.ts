@@ -16,7 +16,7 @@ export function commonStringEvidence({ values }: { values: readonly Extract<Valu
 }
 
 // Fresh records retain evaluated undefined; stored mutable fields cannot prove it.
-/** Mutable storage retains its contract, not its first URL, image, or absence fact. */
+/** Mutable storage retains its operation contract, not its first URL, image, absence, or native return-origin fact. */
 export function withoutSourceEvidence({ value, undefinedFact }: { value: Value, undefinedFact: 'preserve' | 'forget' }): Value {
   switch (value.kind) {
   case 'scalar': {
@@ -34,8 +34,27 @@ export function withoutSourceEvidence({ value, undefinedFact }: { value: Value, 
     reflected: value.reflected === undefined ? undefined : withoutSourceEvidence({ value: value.reflected, undefinedFact }),
     indexValue: value.indexValue === undefined ? undefined : withoutSourceEvidence({ value: value.indexValue, undefinedFact }),
   };
-  case 'native': return value.name === FRESH_IMAGE ? { kind: 'native', name: 'HTMLImageElement', receiver: undefined } : value;
-  case 'function': case 'promise': case 'unknown': return value;
+  case 'native': return value.name === FRESH_IMAGE ? { kind: 'native', name: 'HTMLImageElement', receiver: undefined, returnOrigin: 'unverified' } : { ...value, returnOrigin: 'unverified' };
+  case 'promise': return { ...value, value: withoutSourceEvidence({ value: value.value, undefinedFact }) };
+  case 'function': return {
+    kind: 'function',
+    owner: value.owner,
+    declaration: value.declaration,
+    get parameters() {
+      return value.parameters;
+    },
+    get returns() {
+      return value.returns;
+    },
+    get transport() {
+      return value.transport;
+    },
+    set transport(transport) {
+      value.transport = transport;
+    },
+    returnOrigin: 'unverified',
+  };
+  case 'unknown': return value;
   default: { const exhaustive: never = value; throw new Error(String(exhaustive)); }
   }
 }

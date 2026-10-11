@@ -3,17 +3,13 @@ import { createFixture } from '../../test-support/project-fixture.ts';
 import { printEffect } from '../../contracts/effects.ts';
 
 function inspect({ body }: { body: string }) {
-  const fixture = createFixture({ files: { 'main.ts': `async function inspect() { const root = await navigator.storage.getDirectory(); ${body} }` }, entries: ['main.ts'] });
-  try {
-    const analysis = fixture.check();
-    const owner = analysis.owners.find(item => item.label === 'inspect')!;
-    return {
-      diagnostics: analysis.diagnostics.filter(item => item.code !== 'missing' && item.code !== 'exceeds'),
-      effects: (analysis.solution.rows.get(owner.id) ?? []).map(effect => printEffect({ effect })),
-    };
-  } finally {
-    fixture.dispose();
-  }
+  using fixture = createFixture({ files: { 'main.ts': `async function inspect() { const root = await navigator.storage.getDirectory(); ${body} }` }, entries: ['main.ts'] });
+  const analysis = fixture.check();
+  const owner = analysis.owners.find(item => item.label === 'inspect')!;
+  return {
+    diagnostics: analysis.diagnostics.filter(item => item.code !== 'missing' && item.code !== 'exceeds'),
+    effects: (analysis.solution.rows.get(owner.id) ?? []).map(effect => printEffect({ effect })),
+  };
 }
 
 describe('filesystem lookup options without mutation-history reconstruction', () => {

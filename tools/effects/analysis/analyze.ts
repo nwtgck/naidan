@@ -1,6 +1,6 @@
 import { UNVERIFIED_EFFECT_NOTE, unverifiedEffectNotes } from '../maintenance/unverified.ts';
 import { withoutSourceEvidence } from './source-evidence.ts';
-import { boundaryStringMessages, mayOmitEffectAnnotation } from './annotation-policy.ts';
+import { boundaryStringMessages, mayOmitEffectAnnotation, returnsIntrinsicUndefined } from './annotation-policy.ts';
 import { FRESH_IMAGE } from '../models/browser/dom.ts';
 import { selectTidyOwners, type TidySelection } from '../maintenance/selection.ts';
 import { evaluateBrowserOperation } from '../models/browser/operations.ts';
@@ -27,7 +27,7 @@ import { isCallableValue, isRecordValue, isScalarValue, isNativeValue, isPromise
 const LIBRARY_NATIVE_TYPES = ['FileSystemDirectoryHandle', 'FileSystemFileHandle', 'FileSystemWritableFileStream', 'FileSystemSyncAccessHandle', 'Response', 'Headers', 'AbortSignal', 'Error', 'DOMException', 'Blob', 'File', 'HTMLImageElement', 'HTMLIFrameElement', 'Location', 'Window', 'BroadcastChannel'];
 
 type Implementation = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction | ts.MethodDeclaration;
-type FunctionInfo = { declaration: Implementation, value: FunctionValue, scope: Map<ts.Symbol, Value> };
+type FunctionInfo = { declaration: Implementation, value: FunctionValue, scope: Map<ts.Symbol, Value>, state?: 'running' | 'done' };
 export type UnsafeSuppressionAudit = SourceLocation & {
   owner: number,
   label: string,
@@ -99,6 +99,9 @@ export class EffectsAnalyzer {
   private readonly valueByDeclaration = new Map<ts.Node, Value>();
   private readonly functionByDeclaration = new Map<ts.SignatureDeclaration, FunctionValue>();
   private readonly pending: FunctionInfo[] = [];
+  private readonly functionBodies = new Map<number, FunctionInfo>();
+  private bodyDepth = 0;
+  private bodyAnalysisSteps = 0;
   private readonly busy = new Set<ts.Node | ts.Type>();
   private typeExpansionSteps = 0;
   private readonly moduleOwners = new Map<ts.SourceFile, ContractOwner>();
@@ -112,6 +115,9 @@ export class EffectsAnalyzer {
   private readonly workerWraps: { entry: string, contract: ts.Type, declared: Value, node: ts.Node }[] = [];
   private readonly invocations: { callable: FunctionValue, args: readonly Value[], node: ts.Node }[] = [];
   private readonly functionTransfers: { source: FunctionValue, target: FunctionValue }[] = [];
+  private readonly nativeStorageProjections = new Set<symbol>();
+  private readonly recordArgumentBindings = new Map<symbol, Set<symbol>>();
+  private readonly recordWrites: { receiver: Value, node: ts.Node }[] = [];
   private readonly returnValues = new Map<number, Value[]>();
   private readonly ownerSuppressions = new Map<number, UnsafeEffectSuppression>();
   private readonly bodyOwners = new Map<number, ContractOwner>();
@@ -149,6 +155,7 @@ export class EffectsAnalyzer {
       settle: input => this.settle(input),
       compatible: input => this.compatible(input),
       replacementShape: input => this.replacementShape(input),
+      recordWrite: input => this.recordWrites.push(input),
     };
   }
 
@@ -362,7 +369,9 @@ export class EffectsAnalyzer {
     }
     const name = type.getSymbol()?.name;
     const declarations = type.getSymbol()?.getDeclarations() ?? [];
-    const library = declarations.length > 0 && declarations.every(declaration => this.isLibraryDeclaration({ declaration }));
+    // Utility mapped types describe storage slots; their lib declaration is not a runtime native identity.
+    const mapped = (type.flags & ts.TypeFlags.Object) !== 0 && ((type as ts.ObjectType).objectFlags & ts.ObjectFlags.Mapped) !== 0;
+    const library = !mapped && declarations.length > 0 && declarations.every(declaration => this.isLibraryDeclaration({ declaration }));
     if (!type.isUnion() && library && name !== undefined && LIBRARY_NATIVE_TYPES.includes(name)) {
       return this.native({ name, receiver: undefined });
     }
@@ -393,10 +402,10 @@ export class EffectsAnalyzer {
       if (values.some(value => containsContract({ value, seen: new Set() }))) this.issue({ node: anchor, code: 'unsupported', message: 'Arrays containing effect contracts need an explicit element-slot model.' });
       return this.native({ name: 'Array', receiver: SCALAR });
     }
-    // Default-library methods are native boundaries, not application callback
-    // slots. Expanding an unmodeled built-in invents owners in lib.d.ts and can
-    // attach the same method declaration to unrelated callback paths.
-    if (library && (type.getCallSignatures().length > 0 || type.getProperties().some(property => {
+    // Concrete built-ins require native models. A callable parameter instead
+    // represents a symbolic slot, even when its signature is declared in lib.d.ts.
+    const signatures = type.getCallSignatures();
+    if (library && (callbackPath === undefined || signatures.length !== 1) && (signatures.length > 0 || type.getProperties().some(property => {
       const member = property.valueDeclaration ?? property.declarations?.[0];
       return member !== undefined && (ts.isGetAccessor(member) || ts.isSetAccessor(member)
         || this.checker.getTypeOfSymbolAtLocation(property, anchor).getCallSignatures().length > 0);
@@ -404,7 +413,6 @@ export class EffectsAnalyzer {
       this.issue({ node: anchor, code: 'unsupported', message: `Built-in type ${name ?? '<anonymous>'} needs an explicit effect model.` });
       return UNKNOWN;
     }
-    const signatures = type.getCallSignatures();
     if (signatures.length > 0) {
       if (signatures.length !== 1 || signatures[0]!.declaration === undefined || !isFunctionSyntax(signatures[0]!.declaration)) {
         this.issue({ node: anchor, code: 'unsupported', message: 'Overloaded or declaration-less effect callables require an explicit boundary model.' });
@@ -428,7 +436,7 @@ export class EffectsAnalyzer {
       }
       const declaration = signatures[0]!.declaration;
       if (declaration === undefined || !isFunctionSyntax(declaration)) return UNKNOWN;
-      return this.functionValue({ declaration, inheritedScope: this.lexicalScope({ node: declaration }) });
+      return this.signatureValue({ declaration, inheritedScope: this.lexicalScope({ node: declaration }) });
     }
     if (this.busy.has(type)) return UNKNOWN;
     this.busy.add(type);
@@ -451,7 +459,7 @@ export class EffectsAnalyzer {
     }
     this.busy.delete(type);
     const indexType = type.getStringIndexType();
-    return { kind: 'record', fields, shape: 'open', reflected: undefined, indexValue: indexType === undefined ? undefined : this.typeValue({ type: indexType, anchor, callbackPath: undefined, depth: depth + 1 }) };
+    return { kind: 'record', identity: Symbol(), fields, shape: 'open', reflected: undefined, indexValue: indexType === undefined ? undefined : this.typeValue({ type: indexType, anchor, callbackPath: undefined, depth: depth + 1 }) };
   }
 
   private bindPattern({ name, value, scope, owner, defaults }: { name: ts.BindingName, value: Value, scope: Map<ts.Symbol, Value>, owner: ContractOwner | undefined, defaults: 'evaluate' | 'parameter' }): void {
@@ -520,6 +528,42 @@ export class EffectsAnalyzer {
     visit({ name: parameter.name, target: expected });
   }
 
+  private signatureValue({ declaration, inheritedScope }: { declaration: ts.SignatureDeclaration, inheritedScope: Map<ts.Symbol, Value> }): FunctionValue {
+    if (isImplementation(declaration)) return this.functionValue({ declaration, inheritedScope });
+    const cached = this.functionByDeclaration.get(declaration);
+    if (cached !== undefined) return cached;
+    const anchor = this.anchor({ declaration });
+    const owner = this.owner({ anchor, role: 'signature', label: simpleName({ node: declaration.name }) ?? '<anonymous>', symbolic: undefined });
+    if (owner.declared.some(effect => effect.kind === 'callback')) return this.functionValue({ declaration, inheritedScope });
+    let resolved: FunctionValue | undefined;
+    const resolve = (): FunctionValue => {
+      if (resolved === undefined) {
+        this.functionByDeclaration.delete(declaration);
+        resolved = this.functionValue({ declaration, inheritedScope });
+      }
+      return resolved;
+    };
+    const value: FunctionValue = {
+      kind: 'function',
+      owner,
+      declaration,
+      get parameters() {
+        return resolve().parameters;
+      },
+      get returns() {
+        return resolve().returns;
+      },
+      get transport() {
+        return resolve().transport;
+      },
+      set transport(value) {
+        resolve().transport = value;
+      },
+    };
+    this.functionByDeclaration.set(declaration, value);
+    return value;
+  }
+
   private functionValue({ declaration, inheritedScope }: { declaration: ts.SignatureDeclaration, inheritedScope: Map<ts.Symbol, Value> }): FunctionValue {
     const cached = this.functionByDeclaration.get(declaration);
     if (cached !== undefined) return cached;
@@ -533,6 +577,7 @@ export class EffectsAnalyzer {
       });
     }
     if (this.boundaryStringMessages.has(declaration)) owner.parameterBoundary = 'boundary-string';
+    if (returnsIntrinsicUndefined({ declaration, checker: this.checker })) owner.intrinsicUndefinedReturn = true;
     const value: FunctionValue = { kind: 'function', owner, parameters: [], returns: UNKNOWN, declaration, transport: 'local' };
     this.functionByDeclaration.set(declaration, value);
     const scope = new Map(inheritedScope);
@@ -599,7 +644,9 @@ export class EffectsAnalyzer {
     }
     if (isImplementation(declaration) && declaration.body !== undefined) {
       this.createSuppressedBody({ owner });
-      this.pending.push({ declaration, value, scope });
+      const info: FunctionInfo = { declaration, value, scope };
+      this.pending.push(info);
+      this.functionBodies.set(owner.id, info);
     }
     return value;
   }
@@ -668,7 +715,7 @@ export class EffectsAnalyzer {
     }
     const immutableStringBinding = ts.isVariableDeclaration(declaration) && ts.isVariableDeclarationList(declaration.parent)
       && (declaration.parent.flags & ts.NodeFlags.Const) !== 0 && ts.isIdentifier(declaration.name);
-    if (!immutableStringBinding || result.kind === 'record') result = withoutSourceEvidence({ value: result, undefinedFact: ts.isPropertyAssignment(declaration) ? 'preserve' : 'forget' });
+    if (!isFunctionSyntax(declaration) && (!immutableStringBinding || result.kind === 'record')) result = withoutSourceEvidence({ value: result, undefinedFact: ts.isPropertyAssignment(declaration) ? 'preserve' : 'forget' });
     this.busy.delete(declaration);
     this.valueByDeclaration.set(declaration, result);
     return result;
@@ -780,6 +827,7 @@ export class EffectsAnalyzer {
     }
     case 'record': {
       if (target.kind !== source.kind) break;
+      this.bindRecordIdentity({ source, target });
       for (const [key, expected] of target.fields) {
         const actual = source.fields.get(key);
         if (actual === undefined) {
@@ -821,7 +869,44 @@ export class EffectsAnalyzer {
     }
   }
 
+  private bindRecordIdentity({ source, target }: { source: Extract<Value, { kind: 'record' }>, target: Extract<Value, { kind: 'record' }> }): void {
+    if (source.identity === undefined || target.identity === undefined) return;
+    const targets = this.recordArgumentBindings.get(source.identity) ?? new Set<symbol>();
+    targets.add(target.identity);
+    this.recordArgumentBindings.set(source.identity, targets);
+  }
+
   private bindCallbacks({ actual, formal, bindings, node }: { actual: Value, formal: Value, bindings: Map<string, number>, node: ts.Node }): void {
+    if (actual.kind === 'native' && formal.kind === 'record' && (actual.name === 'localStorage' || actual.name === 'sessionStorage')) {
+      if (formal.identity !== undefined) this.nativeStorageProjections.add(formal.identity);
+      for (const [key, field] of formal.fields) {
+        if (field.value.kind !== 'function' || field.value.owner.role !== 'symbolic') {
+          this.issue({ node, code: 'unsupported', message: 'Native storage projection requires symbolic callable slots.' });
+          continue;
+        }
+        const method = this.property({ receiver: actual, key, node, owner: undefined });
+        if (method.kind !== 'native' || method.receiver !== actual) {
+          this.issue({ node, code: 'unsupported', message: 'Native storage projection requires a checked callable member.' });
+          continue;
+        }
+        const body: ContractOwner = {
+          id: this.owners.length,
+          label: `Native callback ${method.name}`,
+          location: this.location({ node }),
+          anchor: node,
+          role: 'body',
+          annotation: undefined,
+          declared: [],
+          direct: [],
+          callbackPaths: new Set(),
+        };
+        this.owners.push(body);
+        const returned = this.invokeNative({ callable: method, args: field.value.parameters, owner: body, node });
+        this.compatible({ source: returned, target: field.value.returns, node, mode: 'value' });
+        for (const token of field.value.owner.declared) bindings.set(printEffect({ effect: token }), body.id);
+      }
+      return;
+    }
     if (isChoiceValue(actual)) {
       const candidates = actual.values.filter(value => !isScalarValue(value));
       if (candidates.length === 1) {
@@ -860,6 +945,7 @@ export class EffectsAnalyzer {
       return;
     }
     if (formal.kind === 'record' && actual.kind === 'record') {
+      this.bindRecordIdentity({ source: actual, target: formal });
       for (const [key, field] of formal.fields) {
         const source = actual.fields.get(key);
         if (source !== undefined) this.bindCallbacks({ actual: source.value, formal: field.value, bindings, node });
@@ -881,9 +967,46 @@ export class EffectsAnalyzer {
         if (actual !== undefined) this.bindCallbacks({ actual, formal: callable.parameters[index]!, bindings, node });
       }
       this.link({ source: callable.owner, target: owner, node, reason: 'function call', bindings, ...(cleanupBoundary ? { cleanupBoundary } : {}) });
-      return callable.returns;
+      if (callable.returnOrigin !== undefined) return withoutSourceEvidence({ value: callable.returns, undefinedFact: 'forget' });
+      const bound = isPromiseValue(callable.returns) ? callable.returns.value : callable.returns;
+      if (bound.kind !== 'unknown' && !(bound.kind === 'choice' && bound.values.some(value => value.kind === 'unknown')
+        && bound.values.every(value => value.kind === 'unknown' || value.kind === 'scalar' && value.allowsUndefined === true))) return callable.returns;
+      const info = this.functionBodies.get(callable.owner.id);
+      if (info === undefined) return callable.returns;
+      switch (info.state) {
+      case 'running':
+        this.issue({ node, code: 'unsupported', message: 'Recursive implementation returns need a checked value-flow contract.' });
+        return UNKNOWN;
+      case 'done': break;
+      case undefined:
+        if (this.bodyDepth >= 24) {
+          this.issue({ node, code: 'unsupported', message: 'Implementation return analysis exceeds the supported depth.' });
+          return callable.returns;
+        }
+        this.analyzeBody({ info });
+        break;
+      default: { const exhaustive: never = info.state; throw new Error(String(exhaustive)); }
+      }
+      let native = false;
+      const observed = ({ value }: { value: Value }): Value => {
+        switch (value.kind) {
+        case 'native': native = true; return value.returnOrigin !== undefined ? UNKNOWN : value;
+        case 'choice': return choiceValue({ values: value.values.map(item => observed({ value: item })) });
+        case 'scalar': case 'unknown': return value;
+        case 'function': case 'record': case 'promise': return UNKNOWN;
+        default: { const exhaustive: never = value; throw new Error(String(exhaustive)); }
+        }
+      };
+      const values = (this.returnValues.get(callable.owner.id) ?? []).map(value => observed({ value }));
+      if (!native) return callable.returns;
+      if (isChoiceValue(bound)) values.push(...bound.values.filter(value => value.kind === 'scalar' && value.allowsUndefined === true));
+      const returned = choiceValue({ values });
+      return isPromiseValue(callable.returns) ? { kind: 'promise', value: returned } : returned;
     }
-    case 'native': return this.invokeNative({ callable, args, owner, node });
+    case 'native': {
+      const returned = this.invokeNative({ callable, args, owner, node });
+      return callable.returnOrigin === undefined ? returned : withoutSourceEvidence({ value: returned, undefinedFact: 'forget' });
+    }
     case 'choice': return { kind: 'choice', values: callable.values.map(value => this.invoke({ callable: value, args, owner, node, ...(cleanupBoundary ? { cleanupBoundary } : {}) })) };
     case 'record': case 'promise': case 'scalar': case 'unknown':
       this.issue({ node, code: 'unsupported', message: 'The call target has no checked effect contract.' }); return UNKNOWN;
@@ -985,9 +1108,32 @@ export class EffectsAnalyzer {
     }) ? this.native({ name, receiver: undefined }) : undefined;
   }
 
+  private classInstanceCandidates({ expression }: { expression: ts.NewExpression }): Value {
+    const declaration = this.symbol({ node: expression.expression })?.valueDeclaration;
+    if (declaration === undefined || !ts.isClassDeclaration(declaration) || declaration.getSourceFile().isDeclarationFile
+      || !this.sources.has(path.resolve(declaration.getSourceFile().fileName)) || declaration.getSourceFile().fileName.endsWith('.test.ts')
+      || declaration.heritageClauses?.some(clause => clause.token === ts.SyntaxKind.ExtendsKeyword)) return UNKNOWN;
+    const fields = new Map<string, Field>();
+    for (const member of declaration.members) {
+      if (!ts.isMethodDeclaration(member) || member.body === undefined || ts.isComputedPropertyName(member.name) || hasModifier({ node: member, kind: ts.SyntaxKind.StaticKeyword })) continue;
+      const key = simpleName({ node: member.name });
+      if (key === undefined) continue;
+      const method = this.functionValue({ declaration: member, inheritedScope: this.lexicalScope({ node: declaration }) });
+      fields.set(key, { access: 'writable', value: withoutSourceEvidence({ value: method, undefinedFact: 'forget' }) });
+    }
+    if (fields.size === 0) return UNKNOWN;
+    this.issue({ node: expression, code: 'unsupported', message: 'Class instance construction, fields and method dispatch remain unverified.' });
+    return { kind: 'record', fields, shape: 'open', reflected: UNKNOWN, indexValue: undefined };
+  }
+
   private property({ receiver, key, node, owner }: { receiver: Value, key: string, node: ts.Node, owner: ContractOwner | undefined }): Value {
     switch (receiver.kind) {
     case 'record': {
+      switch (receiver.reflected?.kind) {
+      case 'unknown': this.issue({ node, code: 'unsupported', message: `Unverified property access: ${key}.` }); break;
+      case undefined: case 'scalar': case 'function': case 'record': case 'promise': case 'native': case 'choice': break;
+      default: { const exhaustive: never = receiver.reflected; throw new Error(String(exhaustive)); }
+      }
       const field = receiver.fields.get(key);
       if (field !== undefined) return field.value;
       this.issue({ node, code: 'unsupported', message: `Property ${key} is outside the checked object contract.` }); return UNKNOWN;
@@ -995,6 +1141,12 @@ export class EffectsAnalyzer {
     case 'choice': return { kind: 'choice', values: receiver.values.map(value => this.property({ receiver: value, key, node, owner })) };
     case 'promise': return this.native({ name: `Promise.${key}`, receiver });
     case 'native': {
+      const { returnOrigin, ...source } = receiver;
+      if (returnOrigin !== undefined) {
+        const value = this.property({ receiver: source, key, node, owner });
+        const member = value.kind === 'native' && value.receiver === source ? { ...value, receiver } : value;
+        return withoutSourceEvidence({ value: member, undefinedFact: 'forget' });
+      }
       const prefix = receiver.name;
       if (isScalarRefName(prefix)) {
         if (prefix === 'vue:scalar-ref' && key === 'value') return SCALAR;
@@ -1057,11 +1209,13 @@ export class EffectsAnalyzer {
 
   private record({ expression, owner, scope }: { expression: ts.ObjectLiteralExpression, owner: ContractOwner | undefined, scope: Map<ts.Symbol, Value> }): Value {
     const fields = new Map<string, Field>();
+    let shape: Extract<Value, { kind: 'record' }>['shape'] = 'closed';
     for (const property of expression.properties) {
       if (ts.isSpreadAssignment(property)) {
         const value = this.expression({ expression: property.expression, owner, scope });
         const source = spreadRecords({ value });
         if (source === undefined) {
+          shape = 'open';
           this.issue({ node: property, code: 'unsupported', message: 'Object spread needs a known own-property shape, not only a structural TypeScript view.' }); continue;
         }
         for (const [key, field] of source.fields) {
@@ -1073,6 +1227,7 @@ export class EffectsAnalyzer {
       }
       const key = simpleName({ node: property.name });
       if (key === undefined || key === '__proto__' || ts.isGetAccessor(property) || ts.isSetAccessor(property)) {
+        shape = 'open';
         this.issue({ node: property, code: 'unsupported', message: 'Computed properties, accessors and prototype mutation require a model.' }); continue;
       }
       let value: Value;
@@ -1084,7 +1239,7 @@ export class EffectsAnalyzer {
       } else value = UNKNOWN;
       fields.set(key, { value, access: 'writable' });
     }
-    return withoutSourceEvidence({ value: { kind: 'record', fields, shape: 'closed', reflected: undefined, indexValue: undefined }, undefinedFact: 'preserve' });
+    return withoutSourceEvidence({ value: { kind: 'record', fields, shape, reflected: undefined, indexValue: undefined }, undefinedFact: 'preserve' });
   }
 
   private replacementShape({ source, target, node, depth }: { source: Value, target: Value, node: ts.Node, depth: number }): void {
@@ -1130,6 +1285,7 @@ export class EffectsAnalyzer {
       if (receiver.kind !== 'record' || keys === undefined || keys.length === 0) {
         this.issue({ node, code: 'unsupported', message: 'Assignment has no finite checked destination slots.' }); return;
       }
+      this.recordWrites.push({ receiver, node });
       for (const key of keys) {
         const field = receiver.fields.get(key);
         if (field === undefined || field.access !== 'writable') {
@@ -1225,7 +1381,8 @@ export class EffectsAnalyzer {
           this.invoke({ callable: this.functionValue({ declaration: method, inheritedScope: this.lexicalScope({ node: method }) }), args, owner, node: expression });
         }
       }
-      return this.invoke({ callable, args, owner, node: expression });
+      const returned = this.invoke({ callable, args, owner, node: expression });
+      return returned.kind === 'unknown' && ts.isNewExpression(expression) ? this.classInstanceCandidates({ expression }) : returned;
     }
     if (ts.isAwaitExpression(expression)) return this.settle({ value: this.expression({ expression: expression.expression, owner, scope }), node: expression });
     if (ts.isBinaryExpression(expression)) {
@@ -1290,6 +1447,11 @@ export class EffectsAnalyzer {
         proofs.push(isPromiseValue(value) ? value.value : value);
         this.returnValues.set(publicId, proofs);
         if (result !== undefined) this.compatible({ source: isPromiseValue(result) ? this.settle({ value, node: statement }) : value, target: isPromiseValue(result) ? result.value : result, node: statement, mode: ts.isObjectLiteralExpression(statement.expression) ? 'value' : 'shared' });
+      } else {
+        const publicId = this.bodyPublicOwners.get(owner.id) ?? owner.id;
+        const proofs = this.returnValues.get(publicId) ?? [];
+        proofs.push(UNDEFINED);
+        this.returnValues.set(publicId, proofs);
       }
       return;
     }
@@ -1379,6 +1541,11 @@ export class EffectsAnalyzer {
       return;
     }
     if (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement) || ts.isEmptyStatement(statement) || ts.isBreakStatement(statement) || ts.isContinueStatement(statement)) return;
+    if (ts.isClassDeclaration(statement)) {
+      for (const member of statement.members) {
+        if (ts.isMethodDeclaration(member) && member.body !== undefined && !ts.isComputedPropertyName(member.name)) this.functionValue({ declaration: member, inheritedScope: scope });
+      }
+    }
     this.issue({ node: statement, code: 'unsupported', message: `Unsupported effect statement: ${ts.SyntaxKind[statement.kind]}.` });
   }
 
@@ -1398,6 +1565,29 @@ export class EffectsAnalyzer {
     return undefined;
   }
 
+  private analyzeBody({ info }: { info: FunctionInfo }): void {
+    if (info.state !== undefined) return;
+    const body = info.declaration.body;
+    if (body === undefined) return;
+    if (this.bodyAnalysisSteps++ > this.config.analysisBudget) throw new Error('Function analysis budget exceeded.');
+    info.state = 'running';
+    this.bodyDepth++;
+    const bodyOwner = this.bodyOwners.get(info.value.owner.id) ?? info.value.owner;
+    info.declaration.parameters.forEach((parameter, index) => {
+      const expected = info.value.parameters[index] ?? UNKNOWN;
+      this.bindPattern({ name: parameter.name, value: expected, scope: info.scope, owner: bodyOwner, defaults: 'parameter' });
+      this.parameterDefaults({ parameter, expected, owner: bodyOwner, scope: info.scope });
+    });
+    if (ts.isBlock(body)) this.statement({ statement: body, owner: bodyOwner, scope: info.scope, result: info.value.returns });
+    else {
+      const value = this.expression({ expression: body, owner: bodyOwner, scope: info.scope });
+      this.returnValues.set(info.value.owner.id, [isPromiseValue(value) ? value.value : value]);
+      this.compatible({ source: value, target: info.value.returns, node: body, mode: 'shared' });
+    }
+    this.bodyDepth--;
+    info.state = 'done';
+  }
+
   private completeWorkerBindings(): void {
     for (const info of this.pending) {
       const proofs = this.returnValues.get(info.value.owner.id) ?? [];
@@ -1410,7 +1600,24 @@ export class EffectsAnalyzer {
         this.issue({ node: wrap.node, code: 'boundary', message: 'The worker entry must expose exactly the same shared contract declaration.' }); continue;
       }
       const exposure = exposed[0]!;
-      const api = this.closedRecord({ value: exposure.api });
+      // A directly exposed factory call retains a checked implementation return,
+      // while the argument object's erased copy may predate body reflection.
+      const argument = ts.isCallExpression(exposure.node) ? exposure.node.arguments[0] : undefined;
+      const properties = argument !== undefined && ts.isObjectLiteralExpression(argument)
+        && argument.properties.every(item => (ts.isPropertyAssignment(item) || ts.isShorthandPropertyAssignment(item)) && simpleName({ node: item.name }) !== undefined)
+        ? argument.properties.filter(item => simpleName({ node: item.name }) === 'api') : [];
+      const property = properties.length === 1 ? properties[0] : undefined;
+      const factoryCall = property !== undefined && ts.isPropertyAssignment(property) && ts.isCallExpression(property.initializer) ? property.initializer : undefined;
+      const factories = factoryCall === undefined ? [] : this.invocations.filter(invocation => invocation.node === factoryCall);
+      const factory = factories.length > 0 && factories[0]!.callable.returnOrigin === undefined
+        && factories.every(invocation => invocation.callable === factories[0]!.callable) ? factories[0] : undefined;
+      const body = factory === undefined ? undefined : this.functionBodies.get(factory.callable.owner.id)?.declaration.body;
+      let returned = body !== undefined && ts.isBlock(body) ? body.statements.find(ts.isReturnStatement)?.expression : body;
+      while (returned !== undefined && ts.isParenthesizedExpression(returned)) returned = returned.expression;
+      const result = returned !== undefined && ts.isObjectLiteralExpression(returned) ? factory?.callable.returns : undefined;
+      const api = this.closedRecord({ value: exposure.api })
+        ?? (!isRecordValue(exposure.api) || result === undefined || !isRecordValue(result) || result.identity === undefined || exposure.api.identity !== result.identity
+          ? undefined : this.closedRecord({ value: withoutSourceEvidence({ value: result, undefinedFact: 'forget' }) }));
       if (api === undefined || !isRecordValue(wrap.declared)) {
         this.issue({ node: exposure.node, code: 'boundary', message: 'The complete exposed worker shape is not known.' }); continue;
       }
@@ -1583,23 +1790,24 @@ export class EffectsAnalyzer {
     }
     for (let index = 0; index < this.pending.length; index++) {
       const info = this.pending[index]!;
-      if (index > this.config.analysisBudget) throw new Error('Function analysis budget exceeded.');
-      const body = info.declaration.body;
-      if (body === undefined) continue;
-      const bodyOwner = this.bodyOwners.get(info.value.owner.id) ?? info.value.owner;
-      info.declaration.parameters.forEach((parameter, index) => {
-        const expected = info.value.parameters[index] ?? UNKNOWN;
-        this.bindPattern({ name: parameter.name, value: expected, scope: info.scope, owner: bodyOwner, defaults: 'parameter' });
-        this.parameterDefaults({ parameter, expected, owner: bodyOwner, scope: info.scope });
-      });
-      if (ts.isBlock(body)) this.statement({ statement: body, owner: bodyOwner, scope: info.scope, result: info.value.returns });
-      else {
-        const value = this.expression({ expression: body, owner: bodyOwner, scope: info.scope });
-        this.returnValues.set(info.value.owner.id, [isPromiseValue(value) ? value.value : value]);
-        this.compatible({ source: value, target: info.value.returns, node: body, mode: 'shared' });
-      }
+      this.analyzeBody({ info });
     }
     this.completeWorkerBindings();
+    const projectedRecords = [...this.nativeStorageProjections];
+    for (let index = 0; index < projectedRecords.length; index++) {
+      for (const target of this.recordArgumentBindings.get(projectedRecords[index]!) ?? []) {
+        if (this.nativeStorageProjections.has(target)) continue;
+        this.nativeStorageProjections.add(target);
+        projectedRecords.push(target);
+      }
+    }
+    for (const write of this.recordWrites) {
+      if (write.receiver.kind === 'record' && write.receiver.identity !== undefined && this.nativeStorageProjections.has(write.receiver.identity)) this.issue({
+        node: write.node,
+        code: 'unsupported',
+        message: 'Writing a projected native Storage member needs a named-setter and coercion model.',
+      });
+    }
     const selections = tidyFiles === undefined ? [] : selectTidyOwners({ owners: this.owners, files: tidyFiles });
     const inferred = new Set(selections.filter(selection => selection.disposition === 'infer').map(selection => selection.owner));
     // Lower only selected declaration seeds. Rebuild cleanup rows from those same

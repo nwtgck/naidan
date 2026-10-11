@@ -9,12 +9,8 @@ import { passiveMessageData } from './message-data.ts';
 import { SCALAR, type Value } from '../../analysis/values.ts';
 
 function inspect({ source }: { source: string }) {
-  const fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
-  try {
-    return fixture.check();
-  } finally {
-    fixture.dispose();
-  }
+  using fixture = createFixture({ files: { 'main.ts': source }, entries: ['main.ts'] });
+  return fixture.check();
 }
 
 function row({ source }: { source: string }) {
@@ -230,41 +226,33 @@ function entry({ message }: { message: unknown }) { parent.postMessage(message, 
 
 describe('message contracts share the ordinary maintenance pipeline', () => {
   it('widens the helper and caller together, then repeats without changes', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'send.ts': `export function send() { window.parent.postMessage({ value: 'x' }, '*'); }`,
         'main.ts': `import { send } from './send'; export function entry() { send(); }`,
       },
       entries: ['main.ts'],
     });
-    try {
-      const fixed = fixture.fix();
-      expect(fixed.analysis.diagnostics).toEqual([]);
-      expect(fixed.changedFiles).toHaveLength(2);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('messaging.crossorigin.send(*)');
-      expect(fixture.fix().changedFiles).toHaveLength(0);
-    } finally {
-      fixture.dispose();
-    }
+    const fixed = fixture.fix();
+    expect(fixed.analysis.diagnostics).toEqual([]);
+    expect(fixed.changedFiles).toHaveLength(2);
+    expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('messaging.crossorigin.send(*)');
+    expect(fixture.fix().changedFiles).toHaveLength(0);
   });
 
   it('tidies a stale external upper bound only when selected delivery is internal', () => {
-    const fixture = createFixture({
+    using fixture = createFixture({
       files: {
         'main.ts': `/** @effects ["messaging.crossorigin.send(*)"] */
 export function entry() { window.parent.postMessage({ value: 'x' }, '/'); }`,
       },
       entries: ['main.ts'],
     });
-    try {
-      expect(fixture.check().diagnostics).toEqual([]);
-      const tidied = runEffectTidy({ root: fixture.root, config: fixture.config, write: 'write', files: ['main.ts'], inputSnapshots: new Map() });
-      expect(tidied.analysis.diagnostics).toEqual([]);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('@effects []');
-      expect(fixture.fix().changedFiles).toHaveLength(0);
-    } finally {
-      fixture.dispose();
-    }
+    expect(fixture.check().diagnostics).toEqual([]);
+    const tidied = runEffectTidy({ root: fixture.root, config: fixture.config, write: 'write', files: ['main.ts'], inputSnapshots: new Map() });
+    expect(tidied.analysis.diagnostics).toEqual([]);
+    expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain('@effects []');
+    expect(fixture.fix().changedFiles).toHaveLength(0);
   });
 
   it('exposes the local policy reason without claiming the payload guard passed', () => {

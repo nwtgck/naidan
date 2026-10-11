@@ -8,18 +8,14 @@ import { createFixture } from '../../test-support/project-fixture.ts';
 import { printEffect } from '../../contracts/effects.ts';
 
 function inspect({ body, before }: { body: string, before: string }) {
-  const fixture = createFixture({ files: { 'main.ts': `${before}\nexport async function inspect() { ${body} }` }, entries: ['main.ts'] });
-  try {
-    const analysis = fixture.check();
-    const owner = analysis.owners.find(item => item.label === 'inspect')!;
-    return {
-      diagnostics: analysis.diagnostics.filter(item => item.code !== 'missing' && item.code !== 'exceeds'),
-      effects: (analysis.solution.rows.get(owner.id) ?? []).map(effect => printEffect({ effect })),
-      decisions: analysis.modelDecisions.filter(item => item.owner === owner.id),
-    };
-  } finally {
-    fixture.dispose();
-  }
+  using fixture = createFixture({ files: { 'main.ts': `${before}\nexport async function inspect() { ${body} }` }, entries: ['main.ts'] });
+  const analysis = fixture.check();
+  const owner = analysis.owners.find(item => item.label === 'inspect')!;
+  return {
+    diagnostics: analysis.diagnostics.filter(item => item.code !== 'missing' && item.code !== 'exceeds'),
+    effects: (analysis.solution.rows.get(owner.id) ?? []).map(effect => printEffect({ effect })),
+    decisions: analysis.modelDecisions.filter(item => item.owner === owner.id),
+  };
 }
 
 const noneRule = (): OperationRule => ({
@@ -161,12 +157,8 @@ describe('actual syntax reaches the audited primitive entry points', () => {
   it('retains both filesystem candidates for a bare handle type rather than inventing provenance', () => {
     const result = inspect({ before: 'export async function read(file: FileSystemFileHandle) { await file.getFile(); }', body: '' });
     expect(result.diagnostics).toEqual([]);
-    const fixture = createFixture({ files: { 'main.ts': 'export async function read(file: FileSystemFileHandle) { await file.getFile(); }' }, entries: ['main.ts'] });
-    try {
-      const decision = fixture.check().modelDecisions.find(item => item.rule === 'FileSystemFileHandle.get-file')!;
-      expect(decision.effects.map(effect => printEffect({ effect })).sort()).toEqual(['hostfs.read(*)', 'opfs.read(*)']);
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = createFixture({ files: { 'main.ts': 'export async function read(file: FileSystemFileHandle) { await file.getFile(); }' }, entries: ['main.ts'] });
+    const decision = fixture.check().modelDecisions.find(item => item.rule === 'FileSystemFileHandle.get-file')!;
+    expect(decision.effects.map(effect => printEffect({ effect })).sort()).toEqual(['hostfs.read(*)', 'opfs.read(*)']);
   });
 });

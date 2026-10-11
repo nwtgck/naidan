@@ -105,7 +105,7 @@ function pause() { stop.pause(); }
   });
 
   it('checks unused callbacks and fixes once without changing the state setter', () => {
-    const fixture = fixtureFor({
+    using fixture = fixtureFor({
       source: `\
 const name = ref('');
 function setName({ value }: { value: string }) { name.value = value; }
@@ -113,17 +113,13 @@ watch(name, value => { localStorage.setItem('name', value); });
 `,
       extra: {},
     });
-    try {
-      const result = fixture.fix();
-      expect(result.analysis.diagnostics).toEqual([]);
-      expect(result.changedFiles).toEqual([path.join(fixture.root, 'main.ts')]);
-      expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain(`\
+    const result = fixture.fix();
+    expect(result.analysis.diagnostics).toEqual([]);
+    expect(result.changedFiles).toEqual([path.join(fixture.root, 'main.ts')]);
+    expect(fs.readFileSync(path.join(fixture.root, 'main.ts'), 'utf8')).toContain(`\
 /** @effects [] */
 function setName`);
-      expect(fixture.fix().changedFiles).toEqual([]);
-    } finally {
-      fixture.dispose();
-    }
+    expect(fixture.fix().changedFiles).toEqual([]);
   });
 
   it('retains scalar ref provenance through a typed const alias', () => {
@@ -132,7 +128,7 @@ function setName`);
   });
 
   it('resolves renamed exports and a namespace through declaration identity', () => {
-    const fixture = fixtureFor({
+    using fixture = fixtureFor({
       source: `\
 import { ref as makeState } from './barrel';
 import * as framework from './framework';
@@ -142,17 +138,13 @@ framework.watch(state, () => { localStorage.clear(); });
 `,
       extra: { 'barrel.ts': "export { ref } from './framework';" },
     });
-    try {
-      const analysis = fixture.check();
-      const unknown = analysis.diagnostics.filter(item => item.message.startsWith('Runtime import initialization'));
-      expect(unknown).toHaveLength(2); // namespace import and barrel reexport
-      expect(unknown.every(item => item.code === 'unsupported')).toBe(true);
-      supported({ analysis: { ...analysis, diagnostics: analysis.diagnostics.filter(item => !unknown.includes(item)) } });
-      expect(row({ analysis, label: 'set' })).toEqual([]);
-      expect(() => fixture.fix()).toThrow('Effect fix refused');
-    } finally {
-      fixture.dispose();
-    }
+    const analysis = fixture.check();
+    const unknown = analysis.diagnostics.filter(item => item.message.startsWith('Runtime import initialization'));
+    expect(unknown).toHaveLength(2); // namespace import and barrel reexport
+    expect(unknown.every(item => item.code === 'unsupported')).toBe(true);
+    supported({ analysis: { ...analysis, diagnostics: analysis.diagnostics.filter(item => !unknown.includes(item)) } });
+    expect(row({ analysis, label: 'set' })).toEqual([]);
+    expect(() => fixture.fix()).toThrow('Effect fix refused');
   });
 
   it.each([
@@ -172,37 +164,25 @@ framework.watch(state, () => { localStorage.clear(); });
   });
 
   it('does not accept a different module merely named ref', () => {
-    const fixture = fixtureFor({
+    using fixture = fixtureFor({
       source: `\
 import { ref as fake } from './unmodeled';
 const state = fake(0);
 `,
       extra: { 'unmodeled.d.ts': 'export declare function ref(value: number): number;' },
     });
-    try {
-      expect(fixture.check().diagnostics.some(item => item.code === 'boundary')).toBe(true);
-    } finally {
-      fixture.dispose();
-    }
+    expect(fixture.check().diagnostics.some(item => item.code === 'boundary')).toBe(true);
   });
 
   it('invalidates a changed reviewed declaration before fixing', () => {
-    const fixture = fixtureFor({ source: 'const state = ref(0);', extra: {} });
-    try {
-      fs.appendFileSync(path.join(fixture.root, 'framework.d.ts'), '\n// changed');
-      expect(() => fixture.fix()).toThrow('Reviewed effect model changed');
-    } finally {
-      fixture.dispose();
-    }
+    using fixture = fixtureFor({ source: 'const state = ref(0);', extra: {} });
+    fs.appendFileSync(path.join(fixture.root, 'framework.d.ts'), '\n// changed');
+    expect(() => fixture.fix()).toThrow('Reviewed effect model changed');
   });
 
   it('keeps ordinary test callbacks outside effect annotation and fix scope', () => {
-    const fixture = fixtureFor({ source: 'const state = ref(0);', extra: { 'case.test.ts': 'const callback = () => localStorage.clear();' } });
+    using fixture = fixtureFor({ source: 'const state = ref(0);', extra: { 'case.test.ts': 'const callback = () => localStorage.clear();' } });
     fixture.config.files = ['main.ts', 'case.test.ts'];
-    try {
-      expect(fixture.fix().changedFiles.some(file => file.endsWith('.test.ts'))).toBe(false);
-    } finally {
-      fixture.dispose();
-    }
+    expect(fixture.fix().changedFiles.some(file => file.endsWith('.test.ts'))).toBe(false);
   });
 });

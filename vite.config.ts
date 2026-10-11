@@ -403,7 +403,6 @@ export default defineConfig(({ mode }) => {
         'src/test-tmp/**',
         'src/lint-rule-tmp/**',
         'tools/effects/**',
-        'eslint-local-rules/effects.test.ts',
       ],
       setupFiles: ['./src/test-setup.ts'],
     },
