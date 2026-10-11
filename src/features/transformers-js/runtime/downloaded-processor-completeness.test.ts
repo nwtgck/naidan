@@ -28,41 +28,43 @@ function createRuntime() {
 
 it('excludes a Gemma processor namespace missing its required processor config before native sessions', async () => {
   const h = await createRuntime();
-  try {
-    const fs = h.observations.fs;
-    fs.enter({ nextPhase: 'fixture-setup', mutationPolicy: 'read-write' });
-    for (const [path, bytes] of [...fs.files]) {
-      if (!path.startsWith(`${prefix}main/`) || path.endsWith('/processor_config.json')) continue;
-      const next = path.replace(`${prefix}main/`, `${prefix}${revision}/`);
-      let directory = fs.root;
-      for (const part of next.split('/').slice(0, -1)) directory = await directory.getDirectoryHandle(part, { create: true });
-      fs.files.set(next, Uint8Array.from(bytes));
-    }
-    fs.activity.length = 0;
-    fs.enter({ nextPhase: 'offline-load', mutationPolicy: 'read-only' });
-    await expect(h.service.loadDownloadedModel({ modelId })).resolves.toBeUndefined();
-    expect(h.observations.ortCalls).toHaveLength(4);
-    expect(h.observations.processors.map(processor => processor.constructor.name)).toEqual(['Gemma4Processor']);
-    const modelReads = fs.activity.filter(item => item.operation === 'body-read' && item.path.includes('/onnx/'));
-    expect(modelReads.length).toBeGreaterThan(0);
-    expect(modelReads.every(item => item.path.startsWith(`${prefix}main/`))).toBe(true);
-    expect(h.observations.forbiddenTransport).toEqual([]);
-    expect(fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-  } finally {
-    await h.close();
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      await h.close();
+    },
+  };
+  const fs = h.observations.fs;
+  fs.enter({ nextPhase: 'fixture-setup', mutationPolicy: 'read-write' });
+  for (const [path, bytes] of [...fs.files]) {
+    if (!path.startsWith(`${prefix}main/`) || path.endsWith('/processor_config.json')) continue;
+    const next = path.replace(`${prefix}main/`, `${prefix}${revision}/`);
+    let directory = fs.root;
+    for (const part of next.split('/').slice(0, -1)) directory = await directory.getDirectoryHandle(part, { create: true });
+    fs.files.set(next, Uint8Array.from(bytes));
   }
+  fs.activity.length = 0;
+  fs.enter({ nextPhase: 'offline-load', mutationPolicy: 'read-only' });
+  await expect(h.service.loadDownloadedModel({ modelId })).resolves.toBeUndefined();
+  expect(h.observations.ortCalls).toHaveLength(4);
+  expect(h.observations.processors.map(processor => processor.constructor.name)).toEqual(['Gemma4Processor']);
+  const modelReads = fs.activity.filter(item => item.operation === 'body-read' && item.path.includes('/onnx/'));
+  expect(modelReads.length).toBeGreaterThan(0);
+  expect(modelReads.every(item => item.path.startsWith(`${prefix}main/`))).toBe(true);
+  expect(h.observations.forbiddenTransport).toEqual([]);
+  expect(fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
 }, 30_000);
 
 it('does not promote Gemma optional standalone chat template into a required Load artifact', async () => {
   const h = await createRuntime();
-  try {
-    h.observations.fs.files.delete(`${prefix}main/chat_template.jinja`);
-    await expect(h.service.loadDownloadedModel({ modelId })).resolves.toBeUndefined();
-    expect(h.observations.ortCalls).toHaveLength(4);
-    expect(h.observations.processors.map(processor => processor.constructor.name)).toEqual(['Gemma4Processor']);
-    expect(h.observations.forbiddenTransport).toEqual([]);
-    expect(h.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-  } finally {
-    await h.close();
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      await h.close();
+    },
+  };
+  h.observations.fs.files.delete(`${prefix}main/chat_template.jinja`);
+  await expect(h.service.loadDownloadedModel({ modelId })).resolves.toBeUndefined();
+  expect(h.observations.ortCalls).toHaveLength(4);
+  expect(h.observations.processors.map(processor => processor.constructor.name)).toEqual(['Gemma4Processor']);
+  expect(h.observations.forbiddenTransport).toEqual([]);
+  expect(h.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
 }, 30_000);

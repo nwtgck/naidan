@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { expect, it } from 'vitest';
 import { scanImageRepositories, componentRequirements, componentMatch, defaultCompanion } from './model-candidates';
-import { ggufFixture, safetensorsFixture, flux2KleinTensors, animaTensors, flux2VaeTensors, wanVaeTensors, fluxVaeTensors, qwenVaeTensors, qwenTextTensors, tensor } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
+import { ggufFixture, safetensorsFixture, flux2KleinTensors, animaTensors, flux2VaeTensors, wanVaeTensors, fluxVaeTensors, qwenVaeTensors, qwenTextTensors, tensor } from '@/features/stable-diffusion-cpp-browser/test-utils/weights.test-support';
 
 it.each([
   { family: 'flux2-klein-4b' as const, tensors: flux2KleinTensors, vae: flux2VaeTensors, width: 2560, layers: 36 },

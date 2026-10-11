@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { PromptApiError } from '@/features/prompt-api/errors';
 
 import BrowserProvidedLmUnavailableNotice from './BrowserProvidedLmUnavailableNotice.vue';

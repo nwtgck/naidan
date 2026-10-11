@@ -6,8 +6,8 @@ import type { Chat } from '@/01-models/types';
 import { idToRaw, toChatId } from '@/01-models/ids';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 import { getMessageText } from '@/01-models/message-text';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import { useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction } from './useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support';
 
 // Mock useSettings
 vi.mock('./useSettings', () => ({
@@ -97,35 +97,36 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         return { type: 'interrupted', reason: 'aborted' };
       },
     }));
-    try {
-      expect(await sendMessage({ content: 'Hello' })).toBe(true);
-      await started.promise;
-      const user = chat.root.items[0]!;
-      const first = user.replies.items[0]!;
-      await vi.waitUntil(() => getMessageText({ message: first }) === 'First chunk');
-      mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
-        signal,
-        run: async ({ writer }) => {
-          await writer.text({ type: 'text', text: 'Second Response' });
-          return { type: 'finished', next: 'user' };
-        },
-      }));
-      await regenerateMessage({ failedMessageId: idToRaw({ id: first.id }) });
-      await vi.waitUntil(() => !streaming.value);
-      expect(firstGenAborted).toBe(true);
-      expect(user.replies.items).toHaveLength(2);
-      expect(first.parts).toMatchObject([{ type: 'text', text: 'First chunk', completeness: 'partial' }]);
-      expect(first.role === 'assistant' && first.interruption).toEqual({ type: 'cancelled' });
-      const second = user.replies.items[1]!;
-      expect(second.id).not.toBe(first.id);
-      expect(getMessageText({ message: second })).toBe('Second Response');
-      expect(chat.currentLeafId).toBe(second.id);
-      expect(mockLmChat.mock.calls[1]![0].messages.map(message => message.role)).toEqual(['user']);
-    } finally {
-      chatStore.abortChat({ chatId: undefined });
-      stopped.resolve();
-      await vi.waitUntil(() => !streaming.value);
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        chatStore.abortChat({ chatId: undefined });
+        stopped.resolve();
+        await vi.waitUntil(() => !streaming.value);
+      },
+    };
+    expect(await sendMessage({ content: 'Hello' })).toBe(true);
+    await started.promise;
+    const user = chat.root.items[0]!;
+    const first = user.replies.items[0]!;
+    await vi.waitUntil(() => getMessageText({ message: first }) === 'First chunk');
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Second Response' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
+    await regenerateMessage({ failedMessageId: idToRaw({ id: first.id }) });
+    await vi.waitUntil(() => !streaming.value);
+    expect(firstGenAborted).toBe(true);
+    expect(user.replies.items).toHaveLength(2);
+    expect(first.parts).toMatchObject([{ type: 'text', text: 'First chunk', completeness: 'partial' }]);
+    expect(first.role === 'assistant' && first.interruption).toEqual({ type: 'cancelled' });
+    const second = user.replies.items[1]!;
+    expect(second.id).not.toBe(first.id);
+    expect(getMessageText({ message: second })).toBe('Second Response');
+    expect(chat.currentLeafId).toBe(second.id);
+    expect(mockLmChat.mock.calls[1]![0].messages.map(message => message.role)).toEqual(['user']);
   });
 
   it('should interrupt current generation and start new one when editMessage (resend) is called', async () => {
@@ -154,35 +155,36 @@ describe('useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBe
         return { type: 'interrupted', reason: 'aborted' };
       },
     }));
-    try {
-      await sendMessage({ content: 'Hello' });
-      await started.promise;
-      const user = chat.root.items[0]!;
-      const first = user.replies.items[0]!;
-      mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
-        signal,
-        run: async ({ writer }) => {
-          await writer.text({ type: 'text', text: 'Edited Response' });
-          return { type: 'finished', next: 'user' };
-        },
-      }));
-      await editMessage({ messageId: idToRaw({ id: user.id }), newContent: 'Hello Again' });
-      await vi.waitUntil(() => !streaming.value);
-      expect(firstGenAborted).toBe(true);
-      expect(chat.root.items).toHaveLength(2);
-      expect(getMessageText({ message: user })).toBe('Hello');
-      expect(first.parts).toMatchObject([{ type: 'text', text: 'First chunk', completeness: 'partial' }]);
-      expect(first.role === 'assistant' && first.interruption).toEqual({ type: 'cancelled' });
-      const nextUser = chat.root.items[1]!;
-      expect(getMessageText({ message: nextUser })).toBe('Hello Again');
-      const second = nextUser.replies.items[0]!;
-      expect(second.id).not.toBe(first.id);
-      expect(getMessageText({ message: second })).toBe('Edited Response');
-      expect(mockLmChat.mock.calls[1]![0].messages).toMatchObject([{ role: 'user', parts: [{ text: 'Hello Again' }] }]);
-    } finally {
-      chatStore.abortChat({ chatId: undefined });
-      stopped.resolve();
-      await vi.waitUntil(() => !streaming.value);
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        chatStore.abortChat({ chatId: undefined });
+        stopped.resolve();
+        await vi.waitUntil(() => !streaming.value);
+      },
+    };
+    await sendMessage({ content: 'Hello' });
+    await started.promise;
+    const user = chat.root.items[0]!;
+    const first = user.replies.items[0]!;
+    mockLmChat.mockImplementationOnce(({ signal }) => createChatGenerationStream({
+      signal,
+      run: async ({ writer }) => {
+        await writer.text({ type: 'text', text: 'Edited Response' });
+        return { type: 'finished', next: 'user' };
+      },
+    }));
+    await editMessage({ messageId: idToRaw({ id: user.id }), newContent: 'Hello Again' });
+    await vi.waitUntil(() => !streaming.value);
+    expect(firstGenAborted).toBe(true);
+    expect(chat.root.items).toHaveLength(2);
+    expect(getMessageText({ message: user })).toBe('Hello');
+    expect(first.parts).toMatchObject([{ type: 'text', text: 'First chunk', completeness: 'partial' }]);
+    expect(first.role === 'assistant' && first.interruption).toEqual({ type: 'cancelled' });
+    const nextUser = chat.root.items[1]!;
+    expect(getMessageText({ message: nextUser })).toBe('Hello Again');
+    const second = nextUser.replies.items[0]!;
+    expect(second.id).not.toBe(first.id);
+    expect(getMessageText({ message: second })).toBe('Edited Response');
+    expect(mockLmChat.mock.calls[1]![0].messages).toMatchObject([{ role: 'user', parts: [{ text: 'Hello Again' }] }]);
   });
 });

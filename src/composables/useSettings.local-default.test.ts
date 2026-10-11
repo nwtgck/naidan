@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import { useSettings } from './useSettings';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { storageService } from '@/00-storage/service';
 const mocks = vi.hoisted(() => ({ update: vi.fn(), listModels: vi.fn(async () => ['local-model']), loadProvider: vi.fn(), stored: undefined as Settings | undefined }));
 vi.mock('@/00-storage/service', () => ({ storageService: { updateSettings: mocks.update, subscribeToChanges: vi.fn(() => () => {}), loadSettings: async () => mocks.stored ?? null, captureModelLaunchStorage: () => () => true } }));

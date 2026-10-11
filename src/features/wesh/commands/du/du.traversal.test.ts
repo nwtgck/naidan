@@ -5,7 +5,7 @@ import {
   makeDuTestDirectory,
   type DuTestContext,
   writeDuTestFile,
-} from './test-utils';
+} from './utils.test-support';
 
 describe('wesh du traversal', () => {
   let testContext: DuTestContext;

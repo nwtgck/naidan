@@ -100,36 +100,37 @@ describe('MSI cache acceptance cancellation through the real orchestration chain
     mocks.dispose.mockResolvedValue(undefined);
     mocks.create.mockReturnValue({ verifyDownloadedModelRevision: mocks.verify, dispose: mocks.dispose });
     const visited: string[] = [];
-    try {
-      const executions = await runInvestigationTargetsSequentially({
-        targets: ['fixture/lifecycle', 'fixture/next'],
-        shouldInterrupt: () => false,
-        takeSkipRequest: () => false,
-        onUpdate: () => undefined,
-        runTarget: async ({ target }) => {
-          visited.push(target);
-          if (target === 'fixture/lifecycle') await withCacheAcceptanceDeadline({
-            controller,
-            timeoutMs: 100,
-            start: () => completeDownloadVerificationRuntimeEvidence({
-              evidence: input(),
-              signal: controller.signal,
-              storageRoot: {} as FileSystemDirectoryHandle,
-              reuseRevision: async args => await reuseDownloadedProductionRevision({ ...args, inspectCachedRevisions: async () => inventory() }),
-              inspectCachedRevisions: async () => inventory(),
-            }),
-          });
-          expect(mocks.dispose).toHaveBeenCalledOnce();
-          const checkpoint = createInitialInvestigationCheckpoint({ modelId: target, runId: target, now: () => '2026-09-08T00:00:00.000Z' });
-          return { ...checkpoint.run, status: 'passed', error: undefined };
-        },
-      });
-      expect(visited).toEqual(['fixture/lifecycle', 'fixture/next']);
-      expect(executions.map(item => item.status)).toEqual(['failed', 'passed']);
-      expect(executions[0]?.error).toContain('cache acceptance');
-    } finally {
-      pending.resolve({ device: 'webgpu', dtype: 'q4' });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        pending.resolve({ device: 'webgpu', dtype: 'q4' });
+      },
+    };
+    const executions = await runInvestigationTargetsSequentially({
+      targets: ['fixture/lifecycle', 'fixture/next'],
+      shouldInterrupt: () => false,
+      takeSkipRequest: () => false,
+      onUpdate: () => undefined,
+      runTarget: async ({ target }) => {
+        visited.push(target);
+        if (target === 'fixture/lifecycle') await withCacheAcceptanceDeadline({
+          controller,
+          timeoutMs: 100,
+          start: () => completeDownloadVerificationRuntimeEvidence({
+            evidence: input(),
+            signal: controller.signal,
+            storageRoot: {} as FileSystemDirectoryHandle,
+            reuseRevision: async args => await reuseDownloadedProductionRevision({ ...args, inspectCachedRevisions: async () => inventory() }),
+            inspectCachedRevisions: async () => inventory(),
+          }),
+        });
+        expect(mocks.dispose).toHaveBeenCalledOnce();
+        const checkpoint = createInitialInvestigationCheckpoint({ modelId: target, runId: target, now: () => '2026-09-08T00:00:00.000Z' });
+        return { ...checkpoint.run, status: 'passed', error: undefined };
+      },
+    });
+    expect(visited).toEqual(['fixture/lifecycle', 'fixture/next']);
+    expect(executions.map(item => item.status)).toEqual(['failed', 'passed']);
+    expect(executions[0]?.error).toContain('cache acceptance');
   });
 
   it.each(['user', 'deadline'])('disposes the active worker after %s cancellation without trying the next candidate or forwarding late progress', async cancellation => {
@@ -168,22 +169,23 @@ describe('MSI cache acceptance cancellation through the real orchestration chain
       }),
     }).then(value => ({ status: 'resolved' as const, value }), error => ({ status: 'rejected' as const, error }));
     const reason = new Error('User stopped this model');
-    try {
-      await vi.waitFor(() => expect(mocks.verify).toHaveBeenCalledTimes(1));
-      if (cancellation === 'user') controller.abort(reason);
-      await vi.waitFor(() => expect(mocks.dispose).toHaveBeenCalledTimes(1));
-      expect(await outcome).toEqual({ status: 'rejected', error: controller.signal.reason });
-      expect(onProgress.mock.calls.map(([event]) => event.progress.phase)).toEqual(['cache-inventory', 'revision-acceptance', 'candidate-acceptance', 'runtime']);
-      const delivered = onProgress.mock.calls.length;
-      lateProgress?.({ info: { status: 'ready' } });
-      expect(onProgress).toHaveBeenCalledTimes(delivered);
-      expect(mocks.verify).toHaveBeenCalledTimes(1);
-      expect(inspectAfter).not.toHaveBeenCalled();
-    } finally {
-      // Drain the deliberately held mock even when the pre-fix assertion fails.
-      pending.resolve({ device: 'webgpu', dtype: 'q4f16' });
-      await outcome;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        // Drain the deliberately held mock even when the pre-fix assertion fails.
+        pending.resolve({ device: 'webgpu', dtype: 'q4f16' });
+        await outcome;
+      },
+    };
+    await vi.waitFor(() => expect(mocks.verify).toHaveBeenCalledTimes(1));
+    if (cancellation === 'user') controller.abort(reason);
+    await vi.waitFor(() => expect(mocks.dispose).toHaveBeenCalledTimes(1));
+    expect(await outcome).toEqual({ status: 'rejected', error: controller.signal.reason });
+    expect(onProgress.mock.calls.map(([event]) => event.progress.phase)).toEqual(['cache-inventory', 'revision-acceptance', 'candidate-acceptance', 'runtime']);
+    const delivered = onProgress.mock.calls.length;
+    lateProgress?.({ info: { status: 'ready' } });
+    expect(onProgress).toHaveBeenCalledTimes(delivered);
+    expect(mocks.verify).toHaveBeenCalledTimes(1);
+    expect(inspectAfter).not.toHaveBeenCalled();
   });
 
   it('does not create an acceptance worker when stopped during cache inventory', async () => {

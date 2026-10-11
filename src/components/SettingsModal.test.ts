@@ -3,7 +3,7 @@ import { toProviderProfileId } from '@/01-models/ids';
 vi.mock('virtual:naidan-licenses', () => ({ default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }] }));
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref, reactive, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';

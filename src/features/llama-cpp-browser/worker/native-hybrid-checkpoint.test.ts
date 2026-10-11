@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createCore, type Core } from '@/features/llama-cpp-browser/runtime/core';
-import { createTinyLfm2Gguf } from './test-utils/tiny-lfm2-gguf';
+import { createTinyLfm2Gguf } from './test-utils/tiny-lfm2-gguf.test-support';
 
 type Snapshot = { pointer: bigint, size: bigint, flags: number };
 // These llama.h ABI flags are macros, not entries in the supplied enum schema.
@@ -34,23 +34,24 @@ async function position(): Promise<number> {
 async function decode({ tokens }: { tokens: readonly number[] }): Promise<number[]> {
   const pointer = allocate({ bytes: tokens.length * 4 });
   const batch = core.allocRecord({ name: 'llama_batch' });
-  try {
-    const bytes = core.bytes({ pointer, length: tokens.length * 4 });
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    tokens.forEach((token, index) => view.setInt32(index * 4, token, true));
-    await core.api.llama_batch_get_one(batch, pointer, tokens.length);
-    expect(await core.api.llama_decode(context, batch)).toBe(0);
-    const logits = await core.api.llama_get_logits_ith(context, -1);
-    expect(logits).not.toBe(0n);
-    const vocab = await core.api.llama_model_get_vocab(model);
-    const count = await core.api.llama_vocab_n_tokens(vocab);
-    const output = core.bytes({ pointer: logits, length: count * 4 });
-    const outputView = new DataView(output.buffer, output.byteOffset, output.byteLength);
-    return Array.from({ length: count }, (_, index) => outputView.getFloat32(index * 4, true));
-  } finally {
-    core.free({ pointer: batch });
-    free({ pointer });
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      core.free({ pointer: batch });
+      free({ pointer });
+    },
+  };
+  const bytes = core.bytes({ pointer, length: tokens.length * 4 });
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  tokens.forEach((token, index) => view.setInt32(index * 4, token, true));
+  await core.api.llama_batch_get_one(batch, pointer, tokens.length);
+  expect(await core.api.llama_decode(context, batch)).toBe(0);
+  const logits = await core.api.llama_get_logits_ith(context, -1);
+  expect(logits).not.toBe(0n);
+  const vocab = await core.api.llama_model_get_vocab(model);
+  const count = await core.api.llama_vocab_n_tokens(vocab);
+  const output = core.bytes({ pointer: logits, length: count * 4 });
+  const outputView = new DataView(output.buffer, output.byteOffset, output.byteLength);
+  return Array.from({ length: count }, (_, index) => outputView.getFloat32(index * 4, true));
 }
 
 async function snapshot({ flags }: { flags: number }): Promise<Snapshot> {
@@ -96,24 +97,25 @@ beforeAll(async () => {
   const filename = core.utf8({ text: '/tiny-lfm2.gguf' });
   const modelParams = core.allocRecord({ name: 'llama_model_params' });
   const contextParams = core.allocRecord({ name: 'llama_context_params' });
-  try {
-    await core.api.llama_model_default_params(modelParams);
-    core.setField({ name: 'llama_model_params', pointer: modelParams, field: 'n_gpu_layers', value: 0 });
-    model = await core.api.llama_model_load_from_file(filename, modelParams);
-    expect(model).not.toBe(0n);
-    await core.api.llama_context_default_params(contextParams);
-    for (const [field, value] of Object.entries({ n_ctx: 128, n_batch: 32, n_ubatch: 32, n_threads: 1, n_threads_batch: 1, n_rs_seq: 0 })) {
-      core.setField({ name: 'llama_context_params', pointer: contextParams, field, value });
-    }
-    context = await core.api.llama_init_from_model(model, contextParams);
-    expect(context).not.toBe(0n);
-    memory = await core.api.llama_get_memory(context);
-    expect(memory).not.toBe(0n);
-  } finally {
-    core.free({ pointer: contextParams });
-    core.free({ pointer: modelParams });
-    core.free({ pointer: filename });
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      core.free({ pointer: contextParams });
+      core.free({ pointer: modelParams });
+      core.free({ pointer: filename });
+    },
+  };
+  await core.api.llama_model_default_params(modelParams);
+  core.setField({ name: 'llama_model_params', pointer: modelParams, field: 'n_gpu_layers', value: 0 });
+  model = await core.api.llama_model_load_from_file(filename, modelParams);
+  expect(model).not.toBe(0n);
+  await core.api.llama_context_default_params(contextParams);
+  for (const [field, value] of Object.entries({ n_ctx: 128, n_batch: 32, n_ubatch: 32, n_threads: 1, n_threads_batch: 1, n_rs_seq: 0 })) {
+    core.setField({ name: 'llama_context_params', pointer: contextParams, field, value });
   }
+  context = await core.api.llama_init_from_model(model, contextParams);
+  expect(context).not.toBe(0n);
+  memory = await core.api.llama_get_memory(context);
+  expect(memory).not.toBe(0n);
 }, 30000);
 
 afterAll(async () => {
@@ -138,27 +140,28 @@ describe('native hybrid checkpoints with a synthetic LFM2 GGUF', () => {
       await core.api.llama_memory_clear(memory, 1);
       await decode({ tokens: prefix });
       const boundary = await snapshot({ flags: partialOnly });
-      try {
-        const fullSize = await core.api.llama_state_seq_get_size_ext(context, 0, 0);
-        expect(boundary.size).toBeLessThan(fullSize);
-        await decode({ tokens: oldTail });
-        expect(await position()).toBe(prefix.length + oldTail.length - 1);
-        // With n_rs_seq=0, recurrent memory cannot rewind its state without a checkpoint.
-        expect(await core.api.llama_memory_seq_rm(memory, 0, prefix.length, -1)).toBe(0);
-        expect(await position()).toBe(prefix.length + oldTail.length - 1);
-        expect(await core.api.llama_state_seq_get_size_ext(context, 0, partialOnly)).toBe(boundary.size);
-        expect(await core.api.llama_state_seq_get_size_ext(context, 0, 0)).toBeGreaterThan(fullSize);
+      using _cleanupResource = {
+        [Symbol.dispose]() {
+          free({ pointer: boundary.pointer });
+        },
+      };
+      const fullSize = await core.api.llama_state_seq_get_size_ext(context, 0, 0);
+      expect(boundary.size).toBeLessThan(fullSize);
+      await decode({ tokens: oldTail });
+      expect(await position()).toBe(prefix.length + oldTail.length - 1);
+      // With n_rs_seq=0, recurrent memory cannot rewind its state without a checkpoint.
+      expect(await core.api.llama_memory_seq_rm(memory, 0, prefix.length, -1)).toBe(0);
+      expect(await position()).toBe(prefix.length + oldTail.length - 1);
+      expect(await core.api.llama_state_seq_get_size_ext(context, 0, partialOnly)).toBe(boundary.size);
+      expect(await core.api.llama_state_seq_get_size_ext(context, 0, 0)).toBeGreaterThan(fullSize);
 
-        await restore({ state: boundary });
-        // Partial restoration intentionally leaves attention at the old frontier.
-        expect(await core.api.llama_memory_seq_rm(memory, 0, prefix.length, -1)).toBe(1);
-        expect(await position()).toBe(prefix.length - 1);
-        const warm = await decode({ tokens: suffix });
-        expect(await position()).toBe(coldPosition);
-        expectSameLogits({ actual: warm, expected: cold });
-      } finally {
-        free({ pointer: boundary.pointer });
-      }
+      await restore({ state: boundary });
+      // Partial restoration intentionally leaves attention at the old frontier.
+      expect(await core.api.llama_memory_seq_rm(memory, 0, prefix.length, -1)).toBe(1);
+      expect(await position()).toBe(prefix.length - 1);
+      const warm = await decode({ tokens: suffix });
+      expect(await position()).toBe(coldPosition);
+      expectSameLogits({ actual: warm, expected: cold });
     }
   }, 30000);
 
@@ -168,32 +171,34 @@ describe('native hybrid checkpoints with a synthetic LFM2 GGUF', () => {
     await core.api.llama_memory_clear(memory, 1);
     await decode({ tokens: prefix });
     const correctFull = await snapshot({ flags: 0 });
-    try {
-      const correct = await decode({ tokens: suffix });
-      const correctPosition = await position();
-      await core.api.llama_memory_clear(memory, 1);
-      await decode({ tokens: [69, 69, 69] });
-      const wrongPartial = await snapshot({ flags: partialOnly });
-      try {
-        await restore({ state: correctFull });
-        await restore({ state: wrongPartial });
-        expect(await position()).toBe(prefix.length - 1);
-        // PARTIAL_ONLY does not replace attention. This perturbation changes only
-        // the convolution state, proving that matching KV positions alone is insufficient.
-        const wrong = await decode({ tokens: suffix });
-        expect(await position()).toBe(correctPosition);
-        expect(Math.max(...wrong.map((value, index) => Math.abs(value - correct[index]!)))).toBeGreaterThan(0.1);
-        expect(nextToken({ logits: wrong })).not.toBe(nextToken({ logits: correct }));
-
-        await restore({ state: correctFull });
-        const restored = await decode({ tokens: suffix });
-        expectSameLogits({ actual: restored, expected: correct });
-      } finally {
+    using _cleanupResource2 = {
+      [Symbol.dispose]() {
+        free({ pointer: correctFull.pointer });
+      },
+    };
+    const correct = await decode({ tokens: suffix });
+    const correctPosition = await position();
+    await core.api.llama_memory_clear(memory, 1);
+    await decode({ tokens: [69, 69, 69] });
+    const wrongPartial = await snapshot({ flags: partialOnly });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         free({ pointer: wrongPartial.pointer });
-      }
-    } finally {
-      free({ pointer: correctFull.pointer });
-    }
+      },
+    };
+    await restore({ state: correctFull });
+    await restore({ state: wrongPartial });
+    expect(await position()).toBe(prefix.length - 1);
+    // PARTIAL_ONLY does not replace attention. This perturbation changes only
+    // the convolution state, proving that matching KV positions alone is insufficient.
+    const wrong = await decode({ tokens: suffix });
+    expect(await position()).toBe(correctPosition);
+    expect(Math.max(...wrong.map((value, index) => Math.abs(value - correct[index]!)))).toBeGreaterThan(0.1);
+    expect(nextToken({ logits: wrong })).not.toBe(nextToken({ logits: correct }));
+
+    await restore({ state: correctFull });
+    const restored = await decode({ tokens: suffix });
+    expectSameLogits({ actual: restored, expected: correct });
   }, 30000);
 
   it('keeps one replaceable recurrent checkpoint on native buffers with a small host handle', async () => {
@@ -206,21 +211,22 @@ describe('native hybrid checkpoints with a synthetic LFM2 GGUF', () => {
       await decode({ tokens: prefix });
       const hostBytes = await core.api.llama_state_seq_get_size_ext(context, 0, partialOnly);
       const state = await snapshot({ flags });
-      try {
-        // The host buffer is a handle; tensor bytes live in native backend storage.
-        // This does not imply the smaller serialized size is the checkpoint's total memory cost.
-        expect(state.size).toBeLessThan(hostBytes);
-        await decode({ tokens: [69, 69, 68, 68] });
-        expect(await core.api.llama_memory_seq_rm(memory, 0, prefix.length, -1)).toBe(0);
-        await restore({ state });
-        expect(await core.api.llama_memory_seq_rm(memory, 0, prefix.length, -1)).toBe(1);
-        expect(await position()).toBe(prefix.length - 1);
-        const warm = await decode({ tokens: suffix });
-        expect(await position()).toBe(prefix.length + suffix.length - 1);
-        expectSameLogits({ actual: warm, expected: cold });
-      } finally {
-        free({ pointer: state.pointer });
-      }
+      using _cleanupResource = {
+        [Symbol.dispose]() {
+          free({ pointer: state.pointer });
+        },
+      };
+      // The host buffer is a handle; tensor bytes live in native backend storage.
+      // This does not imply the smaller serialized size is the checkpoint's total memory cost.
+      expect(state.size).toBeLessThan(hostBytes);
+      await decode({ tokens: [69, 69, 68, 68] });
+      expect(await core.api.llama_memory_seq_rm(memory, 0, prefix.length, -1)).toBe(0);
+      await restore({ state });
+      expect(await core.api.llama_memory_seq_rm(memory, 0, prefix.length, -1)).toBe(1);
+      expect(await position()).toBe(prefix.length - 1);
+      const warm = await decode({ tokens: suffix });
+      expect(await position()).toBe(prefix.length + suffix.length - 1);
+      expectSameLogits({ actual: warm, expected: cold });
       // The next get_data_ext invalidates the previous on-device state for this
       // sequence. Only the newly returned handle may be used after replacement.
     }

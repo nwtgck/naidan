@@ -1,4 +1,4 @@
-import { runProviderConversationForTest } from './provider-test-support';
+import { runProviderConversationForTest } from './provider.test-support';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { OllamaProvider } from './ollama';
 import type { LmFetch } from '@/features/lm/fetch';

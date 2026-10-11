@@ -8,7 +8,7 @@ import { EMPTY_LM_PARAMETERS } from '@/01-models/types';
 import type { Tool, ToolExecutionOutcome, ToolExecutionResult } from '@/01-models/tool';
 import { toChatId, toMessageId, toToolCallId, type ChatId } from '@/01-models/ids';
 import { getMessageText } from '@/01-models/message-text';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { createChatGenerationStream } from '@/logic/create-chat-generation-stream';
 
 const state = vi.hoisted(() => ({
@@ -246,23 +246,19 @@ describe('chat generation flow with message parts', () => {
 
   it('does not reclassify a successful answer as a model error when automatic title fails', async () => {
     const fixture = createChat(); state.autoTitle = true; state.title.mockRejectedValue(new Error('title failed'));
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      state.provider = {
-        listModels: async () => ['m'],
-        chat: ({ signal }) => createChatGenerationStream({
-          signal,
-          run: async ({ writer }) => {
-            await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
-          },
-        }),
-      };
-      await run(fixture);
-      expect(fixture.assistant.interruption).toBeUndefined(); expect(fixture.assistant.parts[0]).toMatchObject({ text: 'answer', completeness: 'complete' });
-      expect(state.active.size).toBe(0);
-    } finally {
-      consoleError.mockRestore();
-    }
+    using _consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    state.provider = {
+      listModels: async () => ['m'],
+      chat: ({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+        },
+      }),
+    };
+    await run(fixture);
+    expect(fixture.assistant.interruption).toBeUndefined(); expect(fixture.assistant.parts[0]).toMatchObject({ text: 'answer', completeness: 'complete' });
+    expect(state.active.size).toBe(0);
   });
 });
 
@@ -284,23 +280,19 @@ describe('chat generation ownership and failure boundaries', () => {
   it('keeps a successful answer in memory and skips reload metadata when persistence fails', async () => {
     const fixture = createChat(); const failure = new Error('disk unavailable');
     state.save.mockResolvedValueOnce(undefined).mockRejectedValue(failure);
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      state.provider = {
-        listModels: async () => ['m'],
-        chat: ({ signal }) => createChatGenerationStream({
-          signal,
-          run: async ({ writer }) => {
-            await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
-          },
-        }),
-      };
-      await run(fixture);
-      expect(fixture.assistant.parts[0]).toMatchObject({ text: 'answer', completeness: 'complete' });
-      expect(fixture.assistant.interruption).toBeUndefined(); expect(state.metadata).not.toHaveBeenCalled();
-    } finally {
-      consoleError.mockRestore();
-    }
+    using _consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    state.provider = {
+      listModels: async () => ['m'],
+      chat: ({ signal }) => createChatGenerationStream({
+        signal,
+        run: async ({ writer }) => {
+          await writer.text({ type: 'text', text: 'answer' }); return { type: 'finished', next: 'user' };
+        },
+      }),
+    };
+    await run(fixture);
+    expect(fixture.assistant.parts[0]).toMatchObject({ text: 'answer', completeness: 'complete' });
+    expect(fixture.assistant.interruption).toBeUndefined(); expect(state.metadata).not.toHaveBeenCalled();
   });
 
   it('keeps an observed tool success when stop is requested inside tool execution', async () => {

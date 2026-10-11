@@ -9,8 +9,8 @@ import { LocalStorageProvider } from '@/00-storage/service/local-storage';
 import { hostModelHandles, type HostModelDirectoryHandle } from '@/00-storage/service/host-model-handles';
 import { useSettings } from '@/composables/useSettings';
 import { useHostModelDirectories } from '@/composables/useHostModelDirectories';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
-import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
+import { MemoryDirectory } from '@/features/stable-diffusion-cpp-browser/test-utils/storage.test-support';
 import LlamaCppBrowserDownloadDestination from '@/features/llama-cpp-browser/components/LlamaCppBrowserDownloadDestination.vue';
 import { createDownloadQueue } from '@/features/llama-cpp-browser/hugging-face/download-queue';
 import { TEST_ONLY, useModelDownloadDestination } from './useModelDownloadDestination';
@@ -45,11 +45,12 @@ function simulatedLocks() {
       const release = Promise.withResolvers<void>();
       const tail = previous.then(() => release.promise); lanes.set(name, tail);
       await previous;
-      try {
-        return await callback();
-      } finally {
-        release.resolve(); if (lanes.get(name) === tail) lanes.delete(name);
-      }
+      using _cleanupResource = {
+        [Symbol.dispose]() {
+          release.resolve(); if (lanes.get(name) === tail) lanes.delete(name);
+        },
+      };
+      return await callback();
     },
   };
 }

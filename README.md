@@ -9,7 +9,54 @@
 
 ![Naidan standalone](demo-assets/naidan-html.gif)
 
-A privacy-focused LLM interface for local use, designed to run directly from a portable directory.
+A privacy-focused, local-first AI app. Run models on your device, directly in your browser, or connect to OpenAI-compatible APIs and Ollama. It also runs via file://.
+
+<https://naidan.pages.dev>
+
+<details>
+<summary>Other hosted variants</summary>
+
+Browser-enforced [Content Security Policy (CSP)](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP) restricts external connections in two alternative hosted versions of Naidan.
+
+## Local-only
+
+<https://naidan-local-only.pages.dev>
+
+This version allows connections only to Naidan's own origin and services running locally on your device.
+
+The CSP `connect-src` directive permits:
+
+- `'self'` (Naidan's own origin)
+- `http://localhost:*`
+- `http://127.0.0.1:*`
+
+You can still connect to locally running AI servers, but features that require external services, such as downloading models from Hugging Face, may not work.
+
+This local-only policy will remain in place as Naidan evolves.
+
+## Curated
+
+<https://naidan-curated.pages.dev>
+
+In addition to the connections allowed by Local-only, this version permits a carefully selected set of external services needed by Naidan's features.
+
+It strikes a balance between the standard hosted version and Local-only, offering more functionality while keeping external connections restricted.
+
+Currently allowed external services include:
+
+- Wikipedia
+- Wikimedia
+- Hugging Face
+
+Access to these services is controlled by the CSP `connect-src` allowlist.
+
+The allowlist is not fixed. We plan to expand it as Naidan evolves, carefully evaluating each new external connection.
+
+### Note
+
+CSP restrictions are enforced by the browser, but they do not prevent every type of network communication or eliminate all security risks.
+
+</details>
 
 Naidan is derived from the Japanese word for "private talk" or "confidential discussion."
 
@@ -68,12 +115,48 @@ Run Naidan directly from the web. Your data remains local, stored in your browse
 
 ## Key Features
 
-- **Privacy-First & Fully Local**: Your data never leaves your browser. All conversations are stored locally using OPFS or LocalStorage. Combined with the serverless architecture, it ensures complete data sovereignty.
-- **Broad Compatibility**: Seamlessly connect to **Ollama** or any **OpenAI-compatible API** (such as vLLM, LM Studio, or llama-server) to power your local AI experience.
+- **Privacy-Focused & Local-First**: Keep your conversations and settings in your browser, with OPFS or LocalStorage for persistent storage.
+- **On-Device AI**: Generate text, images, and speech on your device, directly in your browser. No inference server required.
+- **Broad Compatibility**: Connect to **OpenAI-compatible APIs** (such as vLLM, LM Studio, or llama-server) and **Ollama** to use your preferred inference server.
+- **Sandboxed Shell for AI Agents**: Give AI agents access to Unix-like commands, including Git, in a browser-contained environment without executing native processes or accessing arbitrary files on your device.
 - **Branching**: Effortlessly fork or edit any message to create complex, tree-structured conversations without losing context.
 - **Intuitive Organization**: Seamlessly manage your chats using a drag-and-drop sidebar with support for custom groups and reordering.
 - **Rich Rendering**: First-class support for Markdown, LaTeX mathematical equations (KaTeX), and Mermaid diagrams.
 - **Lightweight**: While Open WebUI requires a Docker image exceeding 3GB, this entire application is just a few megabytes. It's built for speed and efficiency.
+
+## Run AI Models in Your Browser
+
+Run AI models directly inside your browser—no inference server required. Your prompts are processed on your device, not sent to a remote model server.
+
+### Text Generation
+
+Choose a model to open a chat in Naidan:
+
+- [Gemma 4 E2B it](https://naidan.pages.dev/#/?llama-cpp-browser-model=google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0) <small>QAT Q4_0</small>
+- [Gemma 4 E4B it](https://naidan.pages.dev/#/?llama-cpp-browser-model=google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0) <small>QAT Q4_0</small>
+- [Gemma 4 26B-A4B it](https://naidan.pages.dev/#/?llama-cpp-browser-model=google/gemma-4-26B-A4B-it-qat-q4_0-gguf:Q4_0) <small>QAT Q4_0</small>
+- [gpt-oss-20b](https://naidan.pages.dev/#/?llama-cpp-browser-model=ggml-org/gpt-oss-20b-GGUF:MXFP4) <small>MXFP4</small>
+- [Qwen3.5 9B](https://naidan.pages.dev/#/?llama-cpp-browser-model=lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M) <small>Q4_K_M</small>
+- [Qwen3.6 35B-A3B](https://naidan.pages.dev/#/?llama-cpp-browser-model=ggml-org/Qwen3.6-35B-A3B-GGUF:Q4_K_M) <small>Q4_K_M</small>
+- [Qwen3.8 27B](https://naidan.pages.dev/#/?llama-cpp-browser-model=ggml-org/Qwen3.8-27B-GGUF:Q4_K_M) <small>Q4_K_M</small>
+- [LFM2.5 230M](https://naidan.pages.dev/#/?llama-cpp-browser-model=LiquidAI/LFM2.5-230M-GGUF:Q4_K_M) <small>Q4_K_M</small>
+- [LFM2.5 2.6B](https://naidan.pages.dev/#/?llama-cpp-browser-model=LiquidAI/LFM2.5-2.6B-GGUF:Q4_K_M) <small>Q4_K_M</small>
+- [Muse-Glimmer 30B](https://naidan.pages.dev/#/?llama-cpp-browser-model=meta-models/Muse-Glimmer-30B-GGUF:Q4_K_M) <small>Q4_K_M</small>
+- [SmolLM2 135M Instruct](https://naidan.pages.dev/#/?llama-cpp-browser-model=lmstudio-community/SmolLM2-135M-Instruct-GGUF:Q4_K_M) <small>Q4_K_M</small>
+
+### Image and Audio Generation
+
+- [Image generation](https://naidan.pages.dev/#/image-generation)
+  - Z-Image-Turbo
+  - Qwen Image 2.1
+  - Qwen-Image-2.1-Turbo
+  - Anima Turbo 1.1
+  - Krea 2 Turbo
+- [Audio generation](https://naidan.pages.dev/#/audio-generation)
+  - Qwen3-TTS 0.6B Base
+  - Qwen3-TTS 1.7B Base
+
+  Supports voice cloning using reference audio, allowing you to generate speech in a voice of your choice.
 
 ## Cross-Tab Synchronization
 
@@ -96,6 +179,7 @@ Naidan supports URL fragment parameters (following the `#`) to automate actions 
 
 -   `q`: **Auto-Prompt**. Automatically creates a new chat and sends this message upon opening.
 -   `model`: **Model Override**. Specifies the model ID to use for the new chat.
+-   `llama-cpp-browser-model`: **Browser Model Launch**. Opens a new chat for a browser-based Hugging Face GGUF model. Accepts a repository ID with an optional quantization suffix (e.g., `LiquidAI/LFM2.5-230M-GGUF:Q4_K_M`).
 -   `chat-group`: **Target Group**. The name or ID of the group for the new chat. If the group doesn't exist, it is created automatically.
 -   `system-prompt` (or `sp`): **System Prompt Override**. Specifies the system prompt for the new chat. This will set the chat's system behavior to `override` with the provided content.
 -   `global-endpoint-type`: **Global Endpoint Type**. Specifies the type of the global endpoint (`openai` or `ollama`).
@@ -109,6 +193,8 @@ Naidan supports URL fragment parameters (following the `#`) to automate actions 
     `index.html#/?storage-type=memory`
 -   **Quick Question**: Start a chat immediately with a prompt.
     `index.html#/?q=%s`
+-   **Browser Model Launch**: Open a chat with a specific browser-based AI model.
+    `https://naidan.pages.dev/#/?llama-cpp-browser-model=LiquidAI/LFM2.5-230M-GGUF:Q4_K_M`
 -   **Custom Behavior**: Start a chat with a specific system instruction.
     `index.html#/?sp=You+are+a+concise+assistant&q=%s`
 -   **Organized Chat**: Start a chat directly inside a specific group.

@@ -116,14 +116,15 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  try {
-    await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-    expect(fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-  } finally {
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    },
+  };
+  await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
+  expect(globalThis.fetch).not.toHaveBeenCalled();
+  expect(fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
 });
 
 // The Provider and service are real. Only the Worker-client and read-only OPFS
@@ -199,36 +200,37 @@ describe('Provider native generation collection ownership', () => {
       return capture;
     });
     const running = owner.run();
-    try {
-      // The real service has already selected fatal recovery and is waiting on
-      // its old client's disposal. Abort/detach must not reacquire recording
-      // authority when that in-progress recovery creates its replacement.
-      expect(await Promise.race([
-        disposalEntered.promise.then(() => ({ status: 'disposal-started' })),
-        running.then(() => ({ status: 'provider-settled-before-disposal' })),
-      ])).toEqual({ status: 'disposal-started' });
-      expect(createCaptureClient).toHaveBeenCalledOnce();
-      expect(createUnrecordedWorkerClient).not.toHaveBeenCalled();
-      owner.abort({ reason: 'deadline' });
-      const detached = owner.detachNativeCollection({ reason: 'run-deadline' });
-      if (detached.status !== 'detached') throw new Error('Expected native ownership transfer');
-      const cutoff = structuredClone(detached.cutoff);
-      releaseDisposal.resolve();
-      await running;
-      expect(createCaptureClient).toHaveBeenCalledOnce();
-      expect(createUnrecordedWorkerClient).toHaveBeenCalledOnce();
-      expect(detached.cutoff).toEqual(cutoff);
-      expect(cutoff.unrecordedWorkerCreations).toBe(0);
-      expect(owner.snapshot().native).toEqual({ status: 'released', cutoff });
-      expect(captures[0]!.takeGenerationCapture).not.toHaveBeenCalled();
-      expect(unrecorded.loadDownloadedModel).not.toHaveBeenCalled();
-      expect(unrecorded.generateMessage).not.toHaveBeenCalled();
-      await owner.dispose();
-      expect(unrecorded.dispose).toHaveBeenCalledOnce();
-    } finally {
-      releaseDisposal.resolve();
-      await running;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        releaseDisposal.resolve();
+        await running;
+      },
+    };
+    // The real service has already selected fatal recovery and is waiting on
+    // its old client's disposal. Abort/detach must not reacquire recording
+    // authority when that in-progress recovery creates its replacement.
+    expect(await Promise.race([
+      disposalEntered.promise.then(() => ({ status: 'disposal-started' })),
+      running.then(() => ({ status: 'provider-settled-before-disposal' })),
+    ])).toEqual({ status: 'disposal-started' });
+    expect(createCaptureClient).toHaveBeenCalledOnce();
+    expect(createUnrecordedWorkerClient).not.toHaveBeenCalled();
+    owner.abort({ reason: 'deadline' });
+    const detached = owner.detachNativeCollection({ reason: 'run-deadline' });
+    if (detached.status !== 'detached') throw new Error('Expected native ownership transfer');
+    const cutoff = structuredClone(detached.cutoff);
+    releaseDisposal.resolve();
+    await running;
+    expect(createCaptureClient).toHaveBeenCalledOnce();
+    expect(createUnrecordedWorkerClient).toHaveBeenCalledOnce();
+    expect(detached.cutoff).toEqual(cutoff);
+    expect(cutoff.unrecordedWorkerCreations).toBe(0);
+    expect(owner.snapshot().native).toEqual({ status: 'released', cutoff });
+    expect(captures[0]!.takeGenerationCapture).not.toHaveBeenCalled();
+    expect(unrecorded.loadDownloadedModel).not.toHaveBeenCalled();
+    expect(unrecorded.generateMessage).not.toHaveBeenCalled();
+    await owner.dispose();
+    expect(unrecorded.dispose).toHaveBeenCalledOnce();
   });
 
   it('never reads native text or host lifetime accessors into the small cutoff', async () => {
@@ -439,14 +441,15 @@ describe('Provider native generation collection ownership', () => {
     });
     const running = owner.run();
     await entered.promise;
-    try {
-      await expect(owner.collectNative()).rejects.toThrow('requires the Provider script to have stopped');
-      expect(captures[0]!.takeGenerationCapture).not.toHaveBeenCalled();
-      expect(captures[0]!.client.interrupt).not.toHaveBeenCalled();
-    } finally {
-      release.resolve();
-      await running;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        release.resolve();
+        await running;
+      },
+    };
+    await expect(owner.collectNative()).rejects.toThrow('requires the Provider script to have stopped');
+    expect(captures[0]!.takeGenerationCapture).not.toHaveBeenCalled();
+    expect(captures[0]!.client.interrupt).not.toHaveBeenCalled();
   });
 
   it('runs immediate continuity before collecting once and reuses the same collection result', async () => {

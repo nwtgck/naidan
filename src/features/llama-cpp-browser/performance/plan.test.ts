@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { performancePlan } from '@/features/llama-cpp-browser/test-utils/performance';
+import { performancePlan } from '@/features/llama-cpp-browser/test-utils/performance.test-support';
 import { createPerformancePlan } from './plan';
 import { planSchema } from './types';
 

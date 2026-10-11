@@ -42,15 +42,16 @@ function parseWebp({ bytes }: { bytes: Uint8Array<ArrayBuffer> }) {
 
 function decodePacket({ packet }: { packet: Uint8Array }): unknown {
   const dom = new JSDOM();
-  try {
-    const xml = new dom.window.DOMParser().parseFromString(new TextDecoder().decode(packet), 'application/xml');
-    expect(xml.querySelector('parsererror')).toBeNull();
-    const json = xml.getElementsByTagNameNS('https://naidan.app/ns/image-generation/1.0/', 'Generation')[0]?.textContent;
-    if (!json) throw new Error('Missing XMP settings');
-    return JSON.parse(json);
-  } finally {
-    dom.window.close();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      dom.window.close();
+    },
+  };
+  const xml = new dom.window.DOMParser().parseFromString(new TextDecoder().decode(packet), 'application/xml');
+  expect(xml.querySelector('parsererror')).toBeNull();
+  const json = xml.getElementsByTagNameNS('https://naidan.app/ns/image-generation/1.0/', 'Generation')[0]?.textContent;
+  if (!json) throw new Error('Missing XMP settings');
+  return JSON.parse(json);
 }
 
 function request() {

@@ -40,66 +40,67 @@ describe('ordinary Load receipt through actual Worker communication without gene
         maxTotalStreamTokenBytes: 262144,
       },
     });
-    try {
-      expect(await capture.client.loadDownloadedModel({ modelId, revisionSelection: { kind: 'pinned', revision: revision }, progressCallback: () => undefined }))
-        .toStrictEqual({ device: 'webgpu', dtype: 'q4f16' });
-      const first = await capture.takeGenerationCapture();
-      expect(first.status).toBe('not-started');
-      if (first.status !== 'not-started') throw new Error('Generation unexpectedly started');
-      expect(first.loadObservation).toMatchObject({
-        format: 'production-load-observation-v1',
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        try {
+          await capture.client.dispose();
+        } finally {
+          await harness.close();
+        }
+      },
+    };
+    expect(await capture.client.loadDownloadedModel({ modelId, revisionSelection: { kind: 'pinned', revision: revision }, progressCallback: () => undefined }))
+      .toStrictEqual({ device: 'webgpu', dtype: 'q4f16' });
+    const first = await capture.takeGenerationCapture();
+    expect(first.status).toBe('not-started');
+    if (first.status !== 'not-started') throw new Error('Generation unexpectedly started');
+    expect(first.loadObservation).toMatchObject({
+      format: 'production-load-observation-v1',
+      owner: { runId, workerEpoch: 1 },
+      loadOrdinal: 1,
+      outcome: {
+        status: 'accepted',
+        receipt: {
+          modelId,
+          loaderRevisionOption: { status: 'provided', value: revision },
+          cacheLookup: { source: 'read-only-opfs-scoped-match', revision },
+          candidate: { device: 'webgpu', dtype: 'q4f16' },
+          resourceHealth: 'healthy-after-close',
+          accessBoundary: 'production-offline-read-only',
+          completion: 'model-session-and-tokenizer-processor-ready',
+          limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
+        },
+      },
+    });
+    const lifetime = capture.getCaptureLifetime();
+    expect(lifetime).toMatchObject({ issuedCalls: [], incompleteReasons: [] });
+    // Requested selection is separate from the actual accepted receipt above.
+    expect(lifetime.loadRequests).toEqual([{
+      requestedModelId: modelId,
+      requestedRevision: revision,
+      revisionSelection: { kind: 'pinned', revision },
+    }]);
+    expect(await capture.takeGenerationCapture()).toEqual(first);
+    expect(activeRequest).not.toHaveBeenCalled();
+    expect(harness.observations.inferenceCalls).toHaveLength(0);
+    expect(harness.observations.workers).toHaveLength(1);
+    const worker = harness.observations.workers[0]!;
+    const loadEnvelope = z.object({ type: z.literal('APPLY'), path: z.tuple([z.literal('loadDownloadedModel')]) }).passthrough();
+    expect(worker.hostMessages.filter(message => loadEnvelope.safeParse(message).success)).toHaveLength(1);
+    await capture.client.unloadModel();
+    const cleared = await capture.takeGenerationCapture();
+    expect(cleared).toMatchObject({
+      status: 'not-started',
+      loadObservation: {
         owner: { runId, workerEpoch: 1 },
         loadOrdinal: 1,
-        outcome: {
-          status: 'accepted',
-          receipt: {
-            modelId,
-            loaderRevisionOption: { status: 'provided', value: revision },
-            cacheLookup: { source: 'read-only-opfs-scoped-match', revision },
-            candidate: { device: 'webgpu', dtype: 'q4f16' },
-            resourceHealth: 'healthy-after-close',
-            accessBoundary: 'production-offline-read-only',
-            completion: 'model-session-and-tokenizer-processor-ready',
-            limitations: { wholeFileProvenance: 'not-verified', allPlannedBodiesConsumed: 'not-certified' },
-          },
-        },
-      });
-      const lifetime = capture.getCaptureLifetime();
-      expect(lifetime).toMatchObject({ issuedCalls: [], incompleteReasons: [] });
-      // Requested selection is separate from the actual accepted receipt above.
-      expect(lifetime.loadRequests).toEqual([{
-        requestedModelId: modelId,
-        requestedRevision: revision,
-        revisionSelection: { kind: 'pinned', revision },
-      }]);
-      expect(await capture.takeGenerationCapture()).toEqual(first);
-      expect(activeRequest).not.toHaveBeenCalled();
-      expect(harness.observations.inferenceCalls).toHaveLength(0);
-      expect(harness.observations.workers).toHaveLength(1);
-      const worker = harness.observations.workers[0]!;
-      const loadEnvelope = z.object({ type: z.literal('APPLY'), path: z.tuple([z.literal('loadDownloadedModel')]) }).passthrough();
-      expect(worker.hostMessages.filter(message => loadEnvelope.safeParse(message).success)).toHaveLength(1);
-      await capture.client.unloadModel();
-      const cleared = await capture.takeGenerationCapture();
-      expect(cleared).toMatchObject({
-        status: 'not-started',
-        loadObservation: {
-          owner: { runId, workerEpoch: 1 },
-          loadOrdinal: 1,
-          outcome: { status: 'cleared' },
-        },
-      });
-      expect(worker.hostMessages.filter(message => loadEnvelope.safeParse(message).success)).toHaveLength(1);
-      await capture.client.dispose();
-      expect(worker.terminated).toBe(true);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      try {
-        await capture.client.dispose();
-      } finally {
-        await harness.close();
-      }
-    }
+        outcome: { status: 'cleared' },
+      },
+    });
+    expect(worker.hostMessages.filter(message => loadEnvelope.safeParse(message).success)).toHaveLength(1);
+    await capture.client.dispose();
+    expect(worker.terminated).toBe(true);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 });

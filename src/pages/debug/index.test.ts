@@ -2,7 +2,7 @@ import { mount, RouterLinkStub } from '@vue/test-utils';
 import { describe, expect, it, beforeEach } from 'vitest';
 
 import DebugIndexPage from './index.vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH } from '@/features/file-protocol-standalone/debug/verification/report';
 
 describe('DebugIndexPage', () => {

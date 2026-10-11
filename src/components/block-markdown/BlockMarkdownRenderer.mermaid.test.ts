@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import BlockMarkdownRenderer from './BlockMarkdownRenderer.vue';
-import { normalizeDom } from './test-utils';
+import { normalizeDom } from './utils.test-support';
 
 // Mock mermaid
 vi.mock('mermaid', () => ({

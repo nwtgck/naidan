@@ -5,7 +5,7 @@ import { useImageLibrary } from './use-image-library';
 import { imageModelRecipes } from './model-recipes';
 import { scanImageRepositories } from './logic/model-candidates';
 import type { LocalImageRepository, listImageRepositories } from './logic/repository-store';
-import { ggufFixture, safetensorsFixture, flux2KleinTensors, flux2VaeTensors, animaTensors, wanVaeTensors, qwenTextTensors } from './test-utils/weights';
+import { ggufFixture, safetensorsFixture, flux2KleinTensors, flux2VaeTensors, animaTensors, wanVaeTensors, qwenTextTensors } from './test-utils/weights.test-support';
 import { benchmarkParameters } from './benchmark/plan';
 import { parametersFixture } from './test-fixtures';
 import { recommendationForSelection } from './recommendations';

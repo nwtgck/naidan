@@ -5,12 +5,12 @@ import { z } from 'zod';
 import type { LmProvider } from '@/01-models/lm';
 import type { Tool } from '@/01-models/tool';
 import { collectChatGeneration } from '@/logic/collect-chat-generation';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { LlamaCppBrowserService } from './service-contract';
 import type { LlamaCppWorkerClient } from './worker/types';
 import { LlamaCppBrowserError } from './types';
 import { createLlamaCppProvider } from './provider-hosted';
-import { chatRequest, createChatFixture, deliverNativeResult, finalText } from './test-utils/chat';
+import { chatRequest, createChatFixture, deliverNativeResult, finalText } from './test-utils/chat.test-support';
 
 const worker = vi.hoisted(() => ({ subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
 const factory = vi.hoisted(() => vi.fn(() => worker));

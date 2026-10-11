@@ -90,25 +90,21 @@ describe('bounded generation performance summaries', () => {
   it('validates and publishes the summary without accepting nested content', () => {
     const metrics = createGenerationPerformance({ enabled: true, now: () => 0 });
     const report = metrics.finish({ outcome: 'completed', profile })!;
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    try {
-      logDiagnostic({ diagnostic: report });
-      expect(log).toHaveBeenCalledOnce();
-      const untrusted = { ...report, performance: { ...report.performance!, prompt: 'private prompt', tokenIds: [123] } };
-      expect(diagnosticSchema.safeParse(untrusted).success).toBe(false);
-      logDiagnostic({ diagnostic: untrusted });
-      expect(log).toHaveBeenCalledOnce();
-      expect(JSON.stringify(log.mock.calls)).not.toContain('private');
-      expect(diagnosticSchema.safeParse({
-        ...report,
-        performance: {
-          ...report.performance!,
-          stages: [{ stage: 'tokenize', visits: 1, elapsedMs: 2, tokenIds: [123] }],
-        },
-      }).success).toBe(false);
-    } finally {
-      log.mockRestore();
-    }
+    using log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    logDiagnostic({ diagnostic: report });
+    expect(log).toHaveBeenCalledOnce();
+    const untrusted = { ...report, performance: { ...report.performance!, prompt: 'private prompt', tokenIds: [123] } };
+    expect(diagnosticSchema.safeParse(untrusted).success).toBe(false);
+    logDiagnostic({ diagnostic: untrusted });
+    expect(log).toHaveBeenCalledOnce();
+    expect(JSON.stringify(log.mock.calls)).not.toContain('private');
+    expect(diagnosticSchema.safeParse({
+      ...report,
+      performance: {
+        ...report.performance!,
+        stages: [{ stage: 'tokenize', visits: 1, elapsedMs: 2, tokenIds: [123] }],
+      },
+    }).success).toBe(false);
   });
 });
 

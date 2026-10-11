@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDocumentMetadata } from '@/composables/useDocumentMetadata';
 import { useAutoTitleActivity } from '@/composables/chat/ui/useAutoTitleActivity';
 import { ref, watch, nextTick, computed, toRaw, onUnmounted } from 'vue';
 import { useLayout } from '@/composables/useLayout';
@@ -55,6 +56,11 @@ const { showConfirm } = useConfirm();
 
 const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
 const { appInteraction } = useAppPresentation();
+const documentMetadata = useDocumentMetadata();
+
+function finishHomeIntroduction(): void {
+  documentMetadata?.finishHomeIntroduction();
+}
 
 const props = defineProps<{
   chatId: ChatId,
@@ -238,7 +244,10 @@ function closeAdvancedEditor() {
 }
 
 function handleAdvancedEditorUpdate({ content: newContent }: { content: string }) {
-  if (input.value !== newContent) titleActivity.noteActivity();
+  if (input.value !== newContent) {
+    titleActivity.noteActivity();
+    finishHomeIntroduction();
+  }
   input.value = newContent;
 }
 
@@ -765,6 +774,7 @@ function removeAttachment({ id }: { id: AttachmentId }) {
 
 function applySuggestion({ text }: { text: string }) {
   titleActivity.noteActivity();
+  finishHomeIntroduction();
   input.value = text;
   nextTick(() => {
     adjustTextareaHeight({});
@@ -923,6 +933,7 @@ async function handleGenerateImage() {
 
 async function handleSend() {
   if ((!input.value.trim() && attachments.value.length === 0) || props.isStreaming) return;
+  finishHomeIntroduction();
 
   if (isImageMode.value) {
     if (props.isSubmissionEnabled === false) return;
@@ -1218,7 +1229,7 @@ defineExpose({
 <template>
   <div
     v-if="chat"
-    @input.capture="titleActivity.noteActivity"
+    @input.capture="titleActivity.noteActivity(); finishHomeIntroduction()"
     @keydown.capture="titleActivity.noteActivity"
     @pointerdown.capture="titleActivity.noteActivity"
     @paste.capture="titleActivity.noteActivity"
@@ -1457,7 +1468,7 @@ defineExpose({
       />
       <div
         v-if="isAdvancedEditorOpen"
-        @input.capture="titleActivity.noteActivity"
+        @input.capture="titleActivity.noteActivity(); finishHomeIntroduction()"
         @keydown.capture="titleActivity.noteActivity"
         @pointerdown.capture="titleActivity.noteActivity"
         @compositionstart.capture="titleActivity.beginComposition"

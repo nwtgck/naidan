@@ -1,6 +1,6 @@
 import { downloadFile, downloadStream } from '@/utils/stream-download';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { ref } from 'vue';
 import { useFileExplorerOperations } from './useFileExplorerOperations';
 import type { FileExplorerEntry } from '@/features/file-explorer/logic/types';

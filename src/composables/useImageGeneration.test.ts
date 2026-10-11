@@ -2,7 +2,7 @@ import type { Chat } from '@/01-models/types';
 import { getMessageText } from '@/01-models/message-text';
 import { toChatId, toMessageId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useImageGeneration } from './useImageGeneration';
 
 import { SENTINEL_IMAGE_PROCESSED, IMAGE_BLOCK_LANG } from '@/utils/image-generation';
@@ -432,7 +432,7 @@ describe('useImageGeneration', () => {
 
       imageProgressMap.value.delete(progressChatId);
 
-      const generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
+      using _generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
         .mockImplementation(async () => {
           expect(imageProgressMap.value.get(progressChatId)).toEqual({
             currentStep: 0,
@@ -445,18 +445,14 @@ describe('useImageGeneration', () => {
           };
         });
 
-      try {
-        await handleImageGeneration({
-          ...commonParams,
-          chatId: progressChatId,
-          steps: 25,
-          storageType: 'opfs',
-        });
+      await handleImageGeneration({
+        ...commonParams,
+        chatId: progressChatId,
+        steps: 25,
+        storageType: 'opfs',
+      });
 
-        expect(imageProgressMap.value.get(progressChatId)).toBeUndefined();
-      } finally {
-        generateImageSpy.mockRestore();
-      }
+      expect(imageProgressMap.value.get(progressChatId)).toBeUndefined();
     });
 
     it('updates and then clears imageProgressMap during generation', async () => {

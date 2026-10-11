@@ -99,20 +99,21 @@ it('does not record success or late timing while a cancelled Download is still s
   });
   const running = owner.service.downloadModel({ modelId: 'fixture/model' });
   const rejected = running.catch((error: unknown) => error);
-  try {
-    await entered.promise;
-    await owner.service.interrupt();
-    const pending = owner.service.getDownloadTimingSnapshot();
-    expect(pending.records[0]?.outcome).toBe('running');
-    expect(pending.records[0]?.wallMs).toBeUndefined();
-    release.resolve();
-    expect(await rejected).toMatchObject({ name: 'AbortError' });
-    expect(owner.service.getDownloadTimingSnapshot().records[0]).toMatchObject({ outcome: 'aborted', observations: [] });
-    expect(pending.records[0]?.outcome).toBe('running');
-  } finally {
-    release.resolve();
-    await rejected;
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      release.resolve();
+      await rejected;
+    },
+  };
+  await entered.promise;
+  await owner.service.interrupt();
+  const pending = owner.service.getDownloadTimingSnapshot();
+  expect(pending.records[0]?.outcome).toBe('running');
+  expect(pending.records[0]?.wallMs).toBeUndefined();
+  release.resolve();
+  expect(await rejected).toMatchObject({ name: 'AbortError' });
+  expect(owner.service.getDownloadTimingSnapshot().records[0]).toMatchObject({ outcome: 'aborted', observations: [] });
+  expect(pending.records[0]?.outcome).toBe('running');
 });
 
 it('drops a disposed service owner timing callback without resurrecting retained records', async () => {
@@ -135,17 +136,18 @@ it('drops a disposed service owner timing callback without resurrecting retained
     return { status: 'accepted' };
   });
   const running = owner.service.downloadModel({ modelId: 'fixture/model' }).catch((error: unknown) => error);
-  try {
-    await entered.promise;
-    await owner.dispose();
-    expect(await running).toMatchObject({ reason: 'disposed' });
-    release.resolve();
-    await finished.promise;
-    expect(owner.service.getDownloadTimingSnapshot().records).toEqual([]);
-  } finally {
-    release.resolve();
-    await running;
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      release.resolve();
+      await running;
+    },
+  };
+  await entered.promise;
+  await owner.dispose();
+  expect(await running).toMatchObject({ reason: 'disposed' });
+  release.resolve();
+  await finished.promise;
+  expect(owner.service.getDownloadTimingSnapshot().records).toEqual([]);
 });
 
 afterEach(async () => {
@@ -271,16 +273,17 @@ it('ignores a previous Download callback while a new operation owns the service'
   });
   const running = owner.service.downloadModel({ modelId: 'fixture/second' });
   await entered.promise;
-  try {
-    const before = structuredClone(owner.service.getState());
-    previous?.({ event: { kind: 'file', index: 0, info: { status: 'done', file: 'new/model.onnx', loaded: 900, total: 900 } } });
-    previous?.({ event: { kind: 'phase', phase: 'failed' } });
-    expect(owner.service.getState()).toEqual(before);
-    expect(before.downloadProgress?.files).toEqual([{ path: 'new/model.onnx', status: 'queued', loaded: 0, total: undefined, progress: undefined }]);
-  } finally {
-    release.resolve();
-    await running;
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      release.resolve();
+      await running;
+    },
+  };
+  const before = structuredClone(owner.service.getState());
+  previous?.({ event: { kind: 'file', index: 0, info: { status: 'done', file: 'new/model.onnx', loaded: 900, total: 900 } } });
+  previous?.({ event: { kind: 'phase', phase: 'failed' } });
+  expect(owner.service.getState()).toEqual(before);
+  expect(before.downloadProgress?.files).toEqual([{ path: 'new/model.onnx', status: 'queued', loaded: 0, total: undefined, progress: undefined }]);
 });
 
 it('drops the old buffered snapshot when the same listener is unsubscribed and registered again', async () => {

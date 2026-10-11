@@ -1,6 +1,6 @@
 import { createAudioPreviewRequests } from '@/features/audio-generation/preview-requests';
 import { defaultAudioParameters } from '@/features/audio-generation/types';
-import { audioResult } from '@/features/audio-generation/test-utils/wav';
+import { audioResult } from '@/features/audio-generation/test-utils/wav.test-support';
 import { listStoredModels, removeStoredModel } from './runtime/model-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LlamaCppWorkerClient } from './worker/types';
@@ -732,16 +732,17 @@ describe('investigation and read-only cache ownership', () => {
   it('does not queue investigation behind a reserved read-only invocation or evict its cache', async () => {
     const reader = (await import('./index-hosted')).createReadOnlyLlamaCppClient();
     const operation = vi.fn(async () => {});
-    try {
-      const sending = reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
-      await expect(service.runPerformanceOperation({ options: { profile: 'cpu-wasm32' }, signal: undefined, operation })).rejects.toThrow('busy');
-      await sending;
-      expect(operation).not.toHaveBeenCalled();
-      expect(worker.releaseRuntime).not.toHaveBeenCalled();
-      expect(worker.dispose).not.toHaveBeenCalled();
-    } finally {
-      await reader.dispose();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await reader.dispose();
+      },
+    };
+    const sending = reader.generate({ input: input(), signal: undefined, onEvent: () => {}, onProgress: () => {} });
+    await expect(service.runPerformanceOperation({ options: { profile: 'cpu-wasm32' }, signal: undefined, operation })).rejects.toThrow('busy');
+    await sending;
+    expect(operation).not.toHaveBeenCalled();
+    expect(worker.releaseRuntime).not.toHaveBeenCalled();
+    expect(worker.dispose).not.toHaveBeenCalled();
   });
 
   it('retiring a former read-only cache owner cannot dispose a newer measured operation', async () => {

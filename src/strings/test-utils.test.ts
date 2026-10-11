@@ -7,7 +7,7 @@ import {
   TEST_ONLY,
   type StringBoundaryModule,
 } from './runtime';
-import { ensureAllStringsForTest } from './test-utils';
+import { ensureAllStringsForTest } from './utils.test-support';
 
 function resolvedModule({ module }: {
   module: StringBoundaryModule;

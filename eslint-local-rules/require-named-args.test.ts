@@ -112,14 +112,15 @@ describe('require-named-args rule', () => {
       exclude: [],
     }));
 
-    try {
-      const results = await createTypedEslint({ typedTsconfigPath }).lintFiles([typedTestFilePath]);
-      return results[0]?.messages ?? [];
-    } finally {
-      parser.clearCaches();
-      fs.rmSync(typedTestFilePath, { force: true });
-      fs.rmSync(typedTsconfigPath, { force: true });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        parser.clearCaches();
+        fs.rmSync(typedTestFilePath, { force: true });
+        fs.rmSync(typedTsconfigPath, { force: true });
+      },
+    };
+    const results = await createTypedEslint({ typedTsconfigPath }).lintFiles([typedTestFilePath]);
+    return results[0]?.messages ?? [];
   }
 
   it('exports a config that applies only to production src files', () => {

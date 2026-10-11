@@ -34,11 +34,12 @@ function fixture({ chat }: { chat: LmProvider['chat'] }) {
   const operation = vi.fn<NonNullable<LmProvider['runChatOperation']>>(async ({ signal, operation }) => {
     if (!signal) throw new Error('Expected explicit capture signal');
     owned = true;
-    try {
-      await operation({ chat: calls, signal });
-    } finally {
-      owned = false;
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        owned = false;
+      },
+    };
+    await operation({ chat: calls, signal });
   });
   const provider: LmProvider = {
     chat: () => {

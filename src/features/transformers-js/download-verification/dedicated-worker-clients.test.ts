@@ -105,12 +105,13 @@ describe('Download Verification dedicated Worker clients', () => {
     const failure = new Error('Metadata Worker module import failed');
     const pending = client.prepareModelRuntimeArtifacts({ modelId: 'fixture/model', revision: 'a'.repeat(40), progressCallback: vi.fn() });
     MockWorker.latest.dispatchEvent(new ErrorEvent('error', { error: failure, message: failure.message }));
-    try {
-      await expect(pending).rejects.toBe(failure);
-      expect(mocks.terminate).toHaveBeenCalledOnce();
-    } finally {
-      await client.dispose();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await client.dispose();
+      },
+    };
+    await expect(pending).rejects.toBe(failure);
+    expect(mocks.terminate).toHaveBeenCalledOnce();
   });
 
   it('rejects pending artifact observation on an undecodable Worker message', async () => {
@@ -119,12 +120,13 @@ describe('Download Verification dedicated Worker clients', () => {
     const client = createDownloadVerificationModelArtifactRequestWorkerClient();
     const pending = client.observeModelArtifactRequests({ modelId: 'fixture/model', revision: 'a'.repeat(40), candidate: { device: 'webgpu', dtype: 'q4' } });
     MockWorker.latest.dispatchEvent(new MessageEvent('messageerror'));
-    try {
-      await expect(pending).rejects.toThrow('could not be decoded');
-      expect(mocks.terminate).toHaveBeenCalledOnce();
-    } finally {
-      await client.dispose();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await client.dispose();
+      },
+    };
+    await expect(pending).rejects.toThrow('could not be decoded');
+    expect(mocks.terminate).toHaveBeenCalledOnce();
   });
 
   it('settles pending prefetch on disposal and refuses later operations', async () => {

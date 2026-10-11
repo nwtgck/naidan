@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount } from '@vue/test-utils';
 import BlockMarkdownRenderer from './BlockMarkdownRenderer.vue';
-import { normalizeDom } from './test-utils';
+import { normalizeDom } from './utils.test-support';
 import { IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 
 beforeEach(async () => {

@@ -6,7 +6,7 @@ import { nextTick } from 'vue';
 import { NetworkIcon } from 'lucide-vue-next';
 import type { MessageNode, Chat, Attachment, LmParameters } from '@/01-models/types';
 import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/01-models/ids';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
@@ -369,37 +369,38 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   it('keeps copy feedback scoped to the latest JSON copy request', async () => {
     vi.useFakeTimers();
-    try {
-      const nodeA = createNode({ id: 'A', role: 'user', content: 'A', replies: [], extra: {} });
-      const chat = createMockChat([nodeA]);
-      chat.currentLeafId = nodeA.id;
-      const wrapper = mountInspector(chat, [nodeA]);
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        vi.useRealTimers();
+      },
+    };
+    const nodeA = createNode({ id: 'A', role: 'user', content: 'A', replies: [], extra: {} });
+    const chat = createMockChat([nodeA]);
+    chat.currentLeafId = nodeA.id;
+    const wrapper = mountInspector(chat, [nodeA]);
 
-      await wrapper.get('[data-testid="chat-inspector-mode-raw"]').trigger('click');
-      await nextTick();
+    await wrapper.get('[data-testid="chat-inspector-mode-raw"]').trigger('click');
+    await nextTick();
 
-      const copyButton = wrapper.get('[data-testid="copy-raw-json"]');
-      await copyButton.trigger('click');
-      await flushPromises();
-      expect(copyButton.text()).toContain('Check');
+    const copyButton = wrapper.get('[data-testid="copy-raw-json"]');
+    await copyButton.trigger('click');
+    await flushPromises();
+    expect(copyButton.text()).toContain('Check');
 
-      vi.advanceTimersByTime(1000);
-      await wrapper.get('[data-testid="raw-json-scope-current-thread"]').trigger('click');
-      await nextTick();
-      await copyButton.trigger('click');
-      await flushPromises();
-      expect(copyButton.text()).toContain('Check');
+    vi.advanceTimersByTime(1000);
+    await wrapper.get('[data-testid="raw-json-scope-current-thread"]').trigger('click');
+    await nextTick();
+    await copyButton.trigger('click');
+    await flushPromises();
+    expect(copyButton.text()).toContain('Check');
 
-      vi.advanceTimersByTime(1000);
-      await nextTick();
-      expect(copyButton.text()).toContain('Check');
+    vi.advanceTimersByTime(1000);
+    await nextTick();
+    expect(copyButton.text()).toContain('Check');
 
-      vi.advanceTimersByTime(1000);
-      await nextTick();
-      expect(copyButton.text()).not.toContain('Check');
-    } finally {
-      vi.useRealTimers();
-    }
+    vi.advanceTimersByTime(1000);
+    await nextTick();
+    expect(copyButton.text()).not.toContain('Check');
   });
 
   it('Scenario 7: Mode Transitions', async () => {

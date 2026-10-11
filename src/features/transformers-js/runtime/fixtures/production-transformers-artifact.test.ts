@@ -58,20 +58,21 @@ it('preserves the external ORT Tensor identity in separate browser-branch runtim
   // The web bundle's Node branch intentionally has no onnxruntime-node export.
   // Match the existing replay's browser branch before evaluating either module.
   vi.stubGlobal('process', { ...originalProcess, release: { ...originalProcess.release, name: 'browser-test' } });
-  try {
-    type Runtime = typeof import('@huggingface/transformers');
-    const first = await importProductionTransformersArtifact({ moduleUrl: artifact.moduleUrl }) as Runtime;
-    const second = await importProductionTransformersArtifact({ moduleUrl: artifact.moduleUrl }) as Runtime;
-    const ort = await import(/* @vite-ignore */ artifact.ortCommonUrl) as typeof import('onnxruntime-common');
-    const tensor = new first.Tensor('float32', new Float32Array([1]), [1]);
-    const other = new second.Tensor('float32', new Float32Array([2]), [1]);
-    expect(tensor.ort_tensor).toBeInstanceOf(ort.Tensor);
-    expect(other.ort_tensor).toBeInstanceOf(ort.Tensor);
-    expect(Array.from(tensor.data)).toEqual([1]);
-    expect(Array.from(other.data)).toEqual([2]);
-  } finally {
-    vi.stubGlobal('process', originalProcess);
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      vi.stubGlobal('process', originalProcess);
+    },
+  };
+  type Runtime = typeof import('@huggingface/transformers');
+  const first = await importProductionTransformersArtifact({ moduleUrl: artifact.moduleUrl }) as Runtime;
+  const second = await importProductionTransformersArtifact({ moduleUrl: artifact.moduleUrl }) as Runtime;
+  const ort = await import(/* @vite-ignore */ artifact.ortCommonUrl) as typeof import('onnxruntime-common');
+  const tensor = new first.Tensor('float32', new Float32Array([1]), [1]);
+  const other = new second.Tensor('float32', new Float32Array([2]), [1]);
+  expect(tensor.ort_tensor).toBeInstanceOf(ort.Tensor);
+  expect(other.ort_tensor).toBeInstanceOf(ort.Tensor);
+  expect(Array.from(tensor.data)).toEqual([1]);
+  expect(Array.from(other.data)).toEqual([2]);
 });
 
 it('preserves import.meta.url when evaluating unchanged ESM source', async () => {

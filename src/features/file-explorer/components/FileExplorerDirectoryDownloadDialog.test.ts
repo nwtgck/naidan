@@ -6,7 +6,7 @@ import { FILE_EXPLORER_INJECTION_KEY } from '@/features/file-explorer/composable
 import { useFileExplorerDirectoryDownload } from '@/features/file-explorer/composables/useFileExplorerDirectoryDownload';
 import type { FileExplorerContext } from '@/features/file-explorer/logic/types';
 import type { FileExplorerWorkerClient } from '@/features/file-explorer/worker/types';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import FileExplorerDirectoryDownloadDialog from './FileExplorerDirectoryDownloadDialog.vue';
 
 vi.mock('@/composables/useToast', () => ({

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ExperimentalImageGenerationActivityJournalSchemaDto, ExperimentalImageGenerationSessionSchemaDto } from '@/00-storage/00-dto/experimental-image-generation.dto';
 import { idToRaw } from '@/01-models/ids';
 import type { ImageGenerationSession } from '@/01-models/image-generation';
-import { createImageGenerationStorageHarness, generationRunFixture, generationSessionFixture } from './image-generation/test-support';
+import { createImageGenerationStorageHarness, generationRunFixture, generationSessionFixture } from './image-generation/index.test-support';
 import * as service from './image-generation';
 
 const root = '/naidan-storage/experimental/image-generation';

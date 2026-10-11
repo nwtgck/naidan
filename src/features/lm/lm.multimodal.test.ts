@@ -5,7 +5,7 @@ import { toMessageId, toAttachmentId, toBinaryObjectId } from '@/01-models/ids';
 import type { ChatMessage } from '@/01-models/types';
 import type { LmProvider } from '@/01-models/lm';
 import type { LmFetch } from './fetch';
-import { consumeProviderGenerationForTest } from './provider-test-support';
+import { consumeProviderGenerationForTest } from './provider.test-support';
 
 function request({ text, model }: { text: string, model: string }): Parameters<LmProvider['chat']>[0] {
   const messages: ChatMessage[] = [{

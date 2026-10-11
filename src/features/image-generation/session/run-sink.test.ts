@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { toImageGenerationId, toImageGenerationSessionId } from '@/01-models/ids';
-import { generationRunFixture } from '@/00-storage/service/image-generation/test-support';
+import { generationRunFixture } from '@/00-storage/service/image-generation/index.test-support';
 import { finishImageGenerationSnapshot, type ImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
 import { createImageGenerationRunSink, type ImageGenerationRunPersistence } from './run-sink';
 

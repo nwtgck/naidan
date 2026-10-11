@@ -3,7 +3,7 @@ import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import PWAUpdateNotification from './PWAUpdateNotification.vue';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 // Only the layout boundary is replaced. Use the real shared state and action.
 const sidebar = vi.hoisted(() => ({ open: true }));

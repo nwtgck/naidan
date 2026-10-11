@@ -1,4 +1,5 @@
 /// <reference types="vitest" />
+import { createTestOnlyBoundaryPlugin } from './build/test-only-boundary';
 import { createStableDiffusionCppBrowserBuild } from './src/features/stable-diffusion-cpp-browser/build-runtime';
 import { createLlamaCppBrowserBuild } from './src/features/llama-cpp-browser/build-core';
 import VueRouter from 'vue-router/vite';
@@ -26,6 +27,7 @@ import { createBoundaryStringsPlugin } from './build/boundary-strings';
 import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-core';
 import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
+import { createDocumentMetadataHtmlPlugin } from './build/document-metadata-html';
 import { isPrivacyFetchBrokerChunk } from './build/privacy-fetch-broker-assets';
 import { createPrivacyFetchBrokerDevHeadersPlugin } from './build/privacy-fetch-broker-dev';
 import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './build/dev-server-isolation';
@@ -39,6 +41,7 @@ import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { VitePWA } from 'vite-plugin-pwa';
 import { createPWABuild } from './build/pwa';
+import { readAppSource } from './build/app-source';
 
 const require = createRequire(import.meta.url);
 const standaloneSystemJsRuntimePath = require.resolve('systemjs/dist/system.min.js');
@@ -158,7 +161,7 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
 });
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, command }) => {
   const isStandalone = mode === 'standalone';
   const pwaBuild = createPWABuild();
   const llamaCppBuildMode = isStandalone ? 'standalone' : 'hosted';
@@ -209,6 +212,7 @@ export default defineConfig(({ mode }) => {
       __BUILD_MODE_IS_HOSTED__: JSON.stringify(isHosted || mode === 'development'),
       __BUILD_MODE_IS_TEST__: JSON.stringify(mode === 'test'),
       __APP_VERSION__: JSON.stringify(pkg.version),
+      __APP_SOURCE__: JSON.stringify(readAppSource({ rootDir: __dirname })),
     },
     resolve: {
       alias: [
@@ -219,7 +223,7 @@ export default defineConfig(({ mode }) => {
         }] : []),
         ...(mode === 'test' ? FILE_PROTOCOL_STANDALONE_WORKERS.map(({ virtualId }) => ({
           find: virtualId,
-          replacement: path.resolve(__dirname, 'src/test-mocks/standalone-worker.ts'),
+          replacement: path.resolve(__dirname, 'src/test-mocks/standalone-worker.test-support.ts'),
         })) : []),
         // The standalone verification route is present in hosted/development
         // route graphs, and Vite resolves its static virtual Worker imports
@@ -238,12 +242,14 @@ export default defineConfig(({ mode }) => {
     ...transformersJsFixes,
     worker: {
       ...transformersJsFixes.worker,
-      plugins: () => [...transformersJsFixes.worker.plugins(), createLlamaCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode }).corePlugin],
+      plugins: () => [...(mode === 'test' && command !== 'build' ? [] : [createTestOnlyBoundaryPlugin()]), ...transformersJsFixes.worker.plugins(), createLlamaCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode }).corePlugin],
     },
     plugins: [
+      (mode !== 'test' || command === 'build') && createTestOnlyBoundaryPlugin(),
       createStableDiffusionCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode }),
       createDevServerIsolationPlugin(),
       ...transformersJsFixes.plugins,
+      createDocumentMetadataHtmlPlugin(),
       createInitialThemeHtmlPlugin(),
       createBoundaryStringsPlugin(),
       VueRouter({
@@ -404,7 +410,7 @@ export default defineConfig(({ mode }) => {
         'src/test-tmp/**',
         'src/lint-rule-tmp/**',
       ],
-      setupFiles: ['./src/test-setup.ts'],
+      setupFiles: ['./src/test-setup.test-support.ts'],
     },
   };
 });

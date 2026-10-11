@@ -73,25 +73,26 @@ describe('createDownloadedModelWorkerFetch', () => {
         response.end('fixture');
       },
     });
-    try {
-      const guarded = createDownloadedModelWorkerFetch({
-        originalFetch: globalThis.fetch,
-        workerLocationUrl: `${server.origin}/worker.js`,
-        environment: 'development',
-        userAgent: 'Chrome',
-        vendor: 'Google Inc.',
-      });
-      const outcome = await guarded(`${server.origin}${runtimePath}`).then(
-        async response => {
-          await response.text(); return undefined;
-        },
-        (error: unknown) => error,
-      );
-      expect(received).toEqual([runtimePath]);
-      expect(outcome).toBeInstanceOf(TypeError);
-    } finally {
-      await server.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await server.close();
+      },
+    };
+    const guarded = createDownloadedModelWorkerFetch({
+      originalFetch: globalThis.fetch,
+      workerLocationUrl: `${server.origin}/worker.js`,
+      environment: 'development',
+      userAgent: 'Chrome',
+      vendor: 'Google Inc.',
+    });
+    const outcome = await guarded(`${server.origin}${runtimePath}`).then(
+      async response => {
+        await response.text(); return undefined;
+      },
+      (error: unknown) => error,
+    );
+    expect(received).toEqual([runtimePath]);
+    expect(outcome).toBeInstanceOf(TypeError);
   });
 
   it('does not follow a cross-origin loopback redirect even when the caller requests follow', async () => {
@@ -110,27 +111,28 @@ describe('createDownloadedModelWorkerFetch', () => {
         response.end();
       },
     });
-    try {
-      const guarded = createDownloadedModelWorkerFetch({
-        originalFetch: globalThis.fetch,
-        workerLocationUrl: `${allowed.origin}/worker.js`,
-        environment: 'development',
-        userAgent: 'Chrome',
-        vendor: 'Google Inc.',
-      });
-      const outcome = await guarded(`${allowed.origin}${runtimePath}`, { redirect: 'follow' }).then(
-        async response => {
-          await response.text(); return undefined;
-        },
-        (error: unknown) => error,
-      );
-      expect(received).toEqual([runtimePath]);
-      expect(forbiddenRequests).toEqual([]);
-      expect(outcome).toBeInstanceOf(TypeError);
-    } finally {
-      await allowed.close();
-      await forbidden.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await allowed.close();
+        await forbidden.close();
+      },
+    };
+    const guarded = createDownloadedModelWorkerFetch({
+      originalFetch: globalThis.fetch,
+      workerLocationUrl: `${allowed.origin}/worker.js`,
+      environment: 'development',
+      userAgent: 'Chrome',
+      vendor: 'Google Inc.',
+    });
+    const outcome = await guarded(`${allowed.origin}${runtimePath}`, { redirect: 'follow' }).then(
+      async response => {
+        await response.text(); return undefined;
+      },
+      (error: unknown) => error,
+    );
+    expect(received).toEqual([runtimePath]);
+    expect(forbiddenRequests).toEqual([]);
+    expect(outcome).toBeInstanceOf(TypeError);
   });
 
   it('does not dispatch an already aborted runtime Request', async () => {
@@ -141,23 +143,24 @@ describe('createDownloadedModelWorkerFetch', () => {
         response.end('runtime');
       },
     });
-    try {
-      const guarded = createDownloadedModelWorkerFetch({
-        originalFetch: globalThis.fetch,
-        workerLocationUrl: `${server.origin}/worker.js`,
-        environment: 'development',
-        userAgent: 'Chrome',
-        vendor: 'Google Inc.',
-      });
-      const controller = new AbortController();
-      const reason = new Error('fixture request cancelled before dispatch');
-      controller.abort(reason);
-      const request = new Request(`${server.origin}${runtimePath}`, { signal: controller.signal });
-      await expect(guarded(request)).rejects.toBe(reason);
-      expect(received).toEqual([]);
-    } finally {
-      await server.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await server.close();
+      },
+    };
+    const guarded = createDownloadedModelWorkerFetch({
+      originalFetch: globalThis.fetch,
+      workerLocationUrl: `${server.origin}/worker.js`,
+      environment: 'development',
+      userAgent: 'Chrome',
+      vendor: 'Google Inc.',
+    });
+    const controller = new AbortController();
+    const reason = new Error('fixture request cancelled before dispatch');
+    controller.abort(reason);
+    const request = new Request(`${server.origin}${runtimePath}`, { signal: controller.signal });
+    await expect(guarded(request)).rejects.toBe(reason);
+    expect(received).toEqual([]);
   });
 
   it('retains Request attributes and init overrides while enforcing redirect rejection', async () => {

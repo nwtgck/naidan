@@ -1,3 +1,4 @@
+import { subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
 import { subscribeMemoryDiagnostics } from '@/features/llama-cpp-browser/runtime/memory-diagnostics';
 import type { MemoryDiagnostic } from '@/features/llama-cpp-browser/memory-diagnostics';
 import * as readOnlyModule from '@/features/llama-cpp-browser/runtime/read-only-file';
@@ -95,13 +96,14 @@ describe('resident projector debug changes', () => {
     });
     const samples: MemoryDiagnostic[] = [];
     const stop = subscribeMemoryDiagnostics({ listener: ({ diagnostic }) => samples.push(diagnostic) });
-    try {
-      await expect(prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toBe(failure);
-      expect(samples.map(sample => sample.checkpoint)).toEqual(['runtime-ready', 'before-model-load', 'model-load-failed']);
-      expect(samples.at(-1)?.capacityBytes).toBe(131072);
-    } finally {
-      stop();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        stop();
+      },
+    };
+    await expect(prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toBe(failure);
+    expect(samples.map(sample => sample.checkpoint)).toEqual(['runtime-ready', 'before-model-load', 'model-load-failed']);
+    expect(samples.at(-1)?.capacityBytes).toBe(131072);
   });
 
   it('records successful preparation and retained capacity when releasing the model', async () => {
@@ -109,14 +111,15 @@ describe('resident projector debug changes', () => {
     core.module.HEAPU8 = new Uint8Array(65536);
     const samples: MemoryDiagnostic[] = [];
     const stop = subscribeMemoryDiagnostics({ listener: ({ diagnostic }) => samples.push(diagnostic) });
-    try {
-      await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
-      await releaseSession({ releaseRuntime: false });
-      expect(samples.map(sample => sample.checkpoint)).toEqual(['runtime-ready', 'before-model-load', 'model-loaded', 'context-ready', 'model-released']);
-      expect(samples.at(-1)?.capacityBytes).toBe(65536);
-    } finally {
-      stop();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        stop();
+      },
+    };
+    await prepareSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+    await releaseSession({ releaseRuntime: false });
+    expect(samples.map(sample => sample.checkpoint)).toEqual(['runtime-ready', 'before-model-load', 'model-loaded', 'context-ready', 'model-released']);
+    expect(samples.at(-1)?.capacityBytes).toBe(65536);
   });
 
   it('caches request-invariant native chat metadata and configures a wider logical prefill batch', async () => {
@@ -747,5 +750,31 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
     for (const item of resources) {
       expect(item.remove).toHaveBeenCalledOnce(); expect(item.close).toHaveBeenCalledOnce();
     }
+  });
+});
+
+describe('measurement-only loaded descriptor ownership', () => {
+  it('reads only on first measurement, re-emits cached data, and drops it on model release', async () => {
+    const core = host.core!;
+    core.api.llama_model_n_layer = vi.fn(async () => 64);
+    const measured = { ...request({ debug: 'off' }), measurement: { sequence: 'fresh' as const } };
+    const receive = vi.fn(); const stop = subscribeDiagnostics({ debug: 'off', listener: receive });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        stop();
+      },
+    };
+    await prepareSession({ request: request({ debug: 'off' }), onProgress: () => {}, signal: undefined });
+    expect(core.api.llama_model_n_layer).not.toHaveBeenCalled();
+    await prepareSession({ request: measured, onProgress: () => {}, signal: undefined });
+    await prepareSession({ request: measured, onProgress: () => {}, signal: undefined });
+    expect(core.api.llama_model_n_layer).toHaveBeenCalledTimes(1);
+    const descriptors = () => receive.mock.calls.flatMap(([{ diagnostic }]) => diagnostic.loadedModelDescriptor ? [diagnostic.loadedModelDescriptor] : []);
+    expect(descriptors().map(value => value.layers)).toEqual([64, 64]);
+    await releaseSession({ releaseRuntime: false });
+    vi.mocked(core.api.llama_model_n_layer).mockResolvedValue(32);
+    await prepareSession({ request: measured, onProgress: () => {}, signal: undefined });
+    expect(core.api.llama_model_n_layer).toHaveBeenCalledTimes(2);
+    expect(descriptors().map(value => value.layers)).toEqual([64, 64, 32]);
   });
 });

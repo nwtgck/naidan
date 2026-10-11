@@ -10,7 +10,7 @@ import * as transport from '@/utils/worker-transport';
 import type { WorkerServerApi } from '@/utils/worker-transport';
 import { ProviderReplayTestWorker } from '@/features/transformers-js/replay-models/support/provider-replay-test-transport';
 import { createMemoryFiles } from '@/features/transformers-js/replay-models/support/download-memory-files';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { lazyStrings } from '@/strings';
 import type { IModelSupportInvestigationWorker } from '@/features/transformers-js/model-support-investigation/types';
 import { createModelSupportInvestigationEvidenceWorker } from '@/features/transformers-js/model-support-investigation/evidence-worker/impl';
@@ -278,46 +278,47 @@ describe('real Session, planning Worker communication and Evidence export', () =
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const pending = Promise.withResolvers<{ features: string[]; limits: object }>();
     adapter.mockImplementationOnce(() => pending.promise);
-    try {
-      const mounted = await startBatch();
-      await vi.waitFor(() => expect(adapter).toHaveBeenCalledOnce());
-      await vi.waitFor(() => expect(mounted.get('[data-testid="model-support-current-operation"]').text()).toContain('environment'));
-      const accepted = firstPlanningIdentity();
-      await vi.advanceTimersByTimeAsync(DOWNLOAD_INVESTIGATION_COLLECTION_BUDGET_MS / 2);
-      const snapshot = await finishBatch();
-      expect(snapshot.executions[0]?.error).toContain('batch time allocation');
-      expect(snapshot.executions[0]?.error).not.toContain('stopped by the user');
-      expect(snapshot.executions.map(item => item.status)).toEqual(['failed', 'failed']);
-      expect(workers.filter(worker => worker.kind === 'planning')).toHaveLength(2);
-      pending.resolve({ features: ['late-deadline-feature'], limits: {} });
-      await pending.promise;
-      const zip = await exportBatch();
-      const batch = await readArchivedJson({ zip, path: 'batch.json', schema: batchOutcomeSchema });
-      const deadlineError = snapshot.executions[0]?.error;
-      expect(deadlineError).toMatch(/^Download investigation target exceeded its \d+ ms batch time allocation; partial evidence was retained$/u);
-      const secondRun = new Map(snapshot.runs).get('fixture/second');
-      expect(secondRun?.error).toContain(preflightOriginFailure);
-      expect(secondRun?.error).not.toContain('batch time allocation');
-      expect(batch.targetCount).toBe(2);
-      expect(batch.packagedModelCount).toBe(2);
-      expect(batch.targets.map(({ target, status, runId, error }) => ({ target, status, runId, error }))).toEqual([
-        { target: 'fixture/first', status: 'failed', runId: accepted.runId, error: deadlineError },
-        { target: 'fixture/second', status: 'failed', runId: secondRun?.runId, error: secondRun?.error },
-      ]);
-      const firstDossier = await readArchivedTarget({ zip, target: batch.targets[0]! });
-      expect(firstDossier).toEqual({
-        run: { runId: accepted.runId, modelId: 'fixture/first', status: 'failed', error: `${preflightOriginFailure}; Investigation interrupted: ${deadlineError}` },
-        recovery: { status: 'interrupted', interruption: { error: { name: 'InvestigationTargetBudgetError', message: deadlineError } } },
-      });
-      const secondDossier = await readArchivedTarget({ zip, target: batch.targets[1]! });
-      expect(secondDossier.run).toEqual({ runId: secondRun?.runId, modelId: 'fixture/second', status: 'failed', error: secondRun?.error });
-      expect(secondDossier.recovery).toEqual({ status: 'completed' });
-      expect(firstDossier.run.runId).not.toBe(secondDossier.run.runId);
-      expect(JSON.stringify(retainedResults().executions)).toBe(JSON.stringify(snapshot.executions));
-      expect(JSON.stringify(retainedResults())).not.toContain('late-deadline-feature');
-    } finally {
-      pending.resolve({ features: [], limits: {} });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        pending.resolve({ features: [], limits: {} });
+      },
+    };
+    const mounted = await startBatch();
+    await vi.waitFor(() => expect(adapter).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(mounted.get('[data-testid="model-support-current-operation"]').text()).toContain('environment'));
+    const accepted = firstPlanningIdentity();
+    await vi.advanceTimersByTimeAsync(DOWNLOAD_INVESTIGATION_COLLECTION_BUDGET_MS / 2);
+    const snapshot = await finishBatch();
+    expect(snapshot.executions[0]?.error).toContain('batch time allocation');
+    expect(snapshot.executions[0]?.error).not.toContain('stopped by the user');
+    expect(snapshot.executions.map(item => item.status)).toEqual(['failed', 'failed']);
+    expect(workers.filter(worker => worker.kind === 'planning')).toHaveLength(2);
+    pending.resolve({ features: ['late-deadline-feature'], limits: {} });
+    await pending.promise;
+    const zip = await exportBatch();
+    const batch = await readArchivedJson({ zip, path: 'batch.json', schema: batchOutcomeSchema });
+    const deadlineError = snapshot.executions[0]?.error;
+    expect(deadlineError).toMatch(/^Download investigation target exceeded its \d+ ms batch time allocation; partial evidence was retained$/u);
+    const secondRun = new Map(snapshot.runs).get('fixture/second');
+    expect(secondRun?.error).toContain(preflightOriginFailure);
+    expect(secondRun?.error).not.toContain('batch time allocation');
+    expect(batch.targetCount).toBe(2);
+    expect(batch.packagedModelCount).toBe(2);
+    expect(batch.targets.map(({ target, status, runId, error }) => ({ target, status, runId, error }))).toEqual([
+      { target: 'fixture/first', status: 'failed', runId: accepted.runId, error: deadlineError },
+      { target: 'fixture/second', status: 'failed', runId: secondRun?.runId, error: secondRun?.error },
+    ]);
+    const firstDossier = await readArchivedTarget({ zip, target: batch.targets[0]! });
+    expect(firstDossier).toEqual({
+      run: { runId: accepted.runId, modelId: 'fixture/first', status: 'failed', error: `${preflightOriginFailure}; Investigation interrupted: ${deadlineError}` },
+      recovery: { status: 'interrupted', interruption: { error: { name: 'InvestigationTargetBudgetError', message: deadlineError } } },
+    });
+    const secondDossier = await readArchivedTarget({ zip, target: batch.targets[1]! });
+    expect(secondDossier.run).toEqual({ runId: secondRun?.runId, modelId: 'fixture/second', status: 'failed', error: secondRun?.error });
+    expect(secondDossier.recovery).toEqual({ status: 'completed' });
+    expect(firstDossier.run.runId).not.toBe(secondDossier.run.runId);
+    expect(JSON.stringify(retainedResults().executions)).toBe(JSON.stringify(snapshot.executions));
+    expect(JSON.stringify(retainedResults())).not.toContain('late-deadline-feature');
   });
 
   it('retains the actual preflight failure, starts the next target and exports both runs', async () => {
@@ -356,57 +357,58 @@ describe('real Session, planning Worker communication and Evidence export', () =
   it.each(['stop', 'skip'] as const)('honors an actual %s during a pending browser request and rejects its late completion', async action => {
     const pending = Promise.withResolvers<{ features: string[]; limits: object }>();
     adapter.mockImplementationOnce(() => pending.promise);
-    try {
-      const mounted = await startBatch();
-      await vi.waitFor(() => expect(adapter).toHaveBeenCalledOnce());
-      await vi.waitFor(() => expect(mounted.get('[data-testid="model-support-current-operation"]').text()).toContain('environment'));
-      const accepted = firstPlanningIdentity();
-      await mounted.get(`[data-testid="model-support-investigation-${action === 'stop' ? 'stop' : 'skip-current'}"]`).trigger('click');
-      await vi.waitFor(() => expect(retainedResults().executions[0]?.status).toBe(action === 'stop' ? 'interrupted' : 'skipped'));
-      if (action === 'skip') await finishBatch();
-      const cutoff = retainedResults();
-      expect(cutoff.executions[1]?.status).toBe(action === 'stop' ? 'pending' : 'failed');
-      expect(workers.filter(worker => worker.kind === 'planning')).toHaveLength(action === 'stop' ? 1 : 2);
-      expect(workers.every(worker => worker.terminated)).toBe(true);
-      pending.resolve({ features: ['late-fixture-feature'], limits: {} });
-      // The test platform cannot kill a JS Realm. Real termination closes every
-      // MessagePort, so later completion cannot re-enter the retired Session.
-      await pending.promise;
-      const zip = await exportBatch();
-      const batch = await readArchivedJson({ zip, path: 'batch.json', schema: batchOutcomeSchema });
-      const secondRun = new Map(cutoff.runs).get('fixture/second');
-      expect(batch.targetCount).toBe(2);
-      expect(batch.packagedModelCount).toBe(action === 'stop' ? 1 : 2);
-      expect(batch.targets.map(({ target, status, runId, error }) => ({ target, status, runId, error }))).toEqual([
-        { target: 'fixture/first', status: action === 'stop' ? 'interrupted' : 'skipped', runId: accepted.runId, error: userInterruptionMessage },
-        { target: 'fixture/second', status: action === 'stop' ? 'pending' : 'failed', runId: secondRun?.runId, error: secondRun?.error },
-      ]);
-      const firstDossier = await readArchivedTarget({ zip, target: batch.targets[0]! });
-      expect(firstDossier).toEqual({
-        run: { runId: accepted.runId, modelId: 'fixture/first', status: 'failed', error: `${preflightOriginFailure}; Investigation interrupted: ${userInterruptionMessage}` },
-        recovery: { status: 'interrupted', interruption: { error: { name: 'ModelSupportInvestigationUserInterruptedError', message: userInterruptionMessage } } },
-      });
-      switch (action) {
-      case 'stop':
-        expect(secondRun).toBeUndefined();
-        expect(batch.targets[1]?.evidencePath).toBeUndefined();
-        expect(Object.keys(zip.files).filter(path => path.endsWith('/run.json'))).toHaveLength(1);
-        break;
-      case 'skip': {
-        expect(secondRun?.error).toContain(preflightOriginFailure);
-        expect(secondRun?.error).not.toContain(userInterruptionMessage);
-        const secondDossier = await readArchivedTarget({ zip, target: batch.targets[1]! });
-        expect(secondDossier.run).toEqual({ runId: secondRun?.runId, modelId: 'fixture/second', status: 'failed', error: secondRun?.error });
-        expect(secondDossier.recovery).toEqual({ status: 'completed' });
-        expect(firstDossier.run.runId).not.toBe(secondDossier.run.runId);
-        break;
-      }
-      default: { const exhaustive: never = action; throw new Error('Unexpected user action: ' + exhaustive); }
-      }
-      expect(JSON.stringify(retainedResults().executions)).toBe(JSON.stringify(cutoff.executions));
-      expect(JSON.stringify(retainedResults())).not.toContain('late-fixture-feature');
-    } finally {
-      pending.resolve({ features: [], limits: {} });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        pending.resolve({ features: [], limits: {} });
+      },
+    };
+    const mounted = await startBatch();
+    await vi.waitFor(() => expect(adapter).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(mounted.get('[data-testid="model-support-current-operation"]').text()).toContain('environment'));
+    const accepted = firstPlanningIdentity();
+    await mounted.get(`[data-testid="model-support-investigation-${action === 'stop' ? 'stop' : 'skip-current'}"]`).trigger('click');
+    await vi.waitFor(() => expect(retainedResults().executions[0]?.status).toBe(action === 'stop' ? 'interrupted' : 'skipped'));
+    if (action === 'skip') await finishBatch();
+    const cutoff = retainedResults();
+    expect(cutoff.executions[1]?.status).toBe(action === 'stop' ? 'pending' : 'failed');
+    expect(workers.filter(worker => worker.kind === 'planning')).toHaveLength(action === 'stop' ? 1 : 2);
+    expect(workers.every(worker => worker.terminated)).toBe(true);
+    pending.resolve({ features: ['late-fixture-feature'], limits: {} });
+    // The test platform cannot kill a JS Realm. Real termination closes every
+    // MessagePort, so later completion cannot re-enter the retired Session.
+    await pending.promise;
+    const zip = await exportBatch();
+    const batch = await readArchivedJson({ zip, path: 'batch.json', schema: batchOutcomeSchema });
+    const secondRun = new Map(cutoff.runs).get('fixture/second');
+    expect(batch.targetCount).toBe(2);
+    expect(batch.packagedModelCount).toBe(action === 'stop' ? 1 : 2);
+    expect(batch.targets.map(({ target, status, runId, error }) => ({ target, status, runId, error }))).toEqual([
+      { target: 'fixture/first', status: action === 'stop' ? 'interrupted' : 'skipped', runId: accepted.runId, error: userInterruptionMessage },
+      { target: 'fixture/second', status: action === 'stop' ? 'pending' : 'failed', runId: secondRun?.runId, error: secondRun?.error },
+    ]);
+    const firstDossier = await readArchivedTarget({ zip, target: batch.targets[0]! });
+    expect(firstDossier).toEqual({
+      run: { runId: accepted.runId, modelId: 'fixture/first', status: 'failed', error: `${preflightOriginFailure}; Investigation interrupted: ${userInterruptionMessage}` },
+      recovery: { status: 'interrupted', interruption: { error: { name: 'ModelSupportInvestigationUserInterruptedError', message: userInterruptionMessage } } },
+    });
+    switch (action) {
+    case 'stop':
+      expect(secondRun).toBeUndefined();
+      expect(batch.targets[1]?.evidencePath).toBeUndefined();
+      expect(Object.keys(zip.files).filter(path => path.endsWith('/run.json'))).toHaveLength(1);
+      break;
+    case 'skip': {
+      expect(secondRun?.error).toContain(preflightOriginFailure);
+      expect(secondRun?.error).not.toContain(userInterruptionMessage);
+      const secondDossier = await readArchivedTarget({ zip, target: batch.targets[1]! });
+      expect(secondDossier.run).toEqual({ runId: secondRun?.runId, modelId: 'fixture/second', status: 'failed', error: secondRun?.error });
+      expect(secondDossier.recovery).toEqual({ status: 'completed' });
+      expect(firstDossier.run.runId).not.toBe(secondDossier.run.runId);
+      break;
     }
+    default: { const exhaustive: never = action; throw new Error('Unexpected user action: ' + exhaustive); }
+    }
+    expect(JSON.stringify(retainedResults().executions)).toBe(JSON.stringify(cutoff.executions));
+    expect(JSON.stringify(retainedResults())).not.toContain('late-fixture-feature');
   });
 });

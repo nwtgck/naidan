@@ -6,6 +6,8 @@ import {
   computed,
   inject,
   provide,
+  ref,
+  watch,
   type ComputedRef,
   type InjectionKey,
   type Ref,
@@ -13,6 +15,7 @@ import {
 } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import type { StartupState } from '@/logic/startup/types';
+import { isHomepageIntroductionRoute, type HomeIntroduction } from '@/logic/document-metadata';
 
 export type OnboardingPresentation =
   | 'hidden'
@@ -23,10 +26,11 @@ export type AppInteraction =
   | 'blocked-by-onboarding'
   | 'enabled';
 
-type AppPresentation = Readonly<{
+type CoreAppPresentation = Readonly<{
   onboardingPresentation: ComputedRef<OnboardingPresentation>,
   appInteraction: ComputedRef<AppInteraction>,
 }>;
+type AppPresentation = CoreAppPresentation & ReturnType<typeof createHomeIntroduction>;
 
 const appPresentationKey: InjectionKey<AppPresentation> = Symbol('app-presentation');
 
@@ -58,7 +62,7 @@ function createAppPresentation({
   isOnboardingDismissed: Readonly<Ref<boolean>>,
   modelLaunchBypass: Readonly<Ref<boolean>>,
   onboardingRouteExcluded: Readonly<Ref<boolean>>,
-}): AppPresentation {
+}): CoreAppPresentation {
   const onboardingPresentation = computed<OnboardingPresentation>(() => {
     if (!settingsInitialized.value) {
       return 'hidden';
@@ -117,18 +121,52 @@ function createOnboardingRouteExcluded({ router }: { router: Router | undefined 
   });
 }
 
+function createHomeIntroduction({ router }: { router: Router | undefined }) {
+  const initialRoute = router === undefined ? undefined : resolveInitialRoute({ router });
+  const state = ref<HomeIntroduction>(initialRoute !== undefined && isHomepageIntroductionRoute({ route: initialRoute })
+    ? { kind: 'active', routePaths: ['/'] } : { kind: 'inactive' });
+
+  function finishHomeIntroduction(): void {
+    state.value = { kind: 'inactive' };
+  }
+
+  function continueHomeIntroduction({ routePath }: { routePath: string }): void {
+    const current = state.value;
+    switch (current.kind) {
+    case 'inactive': return;
+    case 'active':
+      state.value = { kind: 'active', routePaths: [...new Set([...current.routePaths, routePath])] };
+      return;
+    default: { const _ex: never = current; return _ex; }
+    }
+  }
+
+  if (router !== undefined) {
+    watch(() => router.currentRoute.value, route => {
+      if (route === START_LOCATION) return;
+      const current = state.value;
+      if (current.kind === 'active' && (!current.routePaths.includes(route.path)
+        || route.query['llama-cpp-browser-model'] !== undefined || route.query.q !== undefined || route.query.settings !== undefined)) finishHomeIntroduction();
+    });
+  }
+
+  return { homeIntroduction: computed(() => state.value), continueHomeIntroduction, finishHomeIntroduction };
+}
+
 export function provideAppPresentation({ startupState }: {
   startupState: ShallowRef<StartupState>,
 }): AppPresentation {
   const settingsStore = useSettings();
-  const onboardingRouteExcluded = createOnboardingRouteExcluded({ router: inject(routerKey, undefined) });
-  const presentation = createAppPresentation({
+  const router = inject(routerKey, undefined);
+  const onboardingRouteExcluded = createOnboardingRouteExcluded({ router });
+  const core = createAppPresentation({
     startupState,
     settingsInitialized: settingsStore.initialized,
     isOnboardingDismissed: settingsStore.isOnboardingDismissed,
     modelLaunchBypass: useModelLaunchOnboardingBypass({ initialized: settingsStore.initialized, storageType: computed(() => settingsStore.settings.value.storageType) }),
     onboardingRouteExcluded,
   });
+  const presentation: AppPresentation = { ...core, ...createHomeIntroduction({ router }) };
   provide(appPresentationKey, presentation);
   return presentation;
 }
@@ -144,4 +182,5 @@ export function useAppPresentation(): AppPresentation {
 export const TEST_ONLY = {
   createAppPresentation,
   createOnboardingRouteExcluded,
+  createHomeIntroduction,
 };

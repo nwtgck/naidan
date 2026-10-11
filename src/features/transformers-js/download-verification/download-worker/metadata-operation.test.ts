@@ -209,12 +209,13 @@ it('rejects a concurrent prefetch while metadata owns the runtime environment', 
   });
   const preparation = h.prepare();
   await entered.promise;
-  try {
-    await expect(h.api.prefetchUrls([`${base}onnx/model_q4.onnx`], () => undefined)).rejects.toThrow(/active|concurrent|busy/u);
-    expect(h.network).not.toHaveBeenCalled();
-  } finally {
-    release.resolve(); await preparation;
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      release.resolve(); await preparation;
+    },
+  };
+  await expect(h.api.prefetchUrls([`${base}onnx/model_q4.onnx`], () => undefined)).rejects.toThrow(/active|concurrent|busy/u);
+  expect(h.network).not.toHaveBeenCalled();
 });
 
 it('rejects concurrent metadata while a prefetch still owns a remote response', async () => {
@@ -226,12 +227,13 @@ it('rejects concurrent metadata while a prefetch still owns a remote response', 
   });
   const prefetch = h.api.prefetchUrls([`${base}onnx/model_q4.onnx`], () => undefined);
   await entered.promise;
-  try {
-    await expect(h.prepare()).rejects.toThrow(/active|concurrent|busy/u);
-    expect(h.config).not.toHaveBeenCalled();
-  } finally {
-    response.resolve(new Response(new Uint8Array([1, 2, 3]))); await prefetch;
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      response.resolve(new Response(new Uint8Array([1, 2, 3]))); await prefetch;
+    },
+  };
+  await expect(h.prepare()).rejects.toThrow(/active|concurrent|busy/u);
+  expect(h.config).not.toHaveBeenCalled();
 });
 
 it('rejects a second metadata RPC without replacing the first operation environment', async () => {
@@ -245,14 +247,15 @@ it('rejects a second metadata RPC without replacing the first operation environm
   await entered.promise;
   const firstCache = h.env.customCache;
   const firstFetch = h.env.fetch;
-  try {
-    await expect(h.prepare()).rejects.toThrow(/concurrent|busy/u);
-    expect(h.env.customCache).toBe(firstCache);
-    expect(h.env.fetch).toBe(firstFetch);
-    expect(h.config).toHaveBeenCalledTimes(1);
-  } finally {
-    release.resolve(); await preparation;
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      release.resolve(); await preparation;
+    },
+  };
+  await expect(h.prepare()).rejects.toThrow(/concurrent|busy/u);
+  expect(h.env.customCache).toBe(firstCache);
+  expect(h.env.fetch).toBe(firstFetch);
+  expect(h.config).toHaveBeenCalledTimes(1);
 });
 
 it('retires the Worker after a cleanup deadline and does not permit a new prefetch', async () => {

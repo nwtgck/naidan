@@ -79,65 +79,67 @@ describe('shared browser core adapter', () => {
       plugins: [createLlamaCppBrowserBuild({ rootDir: repo, mode: 'hosted' }).corePlugin],
       server: { middlewareMode: true, fs: { allow: [repo, root] }, watch: null },
     });
-    try {
-      const id = `virtual:llama-cpp-browser-core/${profile}`;
-      const realPath = path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
-      const resolved = await server.environments.client.pluginContainer.resolveId(id);
-      expect(resolved?.id).toBe(realPath);
-      expect(server.config.optimizeDeps.exclude).toContain(id);
-      expect(server.config.optimizeDeps.exclude).toContain('llama-cpp-browser-core');
-      writeFileSync(path.join(root, 'main.js'), `export const load = () => import(${JSON.stringify(id)});`);
-      const importer = await server.transformRequest('/main.js');
-      expect(importer?.code).toContain(`/@fs${realPath}`);
-      const result = await server.transformRequest(`/@fs${realPath}`);
-      expect(result?.code).toContain('Browser core requires supplied wasmBinary');
-      expect(result?.code).not.toContain('node:module');
-      expect(result?.code).not.toContain('node:crypto');
-      expect(result?.code).not.toContain('core.wasm?');
-      expect(result?.code).not.toContain('browser-external');
-      const source = readFileSync(realPath, 'utf8');
-      const start = source.indexOf('var ENVIRONMENT_IS_WEB=');
-      const adapted = transformBrowserCore({ source, id: realPath, profile }).code;
-      const injection = 'var navigator=Module["naidanNavigator"]??globalThis.navigator;';
-      expect(adapted.split(injection)).toHaveLength(profile.startsWith('webgpu-') ? 2 : 1);
-      // All other loader prologue bytes remain untouched; the hash guard still
-      // rejects every unreviewed native artifact before this scoped insertion.
-      expect(adapted.replace(injection, '').slice(0, start)).toBe(source.slice(0, start));
-      expect(() => transformBrowserCore({ source: source + '\n', id: realPath, profile })).toThrow('Unreviewed');
-    } finally {
-      await server.close(); rmSync(root, { recursive: true, force: true });
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await server.close(); rmSync(root, { recursive: true, force: true });
+      },
+    };
+    const id = `virtual:llama-cpp-browser-core/${profile}`;
+    const realPath = path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
+    const resolved = await server.environments.client.pluginContainer.resolveId(id);
+    expect(resolved?.id).toBe(realPath);
+    expect(server.config.optimizeDeps.exclude).toContain(id);
+    expect(server.config.optimizeDeps.exclude).toContain('llama-cpp-browser-core');
+    writeFileSync(path.join(root, 'main.js'), `export const load = () => import(${JSON.stringify(id)});`);
+    const importer = await server.transformRequest('/main.js');
+    expect(importer?.code).toContain(`/@fs${realPath}`);
+    const result = await server.transformRequest(`/@fs${realPath}`);
+    expect(result?.code).toContain('Browser core requires supplied wasmBinary');
+    expect(result?.code).not.toContain('node:module');
+    expect(result?.code).not.toContain('node:crypto');
+    expect(result?.code).not.toContain('core.wasm?');
+    expect(result?.code).not.toContain('browser-external');
+    const source = readFileSync(realPath, 'utf8');
+    const start = source.indexOf('var ENVIRONMENT_IS_WEB=');
+    const adapted = transformBrowserCore({ source, id: realPath, profile }).code;
+    const injection = 'var navigator=Module["naidanNavigator"]??globalThis.navigator;';
+    expect(adapted.split(injection)).toHaveLength(profile.startsWith('webgpu-') ? 2 : 1);
+    // All other loader prologue bytes remain untouched; the hash guard still
+    // rejects every unreviewed native artifact before this scoped insertion.
+    expect(adapted.replace(injection, '').slice(0, start)).toBe(source.slice(0, start));
+    expect(() => transformBrowserCore({ source: source + '\n', id: realPath, profile })).toThrow('Unreviewed');
   });
 
   it('rejects an unreviewed but internally consistent revision when creating the dev plugin, before the first import', () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-core-pin-'));
-    try {
-      const artifact = path.join(root, 'node_modules/llama-cpp-browser-core');
-      cpSync(path.join(repo, 'node_modules/llama-cpp-browser-core'), artifact, { recursive: true });
-      const relative = 'llama-cpp-browser-core/profiles/cpu-wasm32/browser/core.mjs';
-      const data = readFileSync(path.join(artifact, relative), 'utf8') + '\n';
-      writeFileSync(path.join(artifact, relative), data);
-      // Keep both inventories internally consistent so the exact-source guard
-      // rejects this unreviewed browser core rather than a corrupt fixture.
-      const inventory = z.object({ files: z.array(z.object({ path: z.string(), bytes: z.number(), sha256: z.string() })) }).passthrough();
-      const innerPath = path.join(artifact, 'llama-cpp-browser-core/manifest.json');
-      const inner = inventory.parse(JSON.parse(readFileSync(innerPath, 'utf8')));
-      const innerFile = inner.files.find(file => file.path === 'profiles/cpu-wasm32/browser/core.mjs');
-      if (!innerFile) throw new Error('Missing test core');
-      innerFile.bytes = Buffer.byteLength(data); innerFile.sha256 = createHash('sha256').update(data).digest('hex');
-      const innerData = JSON.stringify(inner); writeFileSync(innerPath, innerData);
-      const rootPath = path.join(artifact, 'manifest.json');
-      const rootManifest = inventory.parse(JSON.parse(readFileSync(rootPath, 'utf8')));
-      const coreFile = rootManifest.files.find(file => file.path === relative);
-      const innerManifest = rootManifest.files.find(file => file.path === 'llama-cpp-browser-core/manifest.json');
-      if (!coreFile || !innerManifest) throw new Error('Missing test inventory entries');
-      coreFile.bytes = Buffer.byteLength(data); coreFile.sha256 = createHash('sha256').update(data).digest('hex');
-      innerManifest.bytes = Buffer.byteLength(innerData); innerManifest.sha256 = createHash('sha256').update(innerData).digest('hex');
-      writeFileSync(rootPath, JSON.stringify(rootManifest));
-      expect(() => createLlamaCppBrowserBuild({ rootDir: root, mode: 'hosted' })).toThrow('Unreviewed browser core artifact');
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        rmSync(root, { recursive: true, force: true });
+      },
+    };
+    const artifact = path.join(root, 'node_modules/llama-cpp-browser-core');
+    cpSync(path.join(repo, 'node_modules/llama-cpp-browser-core'), artifact, { recursive: true });
+    const relative = 'llama-cpp-browser-core/profiles/cpu-wasm32/browser/core.mjs';
+    const data = readFileSync(path.join(artifact, relative), 'utf8') + '\n';
+    writeFileSync(path.join(artifact, relative), data);
+    // Keep both inventories internally consistent so the exact-source guard
+    // rejects this unreviewed browser core rather than a corrupt fixture.
+    const inventory = z.object({ files: z.array(z.object({ path: z.string(), bytes: z.number(), sha256: z.string() })) }).passthrough();
+    const innerPath = path.join(artifact, 'llama-cpp-browser-core/manifest.json');
+    const inner = inventory.parse(JSON.parse(readFileSync(innerPath, 'utf8')));
+    const innerFile = inner.files.find(file => file.path === 'profiles/cpu-wasm32/browser/core.mjs');
+    if (!innerFile) throw new Error('Missing test core');
+    innerFile.bytes = Buffer.byteLength(data); innerFile.sha256 = createHash('sha256').update(data).digest('hex');
+    const innerData = JSON.stringify(inner); writeFileSync(innerPath, innerData);
+    const rootPath = path.join(artifact, 'manifest.json');
+    const rootManifest = inventory.parse(JSON.parse(readFileSync(rootPath, 'utf8')));
+    const coreFile = rootManifest.files.find(file => file.path === relative);
+    const innerManifest = rootManifest.files.find(file => file.path === 'llama-cpp-browser-core/manifest.json');
+    if (!coreFile || !innerManifest) throw new Error('Missing test inventory entries');
+    coreFile.bytes = Buffer.byteLength(data); coreFile.sha256 = createHash('sha256').update(data).digest('hex');
+    innerManifest.bytes = Buffer.byteLength(innerData); innerManifest.sha256 = createHash('sha256').update(innerData).digest('hex');
+    writeFileSync(rootPath, JSON.stringify(rootManifest));
+    expect(() => createLlamaCppBrowserBuild({ rootDir: root, mode: 'hosted' })).toThrow('Unreviewed browser core artifact');
   });
 
   it('initializes real CPU Wasm from the original non-zero-offset byte view with no fetch or Node imports', async () => {

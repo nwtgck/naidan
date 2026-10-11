@@ -4,7 +4,7 @@ import { idToRaw, toImageGenerationTagId } from '@/01-models/ids';
 import * as service from './image-generation';
 import { deleteImageGenerationAsset, listImageGenerationRunAssets, setImageGenerationAssetState } from './image-generation-curation';
 import { collectImageGenerationSessionMetadata } from './image-generation-export';
-import { createImageGenerationStorageHarness, generationAssetFixture, generationDraftFixture, generationRunFixture, generationSessionFixture } from './image-generation/test-support';
+import { createImageGenerationStorageHarness, generationAssetFixture, generationDraftFixture, generationRunFixture, generationSessionFixture } from './image-generation/index.test-support';
 let fs: ReturnType<typeof createImageGenerationStorageHarness>;
 const root = '/naidan-storage/experimental/image-generation';
 const annotationsPath = `${root}/sessions/aa/session-aa/annotations/00/asset-00.json`;

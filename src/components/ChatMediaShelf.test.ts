@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import ChatMediaShelf from './ChatMediaShelf.vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/01-models/ids';
 import type { UserMessageNode } from '@/01-models/types';
 

@@ -9,7 +9,7 @@ import { buildChatGenerationMessages } from '@/logic/build-chat-generation-messa
 import { OpenAIProvider } from './openai';
 import { OllamaProvider } from './ollama';
 import type { LmFetch } from './fetch';
-import { consumeProviderGenerationForTest } from './provider-test-support';
+import { consumeProviderGenerationForTest } from './provider.test-support';
 
 function fixture({ status, content }: { status: 'success' | 'error', content: TextOrBinaryObject }) {
   const callId = toToolCallId({ raw: 'lookup-1' });

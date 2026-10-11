@@ -327,24 +327,25 @@ describe('streaming ZIP codec', () => {
       decodeEntryName: ({ bytes, isUtf8 }) => `${isUtf8 ? 'utf8' : 'raw'}:${Buffer.from(bytes).toString('hex')}`,
     });
 
-    try {
-      const entries = await collectEntries({ reader });
-      expect(entries).toHaveLength(1);
-      const entry = entries[0];
-      if (entry === undefined) {
-        throw new Error('Expected one ZIP entry');
-      }
-      expect(entry.name).toBe('raw:78822e747874');
-      expect(entry.nameBytes).toEqual(encodedName);
-      expect(entry.nameIsUtf8).toBe(false);
-      expect(entry.externalAttributes).toBe(externalAttributes);
-      expect(entry.isSymbolicLink).toBe(true);
-      expect(textDecoder.decode(await readStreamBytes({
-        stream: await reader.openEntry({ entry }),
-      }))).toBe('target.txt');
-    } finally {
-      await reader.close();
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await reader.close();
+      },
+    };
+    const entries = await collectEntries({ reader });
+    expect(entries).toHaveLength(1);
+    const entry = entries[0];
+    if (entry === undefined) {
+      throw new Error('Expected one ZIP entry');
     }
+    expect(entry.name).toBe('raw:78822e747874');
+    expect(entry.nameBytes).toEqual(encodedName);
+    expect(entry.nameIsUtf8).toBe(false);
+    expect(entry.externalAttributes).toBe(externalAttributes);
+    expect(entry.isSymbolicLink).toBe(true);
+    expect(textDecoder.decode(await readStreamBytes({
+      stream: await reader.openEntry({ entry }),
+    }))).toBe('target.txt');
   });
 
   it('reads JSZip store, deflate, UTF-8, directory, and empty entries', async () => {
@@ -362,27 +363,28 @@ describe('streaming ZIP codec', () => {
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
 
-    try {
-      const entries = await collectEntries({ reader });
-      expect(entries.map(entry => entry.name)).toEqual([
-        'symbols-∞-∑-𝄞-🧪/',
-        'symbols-∞-∑-𝄞-🧪/stored.txt',
-        'symbols-∞-∑-𝄞-🧪/deflated.txt',
-        'symbols-∞-∑-𝄞-🧪/empty.bin',
-      ]);
-      expect(findEntry({ entries, name: 'symbols-∞-∑-𝄞-🧪/' }).isDirectory).toBe(true);
-      expect(textDecoder.decode(await readStreamBytes({
-        stream: await reader.openEntry({ entry: findEntry({ entries, name: 'symbols-∞-∑-𝄞-🧪/stored.txt' }) }),
-      }))).toBe('stored payload');
-      expect(textDecoder.decode(await readStreamBytes({
-        stream: await reader.openEntry({ entry: findEntry({ entries, name: 'symbols-∞-∑-𝄞-🧪/deflated.txt' }) }),
-      }))).toBe('deflated payload '.repeat(256));
-      expect(await readStreamBytes({
-        stream: await reader.openEntry({ entry: findEntry({ entries, name: 'symbols-∞-∑-𝄞-🧪/empty.bin' }) }),
-      })).toEqual(new Uint8Array(0));
-    } finally {
-      await reader.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await reader.close();
+      },
+    };
+    const entries = await collectEntries({ reader });
+    expect(entries.map(entry => entry.name)).toEqual([
+      'symbols-∞-∑-𝄞-🧪/',
+      'symbols-∞-∑-𝄞-🧪/stored.txt',
+      'symbols-∞-∑-𝄞-🧪/deflated.txt',
+      'symbols-∞-∑-𝄞-🧪/empty.bin',
+    ]);
+    expect(findEntry({ entries, name: 'symbols-∞-∑-𝄞-🧪/' }).isDirectory).toBe(true);
+    expect(textDecoder.decode(await readStreamBytes({
+      stream: await reader.openEntry({ entry: findEntry({ entries, name: 'symbols-∞-∑-𝄞-🧪/stored.txt' }) }),
+    }))).toBe('stored payload');
+    expect(textDecoder.decode(await readStreamBytes({
+      stream: await reader.openEntry({ entry: findEntry({ entries, name: 'symbols-∞-∑-𝄞-🧪/deflated.txt' }) }),
+    }))).toBe('deflated payload '.repeat(256));
+    expect(await readStreamBytes({
+      stream: await reader.openEntry({ entry: findEntry({ entries, name: 'symbols-∞-∑-𝄞-🧪/empty.bin' }) }),
+    })).toEqual(new Uint8Array(0));
   });
 
   it('round-trips exact Unicode names and byte-split multibyte payloads through JSZip', async () => {
@@ -439,21 +441,22 @@ describe('streaming ZIP codec', () => {
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
 
-    try {
-      const entries = await collectEntries({ reader });
-      expect(entries.map(entry => entry.name)).toEqual(['unicode/', nfcName, nfdName]);
-      expect(textDecoder.decode(await readStreamBytes({
-        stream: await reader.openEntry({ entry: findEntry({ entries, name: nfdName }) }),
-      }))).toBe('NFD payload 🚀');
-      expect(textDecoder.decode(await readStreamBytes({
-        stream: await reader.openEntry({ entry: findEntry({ entries, name: nfcName }) }),
-      }))).toBe('NFC payload 🧪');
-      expect(textDecoder.decode(await readStreamBytes({
-        stream: await reader.openEntry({ entry: findEntry({ entries, name: nfcName }) }),
-      }))).toBe('NFC payload 🧪');
-    } finally {
-      await reader.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await reader.close();
+      },
+    };
+    const entries = await collectEntries({ reader });
+    expect(entries.map(entry => entry.name)).toEqual(['unicode/', nfcName, nfdName]);
+    expect(textDecoder.decode(await readStreamBytes({
+      stream: await reader.openEntry({ entry: findEntry({ entries, name: nfdName }) }),
+    }))).toBe('NFD payload 🚀');
+    expect(textDecoder.decode(await readStreamBytes({
+      stream: await reader.openEntry({ entry: findEntry({ entries, name: nfcName }) }),
+    }))).toBe('NFC payload 🧪');
+    expect(textDecoder.decode(await readStreamBytes({
+      stream: await reader.openEntry({ entry: findEntry({ entries, name: nfcName }) }),
+    }))).toBe('NFC payload 🧪');
   });
 
   it('sets UTF-8 and data-descriptor flags in local and central headers', async () => {
@@ -511,11 +514,12 @@ describe('streaming ZIP codec', () => {
       const reader = new TestStreamingZipReader({
         source: createBlobZipSource({ blob: createBlobFromBytes({ bytes }) }),
       });
-      try {
-        await expect(collectEntries({ reader })).rejects.toThrow(message);
-      } finally {
-        await reader.close();
-      }
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
+          await reader.close();
+        },
+      };
+      await expect(collectEntries({ reader })).rejects.toThrow(message);
     };
 
     const encrypted = (await createArchive()).slice();
@@ -574,14 +578,15 @@ describe('streaming ZIP codec', () => {
     const invalidLocalReader = new TestStreamingZipReader({
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: invalidLocal }) }),
     });
-    try {
-      const entries = await collectEntries({ reader: invalidLocalReader });
-      await expect(invalidLocalReader.openEntry({
-        entry: findEntry({ entries, name: 'payload.txt' }),
-      })).rejects.toThrow('Invalid local ZIP header: payload.txt');
-    } finally {
-      await invalidLocalReader.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await invalidLocalReader.close();
+      },
+    };
+    const entries = await collectEntries({ reader: invalidLocalReader });
+    await expect(invalidLocalReader.openEntry({
+      entry: findEntry({ entries, name: 'payload.txt' }),
+    })).rejects.toThrow('Invalid local ZIP header: payload.txt');
   });
 
   it('rejects local-header name, compression, encryption, and data-range mismatches', async () => {
@@ -595,14 +600,15 @@ describe('streaming ZIP codec', () => {
       const reader = new TestStreamingZipReader({
         source: createBlobZipSource({ blob: createBlobFromBytes({ bytes }) }),
       });
-      try {
-        const entries = await collectEntries({ reader });
-        await expect(reader.openEntry({
-          entry: findEntry({ entries, name: 'payload.txt' }),
-        })).rejects.toThrow(message);
-      } finally {
-        await reader.close();
-      }
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
+          await reader.close();
+        },
+      };
+      const entries = await collectEntries({ reader });
+      await expect(reader.openEntry({
+        entry: findEntry({ entries, name: 'payload.txt' }),
+      })).rejects.toThrow(message);
     };
 
     const nameMismatch = (await createStoredJsZipArchive()).slice();
@@ -656,11 +662,12 @@ describe('streaming ZIP codec', () => {
       const reader = new TestStreamingZipReader({
         source: createBlobZipSource({ blob: createBlobFromBytes({ bytes }) }),
       });
-      try {
-        await expect(collectEntries({ reader })).rejects.toThrow(message);
-      } finally {
-        await reader.close();
-      }
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
+          await reader.close();
+        },
+      };
+      await expect(collectEntries({ reader })).rejects.toThrow(message);
     };
 
     const sizeMismatch = (await createStoredJsZipArchive()).slice();
@@ -717,14 +724,15 @@ describe('streaming ZIP codec', () => {
     const reader = new TestStreamingZipReader({
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
-    try {
-      const entries = await collectEntries({ reader });
-      await expect(reader.openEntry({
-        entry: findEntry({ entries, name: 'payload.txt' }),
-      })).rejects.toThrow('ZIP local flags mismatch: payload.txt');
-    } finally {
-      await reader.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await reader.close();
+      },
+    };
+    const entries = await collectEntries({ reader });
+    await expect(reader.openEntry({
+      entry: findEntry({ entries, name: 'payload.txt' }),
+    })).rejects.toThrow('ZIP local flags mismatch: payload.txt');
   });
 
   it('rejects a central-directory uncompressed-size mismatch after streaming data', async () => {
@@ -738,14 +746,15 @@ describe('streaming ZIP codec', () => {
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
 
-    try {
-      const entries = await collectEntries({ reader });
-      await expect(readStreamBytes({
-        stream: await reader.openEntry({ entry: findEntry({ entries, name: 'payload.txt' }) }),
-      })).rejects.toThrow('ZIP entry size mismatch: payload.txt');
-    } finally {
-      await reader.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await reader.close();
+      },
+    };
+    const entries = await collectEntries({ reader });
+    await expect(readStreamBytes({
+      stream: await reader.openEntry({ entry: findEntry({ entries, name: 'payload.txt' }) }),
+    })).rejects.toThrow('ZIP entry size mismatch: payload.txt');
   });
 
   it('rejects oversized uncompressed output before exposing the invalid chunk', async () => {
@@ -759,18 +768,20 @@ describe('streaming ZIP codec', () => {
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
 
-    try {
-      const entries = await collectEntries({ reader });
-      const stream = await reader.openEntry({ entry: findEntry({ entries, name: 'payload.txt' }) });
-      const streamReader = stream.getReader();
-      try {
-        await expect(streamReader.read()).rejects.toThrow('ZIP entry size mismatch: payload.txt');
-      } finally {
+    await using _cleanupResource2 = {
+      async [Symbol.asyncDispose]() {
+        await reader.close();
+      },
+    };
+    const entries = await collectEntries({ reader });
+    const stream = await reader.openEntry({ entry: findEntry({ entries, name: 'payload.txt' }) });
+    const streamReader = stream.getReader();
+    using _cleanupResource = {
+      [Symbol.dispose]() {
         streamReader.releaseLock();
-      }
-    } finally {
-      await reader.close();
-    }
+      },
+    };
+    await expect(streamReader.read()).rejects.toThrow('ZIP entry size mismatch: payload.txt');
   });
 
   it('rejects writer operations after finalization and overlong entry names', async () => {
@@ -819,18 +830,19 @@ describe('streaming ZIP codec', () => {
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
 
-    try {
-      const entries = await collectEntries({ reader });
-      const entry = findEntry({ entries, name: 'link.txt' });
-      expect(entry.isDirectory).toBe(false);
-      expect(entry.isSymbolicLink).toBe(true);
-      expect(entry.unixMode).toBe(0o120777);
-      expect(textDecoder.decode(await readStreamBytes({
-        stream: await reader.openEntry({ entry }),
-      }))).toBe('target.txt');
-    } finally {
-      await reader.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await reader.close();
+      },
+    };
+    const entries = await collectEntries({ reader });
+    const entry = findEntry({ entries, name: 'link.txt' });
+    expect(entry.isDirectory).toBe(false);
+    expect(entry.isSymbolicLink).toBe(true);
+    expect(entry.unixMode).toBe(0o120777);
+    expect(textDecoder.decode(await readStreamBytes({
+      stream: await reader.openEntry({ entry }),
+    }))).toBe('target.txt');
   });
 
   it('uses bounded range reads for a large deflated entry', async () => {
@@ -856,18 +868,19 @@ describe('streaming ZIP codec', () => {
     };
     const reader = new TestStreamingZipReader({ source: trackedSource });
 
-    try {
-      const entries = await collectEntries({ reader });
-      const extracted = await readStreamBytes({
-        stream: await reader.openEntry({ entry: findEntry({ entries, name: 'large-deflated.bin' }) }),
-      });
-      expect(extracted).toEqual(payload);
-      expect(reads.length).toBeGreaterThan(5);
-      expect(Math.max(...reads.map(read => read.length))).toBeLessThanOrEqual(66 * 1024);
-      expect(reads.some(read => read.length === trackedSource.size)).toBe(false);
-    } finally {
-      await reader.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await reader.close();
+      },
+    };
+    const entries = await collectEntries({ reader });
+    const extracted = await readStreamBytes({
+      stream: await reader.openEntry({ entry: findEntry({ entries, name: 'large-deflated.bin' }) }),
+    });
+    expect(extracted).toEqual(payload);
+    expect(reads.length).toBeGreaterThan(5);
+    expect(Math.max(...reads.map(read => read.length))).toBeLessThanOrEqual(66 * 1024);
+    expect(reads.some(read => read.length === trackedSource.size)).toBe(false);
   });
 
   it('uses bounded range reads for a large stored entry', async () => {
@@ -934,15 +947,16 @@ describe('streaming ZIP codec', () => {
     };
     const reader = new TestStreamingZipReader({ source });
 
-    try {
-      const entries = await collectEntries({ reader });
-      stallEntryData = true;
-      await expect(readStreamBytes({
-        stream: await reader.openEntry({ entry: findEntry({ entries, name: 'stalled.bin' }) }),
-      })).rejects.toThrow('ZIP source returned 0 bytes for a 65536-byte range');
-    } finally {
-      await reader.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await reader.close();
+      },
+    };
+    const entries = await collectEntries({ reader });
+    stallEntryData = true;
+    await expect(readStreamBytes({
+      stream: await reader.openEntry({ entry: findEntry({ entries, name: 'stalled.bin' }) }),
+    })).rejects.toThrow('ZIP source returned 0 bytes for a 65536-byte range');
   });
 
   it('rejects an entry whose uncompressed data does not match its CRC', async () => {
@@ -957,14 +971,15 @@ describe('streaming ZIP codec', () => {
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: corrupted }) }),
     });
 
-    try {
-      const entries = await collectEntries({ reader });
-      await expect(readStreamBytes({
-        stream: await reader.openEntry({ entry: findEntry({ entries, name: 'payload.txt' }) }),
-      })).rejects.toThrow('ZIP entry CRC mismatch: payload.txt');
-    } finally {
-      await reader.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await reader.close();
+      },
+    };
+    const entries = await collectEntries({ reader });
+    await expect(readStreamBytes({
+      stream: await reader.openEntry({ entry: findEntry({ entries, name: 'payload.txt' }) }),
+    })).rejects.toThrow('ZIP entry CRC mismatch: payload.txt');
   });
 
   it('rejects truncated archives without a central directory', async () => {
@@ -972,10 +987,11 @@ describe('streaming ZIP codec', () => {
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: new Uint8Array([1, 2, 3]) }) }),
     });
 
-    try {
-      await expect(collectEntries({ reader })).rejects.toThrow('End of central directory not found');
-    } finally {
-      await reader.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await reader.close();
+      },
+    };
+    await expect(collectEntries({ reader })).rejects.toThrow('End of central directory not found');
   });
 });

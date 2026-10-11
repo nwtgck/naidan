@@ -34,7 +34,7 @@ import {
   updateChatMeta,
 } from '@/composables/chat/global/chat-core-singletons';
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
-import { createChatTestSupport } from '@/composables/chat/chat-test-support';
+import { createChatTestSupport } from '@/composables/chat/chat.test-support';
 import {
   generateImageForChat,
   handleImageGenerationForChat,

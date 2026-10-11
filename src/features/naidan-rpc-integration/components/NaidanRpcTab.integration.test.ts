@@ -8,13 +8,13 @@ import { openPipingRpc } from '@/features/naidan-rpc-integration/transports/pipi
 import { encodePeerKey } from '@/features/naidan-rpc-integration/runtime/identity';
 import { createNaidanPipingIdentity, NaidanPipingDuplexSession } from '@/features/naidan-piping-duplex';
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex';
-import { createPipingFetchPool } from '@/features/naidan-rpc-integration/runtime/test-support/piping-pool';
+import { createPipingFetchPool } from '@/features/naidan-rpc-integration/runtime/test-support/piping-pool.test-support';
 import { FiniteMemoryRelay } from '@/features/naidan-piping-duplex/finite-memory-relay.test-support';
 import type { NaidanRpcRegistration } from '@/01-models/naidan-rpc';
 import type { NaidanRpcStorage } from '@/00-storage/service/naidan-rpc';
 import { toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey, toNaidanRpcRegistryId } from '@/01-models/ids';
 import { createInferenceBudget } from '@/features/naidan-rpc-integration/handlers/inference/budget';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 const bridge = vi.hoisted(() => ({ manager: undefined as NaidanPeerManager | undefined, listeners: new Set<() => void>() }));
 // Only inject the app-owned manager. Its state machine, transport adapter,
@@ -204,12 +204,13 @@ it.each(['startup-first', 'panel-first'] as const)('connects on startup with Set
     panelRead.resolve(snapshot);
   } else {
     panelRead.resolve(snapshot);
-    try {
-      // The authoritative panel snapshot must not wait for an obsolete read.
-      await vi.waitFor(() => expect(local.open).toHaveBeenCalledOnce());
-    } finally {
-      startupRead.resolve(snapshot);
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        startupRead.resolve(snapshot);
+      },
+    };
+    // The authoritative panel snapshot must not wait for an obsolete read.
+    await vi.waitFor(() => expect(local.open).toHaveBeenCalledOnce());
   }
   await starting;
   await vi.waitFor(() => expect(relay.occupied).toBeGreaterThan(0));

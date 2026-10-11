@@ -17,11 +17,12 @@ async function file({ path, content }: { path: string; content: Uint8Array }): P
   let folder = root;
   for (const part of parts) folder = await folder.getDirectoryHandle(part, { create: true });
   const access = await (await folder.getFileHandle(name, { create: true })).createSyncAccessHandle();
-  try {
-    access.write(content, { at: 0 });
-  } finally {
-    access.close();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      access.close();
+    },
+  };
+  access.write(content, { at: 0 });
 }
 
 async function textFile({ path }: { path: string }): Promise<void> {

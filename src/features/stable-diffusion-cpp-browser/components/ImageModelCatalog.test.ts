@@ -1,7 +1,7 @@
 import { createDisabledImageLibrary } from '@/features/stable-diffusion-cpp-browser/library-standalone';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { computed, effectScope, ref } from 'vue';
 import type { HostModelDirectoryChoice, ImageDownloadQueueEntry } from '@/features/stable-diffusion-cpp-browser/library-view';
 import ImageModelCatalog from './ImageModelCatalog.vue';
@@ -30,19 +30,20 @@ it.each(['directory API', 'mutation lock'] as const)('disables OPFS acquisition 
       download,
     },
   }))!;
-  try {
-    wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: library } });
-    const button = wrapper.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
-    expect(button.element.disabled).toBe(true);
-    expect(wrapper.get<HTMLOptionElement>('option[value="opfs"]').element.disabled).toBe(true);
-    expect(wrapper.get('[data-testid="image-opfs-download-unavailable"]').text()).toContain('Browser storage (OPFS)');
-    await button.trigger('click');
-    expect(download).not.toHaveBeenCalled(); expect(network).not.toHaveBeenCalled();
-    expect(library.downloadState.value).toBe('idle');
-    expect(library.failure.value).toBe('');
-  } finally {
-    scope.stop();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      scope.stop();
+    },
+  };
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: library } });
+  const button = wrapper.get<HTMLButtonElement>('[data-testid="recipe-download-selected-z-image-turbo"]');
+  expect(button.element.disabled).toBe(true);
+  expect(wrapper.get<HTMLOptionElement>('option[value="opfs"]').element.disabled).toBe(true);
+  expect(wrapper.get('[data-testid="image-opfs-download-unavailable"]').text()).toContain('Browser storage (OPFS)');
+  await button.trigger('click');
+  expect(download).not.toHaveBeenCalled(); expect(network).not.toHaveBeenCalled();
+  expect(library.downloadState.value).toBe('idle');
+  expect(library.failure.value).toBe('');
 });
 
 afterEach(() => {
@@ -58,7 +59,9 @@ it('shows all static recipes without networking or remote resources when opened'
   for (const toggle of wrapper.findAll('[data-testid^="recipe-details-toggle-"]')) await toggle.trigger('click');
   for (const detail of wrapper.findAll('[data-testid="image-recipe-details"]')) expect(detail.attributes('inert')).toBeUndefined();
   await flushPromises();
-  expect(wrapper.findAll('article')).toHaveLength(8);
+  const titles = wrapper.findAll('[data-testid="image-recipe-heading"] h4').map(item => item.text());
+  expect(titles).toHaveLength(9);
+  expect(titles.slice(1, 3)).toEqual(['Qwen Image 2.1', 'Qwen Image 2.1 Turbo']);
   expect(wrapper.text()).toContain('Z-Image-Turbo'); expect(wrapper.text()).toContain('Qwen Image 2.1');
   expect(wrapper.text()).toContain('Z-Image Base'); expect(wrapper.text()).toContain('SDXL Base 1.0');
   expect(wrapper.text()).toContain('FLUX.2 [klein] 4B Distilled'); expect(wrapper.text()).toContain('Anima Turbo 1.1');
@@ -74,14 +77,17 @@ it('shows all static recipes without networking or remote resources when opened'
   expect(fetch).not.toHaveBeenCalled(); expect(xhr).not.toHaveBeenCalled(); expect(worker).not.toHaveBeenCalled();
 });
 
-it('uses only explicit, referrer-free browser links to immutable file revisions', () => {
+it('uses only explicit, referrer-free browser links with pinned revisions except the provisional Turbo source', () => {
   wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view: createDisabledImageLibrary() } });
   const downloads = wrapper.findAll('[data-testid^="recipe-download-selected-"]');
-  expect(downloads).toHaveLength(8);
+  expect(downloads).toHaveLength(9);
   for (const link of wrapper.findAll('a')) {
     const url = new URL(link.attributes('href')!);
     expect(url.origin).toBe('https://huggingface.co');
-    expect(url.pathname).toMatch(/^\/[\w.-]+\/[\w.-]+(?:$|\/(resolve|blob)\/[0-9a-f]{40}\/)/);
+    // Only the explicitly provisional Abiray source may use a mutable ref.
+    if (url.pathname.startsWith('/Abiray/Qwen-Image-2.1-Turbo-GGUF/')) {
+      expect(url.pathname).toMatch(/^\/Abiray\/Qwen-Image-2\.1-Turbo-GGUF\/(resolve|blob)\/main\//);
+    } else expect(url.pathname).toMatch(/^\/[\w.-]+\/[\w.-]+(?:$|\/(resolve|blob)\/[0-9a-f]{40}\/)/);
     expect(link.attributes('rel')).toBe('noopener noreferrer');
     expect(link.attributes('referrerpolicy')).toBe('no-referrer');
     expect(link.find('svg').exists()).toBe(true);
@@ -163,6 +169,21 @@ it('keeps option changes offline and sends a frozen choice only on the explicit 
   await wrapper.get('[data-testid="recipe-use-local-z-image-turbo"]').trigger('click');
   expect(view.chooseRecipe).toHaveBeenCalledWith({ recipeId: 'z-image-turbo', selections: { diffusion: 'q8-0' } });
   expect(wrapper.emitted('selected')).toHaveLength(1);
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it('offers the Qwen Turbo quantization choices without fetching until explicitly requested', async () => {
+  const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+  const view = createDisabledImageLibrary(); view.downloadRecipe = vi.fn(); view.chooseRecipe = vi.fn();
+  wrapper = mount(ImageModelCatalog, { props: { disabled: false, downloadDisabled: false, view } });
+  const card = wrapper.get('[data-testid="image-recipe-qwen-image-2.1-turbo"]');
+  const selector = card.get<HTMLSelectElement>('[data-testid="recipe-option-qwen-image-2.1-turbo-diffusion"]');
+  expect(selector.element.value).toBe('default');
+  expect(selector.findAll('option').map(option => option.text())).toEqual(['Q8_0', 'Q3_K_M', 'Q4_K_S', 'Q4_K_M', 'Q5_K_M', 'Q6_K']);
+  await selector.setValue('q4-k-m');
+  expect(view.downloadRecipe).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  await card.get('[data-testid="recipe-download-selected-qwen-image-2.1-turbo"]').trigger('click');
+  expect(view.downloadRecipe).toHaveBeenCalledExactlyOnceWith({ recipeId: 'qwen-image-2.1-turbo', selections: { diffusion: 'q4-k-m' } });
   expect(fetch).not.toHaveBeenCalled();
 });
 

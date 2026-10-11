@@ -12,24 +12,26 @@ describe('package locale HTML metadata', () => {
     const result = insertPackageLocaleMetadata({ html, locale: 'ja' });
     expect(result).toContain('<script>const x = "</head>";</script>');
     const dom = new JSDOM(result);
-    try {
-      const meta = dom.window.document.querySelector(`meta[name="${PACKAGE_LOCALE_META_NAME}"]`);
-      expect(meta?.getAttribute('content')).toBe('ja');
-      expect(meta?.nextElementSibling?.tagName).toBe('SCRIPT');
-    } finally {
-      dom.window.close();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        dom.window.close();
+      },
+    };
+    const meta = dom.window.document.querySelector(`meta[name="${PACKAGE_LOCALE_META_NAME}"]`);
+    expect(meta?.getAttribute('content')).toBe('ja');
+    expect(meta?.nextElementSibling?.tagName).toBe('SCRIPT');
   });
 
   it('is visible to a head script at parser execution time', () => {
     const html = '<!doctype html><html><head><meta charset="utf-8"><script>globalThis.__PACKAGE_META_SEEN__ = document.querySelector(\'meta[name="naidan-package-locale"]\')?.content;</script></head><body></body></html>';
     const result = insertPackageLocaleMetadata({ html, locale: 'ja' });
     const dom = new JSDOM(result, { runScripts: 'dangerously' });
-    try {
-      expect((dom.window as unknown as { __PACKAGE_META_SEEN__?: string }).__PACKAGE_META_SEEN__).toBe('ja');
-    } finally {
-      dom.window.close();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        dom.window.close();
+      },
+    };
+    expect((dom.window as unknown as { __PACKAGE_META_SEEN__?: string }).__PACKAGE_META_SEEN__).toBe('ja');
   });
 
   it('rejects duplicate package metadata instead of overwriting it', () => {

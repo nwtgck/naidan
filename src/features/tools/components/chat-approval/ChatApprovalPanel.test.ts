@@ -4,7 +4,7 @@ import type { ToolApprovalRequestId } from '@/01-models/ids';
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, beforeEach } from 'vitest';
 import ChatApprovalPanel from './ChatApprovalPanel.vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { APPROVAL_ACTIONS } from '@/features/tools/approval';
 
 function mountPanel({

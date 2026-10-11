@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import TransformersJsManager from './TransformersJsManager.vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { transformersJsService } from '@/features/transformers-js';
 import * as opfsDetection from '@/utils/opfs-detection';
 
@@ -334,15 +334,16 @@ describe('TransformersJsManager.vue', () => {
     it('disables native controls and avoids storage probes while explaining standalone restrictions', async () => {
       vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', true);
       const wrapper = mount(TransformersJsManager);
-      try {
-        await flushPromises();
-        expect(wrapper.get('fieldset[data-testid="transformers-js-actions"]').attributes('disabled')).toBeDefined();
-        expect(opfsDetection.checkOPFSSupport).not.toHaveBeenCalled();
-        expect(transformersJsService.listCachedModels).not.toHaveBeenCalled();
-        expect(transformersJsService.subscribe).not.toHaveBeenCalled();
-      } finally {
-        wrapper.unmount(); vi.unstubAllGlobals();
-      }
+      using _cleanupResource = {
+        [Symbol.dispose]() {
+          wrapper.unmount(); vi.unstubAllGlobals();
+        },
+      };
+      await flushPromises();
+      expect(wrapper.get('fieldset[data-testid="transformers-js-actions"]').attributes('disabled')).toBeDefined();
+      expect(opfsDetection.checkOPFSSupport).not.toHaveBeenCalled();
+      expect(transformersJsService.listCachedModels).not.toHaveBeenCalled();
+      expect(transformersJsService.subscribe).not.toHaveBeenCalled();
     });
 
     it('displays the correct reason for unavailability in standalone mode', async () => {

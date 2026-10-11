@@ -5,7 +5,7 @@ import { prepareModelRemoval } from '@/features/llama-cpp-browser/runtime/model-
 import { DownloadConflictError } from '@/features/llama-cpp-browser/hugging-face/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { discoverRepository } from '@/features/llama-cpp-browser/hugging-face/catalog';
 import { downloadRepository, cancelDownload } from '@/features/llama-cpp-browser/hugging-face/download';
 import { defineComponent, ref } from 'vue';

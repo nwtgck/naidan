@@ -121,15 +121,11 @@ it('does not impose a Transformers dependency requirement on standalone facades'
 
 it('rejects output validation failure before any transform hook or warm cache can run', () => {
   const failure = new Error('Unreviewed Transformers.js fix integration output');
-  const validate = vi.spyOn(transformation, 'applyTransformersJsFixes').mockImplementationOnce(() => {
+  using validate = vi.spyOn(transformation, 'applyTransformersJsFixes').mockImplementationOnce(() => {
     throw failure;
   });
-  try {
-    expect(() => createTransformersJsFixesPlugin({ projectRoot })).toThrow(failure);
-    expect(validate).toHaveBeenCalledExactlyOnceWith({ code: original, version: '4.2.0' });
-  } finally {
-    validate.mockRestore();
-  }
+  expect(() => createTransformersJsFixesPlugin({ projectRoot })).toThrow(failure);
+  expect(validate).toHaveBeenCalledExactlyOnceWith({ code: original, version: '4.2.0' });
 });
 
 interface SessionResult { buffer_or_path: Uint8Array; session_options: { externalData?: Array<{ path: string; data: Uint8Array }> } }

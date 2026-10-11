@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { pendingImageHistory } from '@/features/image-generation/history/pending-saves';
 import { snapshotImageGeneration, finishImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';

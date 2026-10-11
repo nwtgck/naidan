@@ -81,13 +81,14 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  try {
-    await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-    expect(fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-  } finally {
-    vi.restoreAllMocks(); vi.unstubAllGlobals();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      vi.restoreAllMocks(); vi.unstubAllGlobals();
+    },
+  };
+  await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
+  expect(globalThis.fetch).not.toHaveBeenCalled();
+  expect(fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
 });
 
 // Snapshots come from the real owner/service/Provider/trace. Only native Worker

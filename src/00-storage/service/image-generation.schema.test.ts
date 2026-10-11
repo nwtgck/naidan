@@ -3,7 +3,7 @@ import { ExperimentalImageGenerationAssetAnnotationsSchemaDto, ExperimentalImage
 import { imageGenerationRunToDomain, imageGenerationRunToDto } from '@/00-storage/mapper/image-generation';
 import { imageGenerationRequestToDomain, imageGenerationRequestToDto, imageGenerationToDomain, imageGenerationToDto } from '@/00-storage/mapper/image-generation-history';
 import { toImageGenerationId, toImageGenerationSessionId } from '@/01-models/ids';
-import { generationAssetFixture, generationRunFixture } from './image-generation/test-support';
+import { generationAssetFixture, generationRunFixture } from './image-generation/index.test-support';
 
 function runFixture() {
   return generationRunFixture({ id: 'run-aa', sessionId: toImageGenerationSessionId({ raw: 'session-aa' }), count: 4, seed: '9007199254740993' });

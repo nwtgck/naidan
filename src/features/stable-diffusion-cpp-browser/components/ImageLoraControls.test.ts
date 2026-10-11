@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageModelPicker from './ImageModelPicker.vue';
 import ImageLoraControls from './ImageLoraControls.vue';
 import type { ImageLoraSelection } from '@/features/stable-diffusion-cpp-browser/lora-form';

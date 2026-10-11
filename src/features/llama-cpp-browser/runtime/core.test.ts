@@ -84,34 +84,36 @@ describe('native call adaptation', () => {
     });
     const ccall = vi.spyOn(jspiCore.module, 'ccall');
     const pointer = jspiCore.allocRecord({ name: 'llama_model_params' });
-    try {
-      expect(load.mock.calls[0]?.[0].profile).toBe(profile);
-      expect(jspiCore.createTensorPlacementReader().capability).toBe(bindings ? 'synchronous-leaf-bindings-v1' : 'tensor-layout-only');
-      expect(readGpuRequests({ core: jspiCore })).toEqual({ bufferCount: 0, bufferBytes: 0, writeCount: 0, writeBytes: 0, largestWriteBytes: 0, writesAtLeast4MiB: 0 });
-      expect(readGpuRequests({ core })).toBeUndefined();
-      expect(jspiCore.pointerBytes).toBe(4);
-      await jspiCore.api.llama_model_default_params(pointer);
-      expect(typeof pointer).toBe('bigint');
-      expect(typeof await jspiCore.api.ggml_backend_dev_count()).toBe('bigint');
-      expect(ccall).not.toHaveBeenCalled();
-    } finally {
-      jspiCore.free({ pointer });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        jspiCore.free({ pointer });
+      },
+    };
+    expect(load.mock.calls[0]?.[0].profile).toBe(profile);
+    expect(jspiCore.createTensorPlacementReader().capability).toBe(bindings ? 'synchronous-leaf-bindings-v1' : 'tensor-layout-only');
+    expect(readGpuRequests({ core: jspiCore })).toEqual({ bufferCount: 0, bufferBytes: 0, writeCount: 0, writeBytes: 0, largestWriteBytes: 0, writesAtLeast4MiB: 0 });
+    expect(readGpuRequests({ core })).toBeUndefined();
+    expect(jspiCore.pointerBytes).toBe(4);
+    await jspiCore.api.llama_model_default_params(pointer);
+    expect(typeof pointer).toBe('bigint');
+    expect(typeof await jspiCore.api.ggml_backend_dev_count()).toBe('bigint');
+    expect(ccall).not.toHaveBeenCalled();
   });
 
   it('passes bigint pointers and record results through ccall on the existing wasm32 ABI', async () => {
     const asyncCore = attachCore({ module: core.module, callMode: 'asyncify' });
     const ccall = vi.spyOn(core.module, 'ccall');
     const params = asyncCore.allocRecord({ name: 'llama_model_params' });
-    try {
-      await asyncCore.api.llama_model_default_params(params);
-      expect(ccall).toHaveBeenCalledWith('lcb_llama_model_default_params', undefined, ['bigint'], [params], { async: true });
-      expect(asyncCore.bytes({ pointer: params, length: asyncCore.recordSize({ name: 'llama_model_params' }) }).some(byte => byte !== 0)).toBe(true);
-      expect(typeof await asyncCore.api.ggml_backend_dev_count()).toBe('bigint');
-      expect(ccall).toHaveBeenLastCalledWith('lcb_ggml_backend_dev_count', 'bigint', [], [], { async: true });
-    } finally {
-      asyncCore.free({ pointer: params });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        asyncCore.free({ pointer: params });
+      },
+    };
+    await asyncCore.api.llama_model_default_params(params);
+    expect(ccall).toHaveBeenCalledWith('lcb_llama_model_default_params', undefined, ['bigint'], [params], { async: true });
+    expect(asyncCore.bytes({ pointer: params, length: asyncCore.recordSize({ name: 'llama_model_params' }) }).some(byte => byte !== 0)).toBe(true);
+    expect(typeof await asyncCore.api.ggml_backend_dev_count()).toBe('bigint');
+    expect(ccall).toHaveBeenLastCalledWith('lcb_ggml_backend_dev_count', 'bigint', [], [], { async: true });
   });
 
   it('keeps native access serialized until suspension settles and releases the guard after rejection', async () => {
@@ -217,34 +219,35 @@ describe('native call adaptation', () => {
     core.setField({ name: 'ggml_init_params', pointer: params, field: 'mem_size', value: 1024n * 1024n });
     core.setField({ name: 'ggml_init_params', pointer: params, field: 'no_alloc', value: 1 });
     let context = 0n, buffer = 0n;
-    try {
-      context = await core.api.ggml_init(params);
-      const tensor = await core.api.ggml_new_tensor_1d(context, core.constant({ name: 'GGML_TYPE_F32' }), 16n);
-      const buft = await core.api.ggml_backend_dev_buffer_type(await core.api.ggml_backend_dev_get(0n));
-      buffer = await core.api.ggml_backend_alloc_ctx_tensors_from_buft(context, buft);
-      expect(buffer).not.toBe(0n);
-      const reader = bound.createTensorPlacementReader();
-      const metadata = reader.read({ tensor });
-      expect(invoked).not.toHaveBeenCalled(); // No ordinary export enters the callback/setup.
-      expect(reader.capability).toBe(bindings ? 'synchronous-leaf-bindings-v1' : 'tensor-layout-only');
-      expect(metadata).toMatchObject({
-        op: 'GGML_OP_NONE',
-        type: 'GGML_TYPE_F32',
-        shape: [16, 1, 1, 1],
-        storage: bindings ? 'host' : 'unknown',
-        webgpuSupport: 'unavailable',
-      });
-      expect(await bound.api.ggml_backend_dev_count()).toBeGreaterThan(0n);
-      expect(invoked).toHaveBeenCalledWith('_lcb_ggml_backend_dev_count');
-      // General reentrant access remains prohibited while any API call is pending.
-      const pending = bound.api.ggml_backend_dev_count();
-      expect(() => bound.createTensorPlacementReader()).toThrow('Serialize');
-      await pending;
-    } finally {
-      if (buffer) await core.api.ggml_backend_buffer_free(buffer);
-      if (context) await core.api.ggml_free(context);
-      core.free({ pointer: params });
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        if (buffer) await core.api.ggml_backend_buffer_free(buffer);
+        if (context) await core.api.ggml_free(context);
+        core.free({ pointer: params });
+      },
+    };
+    context = await core.api.ggml_init(params);
+    const tensor = await core.api.ggml_new_tensor_1d(context, core.constant({ name: 'GGML_TYPE_F32' }), 16n);
+    const buft = await core.api.ggml_backend_dev_buffer_type(await core.api.ggml_backend_dev_get(0n));
+    buffer = await core.api.ggml_backend_alloc_ctx_tensors_from_buft(context, buft);
+    expect(buffer).not.toBe(0n);
+    const reader = bound.createTensorPlacementReader();
+    const metadata = reader.read({ tensor });
+    expect(invoked).not.toHaveBeenCalled(); // No ordinary export enters the callback/setup.
+    expect(reader.capability).toBe(bindings ? 'synchronous-leaf-bindings-v1' : 'tensor-layout-only');
+    expect(metadata).toMatchObject({
+      op: 'GGML_OP_NONE',
+      type: 'GGML_TYPE_F32',
+      shape: [16, 1, 1, 1],
+      storage: bindings ? 'host' : 'unknown',
+      webgpuSupport: 'unavailable',
+    });
+    expect(await bound.api.ggml_backend_dev_count()).toBeGreaterThan(0n);
+    expect(invoked).toHaveBeenCalledWith('_lcb_ggml_backend_dev_count');
+    // General reentrant access remains prohibited while any API call is pending.
+    const pending = bound.api.ggml_backend_dev_count();
+    expect(() => bound.createTensorPlacementReader()).toThrow('Serialize');
+    await pending;
   });
 
   it('rejects an incompatible or incomplete declared callback surface during setup', () => {

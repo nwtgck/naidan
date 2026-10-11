@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent } from 'vue';
+import { computed, defineAsyncComponent, inject } from 'vue';
+import { routerKey } from 'vue-router';
 import MainAppSurface from '@/components/MainAppSurface.vue';
 import { useAppPresentation } from '@/composables/useAppPresentation';
+import { provideDocumentMetadata } from '@/composables/useDocumentMetadata';
 
 const AppCommandRuntime = defineAsyncComponent(
   () => import('@/components/AppCommandRuntime.vue'),
@@ -10,7 +12,9 @@ const AppAuxiliaryUi = defineAsyncComponent(
   () => import('@/components/AppAuxiliaryUi.vue'),
 );
 
-const { appInteraction } = useAppPresentation();
+const { appInteraction, homeIntroduction, continueHomeIntroduction, finishHomeIntroduction } = useAppPresentation();
+// Head management belongs to the lazy main app; startup uses the generated HTML.
+provideDocumentMetadata({ router: inject(routerKey, undefined), document, homeIntroduction, continueHomeIntroduction, finishHomeIntroduction });
 const postStartupFeatures = computed(() => {
   const interaction = appInteraction.value;
   switch (interaction) {

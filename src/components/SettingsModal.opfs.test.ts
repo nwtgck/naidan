@@ -6,7 +6,7 @@ import SettingsModal from './SettingsModal.vue';
 import StorageTab from './StorageTab.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useConfirm } from '@/composables/useConfirm';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 // Mock vue-router
 vi.mock('vue-router', async importOriginal => ({

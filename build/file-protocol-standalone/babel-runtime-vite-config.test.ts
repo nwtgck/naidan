@@ -636,15 +636,16 @@ describe('file protocol standalone Vite config Babel interop', () => {
     await generateBundle(bundle);
 
     const dom = new JSDOM(bundle['index.html'].source);
-    try {
-      expect(Array.from(dom.window.document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'))
-        .map(link => link.getAttribute('href'))).toEqual([
-        './assets/z-entry.css',
-        './assets/a-entry.css',
-      ]);
-    } finally {
-      dom.window.close();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        dom.window.close();
+      },
+    };
+    expect(Array.from(dom.window.document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'))
+      .map(link => link.getAttribute('href'))).toEqual([
+      './assets/z-entry.css',
+      './assets/a-entry.css',
+    ]);
   });
 
   it('rejects a conditional link when it is the only existing owner of UI CSS', async () => {

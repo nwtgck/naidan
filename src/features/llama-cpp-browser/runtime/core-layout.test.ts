@@ -48,27 +48,28 @@ describe('module-local native ABI layouts', () => {
     const bound = attachCore({ module, callMode: 'direct' });
     const a = bound.allocRecord({ name: 'llama_batch' });
     const b = bound.allocRecord({ name: 'llama_batch' });
-    try {
-      for (let i = 0; i < 100; i++) bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer: a, value: i });
-      bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer: b, value: 12 });
-      const layout = bound.fieldLayout({ name: 'llama_batch', field: 'n_tokens' });
-      const read = ({ pointer }: { pointer: bigint }) => {
-        const span = bound.bytes({ pointer: pointer + layout.offset, length: layout.size });
-        return new DataView(span.buffer, span.byteOffset, span.byteLength).getInt32(0, true);
-      };
-      expect(read({ pointer: a })).toBe(99); expect(read({ pointer: b })).toBe(12);
-      expect(counts.get('_lcb_sizeof_record')).toBe(1);
-      expect(counts.get('_lcb_offsetof_field')).toBe(1);
-      expect(counts.get('_lcb_sizeof_field')).toBe(1);
-      expect(bound.fieldLayout({ name: 'llama_batch', field: 'token' })).not.toBe(layout);
-      expect(counts.get('_lcb_offsetof_field')).toBe(2);
-      expect(counts.get('_lcb_sizeof_field')).toBe(2);
-      expect(Object.isFrozen(layout)).toBe(true);
-      expect(Reflect.set(layout, 'size', 1)).toBe(false);
-      expect(bound.fieldLayout({ name: 'llama_batch', field: 'n_tokens' }).size).toBe(4);
-    } finally {
-      bound.free({ pointer: a }); bound.free({ pointer: b });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        bound.free({ pointer: a }); bound.free({ pointer: b });
+      },
+    };
+    for (let i = 0; i < 100; i++) bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer: a, value: i });
+    bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer: b, value: 12 });
+    const layout = bound.fieldLayout({ name: 'llama_batch', field: 'n_tokens' });
+    const read = ({ pointer }: { pointer: bigint }) => {
+      const span = bound.bytes({ pointer: pointer + layout.offset, length: layout.size });
+      return new DataView(span.buffer, span.byteOffset, span.byteLength).getInt32(0, true);
+    };
+    expect(read({ pointer: a })).toBe(99); expect(read({ pointer: b })).toBe(12);
+    expect(counts.get('_lcb_sizeof_record')).toBe(1);
+    expect(counts.get('_lcb_offsetof_field')).toBe(1);
+    expect(counts.get('_lcb_sizeof_field')).toBe(1);
+    expect(bound.fieldLayout({ name: 'llama_batch', field: 'token' })).not.toBe(layout);
+    expect(counts.get('_lcb_offsetof_field')).toBe(2);
+    expect(counts.get('_lcb_sizeof_field')).toBe(2);
+    expect(Object.isFrozen(layout)).toBe(true);
+    expect(Reflect.set(layout, 'size', 1)).toBe(false);
+    expect(bound.fieldLayout({ name: 'llama_batch', field: 'n_tokens' }).size).toBe(4);
   });
 
   it('reads the current heap after replacement, without caching a DataView or tensor address', () => {
@@ -83,18 +84,19 @@ describe('module-local native ABI layouts', () => {
     const pointer = bound.allocRecord({ name: 'llama_batch' });
     const layout = bound.fieldLayout({ name: 'llama_batch', field: 'n_tokens' });
     const at = Number(pointer + layout.offset);
-    try {
-      bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value: 1 });
-      const previous = heap;
-      heap = new Uint8Array(previous.length); heap.set(previous);
-      bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value: 73 });
-      expect(new DataView(heap.buffer).getInt32(at, true)).toBe(73);
-      expect(new DataView(previous.buffer).getInt32(at, true)).toBe(1);
-      heap = new Uint8Array(at + 3);
-      expect(() => bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value: 1 })).toThrow('out of bounds');
-    } finally {
-      bound.free({ pointer });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        bound.free({ pointer });
+      },
+    };
+    bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value: 1 });
+    const previous = heap;
+    heap = new Uint8Array(previous.length); heap.set(previous);
+    bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value: 73 });
+    expect(new DataView(heap.buffer).getInt32(at, true)).toBe(73);
+    expect(new DataView(previous.buffer).getInt32(at, true)).toBe(1);
+    heap = new Uint8Array(at + 3);
+    expect(() => bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value: 1 })).toThrow('out of bounds');
   });
 
   it('does not share layouts between module attachments or pointer widths', () => {
@@ -182,16 +184,17 @@ describe('module-local native ABI layouts', () => {
     }
     expect(counts.size).toBe(0);
     const pointer = bound.allocRecord({ name: 'llama_batch' });
-    try {
-      bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value: 7 });
-      for (const value of [0.5, NaN, Infinity, 2147483648, -2147483649]) {
-        expect(() => bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value })).toThrow();
-      }
-      bound.setField({ name: 'llama_batch', field: 'token', pointer, value: 0n });
-      expect(() => bound.setField({ name: 'llama_batch', field: 'token', pointer, value: 1n << 32n })).toThrow('overflow');
-      expect(() => bound.setField({ name: 'llama_batch', field: 'token', pointer: BigInt(module.HEAPU8.length), value: 0n })).toThrow('out of bounds');
-    } finally {
-      bound.free({ pointer });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        bound.free({ pointer });
+      },
+    };
+    bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value: 7 });
+    for (const value of [0.5, NaN, Infinity, 2147483648, -2147483649]) {
+      expect(() => bound.setField({ name: 'llama_batch', field: 'n_tokens', pointer, value })).toThrow();
     }
+    bound.setField({ name: 'llama_batch', field: 'token', pointer, value: 0n });
+    expect(() => bound.setField({ name: 'llama_batch', field: 'token', pointer, value: 1n << 32n })).toThrow('overflow');
+    expect(() => bound.setField({ name: 'llama_batch', field: 'token', pointer: BigInt(module.HEAPU8.length), value: 0n })).toThrow('out of bounds');
   });
 });

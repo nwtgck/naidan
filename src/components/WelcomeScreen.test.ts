@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import WelcomeScreen from './WelcomeScreen.vue';
 import { useSettings } from '@/composables/useSettings';
 import type { Settings } from '@/01-models/types';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });

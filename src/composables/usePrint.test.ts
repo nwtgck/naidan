@@ -1,16 +1,40 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mount } from '@vue/test-utils';
+import { defineComponent, h, ref } from 'vue';
+import { provideDocumentMetadata } from './useDocumentMetadata';
 import { usePrint } from './usePrint';
+
+function mountPrint() {
+  let api: ReturnType<typeof usePrint> | undefined;
+  const Client = defineComponent({
+    setup() {
+      api = usePrint();
+      return () => h('div');
+    },
+  });
+  const wrapper = mount(defineComponent({
+    setup() {
+      provideDocumentMetadata({ router: undefined, document, homeIntroduction: ref({ kind: 'inactive' }), continueHomeIntroduction: () => {}, finishHomeIntroduction: () => {} });
+      return () => h(Client);
+    },
+  }));
+  if (api === undefined) throw new Error('Print client did not mount');
+  return {
+    api,
+    [Symbol.dispose]() {
+      wrapper.unmount();
+    },
+  };
+}
 
 describe('usePrint composable', () => {
   beforeEach(() => {
-    vi.stubGlobal('window', {
-      print: vi.fn(),
-    });
-    vi.stubGlobal('document', {
-      title: 'Original Title',
-    });
+    document.head.innerHTML = '';
+    vi.spyOn(window, 'print').mockImplementation(() => {});
     vi.clearAllMocks();
   });
+
+  afterEach(() => vi.restoreAllMocks());
 
   it('should have initial activePrintMode as undefined', () => {
     const { activePrintMode } = usePrint();
@@ -44,7 +68,8 @@ describe('usePrint composable', () => {
   });
 
   it('should execute the full print workflow', async () => {
-    const { activePrintMode, print, markPrintReady } = usePrint();
+    using fixture = mountPrint();
+    const { activePrintMode, print, markPrintReady } = fixture.api;
     const testTitle = 'New Print Title';
 
     // Start print flow
@@ -65,11 +90,12 @@ describe('usePrint composable', () => {
     // Verify window.print called and state restored
     expect(window.print).toHaveBeenCalled();
     expect(activePrintMode.value).toBeUndefined();
-    expect(document.title).toBe('Original Title');
+    expect(document.title).toBe('Naidan');
   });
 
   it('should restore state when window.print itself throws', async () => {
-    const { activePrintMode, print, markPrintReady } = usePrint();
+    using fixture = mountPrint();
+    const { activePrintMode, print, markPrintReady } = fixture.api;
     vi.mocked(window.print).mockImplementationOnce(() => {
       throw new Error('Native print failed');
     });
@@ -80,11 +106,12 @@ describe('usePrint composable', () => {
 
     await expect(printPromise).rejects.toThrow('Native print failed');
     expect(activePrintMode.value).toBeUndefined();
-    expect(document.title).toBe('Original Title');
+    expect(document.title).toBe('Naidan');
   });
 
   it('should support repeated print cycles without stale state', async () => {
-    const { activePrintMode, print, markPrintReady } = usePrint();
+    using fixture = mountPrint();
+    const { activePrintMode, print, markPrintReady } = fixture.api;
 
     for (let index = 0; index < 2; index += 1) {
       const printPromise = print({ title: `Print ${index}`, mode: 'chat' });
@@ -95,26 +122,22 @@ describe('usePrint composable', () => {
       await printPromise;
 
       expect(activePrintMode.value).toBeUndefined();
-      expect(document.title).toBe('Original Title');
+      expect(document.title).toBe('Naidan');
     }
 
     expect(window.print).toHaveBeenCalledTimes(2);
   });
 
   it('should restore state even if an error occurs during printing', async () => {
-    const { activePrintMode, print } = usePrint();
-
-    // Force waitForPrintReady to fail (simulated by throwing in a microtask)
-    vi.spyOn(document, 'title', 'set').mockImplementation(() => {
-      throw new Error('Title Swap Failed');
+    using fixture = mountPrint();
+    const { activePrintMode, print } = fixture.api;
+    const setter = Object.getOwnPropertyDescriptor(Document.prototype, 'title')?.set;
+    if (setter === undefined) throw new Error('Missing native title setter');
+    vi.spyOn(document, 'title', 'set').mockImplementation(value => {
+      if (value === 'Boom') throw new Error('Title Swap Failed');
+      setter.call(document, value);
     });
-
-    try {
-      await print({ title: 'Boom', mode: 'chat' });
-    } catch (e) {
-      // Expected
-    }
-
+    await expect(print({ title: 'Boom', mode: 'chat' })).rejects.toThrow('Title Swap Failed');
     expect(activePrintMode.value).toBeUndefined();
     vi.restoreAllMocks();
   });

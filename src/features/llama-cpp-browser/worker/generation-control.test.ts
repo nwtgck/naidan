@@ -9,7 +9,7 @@ import { generate } from './generation';
 import * as outputPacing from './output-pacing';
 import * as tokenRendering from './token-renderer';
 import { diagnosticSchema } from '@/features/llama-cpp-browser/debug-log';
-import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics';
+import { readDiagnostics } from '@/features/llama-cpp-browser/test-utils/diagnostics.test-support';
 
 const host = vi.hoisted(() => ({ session: vi.fn<typeof prepareGenerationSession>(), chat: vi.fn<typeof prepareChat>(), sampler: vi.fn<typeof createChatSampler>() }));
 vi.mock('./session', () => ({ prepareGenerationSession: host.session }));

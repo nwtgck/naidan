@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageGenerationLab from './ImageGenerationLab.vue';
 import ImageGenerationEditor from './ImageGenerationEditor.vue';
 import ImageModelPicker from '@/features/stable-diffusion-cpp-browser/components/ImageModelPicker.vue';
@@ -178,23 +178,24 @@ it('keeps copy/save diagnostics usable while a native request is indefinitely pe
       finish = resolve;
     });
   });
-  try {
-    wrapper = mount(ImageGenerationLab); await flushPromises();
-    await wrapper.get('[data-testid="image-debug-mode"]').setValue(true);
-    wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'private prompt';
-    const running = wrapper.vm.TEST_ONLY.generate({ submission: undefined }); await flushPromises();
-    expect(wrapper.get('[data-testid="image-generate"]').element.matches(':disabled')).toBe(true);
-    const copy = wrapper.get('[data-testid="image-copy-diagnostics"]');
-    expect(copy.element.closest('fieldset')).toBeNull(); expect(copy.element.matches(':disabled')).toBe(false);
-    expect(wrapper.get('[data-testid="image-save-diagnostics"]').element.matches(':disabled')).toBe(false);
-    await copy.trigger('click'); await flushPromises();
-    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('model-load'));
-    expect(writeText.mock.calls[0]?.[0]).not.toContain('private prompt');
-    finish!({ png: new Blob([Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10)], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mocked model' });
-    await running;
-  } finally {
-    if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard); else Reflect.deleteProperty(navigator, 'clipboard');
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard); else Reflect.deleteProperty(navigator, 'clipboard');
+    },
+  };
+  wrapper = mount(ImageGenerationLab); await flushPromises();
+  await wrapper.get('[data-testid="image-debug-mode"]').setValue(true);
+  wrapper.vm.TEST_ONLY.files.value = { model: ggufFile() }; wrapper.vm.TEST_ONLY.parameters.value.prompt = 'private prompt';
+  const running = wrapper.vm.TEST_ONLY.generate({ submission: undefined }); await flushPromises();
+  expect(wrapper.get('[data-testid="image-generate"]').element.matches(':disabled')).toBe(true);
+  const copy = wrapper.get('[data-testid="image-copy-diagnostics"]');
+  expect(copy.element.closest('fieldset')).toBeNull(); expect(copy.element.matches(':disabled')).toBe(false);
+  expect(wrapper.get('[data-testid="image-save-diagnostics"]').element.matches(':disabled')).toBe(false);
+  await copy.trigger('click'); await flushPromises();
+  expect(writeText).toHaveBeenCalledWith(expect.stringContaining('model-load'));
+  expect(writeText.mock.calls[0]?.[0]).not.toContain('private prompt');
+  finish!({ png: new Blob([Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10)], { type: 'image/png' }), width: 256, height: 256, modelVersion: 'mocked model' });
+  await running;
 });
 
 it('shows image decoding separately from sampling without changing requested steps', async () => {

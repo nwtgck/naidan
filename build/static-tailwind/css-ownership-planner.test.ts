@@ -182,80 +182,81 @@ describe('static Tailwind CSS ownership planner', () => {
     ));
     const ownerKey = createCssOwnerKey({ owners });
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-tailwind-debug-'));
-    try {
-      writeCssOwnershipDebugFiles({
-        directory,
-        plan: {
-          outputMode: 'split',
-          candidates: ['p-2'],
-          candidateOwners: new Map([['p-2', new Set(owners)]]),
-          ownerCandidateGroups: new Map([[ownerKey, ['p-2']]]),
-          baselineCss: '',
-          entryCss: '',
-          globalCss: '.p-2 {}\n',
-          globalDelta: '.p-2 {}\n',
-          cssGroups: new Map([[ownerKey, '.p-2 {}\n']]),
-          runtimeFragmentsByOwner: new Map([[ownerKey, [{ order: 7, css: '.p-2 {}\n' }]]]),
-          conflicts: [],
-          compression: {
-            maxSplitCssGroups: undefined,
-            candidates: {
-              originalLazyGroupCount: 1,
-              retainedLazyGroupCount: 1,
-              retainedOwnerKeys: [ownerKey],
-            },
-            atoms: {
-              originalLazyGroupCount: 1,
-              retainedLazyGroupCount: 1,
-              retainedOwnerKeys: [ownerKey],
-            },
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        fs.rmSync(directory, { recursive: true, force: true });
+      },
+    };
+    writeCssOwnershipDebugFiles({
+      directory,
+      plan: {
+        outputMode: 'split',
+        candidates: ['p-2'],
+        candidateOwners: new Map([['p-2', new Set(owners)]]),
+        ownerCandidateGroups: new Map([[ownerKey, ['p-2']]]),
+        baselineCss: '',
+        entryCss: '',
+        globalCss: '.p-2 {}\n',
+        globalDelta: '.p-2 {}\n',
+        cssGroups: new Map([[ownerKey, '.p-2 {}\n']]),
+        runtimeFragmentsByOwner: new Map([[ownerKey, [{ order: 7, css: '.p-2 {}\n' }]]]),
+        conflicts: [],
+        compression: {
+          maxSplitCssGroups: undefined,
+          candidates: {
+            originalLazyGroupCount: 1,
+            retainedLazyGroupCount: 1,
+            retainedOwnerKeys: [ownerKey],
           },
-          metrics: {
-            baseline: { raw: 0, gzip: 0 },
-            uniqueDelta: { raw: 8, gzip: 8 },
-            ordering: {
-              runtimeFragmentCount: 1,
-              runtimeMetadataRaw: 1,
-              runtimeMetadataGzip: 1,
-            },
-            placement: {
-              globalAtomCount: 1,
-              sourceOwnedAtomCount: 1,
-              initialSupportAtomCount: 0,
-            },
-            emitted: {
-              groupCount: 1,
-              raw: 8,
-              gzip: 8,
-              duplicateAtomCount: 0,
-              duplicateRaw: 0,
-              duplicateRatio: 0,
-              structuralOverheadRaw: 0,
-            },
+          atoms: {
+            originalLazyGroupCount: 1,
+            retainedLazyGroupCount: 1,
+            retainedOwnerKeys: [ownerKey],
           },
-          tailwindVersion: '4.3.2',
-          stylesheetDependencies: [],
         },
-      });
-      const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'groups.json'), 'utf8')) as {
-        groups: Record<string, {
-          filename: string,
-          ownerKey: string,
-          fragmentCount: number,
-          fragmentOrders: number[],
-        }>,
-      };
-      const [group] = Object.values(manifest.groups);
-      expect(group).toBeDefined();
-      expect(group?.filename).toMatch(/^group-[a-f0-9]{64}\.css$/u);
-      expect(group?.filename.length).toBeLessThan(96);
-      expect(group?.ownerKey).toBe(ownerKey);
-      expect(group?.fragmentCount).toBe(1);
-      expect(group?.fragmentOrders).toEqual([7]);
-      expect(fs.existsSync(path.join(directory, group?.filename ?? 'missing'))).toBe(true);
-    } finally {
-      fs.rmSync(directory, { recursive: true, force: true });
-    }
+        metrics: {
+          baseline: { raw: 0, gzip: 0 },
+          uniqueDelta: { raw: 8, gzip: 8 },
+          ordering: {
+            runtimeFragmentCount: 1,
+            runtimeMetadataRaw: 1,
+            runtimeMetadataGzip: 1,
+          },
+          placement: {
+            globalAtomCount: 1,
+            sourceOwnedAtomCount: 1,
+            initialSupportAtomCount: 0,
+          },
+          emitted: {
+            groupCount: 1,
+            raw: 8,
+            gzip: 8,
+            duplicateAtomCount: 0,
+            duplicateRaw: 0,
+            duplicateRatio: 0,
+            structuralOverheadRaw: 0,
+          },
+        },
+        tailwindVersion: '4.3.2',
+        stylesheetDependencies: [],
+      },
+    });
+    const manifest = JSON.parse(fs.readFileSync(path.join(directory, 'groups.json'), 'utf8')) as {
+      groups: Record<string, {
+        filename: string,
+        ownerKey: string,
+        fragmentCount: number,
+        fragmentOrders: number[],
+      }>,
+    };
+    const [group] = Object.values(manifest.groups);
+    expect(group).toBeDefined();
+    expect(group?.filename).toMatch(/^group-[a-f0-9]{64}\.css$/u);
+    expect(group?.filename.length).toBeLessThan(96);
+    expect(group?.ownerKey).toBe(ownerKey);
+    expect(group?.fragmentCount).toBe(1);
+    expect(group?.fragmentOrders).toEqual([7]);
+    expect(fs.existsSync(path.join(directory, group?.filename ?? 'missing'))).toBe(true);
   });
 
   it('rejects inconsistent or ownerless source analysis before CSS compilation', async () => {

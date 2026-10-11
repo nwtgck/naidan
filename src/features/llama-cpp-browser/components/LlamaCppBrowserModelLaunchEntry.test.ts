@@ -1,7 +1,7 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { DEFAULT_SETTINGS } from '@/01-models/types';
 import { modelLaunchEntryState, modelLaunchRetry, TEST_ONLY } from '@/features/llama-cpp-browser/model-launch/entry-state';
 import { modelLaunchPresentation } from '@/features/llama-cpp-browser/model-launch/presentation';

@@ -38,6 +38,7 @@ import { promptApiRuntimeState } from '@/features/prompt-api/runtime';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
 const { settings, save, updateGlobalModelAndEndpoint, onboardingDraft, setIsOnboardingDismissed, setOnboardingDraft, initialized, isOnboardingDismissed } = useSettings();
+const emit = defineEmits<{ dismiss: [] }>();
 const { setActiveFocusArea } = useLayout();
 const modalContent = ref<HTMLElement | undefined>(undefined);
 
@@ -513,6 +514,7 @@ async function handleClose() {
     },
   });
   setIsOnboardingDismissed({ dismissed: true });
+  emit('dismiss');
 }
 
 // This explicit action sets the actual default even during onboarding. Keep
@@ -583,6 +585,7 @@ async function handleFinish() {
 
     setOnboardingDraft({ draft: null });
     setIsOnboardingDismissed({ dismissed: true });
+    emit('dismiss');
   } catch (e) {
     error.value = e instanceof Error ? e.message : await ensureStrings.OnboardingModal__failed_to_save_settings();
   }

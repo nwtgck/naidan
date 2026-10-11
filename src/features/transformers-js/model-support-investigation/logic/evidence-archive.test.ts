@@ -11,12 +11,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  try {
-    expect(fetch).not.toHaveBeenCalled();
-  } finally {
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    },
+  };
+  expect(fetch).not.toHaveBeenCalled();
 });
 
 describe('Evidence transport over the shared streaming ZIP core', () => {
@@ -60,12 +61,13 @@ describe('Evidence transport over the shared streaming ZIP core', () => {
     view.setUint32(centralOffset + 24, 2 * 1024 * 1024, true);
     const openEntry = vi.spyOn(StreamingZipReader.prototype, 'openEntry');
     const archive = await openEvidenceArchive({ blob: new Blob([buffer]) });
-    try {
-      await expect(archive.reader.read({ path: 'timing.json', maximumBytes: 1024 * 1024 })).rejects.toThrow('read byte budget');
-      expect(openEntry).not.toHaveBeenCalled();
-    } finally {
-      await archive.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await archive.close();
+      },
+    };
+    await expect(archive.reader.read({ path: 'timing.json', maximumBytes: 1024 * 1024 })).rejects.toThrow('read byte budget');
+    expect(openEntry).not.toHaveBeenCalled();
   });
 
   it('applies the same read budget to retained in-memory files', async () => {
@@ -142,11 +144,12 @@ describe('Evidence transport over the shared streaming ZIP core', () => {
     expect(bytes.slice(bodyOffset, bodyOffset + 3)).toEqual(Uint8Array.of(10, 20, 30));
     bytes[bodyOffset] = 99;
     const archive = await openEvidenceArchive({ blob: new Blob([buffer]) });
-    try {
-      await expect(archive.reader.read({ path: 'bytes.bin' })).rejects.toThrow('ZIP entry CRC mismatch: bytes.bin');
-    } finally {
-      await archive.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await archive.close();
+      },
+    };
+    await expect(archive.reader.read({ path: 'bytes.bin' })).rejects.toThrow('ZIP entry CRC mismatch: bytes.bin');
   });
 
   it('keeps the uncompressed verification file set independent of later map changes', async () => {

@@ -6,7 +6,7 @@ import MessageThinking from './MessageThinking.vue';
 import MessageActions from './MessageActions.vue';
 import type { AssistantMessageNode } from '@/01-models/types';
 import { toChatId, toMessageId } from '@/01-models/ids';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
 import type { Chat } from '@/01-models/types';
 

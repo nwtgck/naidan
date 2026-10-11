@@ -299,73 +299,74 @@ describe('LFM2.5 2.6B Provider / basic', () => {
         throw new Error(stop);
       },
     });
-    try {
-      const capture = captureLfm26Chat({
-        provider: harness.provider,
-        request: {
-          model: "hf.co/LiquidAI/LFM2.5-2.6B-ONNX",
-          messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 16,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    };
+    const capture = captureLfm26Chat({
+      provider: harness.provider,
+      request: {
+        model: "hf.co/LiquidAI/LFM2.5-2.6B-ONNX",
+        messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 16,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: stop } });
-      expect(capture.snapshot().parts).toEqual([expect.objectContaining({
-        type: 'reasoning',
-        index: 0,
-        chunks: [''],
-        completeness: 'partial',
-      })]);
-      expect(nativeInputs).toHaveLength(1);
-      const observed = nativeInputs[0]!;
-      expect(observed.version).toBe(source.identity.transformersJsVersion);
-      expect(observed.tokenizerInstance).toBe(true);
-      expect(observed.templateSha).toBe('8ea15224003c2e89a1ac8d3b0a3362e8e587896f2bcc41df5dcc2d9c5d0ee82c');
-      expect(observed.optionKeys).toEqual([
-        'attention_mask', 'do_sample', 'input_ids', 'max_new_tokens', 'past_key_values',
-        'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
-      ].sort());
-      const tensors = { input_ids: observed.input, attention_mask: observed.mask };
-      for (const fact of source.inputContract.inputTensorFacts) {
-        const tensor = tensors[fact.name];
-        expect({ name: fact.name, dtype: tensor?.type, dims: tensor?.dims, location: tensor?.location }).toEqual(fact);
-        expect(tensor?.data).toBeInstanceOf(BigInt64Array);
-      }
-      const actualIds = Array.from(z.instanceof(BigInt64Array).parse(observed.input?.data), Number);
-      expect(observed.input?.dims).toEqual([1, 15]);
-      expect(actualIds).toEqual(source.inputContract.inputTokenIds);
-      expect(actualIds).toEqual(source.modelReplay.sourceInputTokenIds);
-      expect(createHash('sha256').update(JSON.stringify(actualIds)).digest('hex')).toBe(source.modelReplay.sourceInputSha256);
-      expect(observed.mask?.data).toEqual(BigInt64Array.from(source.modelReplay.sourceInputTokenIds.map(() => 1n)));
-      // Only the four recorded settings are claimed, not every merged default.
-      expect(observed.config).toEqual(source.inputContract.effectiveGenerationConfig);
-      expect(observed.past).toBeNull();
-      expect(observed.returnDict).toBe(true);
-      expect(observed.streamerInstance).toBe(true);
-      expect(observed.stoppingType).toBe('function');
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.workers).toHaveLength(1);
-      expect(harness.observations.ortCalls).toHaveLength(1);
-      expect(harness.observations.processors).toHaveLength(0);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.localImageFetchCalls).toEqual([]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: stop } });
+    expect(capture.snapshot().parts).toEqual([expect.objectContaining({
+      type: 'reasoning',
+      index: 0,
+      chunks: [''],
+      completeness: 'partial',
+    })]);
+    expect(nativeInputs).toHaveLength(1);
+    const observed = nativeInputs[0]!;
+    expect(observed.version).toBe(source.identity.transformersJsVersion);
+    expect(observed.tokenizerInstance).toBe(true);
+    expect(observed.templateSha).toBe('8ea15224003c2e89a1ac8d3b0a3362e8e587896f2bcc41df5dcc2d9c5d0ee82c');
+    expect(observed.optionKeys).toEqual([
+      'attention_mask', 'do_sample', 'input_ids', 'max_new_tokens', 'past_key_values',
+      'return_dict_in_generate', 'stopping_criteria', 'streamer', 'temperature', 'top_p',
+    ].sort());
+    const tensors = { input_ids: observed.input, attention_mask: observed.mask };
+    for (const fact of source.inputContract.inputTensorFacts) {
+      const tensor = tensors[fact.name];
+      expect({ name: fact.name, dtype: tensor?.type, dims: tensor?.dims, location: tensor?.location }).toEqual(fact);
+      expect(tensor?.data).toBeInstanceOf(BigInt64Array);
     }
+    const actualIds = Array.from(z.instanceof(BigInt64Array).parse(observed.input?.data), Number);
+    expect(observed.input?.dims).toEqual([1, 15]);
+    expect(actualIds).toEqual(source.inputContract.inputTokenIds);
+    expect(actualIds).toEqual(source.modelReplay.sourceInputTokenIds);
+    expect(createHash('sha256').update(JSON.stringify(actualIds)).digest('hex')).toBe(source.modelReplay.sourceInputSha256);
+    expect(observed.mask?.data).toEqual(BigInt64Array.from(source.modelReplay.sourceInputTokenIds.map(() => 1n)));
+    // Only the four recorded settings are claimed, not every merged default.
+    expect(observed.config).toEqual(source.inputContract.effectiveGenerationConfig);
+    expect(observed.past).toBeNull();
+    expect(observed.returnDict).toBe(true);
+    expect(observed.streamerInstance).toBe(true);
+    expect(observed.stoppingType).toBe('function');
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.workers).toHaveLength(1);
+    expect(harness.observations.ortCalls).toHaveLength(1);
+    expect(harness.observations.processors).toHaveLength(0);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.localImageFetchCalls).toEqual([]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('delivers the recorded first-turn stream exactly before Provider settlement', async () => {
@@ -394,47 +395,48 @@ describe('LFM2.5 2.6B Provider / basic', () => {
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from(replay.sequenceTokenIds), [1, replay.sequenceTokenIds.length]), past_key_values: null };
       },
     });
-    try {
-      const capture = captureLfm26Chat({
-        provider: harness.provider,
-        request: {
-          model: "hf.co/LiquidAI/LFM2.5-2.6B-ONNX",
-          messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 16,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    };
+    const capture = captureLfm26Chat({
+      provider: harness.provider,
+      request: {
+        model: "hf.co/LiquidAI/LFM2.5-2.6B-ONNX",
+        messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 16,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      const observed = capture.snapshot();
-      // These segment expectations are selected original Production first-turn
-      // observations, not manufactured decoding steps or a completed answer.
-      expect(releasedTokenCount).toBe(16);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
-      expect(observed.parts).toEqual([expect.objectContaining({
-        type: 'reasoning',
-        index: 0,
-        chunks: ['', 'The', ' ', 'user ', 'wants ', 'me ', 'to ', '"Template ', 'probe ', 'user ', 'message." ', 'This ', 'is ', 'a ', 'bit ', 'ambiguous'],
-        completeness: 'partial',
-      })]);
-      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-      expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    const observed = capture.snapshot();
+    // These segment expectations are selected original Production first-turn
+    // observations, not manufactured decoding steps or a completed answer.
+    expect(releasedTokenCount).toBe(16);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => item.operation.startsWith('writer') || item.operation.startsWith('create') || item.operation === 'remove')).toEqual([]);
+    expect(observed.parts).toEqual([expect.objectContaining({
+      type: 'reasoning',
+      index: 0,
+      chunks: ['', 'The', ' ', 'user ', 'wants ', 'me ', 'to ', '"Template ', 'probe ', 'user ', 'message." ', 'This ', 'is ', 'a ', 'bit ', 'ambiguous'],
+      completeness: 'partial',
+    })]);
+    expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+    expect(observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind)).toEqual(['part', 'part-complete', 'result', 'settled']);
   }, 30_000);
 
   it('basic: delivers the recorded first-turn callbacks before settlement', async () => {
@@ -445,54 +447,55 @@ describe('LFM2.5 2.6B Provider / basic', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // first-turn: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 16,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "first-turn", parameters });
-        const capture = captureLfm26Chat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-2.6B-ONNX",
-            messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
-            parameters,
-            tools: [],
-            signal,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    };
+    // first-turn: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "first-turn", parameters });
+      const capture = captureLfm26Chat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-2.6B-ONNX",
+          messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
+          parameters,
+          tools: [],
+          signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(observed.parts).toEqual([expect.objectContaining({
-          type: 'reasoning',
-          index: 0,
-          chunks: expect.any(Array),
-          completeness: 'partial',
-        })]);
-        expect(observed.parts[0]?.type === 'reasoning' ? observed.parts[0].chunks.join('') : undefined)
-          .toBe('The user wants me to "Template probe user message." This is a bit ambiguous');
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(order).toEqual(['part', 'part-complete', 'result', 'settled']);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      expect(observed.parts).toEqual([expect.objectContaining({
+        type: 'reasoning',
+        index: 0,
+        chunks: expect.any(Array),
+        completeness: 'partial',
+      })]);
+      expect(observed.parts[0]?.type === 'reasoning' ? observed.parts[0].chunks.join('') : undefined)
+        .toBe('The user wants me to "Template probe user message." This is a bit ambiguous');
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(order).toEqual(['part', 'part-complete', 'result', 'settled']);
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -505,47 +508,48 @@ describe('LFM2.5 2.6B Provider / system', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // system-user: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "system-user", parameters });
-        const capture = captureLfm26Chat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-2.6B-ONNX",
-            messages: textMessages({ messages: [{ role: "system", content: "Template probe system instruction." }, { role: "user", content: "Template probe user message." }] }),
-            parameters,
-            tools: [],
-            signal,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    };
+    // system-user: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "system-user", parameters });
+      const capture = captureLfm26Chat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-2.6B-ONNX",
+          messages: textMessages({ messages: [{ role: "system", content: "Template probe system instruction." }, { role: "user", content: "Template probe user message." }] }),
+          parameters,
+          tools: [],
+          signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(observed.parts).toEqual([expect.objectContaining({ type: 'reasoning', index: 0, chunks: ['', 'The'], completeness: 'partial' })]);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(order).toEqual(['part', 'part-complete', 'result', 'settled']);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      expect(observed.parts).toEqual([expect.objectContaining({ type: 'reasoning', index: 0, chunks: ['', 'The'], completeness: 'partial' })]);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(order).toEqual(['part', 'part-complete', 'result', 'settled']);
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -582,66 +586,67 @@ describe('LFM2.5 2.6B Provider / history', () => {
         throw new Error(boundary);
       },
     });
-    try {
-      // Verify the captured native control before exercising the public warm
-      // Provider. Loading and this metadata lookup remain strictly offline.
-      await harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
-      const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(inputEvidence.modelId, {
-        revision: inputEvidence.revision,
-        local_files_only: true,
-      });
-      expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(scenario.selectedTemplateSha256);
-      expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true })).toBe(scenario.renderedText);
-      const native = tokenizer.apply_chat_template(scenario.messages, { add_generation_prompt: true, return_dict: true });
-      expect(native.input_ids).toBeInstanceOf(harness.runtime.Tensor);
-      expect(Array.from(native.input_ids.data, Number)).toEqual(scenario.inputTokenIds);
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    };
+    // Verify the captured native control before exercising the public warm
+    // Provider. Loading and this metadata lookup remain strictly offline.
+    await harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
+    const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(inputEvidence.modelId, {
+      revision: inputEvidence.revision,
+      local_files_only: true,
+    });
+    expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(scenario.selectedTemplateSha256);
+    expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true })).toBe(scenario.renderedText);
+    const native = tokenizer.apply_chat_template(scenario.messages, { add_generation_prompt: true, return_dict: true });
+    expect(native.input_ids).toBeInstanceOf(harness.runtime.Tensor);
+    expect(Array.from(native.input_ids.data, Number)).toEqual(scenario.inputTokenIds);
 
-      const capture = captureLfm26Chat({
-        provider: harness.provider,
-        request: {
-          model: inputEvidence.modelId,
-          messages: textMessages({ messages: [{ role: "system", content: "Template probe system instruction." }, { role: "user", content: "Template probe user message." }] }),
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    const capture = captureLfm26Chat({
+      provider: harness.provider,
+      request: {
+        model: inputEvidence.modelId,
+        messages: textMessages({ messages: [{ role: "system", content: "Template probe system instruction." }, { role: "user", content: "Template probe user message." }] }),
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
-      expect(nativeInputs).toHaveLength(1);
-      const observedInput = nativeInputs[0]!;
-      expect(observedInput.input?.type).toBe('int64');
-      expect(observedInput.input?.location).toBe('cpu');
-      expect(observedInput.input?.dims).toEqual([1, scenario.inputTokenIds.length]);
-      expect(observedInput.input?.data).toEqual(BigInt64Array.from(scenario.inputTokenIds, BigInt));
-      expect(observedInput.mask?.type).toBe('int64');
-      expect(observedInput.mask?.location).toBe('cpu');
-      expect(observedInput.mask?.dims).toEqual([1, scenario.inputTokenIds.length]);
-      expect(observedInput.mask?.data).toEqual(new BigInt64Array(scenario.inputTokenIds.length).fill(1n));
-      expect(observedInput.past).toBeNull();
-      expect(capture.snapshot().parts).toEqual([expect.objectContaining({
-        type: 'reasoning',
-        index: 0,
-        chunks: [''],
-        completeness: 'partial',
-      })]);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
+    expect(nativeInputs).toHaveLength(1);
+    const observedInput = nativeInputs[0]!;
+    expect(observedInput.input?.type).toBe('int64');
+    expect(observedInput.input?.location).toBe('cpu');
+    expect(observedInput.input?.dims).toEqual([1, scenario.inputTokenIds.length]);
+    expect(observedInput.input?.data).toEqual(BigInt64Array.from(scenario.inputTokenIds, BigInt));
+    expect(observedInput.mask?.type).toBe('int64');
+    expect(observedInput.mask?.location).toBe('cpu');
+    expect(observedInput.mask?.dims).toEqual([1, scenario.inputTokenIds.length]);
+    expect(observedInput.mask?.data).toEqual(new BigInt64Array(scenario.inputTokenIds.length).fill(1n));
+    expect(observedInput.past).toBeNull();
+    expect(capture.snapshot().parts).toEqual([expect.objectContaining({
+      type: 'reasoning',
+      index: 0,
+      chunks: [''],
+      completeness: 'partial',
+    })]);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it("multi-turn-generation preserves the recorded native input through Provider.chat", async () => {
@@ -676,66 +681,67 @@ describe('LFM2.5 2.6B Provider / history', () => {
         throw new Error(boundary);
       },
     });
-    try {
-      // Verify the captured native control before exercising the public warm
-      // Provider. Loading and this metadata lookup remain strictly offline.
-      await harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
-      const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(inputEvidence.modelId, {
-        revision: inputEvidence.revision,
-        local_files_only: true,
-      });
-      expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(scenario.selectedTemplateSha256);
-      expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true })).toBe(scenario.renderedText);
-      const native = tokenizer.apply_chat_template(scenario.messages, { add_generation_prompt: true, return_dict: true });
-      expect(native.input_ids).toBeInstanceOf(harness.runtime.Tensor);
-      expect(Array.from(native.input_ids.data, Number)).toEqual(scenario.inputTokenIds);
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    };
+    // Verify the captured native control before exercising the public warm
+    // Provider. Loading and this metadata lookup remain strictly offline.
+    await harness.service.loadDownloadedModel({ modelId: inputEvidence.modelId });
+    const tokenizer = await harness.runtime.AutoTokenizer.from_pretrained(inputEvidence.modelId, {
+      revision: inputEvidence.revision,
+      local_files_only: true,
+    });
+    expect(createHash('sha256').update(tokenizer.get_chat_template()).digest('hex')).toBe(scenario.selectedTemplateSha256);
+    expect(tokenizer.apply_chat_template(scenario.messages, { tokenize: false, add_generation_prompt: true })).toBe(scenario.renderedText);
+    const native = tokenizer.apply_chat_template(scenario.messages, { add_generation_prompt: true, return_dict: true });
+    expect(native.input_ids).toBeInstanceOf(harness.runtime.Tensor);
+    expect(Array.from(native.input_ids.data, Number)).toEqual(scenario.inputTokenIds);
 
-      const capture = captureLfm26Chat({
-        provider: harness.provider,
-        request: {
-          model: inputEvidence.modelId,
-          messages: textMessages({ messages: [{ role: "user", content: "Template probe first user message." }, { role: "assistant", content: "Template probe assistant response." }, { role: "user", content: "Template probe second user message." }] }),
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    const capture = captureLfm26Chat({
+      provider: harness.provider,
+      request: {
+        model: inputEvidence.modelId,
+        messages: textMessages({ messages: [{ role: "user", content: "Template probe first user message." }, { role: "assistant", content: "Template probe assistant response." }, { role: "user", content: "Template probe second user message." }] }),
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
-      expect(nativeInputs).toHaveLength(1);
-      const observedInput = nativeInputs[0]!;
-      expect(observedInput.input?.type).toBe('int64');
-      expect(observedInput.input?.location).toBe('cpu');
-      expect(observedInput.input?.dims).toEqual([1, scenario.inputTokenIds.length]);
-      expect(observedInput.input?.data).toEqual(BigInt64Array.from(scenario.inputTokenIds, BigInt));
-      expect(observedInput.mask?.type).toBe('int64');
-      expect(observedInput.mask?.location).toBe('cpu');
-      expect(observedInput.mask?.dims).toEqual([1, scenario.inputTokenIds.length]);
-      expect(observedInput.mask?.data).toEqual(new BigInt64Array(scenario.inputTokenIds.length).fill(1n));
-      expect(observedInput.past).toBeNull();
-      expect(capture.snapshot().parts).toEqual([expect.objectContaining({
-        type: 'reasoning',
-        index: 0,
-        chunks: [''],
-        completeness: 'partial',
-      })]);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: boundary } });
+    expect(nativeInputs).toHaveLength(1);
+    const observedInput = nativeInputs[0]!;
+    expect(observedInput.input?.type).toBe('int64');
+    expect(observedInput.input?.location).toBe('cpu');
+    expect(observedInput.input?.dims).toEqual([1, scenario.inputTokenIds.length]);
+    expect(observedInput.input?.data).toEqual(BigInt64Array.from(scenario.inputTokenIds, BigInt));
+    expect(observedInput.mask?.type).toBe('int64');
+    expect(observedInput.mask?.location).toBe('cpu');
+    expect(observedInput.mask?.dims).toEqual([1, scenario.inputTokenIds.length]);
+    expect(observedInput.mask?.data).toEqual(new BigInt64Array(scenario.inputTokenIds.length).fill(1n));
+    expect(observedInput.past).toBeNull();
+    expect(capture.snapshot().parts).toEqual([expect.objectContaining({
+      type: 'reasoning',
+      index: 0,
+      chunks: [''],
+      completeness: 'partial',
+    })]);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('replays the captured prefix for explicit raw assistant history without claiming a successful preceding Provider turn', async () => {
@@ -770,49 +776,50 @@ describe('LFM2.5 2.6B Provider / history', () => {
         return { sequences: new runtime.Tensor('int64', BigInt64Array.from(result.sequenceTokenIds), [1, result.sequenceTokenIds.length]), past_key_values: null };
       },
     });
-    try {
-      const capture = captureLfm26Chat({
-        provider: harness.provider,
-        request: {
-          model: "hf.co/LiquidAI/LFM2.5-2.6B-ONNX",
-          messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: "The user wants me to \"Template probe user message.\" This is a bit ambiguous" }, { role: "user", content: "Continue with one short sentence." }] }),
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 16,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    };
+    const capture = captureLfm26Chat({
+      provider: harness.provider,
+      request: {
+        model: "hf.co/LiquidAI/LFM2.5-2.6B-ONNX",
+        messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }, { role: "assistant", content: "The user wants me to \"Template probe user message.\" This is a bit ambiguous" }, { role: "user", content: "Continue with one short sentence." }] }),
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 16,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      const settledParts = capture.snapshot().parts;
-      expect(releasedTokenCount).toBe(16);
-      expect(harness.observations.inferenceCalls).toHaveLength(1);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-      // Original normalized chunks. Do not synthesize a reasoning close/final
-      // response, or drain callbacks after public settlement to obtain a PASS.
-      expect(settledParts).toEqual([expect.objectContaining({
-        type: 'reasoning',
-        index: 0,
-        completeness: 'partial',
-        chunks: [
-          '', 'The', ' ', 'user ', 'wants ', 'me ', 'to ', 'continue ', 'with ',
-          'one ', 'short ', 'sentence. ', 'They ', 'previously ', 'asked ', 'for ', 'a',
-        ],
-      })]);
-      expect(capture.snapshot().result).toEqual({ type: 'interrupted', reason: 'unknown' });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    const settledParts = capture.snapshot().parts;
+    expect(releasedTokenCount).toBe(16);
+    expect(harness.observations.inferenceCalls).toHaveLength(1);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
+    // Original normalized chunks. Do not synthesize a reasoning close/final
+    // response, or drain callbacks after public settlement to obtain a PASS.
+    expect(settledParts).toEqual([expect.objectContaining({
+      type: 'reasoning',
+      index: 0,
+      completeness: 'partial',
+      chunks: [
+        '', 'The', ' ', 'user ', 'wants ', 'me ', 'to ', 'continue ', 'with ',
+        'one ', 'short ', 'sentence. ', 'They ', 'previously ', 'asked ', 'for ', 'a',
+      ],
+    })]);
+    expect(capture.snapshot().result).toEqual({ type: 'interrupted', reason: 'unknown' });
   }, 30_000);
 
   it('history: preserves supplied history and delivers the recorded callbacks', async () => {
@@ -823,52 +830,53 @@ describe('LFM2.5 2.6B Provider / history', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // supplied-history: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "supplied-history", parameters });
-        const capture = captureLfm26Chat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-2.6B-ONNX",
-            messages: textMessages({ messages: [{ role: "user", content: "Template probe first user message." }, { role: "assistant", content: "Template probe assistant response." }, { role: "user", content: "Template probe second user message." }] }),
-            parameters,
-            tools: [],
-            signal,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    };
+    // supplied-history: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "supplied-history", parameters });
+      const capture = captureLfm26Chat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-2.6B-ONNX",
+          messages: textMessages({ messages: [{ role: "user", content: "Template probe first user message." }, { role: "assistant", content: "Template probe assistant response." }, { role: "user", content: "Template probe second user message." }] }),
+          parameters,
+          tools: [],
+          signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      const order = observed.events.filter(event => event.kind !== 'chunk').map(event => event.kind);
 
-        expect(observed.parts).toEqual([expect.objectContaining({
-          type: 'reasoning',
-          index: 0,
-          chunks: ['', 'The'],
-          completeness: 'partial',
-        })]);
-        expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
-        expect(order).toEqual(['part', 'part-complete', 'result', 'settled']);
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      expect(observed.parts).toEqual([expect.objectContaining({
+        type: 'reasoning',
+        index: 0,
+        chunks: ['', 'The'],
+        completeness: 'partial',
+      })]);
+      expect(observed.result).toEqual({ type: 'interrupted', reason: 'unknown' });
+      expect(order).toEqual(['part', 'part-complete', 'result', 'settled']);
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -951,101 +959,102 @@ A separate synthetic LFM conversation.<|im_end|>
         return next(context);
       },
     });
-    try {
-      const firstCapture = captureLfm26Chat({
-        provider: harness.provider,
-        request: {
-          model: "hf.co/LiquidAI/LFM2.5-2.6B-ONNX",
-          messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 16,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => harness.close() });
+      },
+    };
+    const firstCapture = captureLfm26Chat({
+      provider: harness.provider,
+      request: {
+        model: "hf.co/LiquidAI/LFM2.5-2.6B-ONNX",
+        messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 16,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
         },
-      });
-      captures.push(firstCapture);
-      await firstCapture.completion;
+      },
+    });
+    captures.push(firstCapture);
+    await firstCapture.completion;
 
-      const ortCountAfterFirst = harness.observations.ortCalls.length;
+    const ortCountAfterFirst = harness.observations.ortCalls.length;
 
-      // Keep exactly the same public model spelling; alias-triggered reload
-      // would hide whether the existing runtime retains a previous request.
-      const secondCapture = captureLfm26Chat({
-        provider: harness.provider,
-        request: {
-          model: "hf.co/LiquidAI/LFM2.5-2.6B-ONNX",
-          messages: nextMessages,
-          tools: [],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    // Keep exactly the same public model spelling; alias-triggered reload
+    // would hide whether the existing runtime retains a previous request.
+    const secondCapture = captureLfm26Chat({
+      provider: harness.provider,
+      request: {
+        model: "hf.co/LiquidAI/LFM2.5-2.6B-ONNX",
+        messages: nextMessages,
+        tools: [],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
         },
-      });
-      captures.push(secondCapture);
-      await secondCapture.completion;
-      expect(secondCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: stop } });
+      },
+    });
+    captures.push(secondCapture);
+    await secondCapture.completion;
+    expect(secondCapture.snapshot().result).toMatchObject({ type: 'error', error: { message: stop } });
 
-      expect(nextInputs).toHaveLength(1);
-      const nextInput = nextInputs[0]!;
-      expect(createHash('sha256').update(nextInput.tokenizer.get_chat_template()).digest('hex'))
-        .toBe('8ea15224003c2e89a1ac8d3b0a3362e8e587896f2bcc41df5dcc2d9c5d0ee82c');
-      expect(nextInput.tokenizer.apply_chat_template(nextTemplateMessages, { tokenize: false, add_generation_prompt: true })).toBe(nextPrompt);
-      const ids = nextInput.tokenizer.encode(nextPrompt, { add_special_tokens: false });
-      expect(nextInput.input?.type).toBe('int64');
-      expect(nextInput.input?.location).toBe('cpu');
-      expect(nextInput.input?.dims).toEqual([1, ids.length]);
-      expect(nextInput.input?.data).toEqual(ids);
-      expect(nextInput.mask?.type).toBe('int64');
-      expect(nextInput.mask?.location).toBe('cpu');
-      expect(nextInput.mask?.dims).toEqual([1, ids.length]);
-      expect(nextInput.mask?.data).toEqual(ids.map(() => 1n));
-      expect(nextInput.past).toBeNull();
-      expect(nextInput.maxNewTokens).toBe(1);
-      expect(nextInput.temperature).toBe(0);
-      expect(nextInput.topP).toBe(1);
-      expect(nextInput.doSample).toBe(false);
-      expect(nextInput.returnDict).toBe(true);
+    expect(nextInputs).toHaveLength(1);
+    const nextInput = nextInputs[0]!;
+    expect(createHash('sha256').update(nextInput.tokenizer.get_chat_template()).digest('hex'))
+      .toBe('8ea15224003c2e89a1ac8d3b0a3362e8e587896f2bcc41df5dcc2d9c5d0ee82c');
+    expect(nextInput.tokenizer.apply_chat_template(nextTemplateMessages, { tokenize: false, add_generation_prompt: true })).toBe(nextPrompt);
+    const ids = nextInput.tokenizer.encode(nextPrompt, { add_special_tokens: false });
+    expect(nextInput.input?.type).toBe('int64');
+    expect(nextInput.input?.location).toBe('cpu');
+    expect(nextInput.input?.dims).toEqual([1, ids.length]);
+    expect(nextInput.input?.data).toEqual(ids);
+    expect(nextInput.mask?.type).toBe('int64');
+    expect(nextInput.mask?.location).toBe('cpu');
+    expect(nextInput.mask?.dims).toEqual([1, ids.length]);
+    expect(nextInput.mask?.data).toEqual(ids.map(() => 1n));
+    expect(nextInput.past).toBeNull();
+    expect(nextInput.maxNewTokens).toBe(1);
+    expect(nextInput.temperature).toBe(0);
+    expect(nextInput.topP).toBe(1);
+    expect(nextInput.doSample).toBe(false);
+    expect(nextInput.returnDict).toBe(true);
 
-      expect(firstReleased).toBe(16);
-      expect(secondCapture.snapshot().parts).toEqual([expect.objectContaining({
-        type: 'reasoning',
-        index: 0,
-        chunks: [''],
-        completeness: 'partial',
-      })]);
-      expect(contexts).toHaveLength(2);
-      expect(contexts[1]!.model).toBe(contexts[0]!.model);
-      expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
-      expect(contexts.map(({ options }) => options.past_key_values)).toEqual([null, null]);
-      expect(invocations).toEqual([]);
-      expect(harness.observations.inferenceCalls).toHaveLength(2);
-      expect(ortCountAfterFirst).toBe(1);
-      expect(harness.observations.ortCalls).toHaveLength(ortCountAfterFirst);
-      expect(harness.observations.workers).toHaveLength(1);
-      expect(harness.observations.processors).toHaveLength(0);
-      expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
-      expect(harness.observations.localImageFetchCalls).toEqual([]);
-      expect(harness.observations.forbiddenTransport).toEqual([]);
-      expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => harness.close() });
-    }
+    expect(firstReleased).toBe(16);
+    expect(secondCapture.snapshot().parts).toEqual([expect.objectContaining({
+      type: 'reasoning',
+      index: 0,
+      chunks: [''],
+      completeness: 'partial',
+    })]);
+    expect(contexts).toHaveLength(2);
+    expect(contexts[1]!.model).toBe(contexts[0]!.model);
+    expect(contexts[1]!.tokenizer).toBe(contexts[0]!.tokenizer);
+    expect(contexts.map(({ options }) => options.past_key_values)).toEqual([null, null]);
+    expect(invocations).toEqual([]);
+    expect(harness.observations.inferenceCalls).toHaveLength(2);
+    expect(ortCountAfterFirst).toBe(1);
+    expect(harness.observations.ortCalls).toHaveLength(ortCountAfterFirst);
+    expect(harness.observations.workers).toHaveLength(1);
+    expect(harness.observations.processors).toHaveLength(0);
+    expect(harness.observations.runtimeAssetFetchCalls).toEqual([harness.observations.expectedRuntimeAssetUrl]);
+    expect(harness.observations.localImageFetchCalls).toEqual([]);
+    expect(harness.observations.forbiddenTransport).toEqual([]);
+    expect(harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('independent: keeps a new conversation independent after settled requests in the same runtime', async () => {
@@ -1057,130 +1066,131 @@ A separate synthetic LFM conversation.<|im_end|>
     });
     const captures: ProviderChatCapture[] = [];
     let firstReasoning = '';
-    try {
-      // first-turn: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 16,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "first-turn", parameters });
-        const capture = captureLfm26Chat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-2.6B-ONNX",
-            messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
-            parameters,
-            tools: [],
-            signal,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        firstReasoning = 'The user wants me to "Template probe user message." This is a bit ambiguous';
-        expectInterruptedReasoning({ observed, text: firstReasoning });
-      }
-      // continuity: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 16,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "continuity", parameters });
-        const capture = captureLfm26Chat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-2.6B-ONNX",
-            messages: [
-              ...textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
-              {
-                id: toMessageId({ raw: 'message_1' }),
-                role: 'assistant',
-                parts: [{
-                  type: 'reasoning',
-                  text: firstReasoning,
-                  completeness: 'partial',
-                }],
-              },
-              {
-                id: toMessageId({ raw: 'message_2' }),
-                role: 'user',
-                parts: [{
-                  type: 'text',
-                  text: 'Continue the synthetic conversation with a short response.',
-                  completeness: 'complete',
-                }],
-              },
-            ],
-            parameters,
-            tools: [],
-            signal,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.parts).toEqual([]);
-        expect(observed.result).toMatchObject({
-          type: 'error',
-          error: { message: 'LFM2 cannot continue partial reasoning without inventing a native closing delimiter.' },
-        });
-        replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
-      }
-      // independent-next-input: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "independent-next-input", parameters });
-        const capture = captureLfm26Chat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-2.6B-ONNX",
-            messages: textMessages({ messages: [{ role: "user", content: "A separate synthetic capture conversation." }] }),
-            parameters,
-            tools: [],
-            signal,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expectInterruptedReasoning({ observed, text: 'The' });
-      }
-      replay.assertComplete({ requests: 3, nativeCalls: 2 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    };
+    // first-turn: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "first-turn", parameters });
+      const capture = captureLfm26Chat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-2.6B-ONNX",
+          messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
+          parameters,
+          tools: [],
+          signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      firstReasoning = 'The user wants me to "Template probe user message." This is a bit ambiguous';
+      expectInterruptedReasoning({ observed, text: firstReasoning });
     }
+    // continuity: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "continuity", parameters });
+      const capture = captureLfm26Chat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-2.6B-ONNX",
+          messages: [
+            ...textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
+            {
+              id: toMessageId({ raw: 'message_1' }),
+              role: 'assistant',
+              parts: [{
+                type: 'reasoning',
+                text: firstReasoning,
+                completeness: 'partial',
+              }],
+            },
+            {
+              id: toMessageId({ raw: 'message_2' }),
+              role: 'user',
+              parts: [{
+                type: 'text',
+                text: 'Continue the synthetic conversation with a short response.',
+                completeness: 'complete',
+              }],
+            },
+          ],
+          parameters,
+          tools: [],
+          signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(observed.parts).toEqual([]);
+      expect(observed.result).toMatchObject({
+        type: 'error',
+        error: { message: 'LFM2 cannot continue partial reasoning without inventing a native closing delimiter.' },
+      });
+      replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
+    }
+    // independent-next-input: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "independent-next-input", parameters });
+      const capture = captureLfm26Chat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-2.6B-ONNX",
+          messages: textMessages({ messages: [{ role: "user", content: "A separate synthetic capture conversation." }] }),
+          parameters,
+          tools: [],
+          signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expectInterruptedReasoning({ observed, text: 'The' });
+    }
+    replay.assertComplete({ requests: 3, nativeCalls: 2 });
   }, 30_000);
 });
 
@@ -1193,42 +1203,43 @@ describe('LFM2.5 2.6B Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // reasoning-none: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: "none",
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "reasoning-none", parameters });
-        const capture = captureLfm26Chat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-2.6B-ONNX",
-            messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
-            parameters,
-            tools: [],
-            signal,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expectInterruptedReasoning({ observed, text: 'The' });
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    };
+    // reasoning-none: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "none",
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "reasoning-none", parameters });
+      const capture = captureLfm26Chat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-2.6B-ONNX",
+          messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
+          parameters,
+          tools: [],
+          signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expectInterruptedReasoning({ observed, text: 'The' });
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded low-effort request and callbacks', async () => {
@@ -1239,42 +1250,43 @@ describe('LFM2.5 2.6B Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // reasoning-low: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: "low",
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "reasoning-low", parameters });
-        const capture = captureLfm26Chat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-2.6B-ONNX",
-            messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
-            parameters,
-            tools: [],
-            signal,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expectInterruptedReasoning({ observed, text: 'The' });
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    };
+    // reasoning-low: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "low",
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "reasoning-low", parameters });
+      const capture = captureLfm26Chat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-2.6B-ONNX",
+          messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
+          parameters,
+          tools: [],
+          signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expectInterruptedReasoning({ observed, text: 'The' });
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded medium-effort request and callbacks', async () => {
@@ -1285,42 +1297,43 @@ describe('LFM2.5 2.6B Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // reasoning-medium: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: "medium",
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "reasoning-medium", parameters });
-        const capture = captureLfm26Chat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-2.6B-ONNX",
-            messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
-            parameters,
-            tools: [],
-            signal,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expectInterruptedReasoning({ observed, text: 'The' });
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    };
+    // reasoning-medium: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "medium",
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "reasoning-medium", parameters });
+      const capture = captureLfm26Chat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-2.6B-ONNX",
+          messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
+          parameters,
+          tools: [],
+          signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expectInterruptedReasoning({ observed, text: 'The' });
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 
   it('reasoning: preserves the recorded high-effort request and callbacks', async () => {
@@ -1331,42 +1344,43 @@ describe('LFM2.5 2.6B Provider / reasoning', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // reasoning-high: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: "high",
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "reasoning-high", parameters });
-        const capture = captureLfm26Chat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-2.6B-ONNX",
-            messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
-            parameters,
-            tools: [],
-            signal,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        expectInterruptedReasoning({ observed, text: 'The' });
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    };
+    // reasoning-high: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: "high",
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "reasoning-high", parameters });
+      const capture = captureLfm26Chat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-2.6B-ONNX",
+          messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
+          parameters,
+          tools: [],
+          signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      expectInterruptedReasoning({ observed, text: 'The' });
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -1375,121 +1389,122 @@ describe('LFM2.5 2.6B Provider / tools', () => {
     const captures: ProviderChatCapture[] = [];
     const scenario = toolInputEvidence.cases[0];
     const replay = await createLfm26ToolInputReplay();
-    try {
-      const capture = captureLfm26Chat({
-        provider: replay.harness.provider,
-        request: {
-          model: toolInputEvidence.modelId,
-          messages: textMessages({ messages: scenario.messages }),
-          tools: [requestTool({ tool: replay.publicTool })],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    };
+    const capture = captureLfm26Chat({
+      provider: replay.harness.provider,
+      request: {
+        model: toolInputEvidence.modelId,
+        messages: textMessages({ messages: scenario.messages }),
+        tools: [requestTool({ tool: replay.publicTool })],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: LFM26_TOOL_INPUT_STOP } });
-      expect(capture.snapshot().parts).toEqual([expect.objectContaining({
-        type: 'reasoning',
-        index: 0,
-        chunks: [''],
-        completeness: 'partial',
-      })]);
-      expect(replay.execute).not.toHaveBeenCalled();
-      expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
-      // Only actual Production calls are considered here. Protocol/reasoning
-      // probes use tokenize:false; no native oracle has run through this spy yet.
-      const productionTokenizations = replay.templateSpy.mock.calls.filter(([, options]) => options?.tokenize !== false);
-      expect(productionTokenizations).toHaveLength(1);
-      const productionCall = productionTokenizations[0];
-      if (!productionCall) throw new Error('Expected Production template invocation');
-      // Raw unknown fields still fail. Only optional-field ownness is irrelevant
-      // to the semantic messages being compared, and actual arguments stay intact.
-      const observedMessages = observedToolMessagesSchema.parse(productionCall[0]).map(message => {
-        const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
-        unhandled satisfies Record<PropertyKey, never>;
-        return { role, content, tool_calls, tool_call_id };
-      });
-      expect(observedMessages).toStrictEqual([
-        { role: 'user', content: scenario.messages[0].content, tool_calls: undefined, tool_call_id: undefined },
-      ]);
-      expect(productionCall[1]).toStrictEqual({ add_generation_prompt: true, return_dict: true, tools: strictLfm26Tools });
-      if (!replay.seen.inference) throw new Error('Actual LFM2.6 inference boundary was not reached');
-      const { tokenizer, runtime, options } = replay.seen.inference;
-      expect(replay.seen.count).toBe(1);
-      expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: scenario.tools,
-      })).toBe(scenario.renderedText);
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: true,
-        return_dict: false,
-        return_tensor: false,
-        add_generation_prompt: true,
-        tools: scenario.tools,
-      })).toEqual(scenario.inputTokenIds);
-      expect(scenario.renderedText.split('"required": ["city"]')).toHaveLength(2);
-      const strictPrompt = scenario.renderedText.replace('"required": ["city"]', '"required": ["city"], "additionalProperties": false');
-      expect(tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: strictLfm26Tools,
-      })).toBe(strictPrompt);
-      const nativeStrict = tokenizer(strictPrompt, { add_special_tokens: false });
-      expect(nativeStrict.input_ids).toBeInstanceOf(runtime.Tensor);
-      const strictIds = Array.from(nativeStrict.input_ids.data, Number);
-      expect(strictIds).not.toEqual(scenario.inputTokenIds);
-      if (!options.input_ids || !options.attention_mask) {
-        throw new Error('Expected actual LFM2.6 input tensors');
-      }
-      expect(options.input_ids.type).toBe('int64');
-      expect(options.input_ids.location).toBe('cpu');
-      expect(options.input_ids.dims).toEqual([1, strictIds.length]);
-      expect(Array.from(options.input_ids.data, Number)).toEqual(strictIds);
-      expect(options.attention_mask.type).toBe('int64');
-      expect(options.attention_mask.location).toBe('cpu');
-      expect(options.attention_mask.dims).toEqual([1, strictIds.length]);
-      expect(Array.from(options.attention_mask.data, BigInt)).toEqual(strictIds.map(() => 1n));
-      expect(options.past_key_values).toBeNull();
-      const originalContent = scenario.messages[0].content;
-      expect(originalContent).not.toBe('');
-      expect(strictPrompt.split(originalContent)).toHaveLength(2);
-      expect(tokenizer.apply_chat_template([{ role: 'user', content: 'Changed synthetic user message.' }], {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: strictLfm26Tools,
-      })).toBe(strictPrompt.replace(originalContent, 'Changed synthetic user message.'));
-      expect(replay.harness.observations.ortCalls.map(([core, ortOptions]) => inspectSyntheticOrtSession({
-        modelId: toolInputEvidence.modelId,
-        revision: toolInputEvidence.revision,
-        repositoryPaths: new Set(['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', 'onnx/model_q4f16.onnx_data_1']),
-        core,
-        options: ortOptions,
-      }))).toEqual([{
-        modelId: toolInputEvidence.modelId,
-        revision: toolInputEvidence.revision,
-        corePath: 'onnx/model_q4f16.onnx',
-        externalData: [{ path: 'model_q4f16.onnx_data', artifactPath: 'onnx/model_q4f16.onnx_data' }, { path: 'model_q4f16.onnx_data_1', artifactPath: 'onnx/model_q4f16.onnx_data_1' }],
-        executionProviders: ['webgpu'],
-      }]);
-      expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
-      expect(replay.harness.observations.localImageFetchCalls).toEqual([]);
-      expect(replay.harness.observations.forbiddenTransport).toEqual([]);
-      expect(replay.harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: LFM26_TOOL_INPUT_STOP } });
+    expect(capture.snapshot().parts).toEqual([expect.objectContaining({
+      type: 'reasoning',
+      index: 0,
+      chunks: [''],
+      completeness: 'partial',
+    })]);
+    expect(replay.execute).not.toHaveBeenCalled();
+    expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
+    // Only actual Production calls are considered here. Protocol/reasoning
+    // probes use tokenize:false; no native oracle has run through this spy yet.
+    const productionTokenizations = replay.templateSpy.mock.calls.filter(([, options]) => options?.tokenize !== false);
+    expect(productionTokenizations).toHaveLength(1);
+    const productionCall = productionTokenizations[0];
+    if (!productionCall) throw new Error('Expected Production template invocation');
+    // Raw unknown fields still fail. Only optional-field ownness is irrelevant
+    // to the semantic messages being compared, and actual arguments stay intact.
+    const observedMessages = observedToolMessagesSchema.parse(productionCall[0]).map(message => {
+      const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
+      unhandled satisfies Record<PropertyKey, never>;
+      return { role, content, tool_calls, tool_call_id };
+    });
+    expect(observedMessages).toStrictEqual([
+      { role: 'user', content: scenario.messages[0].content, tool_calls: undefined, tool_call_id: undefined },
+    ]);
+    expect(productionCall[1]).toStrictEqual({ add_generation_prompt: true, return_dict: true, tools: strictLfm26Tools });
+    if (!replay.seen.inference) throw new Error('Actual LFM2.6 inference boundary was not reached');
+    const { tokenizer, runtime, options } = replay.seen.inference;
+    expect(replay.seen.count).toBe(1);
+    expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: scenario.tools,
+    })).toBe(scenario.renderedText);
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: true,
+      return_dict: false,
+      return_tensor: false,
+      add_generation_prompt: true,
+      tools: scenario.tools,
+    })).toEqual(scenario.inputTokenIds);
+    expect(scenario.renderedText.split('"required": ["city"]')).toHaveLength(2);
+    const strictPrompt = scenario.renderedText.replace('"required": ["city"]', '"required": ["city"], "additionalProperties": false');
+    expect(tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: strictLfm26Tools,
+    })).toBe(strictPrompt);
+    const nativeStrict = tokenizer(strictPrompt, { add_special_tokens: false });
+    expect(nativeStrict.input_ids).toBeInstanceOf(runtime.Tensor);
+    const strictIds = Array.from(nativeStrict.input_ids.data, Number);
+    expect(strictIds).not.toEqual(scenario.inputTokenIds);
+    if (!options.input_ids || !options.attention_mask) {
+      throw new Error('Expected actual LFM2.6 input tensors');
     }
+    expect(options.input_ids.type).toBe('int64');
+    expect(options.input_ids.location).toBe('cpu');
+    expect(options.input_ids.dims).toEqual([1, strictIds.length]);
+    expect(Array.from(options.input_ids.data, Number)).toEqual(strictIds);
+    expect(options.attention_mask.type).toBe('int64');
+    expect(options.attention_mask.location).toBe('cpu');
+    expect(options.attention_mask.dims).toEqual([1, strictIds.length]);
+    expect(Array.from(options.attention_mask.data, BigInt)).toEqual(strictIds.map(() => 1n));
+    expect(options.past_key_values).toBeNull();
+    const originalContent = scenario.messages[0].content;
+    expect(originalContent).not.toBe('');
+    expect(strictPrompt.split(originalContent)).toHaveLength(2);
+    expect(tokenizer.apply_chat_template([{ role: 'user', content: 'Changed synthetic user message.' }], {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: strictLfm26Tools,
+    })).toBe(strictPrompt.replace(originalContent, 'Changed synthetic user message.'));
+    expect(replay.harness.observations.ortCalls.map(([core, ortOptions]) => inspectSyntheticOrtSession({
+      modelId: toolInputEvidence.modelId,
+      revision: toolInputEvidence.revision,
+      repositoryPaths: new Set(['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', 'onnx/model_q4f16.onnx_data_1']),
+      core,
+      options: ortOptions,
+    }))).toEqual([{
+      modelId: toolInputEvidence.modelId,
+      revision: toolInputEvidence.revision,
+      corePath: 'onnx/model_q4f16.onnx',
+      externalData: [{ path: 'model_q4f16.onnx_data', artifactPath: 'onnx/model_q4f16.onnx_data' }, { path: 'model_q4f16.onnx_data_1', artifactPath: 'onnx/model_q4f16.onnx_data_1' }],
+      executionProviders: ['webgpu'],
+    }]);
+    expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
+    expect(replay.harness.observations.localImageFetchCalls).toEqual([]);
+    expect(replay.harness.observations.forbiddenTransport).toEqual([]);
+    expect(replay.harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('tool-result-continuation converts public JSON arguments to the native mapping contract without inventing an original successful capture', async () => {
@@ -1531,81 +1546,85 @@ describe('LFM2.5 2.6B Provider / tools', () => {
         }],
       },
     ];
-    try {
-      const capture = captureLfm26Chat({
-        provider: replay.harness.provider,
-        request: {
-          model: toolInputEvidence.modelId,
-          messages: publicMessages,
-          tools: [requestTool({ tool: replay.publicTool })],
-          parameters: {
-            temperature: 0,
-            topP: 1,
-            maxCompletionTokens: 1,
-            presencePenalty: undefined,
-            frequencyPenalty: undefined,
-            stop: undefined,
-            reasoning: {
-              effort: undefined,
-            },
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    };
+    const capture = captureLfm26Chat({
+      provider: replay.harness.provider,
+      request: {
+        model: toolInputEvidence.modelId,
+        messages: publicMessages,
+        tools: [requestTool({ tool: replay.publicTool })],
+        parameters: {
+          temperature: 0,
+          topP: 1,
+          maxCompletionTokens: 1,
+          presencePenalty: undefined,
+          frequencyPenalty: undefined,
+          stop: undefined,
+          reasoning: {
+            effort: undefined,
           },
         },
-      });
-      captures.push(capture);
-      await capture.completion;
-      expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: LFM26_TOOL_INPUT_STOP } });
-      expect(capture.snapshot().parts).toEqual([expect.objectContaining({
-        type: 'reasoning',
-        index: 0,
-        chunks: [''],
-        completeness: 'partial',
-      })]);
-      expect(replay.execute).not.toHaveBeenCalled();
-      expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
-      // This mapping is an independent expectation for Naidan's documented
-      // delimited-pythonic adaptation, not data copied from actual spy output.
-      const nativeMappedMessages = [
-        { role: 'user', content: scenario.messages[0].content, tool_calls: undefined, tool_call_id: undefined },
-        {
-          role: 'assistant',
-          content: '',
-          tool_call_id: undefined,
-          tool_calls: [{
-            id: 'call_template_probe_1',
-            type: 'function',
-            function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
-          }],
-        },
-        { role: 'tool', content: scenario.messages[2].content, tool_calls: undefined, tool_call_id: 'call_template_probe_1' },
-      ] satisfies [Record<string, unknown>, Record<string, unknown>, Record<string, unknown>];
-      const productionTokenizations = replay.templateSpy.mock.calls.filter(([, options]) => options?.tokenize !== false);
-      expect(productionTokenizations).toHaveLength(1);
-      const productionCall = productionTokenizations[0];
-      if (!productionCall) throw new Error('Expected Production template invocation');
-      const observedMessages = observedToolMessagesSchema.parse(productionCall[0]).map(message => {
-        const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
-        unhandled satisfies Record<PropertyKey, never>;
-        return { role, content, tool_calls, tool_call_id };
-      });
-      expect(observedMessages).toStrictEqual(nativeMappedMessages);
-      expect(productionCall[1]).toStrictEqual({ add_generation_prompt: true, return_dict: true, tools: strictLfm26Tools });
-      if (!replay.seen.inference) throw new Error('Actual LFM2.6 inference boundary was not reached');
-      const { tokenizer, runtime, options } = replay.seen.inference;
-      expect(replay.seen.count).toBe(1);
-      expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
-      // Preserve the original render failure. It had no rendered text, input IDs
-      // or generated output; the successful mapped oracle below is CURRENT.
-      expect(() => tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: scenario.tools,
-      })).toThrow(scenario.error.message);
-      expect(() => tokenizer.apply_chat_template(scenario.messages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: strictLfm26Tools,
-      })).toThrow(scenario.error.message);
-      const strictPrompt = `\
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    expect(capture.snapshot().result).toMatchObject({ type: 'error', error: { message: LFM26_TOOL_INPUT_STOP } });
+    expect(capture.snapshot().parts).toEqual([expect.objectContaining({
+      type: 'reasoning',
+      index: 0,
+      chunks: [''],
+      completeness: 'partial',
+    })]);
+    expect(replay.execute).not.toHaveBeenCalled();
+    expect(replay.harness.observations.inferenceCalls).toHaveLength(1);
+    // This mapping is an independent expectation for Naidan's documented
+    // delimited-pythonic adaptation, not data copied from actual spy output.
+    const nativeMappedMessages = [
+      { role: 'user', content: scenario.messages[0].content, tool_calls: undefined, tool_call_id: undefined },
+      {
+        role: 'assistant',
+        content: '',
+        tool_call_id: undefined,
+        tool_calls: [{
+          id: 'call_template_probe_1',
+          type: 'function',
+          function: { name: 'lookup_weather', arguments: { city: 'Tokyo' } },
+        }],
+      },
+      { role: 'tool', content: scenario.messages[2].content, tool_calls: undefined, tool_call_id: 'call_template_probe_1' },
+    ] satisfies [Record<string, unknown>, Record<string, unknown>, Record<string, unknown>];
+    const productionTokenizations = replay.templateSpy.mock.calls.filter(([, options]) => options?.tokenize !== false);
+    expect(productionTokenizations).toHaveLength(1);
+    const productionCall = productionTokenizations[0];
+    if (!productionCall) throw new Error('Expected Production template invocation');
+    const observedMessages = observedToolMessagesSchema.parse(productionCall[0]).map(message => {
+      const { role, content, tool_calls, tool_call_id, ...unhandled } = message;
+      unhandled satisfies Record<PropertyKey, never>;
+      return { role, content, tool_calls, tool_call_id };
+    });
+    expect(observedMessages).toStrictEqual(nativeMappedMessages);
+    expect(productionCall[1]).toStrictEqual({ add_generation_prompt: true, return_dict: true, tools: strictLfm26Tools });
+    if (!replay.seen.inference) throw new Error('Actual LFM2.6 inference boundary was not reached');
+    const { tokenizer, runtime, options } = replay.seen.inference;
+    expect(replay.seen.count).toBe(1);
+    expect(createHash('sha256').update(tokenizer.get_chat_template({ tools: scenario.tools })).digest('hex')).toBe(scenario.selectedTemplateSha256);
+    // Preserve the original render failure. It had no rendered text, input IDs
+    // or generated output; the successful mapped oracle below is CURRENT.
+    expect(() => tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: scenario.tools,
+    })).toThrow(scenario.error.message);
+    expect(() => tokenizer.apply_chat_template(scenario.messages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: strictLfm26Tools,
+    })).toThrow(scenario.error.message);
+    const strictPrompt = `\
 <|startoftext|><|im_start|>system
 List of tools: [{"type": "function", "function": {"name": "lookup_weather", "description": "Return deterministic weather fixture data.", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"], "additionalProperties": false}}}]<|im_end|>
 <|im_start|>user
@@ -1616,78 +1635,75 @@ Use the weather tool for Tokyo.<|im_end|>
 {"temperatureC":20,"condition":"clear"}<|im_end|>
 <|im_start|>assistant
 <think>`;
-      expect(tokenizer.apply_chat_template(nativeMappedMessages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: strictLfm26Tools,
-      })).toBe(strictPrompt);
-      expect(tokenizer.apply_chat_template(nativeMappedMessages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: scenario.tools,
-      })).toBe(strictPrompt.replace(', "additionalProperties": false', ''));
-      const nativeStrict = tokenizer(strictPrompt, { add_special_tokens: false });
-      expect(nativeStrict.input_ids).toBeInstanceOf(runtime.Tensor);
-      const strictIds = Array.from(nativeStrict.input_ids.data, Number);
-      if (!options.input_ids || !options.attention_mask) {
-        throw new Error('Expected actual LFM2.6 input tensors');
-      }
-      expect(options.input_ids.type).toBe('int64');
-      expect(options.input_ids.location).toBe('cpu');
-      expect(options.input_ids.dims).toEqual([1, strictIds.length]);
-      expect(Array.from(options.input_ids.data, Number)).toEqual(strictIds);
-      expect(options.attention_mask.type).toBe('int64');
-      expect(options.attention_mask.location).toBe('cpu');
-      expect(options.attention_mask.dims).toEqual([1, strictIds.length]);
-      expect(Array.from(options.attention_mask.data, BigInt)).toEqual(strictIds.map(() => 1n));
-      expect(options.past_key_values).toBeNull();
-      // Call name/arguments and result body have separate exact sensitivity.
-      expect(strictPrompt.split("city='Tokyo'")).toHaveLength(2);
-      const changedCallMessages = [
-        nativeMappedMessages[0],
-        {
-          role: 'assistant',
-          content: '',
-          tool_calls: [{
-            id: 'call_template_probe_1',
-            type: 'function',
-            function: { name: 'lookup_weather', arguments: { city: 'Osaka' } },
-          }],
-        },
-        nativeMappedMessages[2],
-      ];
-      expect(tokenizer.apply_chat_template(changedCallMessages, {
-        tokenize: false,
-        add_generation_prompt: true,
-        tools: strictLfm26Tools,
-      })).toBe(strictPrompt.replace("city='Tokyo'", "city='Osaka'"));
-      const originalResult = scenario.messages[2].content;
-      expect(originalResult).not.toBe('');
-      expect(strictPrompt.split(originalResult)).toHaveLength(2);
-      expect(tokenizer.apply_chat_template([
-        nativeMappedMessages[0], nativeMappedMessages[1], { role: 'tool', content: 'Changed synthetic result.' },
-      ], { tokenize: false, add_generation_prompt: true, tools: strictLfm26Tools }))
-        .toBe(strictPrompt.replace(originalResult, 'Changed synthetic result.'));
-      expect(replay.harness.observations.ortCalls.map(([core, ortOptions]) => inspectSyntheticOrtSession({
-        modelId: toolInputEvidence.modelId,
-        revision: toolInputEvidence.revision,
-        repositoryPaths: new Set(['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', 'onnx/model_q4f16.onnx_data_1']),
-        core,
-        options: ortOptions,
-      }))).toEqual([{
-        modelId: toolInputEvidence.modelId,
-        revision: toolInputEvidence.revision,
-        corePath: 'onnx/model_q4f16.onnx',
-        externalData: [{ path: 'model_q4f16.onnx_data', artifactPath: 'onnx/model_q4f16.onnx_data' }, { path: 'model_q4f16.onnx_data_1', artifactPath: 'onnx/model_q4f16.onnx_data_1' }],
-        executionProviders: ['webgpu'],
-      }]);
-      expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
-      expect(replay.harness.observations.localImageFetchCalls).toEqual([]);
-      expect(replay.harness.observations.forbiddenTransport).toEqual([]);
-      expect(replay.harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    expect(tokenizer.apply_chat_template(nativeMappedMessages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: strictLfm26Tools,
+    })).toBe(strictPrompt);
+    expect(tokenizer.apply_chat_template(nativeMappedMessages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: scenario.tools,
+    })).toBe(strictPrompt.replace(', "additionalProperties": false', ''));
+    const nativeStrict = tokenizer(strictPrompt, { add_special_tokens: false });
+    expect(nativeStrict.input_ids).toBeInstanceOf(runtime.Tensor);
+    const strictIds = Array.from(nativeStrict.input_ids.data, Number);
+    if (!options.input_ids || !options.attention_mask) {
+      throw new Error('Expected actual LFM2.6 input tensors');
     }
+    expect(options.input_ids.type).toBe('int64');
+    expect(options.input_ids.location).toBe('cpu');
+    expect(options.input_ids.dims).toEqual([1, strictIds.length]);
+    expect(Array.from(options.input_ids.data, Number)).toEqual(strictIds);
+    expect(options.attention_mask.type).toBe('int64');
+    expect(options.attention_mask.location).toBe('cpu');
+    expect(options.attention_mask.dims).toEqual([1, strictIds.length]);
+    expect(Array.from(options.attention_mask.data, BigInt)).toEqual(strictIds.map(() => 1n));
+    expect(options.past_key_values).toBeNull();
+    // Call name/arguments and result body have separate exact sensitivity.
+    expect(strictPrompt.split("city='Tokyo'")).toHaveLength(2);
+    const changedCallMessages = [
+      nativeMappedMessages[0],
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{
+          id: 'call_template_probe_1',
+          type: 'function',
+          function: { name: 'lookup_weather', arguments: { city: 'Osaka' } },
+        }],
+      },
+      nativeMappedMessages[2],
+    ];
+    expect(tokenizer.apply_chat_template(changedCallMessages, {
+      tokenize: false,
+      add_generation_prompt: true,
+      tools: strictLfm26Tools,
+    })).toBe(strictPrompt.replace("city='Tokyo'", "city='Osaka'"));
+    const originalResult = scenario.messages[2].content;
+    expect(originalResult).not.toBe('');
+    expect(strictPrompt.split(originalResult)).toHaveLength(2);
+    expect(tokenizer.apply_chat_template([
+      nativeMappedMessages[0], nativeMappedMessages[1], { role: 'tool', content: 'Changed synthetic result.' },
+    ], { tokenize: false, add_generation_prompt: true, tools: strictLfm26Tools }))
+      .toBe(strictPrompt.replace(originalResult, 'Changed synthetic result.'));
+    expect(replay.harness.observations.ortCalls.map(([core, ortOptions]) => inspectSyntheticOrtSession({
+      modelId: toolInputEvidence.modelId,
+      revision: toolInputEvidence.revision,
+      repositoryPaths: new Set(['onnx/model_q4f16.onnx', 'onnx/model_q4f16.onnx_data', 'onnx/model_q4f16.onnx_data_1']),
+      core,
+      options: ortOptions,
+    }))).toEqual([{
+      modelId: toolInputEvidence.modelId,
+      revision: toolInputEvidence.revision,
+      corePath: 'onnx/model_q4f16.onnx',
+      externalData: [{ path: 'model_q4f16.onnx_data', artifactPath: 'onnx/model_q4f16.onnx_data' }, { path: 'model_q4f16.onnx_data_1', artifactPath: 'onnx/model_q4f16.onnx_data_1' }],
+      executionProviders: ['webgpu'],
+    }]);
+    expect(replay.harness.observations.runtimeAssetFetchCalls).toEqual([replay.harness.observations.expectedRuntimeAssetUrl]);
+    expect(replay.harness.observations.localImageFetchCalls).toEqual([]);
+    expect(replay.harness.observations.forbiddenTransport).toEqual([]);
+    expect(replay.harness.observations.fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
   }, 30_000);
 
   it('tools: executes the recorded minimal Tokyo call once and continues with its result', async () => {
@@ -1855,88 +1871,89 @@ Let me first call the lookup_weather function with city "Tokyo".`, 'The tool ret
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      const parameters = {
-        temperature: 0,
-        topP: 1,
-        maxCompletionTokens: 128,
-        presencePenalty: undefined,
-        frequencyPenalty: undefined,
-        stop: undefined,
-        reasoning: { effort: undefined },
-      };
-      const callId = toToolCallId({ raw: 'call_model_support_probe_1' });
-      const messages: ChatMessage[] = [
-        {
-          id: toMessageId({ raw: 'message_0' }),
-          role: 'user',
-          parts: [{
-            type: 'text',
-            text: 'Use the weather tool for Tokyo.',
-            completeness: 'complete',
-          }],
-        },
-        {
-          id: toMessageId({ raw: 'message_1' }),
-          role: 'assistant',
-          parts: [{
-            type: 'tool_call',
-            toolCall: {
-              id: callId,
-              type: 'function',
-              function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
-            },
-          }],
-        },
-        {
-          id: toMessageId({ raw: 'message_2' }),
-          role: 'tool',
-          parts: [{
-            type: 'tool_result',
-            result: {
-              toolCallId: callId,
-              status: 'success',
-              content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
-            },
-          }],
-        },
-      ];
-      const tool: Tool = {
-        name: 'lookup_weather',
-        description: 'Return deterministic weather fixture data.',
-        parametersSchema: z.object({ city: z.string() }),
-        execute: vi.fn(),
-      };
-      replay.beginNativeRequest({ caseId: 'structured-tool-history', parameters });
-      const capture = captureLfm26Chat({
-        provider: replay.provider,
-        request: {
-          model: 'LiquidAI/LFM2.5-2.6B-ONNX',
-          messages,
-          parameters,
-          tools: [requestTool({ tool })],
-          signal: new AbortController().signal,
-        },
-      });
-      captures.push(capture);
-      await capture.completion;
-      replay.endNativeRequest();
-      const observed = capture.snapshot();
-      expect(observed.settlement).toEqual({ status: 'fulfilled' });
-      expect(observed.parts).toEqual([
-        expect.objectContaining({ type: 'reasoning', index: 0, completeness: 'complete' }),
-        expect.objectContaining({ type: 'text', index: 1, completeness: 'complete' }),
-      ]);
-      expect(observed.parts[0]?.type === 'reasoning' ? observed.parts[0].chunks.join('') : undefined)
-        .toBe('The weather tool has returned the weather for Tokyo. The temperature is 20°C and the condition is clear. I should provide this information to the user in a clear and concise way.');
-      expect(observed.parts[1]?.type === 'text' ? observed.parts[1].chunks.join('') : undefined)
-        .toBe('The weather in Tokyo is currently **clear** with a temperature of **20°C**.');
-      expect(observed.result).toEqual({ type: 'finished', next: 'user' });
-      expect(tool.execute).not.toHaveBeenCalled();
-      replay.assertComplete({ requests: 1, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    };
+    const parameters = {
+      temperature: 0,
+      topP: 1,
+      maxCompletionTokens: 128,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: { effort: undefined },
+    };
+    const callId = toToolCallId({ raw: 'call_model_support_probe_1' });
+    const messages: ChatMessage[] = [
+      {
+        id: toMessageId({ raw: 'message_0' }),
+        role: 'user',
+        parts: [{
+          type: 'text',
+          text: 'Use the weather tool for Tokyo.',
+          completeness: 'complete',
+        }],
+      },
+      {
+        id: toMessageId({ raw: 'message_1' }),
+        role: 'assistant',
+        parts: [{
+          type: 'tool_call',
+          toolCall: {
+            id: callId,
+            type: 'function',
+            function: { name: 'lookup_weather', arguments: '{"city":"Tokyo"}' },
+          },
+        }],
+      },
+      {
+        id: toMessageId({ raw: 'message_2' }),
+        role: 'tool',
+        parts: [{
+          type: 'tool_result',
+          result: {
+            toolCallId: callId,
+            status: 'success',
+            content: { type: 'text', text: '{"temperatureC":20,"condition":"clear"}' },
+          },
+        }],
+      },
+    ];
+    const tool: Tool = {
+      name: 'lookup_weather',
+      description: 'Return deterministic weather fixture data.',
+      parametersSchema: z.object({ city: z.string() }),
+      execute: vi.fn(),
+    };
+    replay.beginNativeRequest({ caseId: 'structured-tool-history', parameters });
+    const capture = captureLfm26Chat({
+      provider: replay.provider,
+      request: {
+        model: 'LiquidAI/LFM2.5-2.6B-ONNX',
+        messages,
+        parameters,
+        tools: [requestTool({ tool })],
+        signal: new AbortController().signal,
+      },
+    });
+    captures.push(capture);
+    await capture.completion;
+    replay.endNativeRequest();
+    const observed = capture.snapshot();
+    expect(observed.settlement).toEqual({ status: 'fulfilled' });
+    expect(observed.parts).toEqual([
+      expect.objectContaining({ type: 'reasoning', index: 0, completeness: 'complete' }),
+      expect.objectContaining({ type: 'text', index: 1, completeness: 'complete' }),
+    ]);
+    expect(observed.parts[0]?.type === 'reasoning' ? observed.parts[0].chunks.join('') : undefined)
+      .toBe('The weather tool has returned the weather for Tokyo. The temperature is 20°C and the condition is clear. I should provide this information to the user in a clear and concise way.');
+    expect(observed.parts[1]?.type === 'text' ? observed.parts[1].chunks.join('') : undefined)
+      .toBe('The weather in Tokyo is currently **clear** with a temperature of **20°C**.');
+    expect(observed.result).toEqual({ type: 'finished', next: 'user' });
+    expect(tool.execute).not.toHaveBeenCalled();
+    replay.assertComplete({ requests: 1, nativeCalls: 1 });
   }, 30_000);
 });
 
@@ -1949,54 +1966,55 @@ describe('LFM2.5 2.6B Provider / images', () => {
       imagePlatform: undefined,
     });
     const captures: ProviderChatCapture[] = [];
-    try {
-      // image: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 1,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "image", parameters });
-        const capture = captureLfm26Chat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-2.6B-ONNX",
-            messages: [{
-              id: toMessageId({ raw: 'message_0' }),
-              role: 'user',
-              parts: [
-                { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
-                { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
-              ],
-            }],
-            parameters,
-            tools: [],
-            signal,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.parts).toEqual([]);
-        expect(observed.result).toMatchObject({
-          type: 'error',
-          error: { message: 'The standard text strategy cannot preserve an image input.' },
-        });
-        replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
-      }
-      replay.assertComplete({ requests: 1, nativeCalls: 0 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    };
+    // image: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 1,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "image", parameters });
+      const capture = captureLfm26Chat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-2.6B-ONNX",
+          messages: [{
+            id: toMessageId({ raw: 'message_0' }),
+            role: 'user',
+            parts: [
+              { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
+              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }) },
+            ],
+          }],
+          parameters,
+          tools: [],
+          signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(observed.parts).toEqual([]);
+      expect(observed.result).toMatchObject({
+        type: 'error',
+        error: { message: 'The standard text strategy cannot preserve an image input.' },
+      });
+      replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
     }
+    replay.assertComplete({ requests: 1, nativeCalls: 0 });
   }, 30_000);
 });
 
@@ -2180,107 +2198,108 @@ describe('LFM2.5 2.6B Provider / sequences', () => {
     });
     const captures: ProviderChatCapture[] = [];
     let firstReasoning = '';
-    try {
-      // first-turn: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 16,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "first-turn", parameters });
-        const capture = captureLfm26Chat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-2.6B-ONNX",
-            messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
-            parameters,
-            tools: [],
-            signal,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        replay.endNativeRequest();
-        const observed = capture.snapshot();
-        firstReasoning = 'The user wants me to "Template probe user message." This is a bit ambiguous';
-        expectInterruptedReasoning({ observed, text: firstReasoning });
-      }
-      // continuity: public inputs and settled expectations are owned by this model.
-      {
-        const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
-          temperature: 0,
-          topP: 1,
-          maxCompletionTokens: 16,
-          presencePenalty: undefined,
-          frequencyPenalty: undefined,
-          stop: undefined,
-          reasoning: {
-            effort: undefined,
-          },
-        };
-        const signal = new AbortController().signal;
-        replay.beginNativeRequest({ caseId: "continuity", parameters });
-        const capture = captureLfm26Chat({
-          provider: replay.provider,
-          request: {
-            model: "LiquidAI/LFM2.5-2.6B-ONNX",
-            messages: [
-              {
-                id: toMessageId({ raw: 'message_0' }),
-                role: 'user',
-                parts: [{
-                  type: 'text',
-                  text: 'Template probe user message.',
-                  completeness: 'complete',
-                }],
-              },
-              {
-                id: toMessageId({ raw: 'message_1' }),
-                role: 'assistant',
-                parts: [{
-                  type: 'reasoning',
-                  text: firstReasoning,
-                  completeness: 'partial',
-                }],
-              },
-              {
-                id: toMessageId({ raw: 'message_2' }),
-                role: 'user',
-                parts: [{
-                  type: 'text',
-                  text: 'Continue the synthetic conversation with a short response.',
-                  completeness: 'complete',
-                }],
-              },
-            ],
-            parameters,
-            tools: [],
-            signal,
-          },
-        });
-        captures.push(capture);
-        await capture.completion;
-        const observed = capture.snapshot();
-        expect(observed.settlement).toEqual({ status: 'fulfilled' });
-        expect(observed.parts).toEqual([]);
-        expect(observed.result).toMatchObject({
-          type: 'error',
-          error: { message: 'LFM2 cannot continue partial reasoning without inventing a native closing delimiter.' },
-        });
-        replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
-      }
-      replay.assertComplete({ requests: 2, nativeCalls: 1 });
-    } finally {
-      await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await closeProviderReplayCaptures({ captures, close: () => replay.close() });
+      },
+    };
+    // first-turn: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "first-turn", parameters });
+      const capture = captureLfm26Chat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-2.6B-ONNX",
+          messages: textMessages({ messages: [{ role: "user", content: "Template probe user message." }] }),
+          parameters,
+          tools: [],
+          signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      replay.endNativeRequest();
+      const observed = capture.snapshot();
+      firstReasoning = 'The user wants me to "Template probe user message." This is a bit ambiguous';
+      expectInterruptedReasoning({ observed, text: firstReasoning });
     }
+    // continuity: public inputs and settled expectations are owned by this model.
+    {
+      const parameters: NonNullable<Parameters<typeof replay.provider.chat>[0]['parameters']> = {
+        temperature: 0,
+        topP: 1,
+        maxCompletionTokens: 16,
+        presencePenalty: undefined,
+        frequencyPenalty: undefined,
+        stop: undefined,
+        reasoning: {
+          effort: undefined,
+        },
+      };
+      const signal = new AbortController().signal;
+      replay.beginNativeRequest({ caseId: "continuity", parameters });
+      const capture = captureLfm26Chat({
+        provider: replay.provider,
+        request: {
+          model: "LiquidAI/LFM2.5-2.6B-ONNX",
+          messages: [
+            {
+              id: toMessageId({ raw: 'message_0' }),
+              role: 'user',
+              parts: [{
+                type: 'text',
+                text: 'Template probe user message.',
+                completeness: 'complete',
+              }],
+            },
+            {
+              id: toMessageId({ raw: 'message_1' }),
+              role: 'assistant',
+              parts: [{
+                type: 'reasoning',
+                text: firstReasoning,
+                completeness: 'partial',
+              }],
+            },
+            {
+              id: toMessageId({ raw: 'message_2' }),
+              role: 'user',
+              parts: [{
+                type: 'text',
+                text: 'Continue the synthetic conversation with a short response.',
+                completeness: 'complete',
+              }],
+            },
+          ],
+          parameters,
+          tools: [],
+          signal,
+        },
+      });
+      captures.push(capture);
+      await capture.completion;
+      const observed = capture.snapshot();
+      expect(observed.settlement).toEqual({ status: 'fulfilled' });
+      expect(observed.parts).toEqual([]);
+      expect(observed.result).toMatchObject({
+        type: 'error',
+        error: { message: 'LFM2 cannot continue partial reasoning without inventing a native closing delimiter.' },
+      });
+      replay.endRejectedRequest({ outcome: { status: 'fulfilled', result: observed.result } });
+    }
+    replay.assertComplete({ requests: 2, nativeCalls: 1 });
   }, 30_000);
 
   it('preserves thirteen causal requests, native streams and settlements in one Load', async () => {

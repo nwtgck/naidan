@@ -10,53 +10,55 @@ describe('useChatPaneSession', () => {
 
   it('resets compact dialog, outline, and neural sync effect when chat identity changes', async () => {
     vi.useFakeTimers();
-    try {
-      const chatIdentityKey = ref('chat-1:leaf-1');
-      const session = useChatPaneSession({
-        chatIdentityKey: computed(() => chatIdentityKey.value),
-      });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        vi.useRealTimers();
+      },
+    };
+    const chatIdentityKey = ref('chat-1:leaf-1');
+    const session = useChatPaneSession({
+      chatIdentityKey: computed(() => chatIdentityKey.value),
+    });
 
-      session.openCompactSettings();
-      session.toggleOutline({
-        getCurrentViewportMessageId: () => toMessageId({ raw: 'message-1' }),
-      });
-      session.playNeuralSyncEffect();
+    session.openCompactSettings();
+    session.toggleOutline({
+      getCurrentViewportMessageId: () => toMessageId({ raw: 'message-1' }),
+    });
+    session.playNeuralSyncEffect();
 
-      expect(session.showCompactSettings.value).toBe(true);
-      expect(session.outlineVisibility.value).toBe('visible');
-      expect(session.initialOutlineMessageId.value).toBe('message-1');
-      expect(session.showNeuralSyncEffect.value).toBe(true);
+    expect(session.showCompactSettings.value).toBe(true);
+    expect(session.outlineVisibility.value).toBe('visible');
+    expect(session.initialOutlineMessageId.value).toBe('message-1');
+    expect(session.showNeuralSyncEffect.value).toBe(true);
 
-      chatIdentityKey.value = 'chat-2:leaf-1';
-      await nextTick();
+    chatIdentityKey.value = 'chat-2:leaf-1';
+    await nextTick();
 
-      expect(session.showCompactSettings.value).toBe(false);
-      expect(session.outlineVisibility.value).toBe('hidden');
-      expect(session.initialOutlineMessageId.value).toBeUndefined();
-      expect(session.showNeuralSyncEffect.value).toBe(false);
-      expect(session.TEST_ONLY.hideNeuralSyncEffectTimer.value).toBeUndefined();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(session.showCompactSettings.value).toBe(false);
+    expect(session.outlineVisibility.value).toBe('hidden');
+    expect(session.initialOutlineMessageId.value).toBeUndefined();
+    expect(session.showNeuralSyncEffect.value).toBe(false);
+    expect(session.TEST_ONLY.hideNeuralSyncEffectTimer.value).toBeUndefined();
   });
 
   it('clears the neural sync effect after the timer expires', async () => {
     vi.useFakeTimers();
-    try {
-      const session = useChatPaneSession({
-        chatIdentityKey: computed(() => 'chat-1:leaf-1'),
-      });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        vi.useRealTimers();
+      },
+    };
+    const session = useChatPaneSession({
+      chatIdentityKey: computed(() => 'chat-1:leaf-1'),
+    });
 
-      session.playNeuralSyncEffect();
-      expect(session.showNeuralSyncEffect.value).toBe(true);
+    session.playNeuralSyncEffect();
+    expect(session.showNeuralSyncEffect.value).toBe(true);
 
-      await vi.advanceTimersByTimeAsync(1200);
+    await vi.advanceTimersByTimeAsync(1200);
 
-      expect(session.showNeuralSyncEffect.value).toBe(false);
-      expect(session.TEST_ONLY.hideNeuralSyncEffectTimer.value).toBeUndefined();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(session.showNeuralSyncEffect.value).toBe(false);
+    expect(session.TEST_ONLY.hideNeuralSyncEffectTimer.value).toBeUndefined();
   });
 
   it('captures the viewport message when opening the outline and clears it when closing', () => {

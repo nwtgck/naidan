@@ -80,47 +80,48 @@ function createPublicationFixture({ outputs, historyEncoding }: {
     }),
     async generateMessage({ messages, onEvent, params, tools }: Parameters<TransformersJsInferenceScope['generateMessage']>[0] & { signal: AbortSignal }) {
       const delivery = createInferenceEventDelivery({ onEvent, onFailure: () => {} });
-      try {
-        await selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/content-publication' }).generate({
-          model: { generate, config: { model_type: 'synthetic' }, _prepare_generation_config: () => ({ eos_token_id: 0 }) } as never,
-          tokenizer: {
-            unk_token_id: -1,
-            all_special_ids: [0, 1, 2],
-            encode: (text: string) => [tokens.indexOf(text)],
-            decode: (ids: number[]) => tokens[ids[0]!],
-            apply_chat_template: (_messages: unknown, options: { tokenize?: boolean }) => options.tokenize === false ? 'plain prompt' : { input_ids: { dims: [1, 2] } },
-          } as never,
-          messages,
-          params,
-          tools,
-          onChunk: () => {
-            throw new Error('Legacy output is not used');
-          },
-          onRawChunk: () => {},
-          onToolCalls: () => {
-            throw new Error('Legacy calls are not used');
-          },
-          runtimeState: {
-            activeModelId: 'synthetic/content-publication',
-            gemma4Processor: null,
-            qwen3_5Processor: null,
-            gptOssPastKeyValues: null,
-            qwen3_5ConversationState: undefined,
-            generationStateOwner: {},
-            qwen3_5SequenceCache: undefined,
-          },
-          stoppingCriteria: { reset: () => {}, interrupt: () => {} },
-          debugLog: () => {},
-          observationSink: undefined,
-          generationCapture: undefined,
-          onGenerationEvent: ({ event }) => {
-            if (event.type === 'tool_call') published.push(event.toolCall);
-            delivery.enqueue({ event });
-          },
-        });
-      } finally {
-        await delivery.finish();
-      }
+      await using _cleanupResource = {
+        async [Symbol.asyncDispose]() {
+          await delivery.finish();
+        },
+      };
+      await selectGenerationStrategy({ modelType: 'synthetic', activeModelId: 'synthetic/content-publication' }).generate({
+        model: { generate, config: { model_type: 'synthetic' }, _prepare_generation_config: () => ({ eos_token_id: 0 }) } as never,
+        tokenizer: {
+          unk_token_id: -1,
+          all_special_ids: [0, 1, 2],
+          encode: (text: string) => [tokens.indexOf(text)],
+          decode: (ids: number[]) => tokens[ids[0]!],
+          apply_chat_template: (_messages: unknown, options: { tokenize?: boolean }) => options.tokenize === false ? 'plain prompt' : { input_ids: { dims: [1, 2] } },
+        } as never,
+        messages,
+        params,
+        tools,
+        onChunk: () => {
+          throw new Error('Legacy output is not used');
+        },
+        onRawChunk: () => {},
+        onToolCalls: () => {
+          throw new Error('Legacy calls are not used');
+        },
+        runtimeState: {
+          activeModelId: 'synthetic/content-publication',
+          gemma4Processor: null,
+          qwen3_5Processor: null,
+          gptOssPastKeyValues: null,
+          qwen3_5ConversationState: undefined,
+          generationStateOwner: {},
+          qwen3_5SequenceCache: undefined,
+        },
+        stoppingCriteria: { reset: () => {}, interrupt: () => {} },
+        debugLog: () => {},
+        observationSink: undefined,
+        generationCapture: undefined,
+        onGenerationEvent: ({ event }) => {
+          if (event.type === 'tool_call') published.push(event.toolCall);
+          delivery.enqueue({ event });
+        },
+      });
     },
   };
   const provider = createTransformersJsProvider({ service });

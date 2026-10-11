@@ -39,12 +39,13 @@ describe('input activity lifetime', () => {
     const finishLateAttachment = activity.hold();
     activity.beginComposition();
     activity.noteActivity();
-    try {
-      await vi.advanceTimersByTimeAsync(100);
-      expect(run).toHaveBeenCalledOnce();
-    } finally {
-      finishLateAttachment(); activity.endComposition();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        finishLateAttachment(); activity.endComposition();
+      },
+    };
+    await vi.advanceTimersByTimeAsync(100);
+    expect(run).toHaveBeenCalledOnce();
   });
 
   it('releases every sustained activity on unmount and tolerates late cleanup', async () => {

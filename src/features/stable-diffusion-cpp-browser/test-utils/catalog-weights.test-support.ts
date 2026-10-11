@@ -1,5 +1,5 @@
 /** Small, structurally representative fixtures, not executable trained models. */
-import { ggufFixture, safetensorsFixture, tensor } from './weights';
+import { ggufFixture, safetensorsFixture, tensor } from './weights.test-support';
 import type { ImageRecipeFile } from '@/features/stable-diffusion-cpp-browser/model-recipes';
 
 export async function qwenRecipeFixtureBytes({ file, layers }: { file: ImageRecipeFile, layers: number }): Promise<Uint8Array<ArrayBuffer>> {

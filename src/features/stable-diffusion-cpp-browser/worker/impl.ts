@@ -25,9 +25,16 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
   let session: ReturnType<typeof createImageGenerationSession> | undefined;
   let observed: ReturnType<typeof observeImageGpu> | undefined, boundary: ReturnType<typeof installImageWebGpu> | undefined;
   let current: { request: Request, trace: ReturnType<typeof createImageTrace>, phase: Progress['phase'], latest: PreviewControl, cancelRequested: boolean,
-    measured: boolean, log: ({ message, level }: { message: string, level?: number }) => void } | undefined;
+    measured: boolean, finishPerformance: ({ outcome }: { outcome: MeasurementOutcome }) => void,
+    log: ({ message, level }: { message: string, level?: number }) => void } | undefined;
   const emitCurrent = ({ ...entry }: { message?: ImageDiagnosticInput['message'], event: ImageDiagnosticInput['event'], stage: ImageDiagnosticInput['stage'], fields: ImageDiagnosticInput['fields'] }) => {
-    if (entry.event === 'gpu' && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(entry.message ?? '')) failed = true;
+    if (entry.event === 'failed' || entry.event === 'gpu' && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(entry.message ?? '')) {
+      failed = true;
+      // The receiver retires the Worker as soon as it sees the terminal record.
+      // Send passive partial-run/queue evidence first, even if native work never
+      // settles and generate() cannot reach its catch/finally blocks.
+      current?.finishPerformance({ outcome: 'failed' });
+    }
     if (current) current.trace.emit(entry);
     else if (entry.event === 'failed' || entry.event === 'gpu' && /^(?:uncaptured GPU error:|device lost:|GPU error scope:)/.test(entry.message ?? '')) {
       failed = true;
@@ -80,6 +87,14 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
         checkpoint: ({ point }) => observed?.checkpoint({ point }),
       });
       let outcome: MeasurementOutcome = 'failed';
+      let performanceFinished = false;
+      const finishPerformance = ({ outcome }: { outcome: MeasurementOutcome }): void => {
+        if (performanceFinished) return;
+        performanceFinished = true;
+        // Mark first: a diagnostic consumer may synchronously re-enter failure
+        // handling. Neither path waits, reads buffers or tears down native work.
+        performanceTrace.finish({ outcome }); observed?.endRun({ outcome });
+      };
       const sessionDiagnostic = ({ ...entry }: { message?: ImageDiagnosticInput['message'], event: ImageDiagnosticInput['event'], stage: ImageDiagnosticInput['stage'], fields: ImageDiagnosticInput['fields'] }): void => {
         if (entry.event === 'start' && entry.stage === 'model-header') performanceTrace.phase({ next: 'model-header' });
         if (entry.event === 'start' && entry.stage === 'model-load') performanceTrace.phase({ next: 'model-load' });
@@ -92,7 +107,7 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
         trace.native({ message, level }); diagnostics.push(sanitizeImageLog({ message, secrets }).slice(0, 1024));
         if (diagnostics.length > 24) diagnostics.shift();
       };
-      current = { request, trace, measured, cancelRequested: false, phase: 'runtime', latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: request.preview }, log };
+      current = { request, trace, measured, finishPerformance, cancelRequested: false, phase: 'runtime', latest: { type: 'naidan-image-preview-control-v1', runId: request.runId, revision: 0, settings: request.preview }, log };
       const operation = current;
       if (session) observed?.beginRun({ runId: request.runId });
       const previews = createPreviewOutput({
@@ -245,6 +260,7 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
         // Never call session.close()/free_sd_ctx here: the native call may have
         // been interrupted. The window unconditionally terminates this Worker.
         const message = sanitizeImageLog({ message: error instanceof Error ? error.message : String(error), secrets }), details = imageErrorContext({ error });
+        finishPerformance({ outcome: 'failed' });
         trace.emit({ event: 'failed', stage: 'worker', message, fields: { phase: operation.phase, ...details } });
         throw new Error([`Image generation failed: phase=${operation.phase}, profile=${request.artifact.profile}, source=${request.artifact.modulePath.split('/')[1]}`,
           message, ...(details.wasmFrames ? [`Wasm frames: ${details.wasmFrames}`] : []), ...diagnostics].join('\n'));
@@ -252,7 +268,7 @@ export function createImageWorker({ reportDiagnostic, reportPreview }: {
         previews.close();
         // Flush the failing/cancelled run before changing the listener or retiring
         // the observer. Never wait on GPU work just to finish the measurements.
-        performanceTrace.finish({ outcome }); observed?.endRun({ outcome });
+        finishPerformance({ outcome });
         if (failed) {
           boundary?.dispose(); observed?.dispose();
         }

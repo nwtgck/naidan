@@ -2,7 +2,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { defineComponent, ref, shallowRef } from 'vue';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { DEFAULT_SETTINGS, type Settings } from '@/01-models/types';
 import type { StartupState } from '@/logic/startup/types';
 import App from './App.vue';

@@ -5,7 +5,7 @@ import { contract, procedure, expose, NaidanRpcPeer, rpc } from './index';
 import { NaidanPipingDuplexSession } from '@/features/naidan-piping-duplex/naidan-piping-duplex-session';
 import { createNaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
 import { FiniteMemoryRelay } from '@/features/naidan-piping-duplex/finite-memory-relay.test-support';
-import { useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
+import { useOfflineScope } from '@/features/naidan-piping-duplex/index.test-support';
 import type { NaidanRpcTransport } from './transport';
 import { BYTE_PULL_BYTES, ITEM_FRAGMENT_BYTES, WRITE_BATCH_BYTES } from './primitives';
 

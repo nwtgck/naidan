@@ -56,26 +56,27 @@ describe('Qwen image generation session ownership', () => {
         maxTotalStreamTokenBytes: 262144,
       },
     });
-    try {
-      await capture.client.loadDownloadedModel({ modelId, revisionSelection: { kind: 'pinned', revision: revision }, progressCallback: () => undefined });
-      const result = await capture.takeGenerationCapture();
-      if (result.status !== 'not-started' || result.loadObservation?.outcome.status !== 'accepted') throw new Error('Expected actual Load receipt before generation');
-      const receipt = result.loadObservation.outcome.receipt;
-      expect(receipt).toMatchObject({ autoClass: 'AutoModelForCausalLM', cacheLookup: { revision }, resourceHealth: 'healthy-after-close' });
-      expect(receipt.plannedRequiredPaths.filter(path => path.startsWith('onnx/')).sort()).toEqual([...textArtifacts].sort());
-      const evidence = {
-        run: { normalizedModelId: modelId, resolvedRevision: revision },
-        runtimeCompletion: { status: 'accepted' as const, repositoryResolvedRevision: revision, cacheRevision: revision, loaderRevisionOption: revision, selectedCandidate: receipt.candidate, receipt },
-        modelArtifactObservations: [{ status: 'observed' as const, modelId, revision, autoClass: 'AutoModelForImageTextToText' as const, candidate: receipt.candidate, paths: [...textArtifacts, ...visionArtifacts] }],
-      };
-      expect(downloadRuntimeAcceptanceIdentity({ evidence })).toBe('unverified');
-      // Local acceptance is healthy; it is the different frozen vision contract
-      // that remains unverified, not an invented Load failure.
-      expect(downloadRuntimeAcceptanceIdentity({ evidence: { ...evidence, modelArtifactObservations: [{ ...evidence.modelArtifactObservations[0]!, autoClass: 'AutoModelForCausalLM', paths: textArtifacts }] } })).toBe('exact-resolved-revision');
-      assertReadOnly({ harness });
-    } finally {
-      await capture.client.dispose(); await harness.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await capture.client.dispose(); await harness.close();
+      },
+    };
+    await capture.client.loadDownloadedModel({ modelId, revisionSelection: { kind: 'pinned', revision: revision }, progressCallback: () => undefined });
+    const result = await capture.takeGenerationCapture();
+    if (result.status !== 'not-started' || result.loadObservation?.outcome.status !== 'accepted') throw new Error('Expected actual Load receipt before generation');
+    const receipt = result.loadObservation.outcome.receipt;
+    expect(receipt).toMatchObject({ autoClass: 'AutoModelForCausalLM', cacheLookup: { revision }, resourceHealth: 'healthy-after-close' });
+    expect(receipt.plannedRequiredPaths.filter(path => path.startsWith('onnx/')).sort()).toEqual([...textArtifacts].sort());
+    const evidence = {
+      run: { normalizedModelId: modelId, resolvedRevision: revision },
+      runtimeCompletion: { status: 'accepted' as const, repositoryResolvedRevision: revision, cacheRevision: revision, loaderRevisionOption: revision, selectedCandidate: receipt.candidate, receipt },
+      modelArtifactObservations: [{ status: 'observed' as const, modelId, revision, autoClass: 'AutoModelForImageTextToText' as const, candidate: receipt.candidate, paths: [...textArtifacts, ...visionArtifacts] }],
+    };
+    expect(downloadRuntimeAcceptanceIdentity({ evidence })).toBe('unverified');
+    // Local acceptance is healthy; it is the different frozen vision contract
+    // that remains unverified, not an invented Load failure.
+    expect(downloadRuntimeAcceptanceIdentity({ evidence: { ...evidence, modelArtifactObservations: [{ ...evidence.modelArtifactObservations[0]!, autoClass: 'AutoModelForCausalLM', paths: textArtifacts }] } })).toBe('exact-resolved-revision');
+    assertReadOnly({ harness });
   }, 30_000);
 
   it('reaches the vision session through actual public input and native generation', async () => {
@@ -129,35 +130,36 @@ describe('Qwen image generation session ownership', () => {
         }
       },
     });
-    try {
-      const turn = await runProviderReplayTurn({
-        provider: harness.provider,
-        tools: [],
-        abortController: new AbortController(),
-        onChange: undefined,
-        request: {
-          model: modelId,
-          debug: undefined,
-          readBinaryObject: undefined,
-          messages: [{
-            id: toMessageId({ raw: 'image-user' }),
-            role: 'user',
-            parts: [
-              { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
-              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
-            ],
-          }],
-          parameters: { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-        },
-      });
-      expect(turn.outcome, JSON.stringify({ stages, nativeFailure })).toMatchObject({ status: 'rejected', error: { message: visionBoundary } });
-      expect(stages).toEqual(['native-generate', 'embedding-inference', 'vision-inference', 'image-encoder-called']);
-      expect(harness.observations.localImageFetchCalls).toEqual([imageUrl]);
-      expect(harness.observations.ortCalls).toHaveLength(3);
-      assertReadOnly({ harness });
-    } finally {
-      await harness.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await harness.close();
+      },
+    };
+    const turn = await runProviderReplayTurn({
+      provider: harness.provider,
+      tools: [],
+      abortController: new AbortController(),
+      onChange: undefined,
+      request: {
+        model: modelId,
+        debug: undefined,
+        readBinaryObject: undefined,
+        messages: [{
+          id: toMessageId({ raw: 'image-user' }),
+          role: 'user',
+          parts: [
+            { type: 'text', text: 'Describe the single synthetic image in one short phrase.', completeness: 'complete' },
+            { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+          ],
+        }],
+        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+      },
+    });
+    expect(turn.outcome, JSON.stringify({ stages, nativeFailure })).toMatchObject({ status: 'rejected', error: { message: visionBoundary } });
+    expect(stages).toEqual(['native-generate', 'embedding-inference', 'vision-inference', 'image-encoder-called']);
+    expect(harness.observations.localImageFetchCalls).toEqual([imageUrl]);
+    expect(harness.observations.ortCalls).toHaveLength(3);
+    assertReadOnly({ harness });
   }, 30_000);
 
   it('keeps a complete text-only cache usable and refuses images without loading again', async () => {
@@ -170,58 +172,59 @@ describe('Qwen image generation session ownership', () => {
       return new runtime.Tensor('int64', BigInt64Array.from([...options.input_ids.data as BigInt64Array, 40n]), [1, options.input_ids.dims[1]! + 1]);
     });
     const harness = await createRouteRuntime({ paths: textArtifacts, generate });
-    try {
-      const onChange = vi.fn<NonNullable<Parameters<typeof runProviderReplayTurn>[0]['onChange']>>();
-      const request = {
-        model: modelId,
-        debug: undefined,
-        readBinaryObject: undefined,
-        parameters: { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
-      };
-      const text = await runProviderReplayTurn({
-        provider: harness.provider,
-        tools: [],
-        abortController: new AbortController(),
-        onChange,
-        request: {
-          ...request,
-          messages: [{ id: toMessageId({ raw: 'text-user' }), role: 'user', parts: [{ type: 'text', text: 'Hello.', completeness: 'complete' }] }],
-        },
-      });
-      expect(generate).toHaveBeenCalledTimes(1);
-      // The synthetic token has no model-native terminator, so it proves text
-      // delivery and the usable session without claiming a completed answer.
-      expect(text.outcome).toEqual({ status: 'fulfilled', result: { type: 'interrupted', reason: 'unknown' } });
-      expect(onChange.mock.calls.some(([{ messages }]) => messages.some(message =>
-        message.parts.some(part => part.type === 'text' && part.text.length > 0),
-      ))).toBe(true);
-      expect(text.generated[0]?.parts).toMatchObject([{ type: 'text', completeness: 'partial' }]);
-      expect(harness.observations.ortCalls).toHaveLength(2);
-      const image = await runProviderReplayTurn({
-        provider: harness.provider,
-        tools: [],
-        abortController: new AbortController(),
-        onChange: undefined,
-        request: {
-          ...request,
-          messages: [{
-            id: toMessageId({ raw: 'image-user' }),
-            role: 'user',
-            parts: [
-              { type: 'text', text: 'Describe this image.', completeness: 'complete' },
-              { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
-            ],
-          }],
-        },
-      });
-      expect(image.outcome).toMatchObject({ status: 'rejected', error: { message: expect.stringContaining('text-only local candidate') } });
-      expect(generate).toHaveBeenCalledTimes(1);
-      expect(harness.observations.ortCalls).toHaveLength(2);
-      expect(harness.observations.localImageFetchCalls).toEqual([]);
-      assertReadOnly({ harness });
-    } finally {
-      await harness.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await harness.close();
+      },
+    };
+    const onChange = vi.fn<NonNullable<Parameters<typeof runProviderReplayTurn>[0]['onChange']>>();
+    const request = {
+      model: modelId,
+      debug: undefined,
+      readBinaryObject: undefined,
+      parameters: { temperature: 0, topP: 1, maxCompletionTokens: 1, presencePenalty: undefined, frequencyPenalty: undefined, stop: undefined, reasoning: { effort: undefined } },
+    };
+    const text = await runProviderReplayTurn({
+      provider: harness.provider,
+      tools: [],
+      abortController: new AbortController(),
+      onChange,
+      request: {
+        ...request,
+        messages: [{ id: toMessageId({ raw: 'text-user' }), role: 'user', parts: [{ type: 'text', text: 'Hello.', completeness: 'complete' }] }],
+      },
+    });
+    expect(generate).toHaveBeenCalledTimes(1);
+    // The synthetic token has no model-native terminator, so it proves text
+    // delivery and the usable session without claiming a completed answer.
+    expect(text.outcome).toEqual({ status: 'fulfilled', result: { type: 'interrupted', reason: 'unknown' } });
+    expect(onChange.mock.calls.some(([{ messages }]) => messages.some(message =>
+      message.parts.some(part => part.type === 'text' && part.text.length > 0),
+    ))).toBe(true);
+    expect(text.generated[0]?.parts).toMatchObject([{ type: 'text', completeness: 'partial' }]);
+    expect(harness.observations.ortCalls).toHaveLength(2);
+    const image = await runProviderReplayTurn({
+      provider: harness.provider,
+      tools: [],
+      abortController: new AbortController(),
+      onChange: undefined,
+      request: {
+        ...request,
+        messages: [{
+          id: toMessageId({ raw: 'image-user' }),
+          role: 'user',
+          parts: [
+            { type: 'text', text: 'Describe this image.', completeness: 'complete' },
+            { type: 'attachment', attachment: createReplayImageAttachment({ dataUrl: imageUrl }) },
+          ],
+        }],
+      },
+    });
+    expect(image.outcome).toMatchObject({ status: 'rejected', error: { message: expect.stringContaining('text-only local candidate') } });
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(harness.observations.ortCalls).toHaveLength(2);
+    expect(harness.observations.localImageFetchCalls).toEqual([]);
+    assertReadOnly({ harness });
   }, 30_000);
 
   it('rejects an incomplete text and image cache before any native session', async () => {
@@ -229,14 +232,15 @@ describe('Qwen image generation session ownership', () => {
       throw new Error('Generation must not start');
     });
     const harness = await createRouteRuntime({ paths: ['onnx/embed_tokens_q4f16.onnx'], generate });
-    try {
-      await expect(harness.service.loadDownloadedModel({ modelId })).rejects.toThrow('Downloaded model is incomplete');
-      expect(harness.observations.ortCalls).toEqual([]);
-      expect(generate).not.toHaveBeenCalled();
-      assertReadOnly({ harness });
-    } finally {
-      await harness.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await harness.close();
+      },
+    };
+    await expect(harness.service.loadDownloadedModel({ modelId })).rejects.toThrow('Downloaded model is incomplete');
+    expect(harness.observations.ortCalls).toEqual([]);
+    expect(generate).not.toHaveBeenCalled();
+    assertReadOnly({ harness });
   }, 30_000);
 
   it('does not downgrade after a planned vision resource disappears during Load', async () => {
@@ -251,14 +255,15 @@ describe('Qwen image generation session ownership', () => {
       return original(...args);
     });
     const textLoad = vi.spyOn(harness.runtime.AutoModelForCausalLM, 'from_pretrained');
-    try {
-      await expect(harness.service.loadDownloadedModel({ modelId })).rejects.toThrow();
-      expect(imageLoad).toHaveBeenCalledTimes(1);
-      expect(textLoad).not.toHaveBeenCalled();
-      expect(generate).not.toHaveBeenCalled();
-      assertReadOnly({ harness });
-    } finally {
-      imageLoad.mockRestore(); textLoad.mockRestore(); await harness.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        imageLoad.mockRestore(); textLoad.mockRestore(); await harness.close();
+      },
+    };
+    await expect(harness.service.loadDownloadedModel({ modelId })).rejects.toThrow();
+    expect(imageLoad).toHaveBeenCalledTimes(1);
+    expect(textLoad).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
+    assertReadOnly({ harness });
   }, 30_000);
 });

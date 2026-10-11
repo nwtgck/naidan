@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { toImageGenerationId, toImageGenerationSessionId } from '@/01-models/ids';
-import { generationRunFixture } from '@/00-storage/service/image-generation/test-support';
+import { generationRunFixture } from '@/00-storage/service/image-generation/index.test-support';
 import { recoverImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
 import { createImageRecoveryStore } from './recovery';
 

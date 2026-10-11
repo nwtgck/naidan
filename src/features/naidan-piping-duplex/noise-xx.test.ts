@@ -4,7 +4,7 @@ import { expect, onTestFinished, it, vi } from 'vitest';
 import { promiseAllKeyed } from '@/utils/promise';
 import { NoiseXX, NoiseCipher, createNaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
 import type { NaidanPipingIdentity } from '@/features/naidan-piping-duplex/noise-xx';
-import { useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
+import { useOfflineScope } from '@/features/naidan-piping-duplex/index.test-support';
 
 useOfflineScope();
 // Public test keys, not credentials. Fixed external ciphertexts detect mutually compatible implementation bugs.

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAX_REFERENCE_SAMPLES, normalizeReferenceAudio, prepareReferenceAudio } from './reference-audio';
 import { MAX_REFERENCE_BYTES } from './types';
 import { validateAudioWav } from './wav';
-import { readBlobBytes, referenceFile } from './test-utils/blob';
+import { readBlobBytes, referenceFile } from './test-utils/blob.test-support';
 const decode = vi.fn<OfflineAudioContext['decodeAudioData']>();
 const constructed = vi.fn();
 

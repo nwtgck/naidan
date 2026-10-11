@@ -2,7 +2,7 @@ import type { MessageId } from '@/01-models/ids';
 import { toChatId } from '@/01-models/ids';
 import { ref, nextTick, computed } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
@@ -11,7 +11,7 @@ import { useSettings } from '@/composables/useSettings';
 import { useChatPaneState } from '@/composables/chat/ui/useChatPaneState';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
-import { setupScrollToMock } from '@/utils/test-utils';
+import { setupScrollToMock } from '@/utils/utils.test-support';
 
 beforeEach(async () => {
   await ensureAllStringsForTest({ locale: 'en' });

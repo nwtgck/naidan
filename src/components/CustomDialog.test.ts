@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { nextTick, markRaw } from 'vue'; // Import nextTick and markRaw from vue
 import { mount } from '@vue/test-utils';
 import CustomDialog from './CustomDialog.vue';

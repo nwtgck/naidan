@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ThemeToggle from './ThemeToggle.vue';
 import { useTheme } from '@/features/theme/composables/useTheme';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 // Mock useTheme
 vi.mock('../composables/useTheme', () => ({

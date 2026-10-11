@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageInputControls from './ImageInputControls.vue';
 import { emptyImageInputs } from '@/features/image-generation/image-input-form';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';

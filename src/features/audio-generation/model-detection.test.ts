@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { detectAudioModelFiles, inspectStoredAudioModel, preferredAudioModel, type AudioModelDetection } from './model-detection';
-import { ggufFixture, textMetadata, boolMetadata } from './test-utils/gguf';
+import { ggufFixture, textMetadata, boolMetadata } from './test-utils/gguf.test-support';
 import type { LocalModel } from '@/features/llama-cpp-browser/types';
 const storage = vi.hoisted(() => ({ resolve: vi.fn() }));
 vi.mock('@/features/llama-cpp-browser/runtime/model-store', () => ({ storedModelDirectory: storage.resolve }));

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { h } from 'vue';
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 // This generic slot test retains its independent repository-link fixture.
 // The audio page now uses the original model-suggestions catalog instead.
 const repositoryCatalog = [

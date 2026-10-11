@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageGenerationLab from '@/features/image-generation/components/ImageGenerationLab.vue';
 import ImageGenerationEditor from '@/features/image-generation/components/ImageGenerationEditor.vue';
 import { requestFixture } from '@/features/stable-diffusion-cpp-browser/test-fixtures';
 import { snapshotImageGeneration, finishImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
 import { imageModelRecipes, selectedRecipeFiles } from '@/features/stable-diffusion-cpp-browser/model-recipes';
-import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTextTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights';
+import { ggufFixture, safetensorsFixture, zImageTensors, fluxVaeTensors, qwenTextTensors } from '@/features/stable-diffusion-cpp-browser/test-utils/weights.test-support';
 import { scanImageRepositories } from '@/features/stable-diffusion-cpp-browser/logic/model-candidates';
 
 const mocks = vi.hoisted(() => ({ download: vi.fn(), inspect: vi.fn(), query: vi.fn(), getFile: vi.fn(), save: vi.fn(), generate: vi.fn() }));

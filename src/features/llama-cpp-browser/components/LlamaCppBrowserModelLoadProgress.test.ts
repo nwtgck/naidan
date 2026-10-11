@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import LlamaCppBrowserModelLoadProgress from './LlamaCppBrowserModelLoadProgress.vue';
 
 beforeEach(async () => {

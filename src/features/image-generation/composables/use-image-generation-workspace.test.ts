@@ -28,12 +28,12 @@ vi.mock('@/components/ChatPane.vue', async () => {
   return { __esModule: true, default: defineComponent({ props: { chatId: { type: String, required: true } }, setup: props => () => h('div', { 'data-testid': 'existing-chat-pane', 'data-chat-id': props.chatId }) }) };
 });
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { storageService } from '@/00-storage/service';
 import * as persistence from '@/00-storage/service/image-generation';
 import { deleteImageGenerationAsset } from '@/00-storage/service/image-generation-curation';
 import ImageGenerationCurationActions from '@/features/image-generation/components/ImageGenerationCurationActions.vue';
-import { createImageGenerationStorageHarness, generationRunFixture } from '@/00-storage/service/image-generation/test-support';
+import { createImageGenerationStorageHarness, generationRunFixture } from '@/00-storage/service/image-generation/index.test-support';
 import { MemoryStorageProvider } from '@/00-storage/service/memory-storage';
 import { publishImageGenerationBinaries } from '@/00-storage/service/image-generation-binaries';
 import { idToRaw, toChatId, toImageGenerationId, toImageGenerationSessionId, toNaidanRpcRegistrationId, toNaidanRpcPeerPublicKey, toBinaryObjectId } from '@/01-models/ids';
@@ -51,7 +51,7 @@ const rpcManager = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('@/features/naidan-rpc-integration/runtime/feature', () => ({ getRpcManager: rpcManager.get, configureRpcFeature: async () => {}, subscribeRpcState: () => () => {} }));
 import { planImageGenerationSeeds } from '@/01-models/image-generation';
 import type { Chat, ChatSummary, StorageType } from '@/01-models/types';
-import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view';
+import { useImageGeneration } from '@/features/image-generation/test-utils/unavailable-image-view.test-support';
 import type { ImageGenerationDraft } from '@/features/image-generation/generation-draft';
 import type { ImageGenerationView } from '@/features/image-generation/use-image-generation-types';
 import { finishImageGenerationSnapshot } from '@/features/image-generation/history/snapshot';
@@ -387,17 +387,18 @@ describe('Image Generation component connections', () => {
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:pathMatch(.*)*', component: { render: () => h('div') } }] });
     await router.push('/'); await router.isReady();
     const surface = mount(ImageGenerationSidebar, { props: { navigation: { view: fixture.view, openModels, openDiagnostics, openGeneration } }, global: { plugins: [router], stubs: { SidebarDebugControls: true } } });
-    try {
-      const buttons = surface.findAll('button');
-      expect(buttons[1]?.attributes('data-testid')).toBe('workspace-new-session');
-      await surface.get('button[title="Models"]').trigger('click');
-      await surface.get('button[title="Diagnostics"]').trigger('click');
-      expect(openModels).toHaveBeenCalledOnce(); expect(openDiagnostics).toHaveBeenCalledOnce();
-      await surface.get('[data-testid="workspace-new-session"]').trigger('click'); await flushPromises();
-      expect(fixture.view.sessions.value).toHaveLength(2); expect(openGeneration).toHaveBeenCalledOnce();
-    } finally {
-      surface.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount();
+      },
+    };
+    const buttons = surface.findAll('button');
+    expect(buttons[1]?.attributes('data-testid')).toBe('workspace-new-session');
+    await surface.get('button[title="Models"]').trigger('click');
+    await surface.get('button[title="Diagnostics"]').trigger('click');
+    expect(openModels).toHaveBeenCalledOnce(); expect(openDiagnostics).toHaveBeenCalledOnce();
+    await surface.get('[data-testid="workspace-new-session"]').trigger('click'); await flushPromises();
+    expect(fixture.view.sessions.value).toHaveLength(2); expect(openGeneration).toHaveBeenCalledOnce();
   });
 });
 
@@ -410,20 +411,21 @@ describe('Image Generation viewer integration', () => {
       await gate.promise; return original(request);
     });
     const surface = mount(ImageGenerationAssetViewer, { props: { view: fixture.view, active: true } });
-    try {
-      const opening = fixture.view.inspect({ tile: first }); await flushPromises();
-      expect(document.querySelector('[data-testid="image-viewer"]')).not.toBeNull();
-      expect(fixture.view.inspectedTile.value?.id).toBe(first.id); expect(fixture.view.inspectLoading.value).toBe(true); expect(fixture.view.details.value).toBeUndefined();
-      await fixture.view.inspect({ tile: second });
-      expect(fixture.view.details.value?.asset.id).toBe(second.id);
-      gate.resolve(); await opening;
-      expect(fixture.view.details.value?.asset.id).toBe(second.id);
-      expect(fixture.view.inspectedTile.value?.id).toBe(second.id);
-      fixture.view.closeDetails(); await flushPromises();
-      expect(document.querySelector('[data-testid="image-viewer"]')).toBeNull();
-    } finally {
-      gate.resolve(); surface.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        gate.resolve(); surface.unmount();
+      },
+    };
+    const opening = fixture.view.inspect({ tile: first }); await flushPromises();
+    expect(document.querySelector('[data-testid="image-viewer"]')).not.toBeNull();
+    expect(fixture.view.inspectedTile.value?.id).toBe(first.id); expect(fixture.view.inspectLoading.value).toBe(true); expect(fixture.view.details.value).toBeUndefined();
+    await fixture.view.inspect({ tile: second });
+    expect(fixture.view.details.value?.asset.id).toBe(second.id);
+    gate.resolve(); await opening;
+    expect(fixture.view.details.value?.asset.id).toBe(second.id);
+    expect(fixture.view.inspectedTile.value?.id).toBe(second.id);
+    fixture.view.closeDetails(); await flushPromises();
+    expect(document.querySelector('[data-testid="image-viewer"]')).toBeNull();
   });
 
   it('keeps its browsing order and current image when removing favorite excludes it from the gallery', async () => {
@@ -433,45 +435,47 @@ describe('Image Generation viewer integration', () => {
     fixture.view.onlyFavorite.value = true; await fixture.view.refresh({ append: false });
     const [first, second] = fixture.view.tiles.value; if (!first || !second) throw new Error('Missing images.');
     const surface = mount(ImageGenerationAssetViewer, { props: { view: fixture.view, active: true } });
-    try {
-      await fixture.view.inspect({ tile: first }); await flushPromises();
-      const viewer = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="image-viewer"]')!);
-      expect(viewer.find('[data-testid="workspace-viewer-details"]').exists()).toBe(false);
-      await viewer.get('[data-testid="workspace-viewer-favorite"]').trigger('click'); await flushPromises();
-      expect(fixture.view.tiles.value.map(tile => tile.id)).toEqual([second.id]);
-      expect(fixture.view.inspectedTile.value?.id).toBe(first.id);
-      expect(viewer.get('[data-testid="workspace-viewer-favorite"]').attributes('aria-pressed')).toBe('false');
-      expect(surface.vm.TEST_ONLY.queue.value.map(tile => tile.id)).toEqual([first.id, second.id]);
-      await viewer.get('[data-testid="image-viewer-next"]').trigger('click'); await flushPromises();
-      expect(fixture.view.details.value?.asset.id).toBe(second.id);
-      await viewer.get('[data-testid="image-viewer-previous"]').trigger('click'); await flushPromises();
-      expect(fixture.view.details.value?.asset.id).toBe(first.id);
-      // Returning uses the current annotation revision, not the old gallery one.
-      await viewer.get('[data-testid="workspace-viewer-favorite"]').trigger('click'); await flushPromises();
-      expect(fixture.view.failure.value).toBe(''); expect(fixture.view.tiles.value).toHaveLength(2);
-      expect(viewer.get('[data-testid="workspace-viewer-favorite"]').attributes('aria-pressed')).toBe('true');
-    } finally {
-      surface.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount();
+      },
+    };
+    await fixture.view.inspect({ tile: first }); await flushPromises();
+    const viewer = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="image-viewer"]')!);
+    expect(viewer.find('[data-testid="workspace-viewer-details"]').exists()).toBe(false);
+    await viewer.get('[data-testid="workspace-viewer-favorite"]').trigger('click'); await flushPromises();
+    expect(fixture.view.tiles.value.map(tile => tile.id)).toEqual([second.id]);
+    expect(fixture.view.inspectedTile.value?.id).toBe(first.id);
+    expect(viewer.get('[data-testid="workspace-viewer-favorite"]').attributes('aria-pressed')).toBe('false');
+    expect(surface.vm.TEST_ONLY.queue.value.map(tile => tile.id)).toEqual([first.id, second.id]);
+    await viewer.get('[data-testid="image-viewer-next"]').trigger('click'); await flushPromises();
+    expect(fixture.view.details.value?.asset.id).toBe(second.id);
+    await viewer.get('[data-testid="image-viewer-previous"]').trigger('click'); await flushPromises();
+    expect(fixture.view.details.value?.asset.id).toBe(first.id);
+    // Returning uses the current annotation revision, not the old gallery one.
+    await viewer.get('[data-testid="workspace-viewer-favorite"]').trigger('click'); await flushPromises();
+    expect(fixture.view.failure.value).toBe(''); expect(fixture.view.tiles.value).toHaveLength(2);
+    expect(viewer.get('[data-testid="workspace-viewer-favorite"]').attributes('aria-pressed')).toBe('true');
   });
 
   it('closes on a session change or hidden workspace and ignores a pending record after closing', async () => {
     const fixture = await ready(); await fixture.view.generate(); const first = fixture.view.tiles.value[0]!;
     const surface = mount(ImageGenerationAssetViewer, { props: { view: fixture.view, active: true } });
-    try {
-      await fixture.view.inspect({ tile: first }); await flushPromises();
-      await surface.setProps({ active: false }); expect(fixture.view.inspectedTile.value).toBeUndefined();
-      await surface.setProps({ active: true }); expect(document.querySelector('[data-testid="image-viewer"]')).toBeNull();
-      const original = persistence.loadImageGenerationAsset, gate = Promise.withResolvers<void>();
-      vi.spyOn(persistence, 'loadImageGenerationAsset').mockImplementationOnce(async request => {
-        await gate.promise; return original(request);
-      });
-      const reading = fixture.view.inspect({ tile: first });
-      await fixture.view.newSession({ preserveDraft: false }); gate.resolve(); await reading;
-      expect(fixture.view.details.value).toBeUndefined(); expect(fixture.view.inspectedTile.value).toBeUndefined();
-    } finally {
-      surface.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount();
+      },
+    };
+    await fixture.view.inspect({ tile: first }); await flushPromises();
+    await surface.setProps({ active: false }); expect(fixture.view.inspectedTile.value).toBeUndefined();
+    await surface.setProps({ active: true }); expect(document.querySelector('[data-testid="image-viewer"]')).toBeNull();
+    const original = persistence.loadImageGenerationAsset, gate = Promise.withResolvers<void>();
+    vi.spyOn(persistence, 'loadImageGenerationAsset').mockImplementationOnce(async request => {
+      await gate.promise; return original(request);
+    });
+    const reading = fixture.view.inspect({ tile: first });
+    await fixture.view.newSession({ preserveDraft: false }); gate.resolve(); await reading;
+    expect(fixture.view.details.value).toBeUndefined(); expect(fixture.view.inspectedTile.value).toBeUndefined();
   });
 
   it('does not allow retargeting an asynchronous settings reuse into another session', async () => {
@@ -505,24 +509,25 @@ describe('Image Generation live monitor', () => {
     fixture.generation.latestRun.value = { status: 'running', width: 768, height: 512 };
     fixture.generation.livePreview.value = { type: 'naidan-image-preview-v1', mode: 'projection', runId: 8, revision: 0, step: 1, steps: 8, id: 1, elapsedMs: 10, url: 'blob:active-run', width: 768, height: 512 };
     const surface = mount(ImageGenerationMonitor, { props: { workspace: fixture.view, generation: fixture.generation, active: true, compact: false } });
-    try {
-      await fixture.view.selectSession({ sessionId: other.id });
-      expect(surface.text()).toContain('Generating here'); expect(surface.text()).not.toContain('Browsing there');
-      expect(surface.find('[data-testid="image-generation-current-preview"]').exists()).toBe(false);
-      expect(surface.text()).toContain('Generating in another session');
-      await fixture.view.selectSession({ sessionId: first.id }); await flushPromises();
-      expect(surface.get('[data-testid="image-generation-current-preview"]').attributes('src')).toBe('blob:active-run');
-      expect(surface.findComponent(ImageGenerationProgress).props('width')).toBe(768);
-      expect(surface.findComponent(ImageGenerationProgress).props('size')).toBe('monitor');
-      expect(surface.get('[data-testid="workspace-generation-monitor"]').classes()).not.toContain('sticky');
-      expect(surface.get('[data-testid="workspace-generation-monitor"]').classes()).not.toContain('fixed');
-      await surface.setProps({ compact: true }); expect(surface.findComponent(ImageGenerationProgress).props('size')).toBe('compact');
-      gate.resolve(); await task; await flushPromises();
-      expect(surface.find('[data-testid="workspace-generation-monitor"]').exists()).toBe(true);
-      expect(surface.text()).not.toContain('Retry saving');
-    } finally {
-      gate.resolve(); await task; surface.unmount();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        gate.resolve(); await task; surface.unmount();
+      },
+    };
+    await fixture.view.selectSession({ sessionId: other.id });
+    expect(surface.text()).toContain('Generating here'); expect(surface.text()).not.toContain('Browsing there');
+    expect(surface.find('[data-testid="image-generation-current-preview"]').exists()).toBe(false);
+    expect(surface.text()).toContain('Generating in another session');
+    await fixture.view.selectSession({ sessionId: first.id }); await flushPromises();
+    expect(surface.get('[data-testid="image-generation-current-preview"]').attributes('src')).toBe('blob:active-run');
+    expect(surface.findComponent(ImageGenerationProgress).props('width')).toBe(768);
+    expect(surface.findComponent(ImageGenerationProgress).props('size')).toBe('monitor');
+    expect(surface.get('[data-testid="workspace-generation-monitor"]').classes()).not.toContain('sticky');
+    expect(surface.get('[data-testid="workspace-generation-monitor"]').classes()).not.toContain('fixed');
+    await surface.setProps({ compact: true }); expect(surface.findComponent(ImageGenerationProgress).props('size')).toBe('compact');
+    gate.resolve(); await task; await flushPromises();
+    expect(surface.find('[data-testid="workspace-generation-monitor"]').exists()).toBe(true);
+    expect(surface.text()).not.toContain('Retry saving');
   });
 
   it('keeps a failed publication visible and retries only saving', async () => {
@@ -535,15 +540,16 @@ describe('Image Generation live monitor', () => {
     });
     await fixture.view.generate();
     const surface = mount(ImageGenerationMonitor, { props: { workspace: fixture.view, generation: fixture.generation, active: true, compact: false } });
-    try {
-      expect(surface.find('[data-testid="workspace-generation-monitor"]').exists()).toBe(true);
-      await surface.get('[data-testid="workspace-pending-save"] button').trigger('click'); await flushPromises();
-      expect(fixture.native).toHaveBeenCalledOnce(); expect(fixture.view.hasPendingSave.value).toBe(false);
-      expect(surface.find('[data-testid="workspace-generation-monitor"]').exists()).toBe(true);
-      expect(surface.text()).not.toContain('Retry saving');
-    } finally {
-      surface.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount();
+      },
+    };
+    expect(surface.find('[data-testid="workspace-generation-monitor"]').exists()).toBe(true);
+    await surface.get('[data-testid="workspace-pending-save"] button').trigger('click'); await flushPromises();
+    expect(fixture.native).toHaveBeenCalledOnce(); expect(fixture.view.hasPendingSave.value).toBe(false);
+    expect(surface.find('[data-testid="workspace-generation-monitor"]').exists()).toBe(true);
+    expect(surface.text()).not.toContain('Retry saving');
   });
 });
 
@@ -557,24 +563,25 @@ describe('Image Generation existing chat panel', () => {
     vi.spyOn(generationComposition, 'useImageGenerationWorkspace').mockReturnValueOnce(fixture.view);
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: ImageGeneration, props: { generation: fixture.generation, active: true } }] });
     await router.push('/'); await router.isReady(); const surface = mount(RouterView, { global: { plugins: [router] } });
-    try {
-      await flushPromises();
-      const openButton = surface.get('[data-testid="workspace-open-chat"]');
-      expect(openButton.text()).toBe('Connect a chat');
-      expect(document.querySelector('[data-testid="image-generation-assistant"]')).toBeNull();
-      await openButton.trigger('click'); await vi.dynamicImportSettled(); await flushPromises();
-      const panel = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="image-generation-assistant"]')!);
-      expect(panel.isVisible()).toBe(true); expect(panel.attributes('role')).toBe('dialog');
-      expect(panel.find('[data-testid="workspace-chat-picker"]').exists()).toBe(true);
-      expect(panel.text()).toContain('existing chat');
-      expect(document.querySelector('[data-testid="existing-chat-pane"]')).toBeNull();
-      expect(openButton.attributes('aria-expanded')).toBe('true');
-      expect(panel.attributes('id')).toBe(openButton.attributes('aria-controls'));
-      await panel.get('[data-testid="workspace-chat-close"]').trigger('click'); await flushPromises();
-      expect(panel.isVisible()).toBe(false); expect(openButton.attributes('aria-expanded')).toBe('false');
-    } finally {
-      surface.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount();
+      },
+    };
+    await flushPromises();
+    const openButton = surface.get('[data-testid="workspace-open-chat"]');
+    expect(openButton.text()).toBe('Connect a chat');
+    expect(document.querySelector('[data-testid="image-generation-assistant"]')).toBeNull();
+    await openButton.trigger('click'); await vi.dynamicImportSettled(); await flushPromises();
+    const panel = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="image-generation-assistant"]')!);
+    expect(panel.isVisible()).toBe(true); expect(panel.attributes('role')).toBe('dialog');
+    expect(panel.find('[data-testid="workspace-chat-picker"]').exists()).toBe(true);
+    expect(panel.text()).toContain('existing chat');
+    expect(document.querySelector('[data-testid="existing-chat-pane"]')).toBeNull();
+    expect(openButton.attributes('aria-expanded')).toBe('true');
+    expect(panel.attributes('id')).toBe(openButton.attributes('aria-controls'));
+    await panel.get('[data-testid="workspace-chat-close"]').trigger('click'); await flushPromises();
+    expect(panel.isVisible()).toBe(false); expect(openButton.attributes('aria-expanded')).toBe('false');
   });
 
   it('reuses the selected ChatPane, revokes tools on hide or replacement, and remembers the selection on reopen', async () => {
@@ -626,25 +633,26 @@ describe('Image Generation curation and durable assistant choice', () => {
     vi.spyOn(generationComposition, 'useImageGenerationWorkspace').mockReturnValueOnce(fixture.view);
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: ImageGeneration, props: { generation: fixture.generation, active: true } }] });
     await router.push('/'); await router.isReady(); const surface = mount(RouterView, { global: { plugins: [router] } });
-    try {
-      await flushPromises();
-      const preview = surface.get('[data-testid="workspace-preview-column"]');
-      const gallery = surface.get('[data-testid="workspace-gallery-area"]');
-      const editor = surface.findComponent(ImageGenerationEditor);
-      expect(preview.element.parentElement?.contains(editor.element)).toBe(false);
-      expect(preview.element.parentElement?.contains(gallery.element)).toBe(true);
-      expect(surface.get('[data-testid="workspace-settings-column"]').element.contains(editor.element)).toBe(true);
-      // The notice may sit between preview and gallery, but the tall editor is
-      // never their grid row owner.
-      expect(preview.element.parentElement).toBe(gallery.element.parentElement);
-      expect(preview.html()).not.toMatch(/class="[^"\n]*\b(?:sticky|fixed)\b/);
-      expect(surface.findAll('[data-testid="workspace-generation-monitor"]')).toHaveLength(1);
-      expect(surface.text()).not.toContain('Storage and data rescue');
-      const dates = fixture.view.tiles.value.map(tile => tile.createdAt);
-      expect(dates).toEqual([...dates].sort((a, b) => b - a));
-    } finally {
-      surface.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount();
+      },
+    };
+    await flushPromises();
+    const preview = surface.get('[data-testid="workspace-preview-column"]');
+    const gallery = surface.get('[data-testid="workspace-gallery-area"]');
+    const editor = surface.findComponent(ImageGenerationEditor);
+    expect(preview.element.parentElement?.contains(editor.element)).toBe(false);
+    expect(preview.element.parentElement?.contains(gallery.element)).toBe(true);
+    expect(surface.get('[data-testid="workspace-settings-column"]').element.contains(editor.element)).toBe(true);
+    // The notice may sit between preview and gallery, but the tall editor is
+    // never their grid row owner.
+    expect(preview.element.parentElement).toBe(gallery.element.parentElement);
+    expect(preview.html()).not.toMatch(/class="[^"\n]*\b(?:sticky|fixed)\b/);
+    expect(surface.findAll('[data-testid="workspace-generation-monitor"]')).toHaveLength(1);
+    expect(surface.text()).not.toContain('Storage and data rescue');
+    const dates = fixture.view.tiles.value.map(tile => tile.createdAt);
+    expect(dates).toEqual([...dates].sort((a, b) => b - a));
   });
 
   it('selects more than two images for bulk archive and restoration without deleting their files', async () => {
@@ -704,18 +712,19 @@ describe('Image Generation curation and durable assistant choice', () => {
   it('confirms byte deletion, permits cancellation, and rejects confirmation after a session switch', async () => {
     const fixture = await ready(); await fixture.view.generate(); const tile = fixture.view.tiles.value[0]!;
     const surface = mount(ImageGenerationCurationActions, { props: { view: fixture.view, items: [tile] } });
-    try {
-      mocks.confirm.mockResolvedValueOnce(false);
-      await surface.get('[data-testid="workspace-bulk-delete"]').trigger('click'); await flushPromises();
-      expect(mocks.remove).not.toHaveBeenCalled();
-      expect(mocks.confirm.mock.calls[0]?.[0].message).toContain('BinaryObjects');
-      const gate = Promise.withResolvers<boolean>(); mocks.confirm.mockReturnValueOnce(gate.promise);
-      await surface.get('[data-testid="workspace-bulk-delete"]').trigger('click');
-      await fixture.view.newSession({ preserveDraft: false }); gate.resolve(true); await flushPromises();
-      expect(mocks.remove).not.toHaveBeenCalled(); expect(await provider.getFile({ binaryObjectId: tile.binaryObjectId })).toBeTruthy();
-    } finally {
-      surface.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount();
+      },
+    };
+    mocks.confirm.mockResolvedValueOnce(false);
+    await surface.get('[data-testid="workspace-bulk-delete"]').trigger('click'); await flushPromises();
+    expect(mocks.remove).not.toHaveBeenCalled();
+    expect(mocks.confirm.mock.calls[0]?.[0].message).toContain('BinaryObjects');
+    const gate = Promise.withResolvers<boolean>(); mocks.confirm.mockReturnValueOnce(gate.promise);
+    await surface.get('[data-testid="workspace-bulk-delete"]').trigger('click');
+    await fixture.view.newSession({ preserveDraft: false }); gate.resolve(true); await flushPromises();
+    expect(mocks.remove).not.toHaveBeenCalled(); expect(await provider.getFile({ binaryObjectId: tile.binaryObjectId })).toBeTruthy();
   });
 
   it('persists independent assistant selections per session and preserves them after reload', async () => {
@@ -748,19 +757,20 @@ describe('Image Generation curation and durable assistant choice', () => {
     await router.push('/'); await router.isReady();
     const surface = mount(ImageGeneration, { props: { generation: fixture.generation, active: true }, global: { plugins: [router] } });
     const view = surface.vm.TEST_ONLY.view;
-    try {
-      await flushPromises(); view.count.value = 2;
-      fixture.native.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('second image failed'));
-      await view.generate(); await flushPromises();
-      expect(view.tiles.value).toHaveLength(1); expect(view.runs.value[0]?.execution.type).toBe('failed');
-      expect(surface.find('[data-testid="workspace-run"]').exists()).toBe(true);
-      await view.curate({ items: [...view.tiles.value], action: { type: 'archive' } }); await flushPromises();
-      expect(surface.find('[data-testid="workspace-run"]').exists()).toBe(false);
-      view.visibility.value = 'archived'; await view.refresh({ append: false }); await flushPromises();
-      expect(surface.find('[data-testid="workspace-run"]').exists()).toBe(true);
-    } finally {
-      await view.flushDraft(); surface.unmount(); await flushPromises();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await view.flushDraft(); surface.unmount(); await flushPromises();
+      },
+    };
+    await flushPromises(); view.count.value = 2;
+    fixture.native.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('second image failed'));
+    await view.generate(); await flushPromises();
+    expect(view.tiles.value).toHaveLength(1); expect(view.runs.value[0]?.execution.type).toBe('failed');
+    expect(surface.find('[data-testid="workspace-run"]').exists()).toBe(true);
+    await view.curate({ items: [...view.tiles.value], action: { type: 'archive' } }); await flushPromises();
+    expect(surface.find('[data-testid="workspace-run"]').exists()).toBe(false);
+    view.visibility.value = 'archived'; await view.refresh({ append: false }); await flushPromises();
+    expect(surface.find('[data-testid="workspace-run"]').exists()).toBe(true);
   });
 
   it('renders recorded JSON with the existing highlighter and copies the exact selected prompt', async () => {
@@ -768,18 +778,19 @@ describe('Image Generation curation and durable assistant choice', () => {
     await fixture.view.generate(); const tile = fixture.view.tiles.value[0]!;
     const writeText = vi.fn().mockResolvedValue(undefined); Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     const surface = mount(ImageGenerationAssetViewer, { props: { view: fixture.view, active: true } });
-    try {
-      await fixture.view.inspect({ tile }); await flushPromises();
-      const viewer = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="image-viewer"]')!);
-      await viewer.get('[data-testid="image-viewer-details-toggle"]').trigger('click');
-      expect(viewer.find('pre span').exists()).toBe(true);
-      expect(viewer.find('pre script').exists()).toBe(false);
-      await viewer.get('[data-testid="workspace-copy-prompt"]').trigger('click'); await flushPromises();
-      expect(writeText).toHaveBeenCalledWith('日本語 prompt <script>not executable</script>');
-      expect(viewer.text()).toContain('Copied');
-    } finally {
-      surface.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount();
+      },
+    };
+    await fixture.view.inspect({ tile }); await flushPromises();
+    const viewer = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="image-viewer"]')!);
+    await viewer.get('[data-testid="image-viewer-details-toggle"]').trigger('click');
+    expect(viewer.find('pre span').exists()).toBe(true);
+    expect(viewer.find('pre script').exists()).toBe(false);
+    await viewer.get('[data-testid="workspace-copy-prompt"]').trigger('click'); await flushPromises();
+    expect(writeText).toHaveBeenCalledWith('日本語 prompt <script>not executable</script>');
+    expect(viewer.text()).toContain('Copied');
   });
 });
 
@@ -829,36 +840,38 @@ describe('global experimental preferences and compact creation controls', () => 
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: ImageGeneration, props: { generation: fixture.generation, active: true } }] });
     await router.push('/'); await router.isReady(); const surface = mount(RouterView, { global: { plugins: [router] } });
     const writeText = vi.fn().mockResolvedValue(undefined); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
-    try {
-      await flushPromises(); await surface.get('[data-testid="workspace-copy-run-prompt"]').trigger('click'); await flushPromises();
-      expect(writeText).toHaveBeenLastCalledWith(prompt); expect(fixture.view.inspectedTile.value).toBeUndefined();
-      expect(fixture.generation.parameters.value.prompt).toBe('different next draft');
-      fixture.view.mode.value = 'gallery'; await flushPromises();
-      await surface.get('[data-testid="workspace-copy-card-prompt"]').trigger('click'); await flushPromises();
-      expect(writeText).toHaveBeenCalledTimes(2); expect(writeText).toHaveBeenLastCalledWith(prompt);
-      expect(surface.find('script').exists()).toBe(false);
-    } finally {
-      surface.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount();
+      },
+    };
+    await flushPromises(); await surface.get('[data-testid="workspace-copy-run-prompt"]').trigger('click'); await flushPromises();
+    expect(writeText).toHaveBeenLastCalledWith(prompt); expect(fixture.view.inspectedTile.value).toBeUndefined();
+    expect(fixture.generation.parameters.value.prompt).toBe('different next draft');
+    fixture.view.mode.value = 'gallery'; await flushPromises();
+    await surface.get('[data-testid="workspace-copy-card-prompt"]').trigger('click'); await flushPromises();
+    expect(writeText).toHaveBeenCalledTimes(2); expect(writeText).toHaveBeenLastCalledWith(prompt);
+    expect(surface.find('script').exists()).toBe(false);
   });
 
   it('keeps tag explanations behind a small explicit control and expands bulk tags in a separate toolbar row', async () => {
     const fixture = await ready(); fixture.view.count.value = 2; await fixture.view.generate();
     await fixture.view.editTag({ tagId: undefined, name: '候補' });
     const surface = mount(ImageGenerationCurationActions, { props: { view: fixture.view, items: [...fixture.view.tiles.value] } });
-    try {
-      expect(surface.find('[data-testid="workspace-bulk-tags-panel"]').exists()).toBe(false);
-      await surface.get('[data-testid="workspace-bulk-tags-toggle"]').trigger('click');
-      const tags = surface.get('[data-testid="workspace-bulk-tags-panel"]');
-      const archive = surface.get('[data-testid="workspace-bulk-archive"]');
-      expect(tags.element.parentElement).toBe(archive.element.parentElement?.parentElement);
-      expect(tags.element.parentElement).not.toBe(archive.element.parentElement);
-      await surface.get('[data-testid="workspace-bulk-tag-choice"]').setValue(idToRaw({ id: fixture.view.userTags.value[0]!.id }));
-      await surface.get('[data-testid="workspace-bulk-tag-add"]').trigger('click'); await flushPromises();
-      expect(fixture.view.tiles.value.every(tile => tile.annotations?.tags.length === 1)).toBe(true);
-    } finally {
-      surface.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount();
+      },
+    };
+    expect(surface.find('[data-testid="workspace-bulk-tags-panel"]').exists()).toBe(false);
+    await surface.get('[data-testid="workspace-bulk-tags-toggle"]').trigger('click');
+    const tags = surface.get('[data-testid="workspace-bulk-tags-panel"]');
+    const archive = surface.get('[data-testid="workspace-bulk-archive"]');
+    expect(tags.element.parentElement).toBe(archive.element.parentElement?.parentElement);
+    expect(tags.element.parentElement).not.toBe(archive.element.parentElement);
+    await surface.get('[data-testid="workspace-bulk-tag-choice"]').setValue(idToRaw({ id: fixture.view.userTags.value[0]!.id }));
+    await surface.get('[data-testid="workspace-bulk-tag-add"]').trigger('click'); await flushPromises();
+    expect(fixture.view.tiles.value.every(tile => tile.annotations?.tags.length === 1)).toBe(true);
   });
 
   it('docks in normal layout without a focus trap and moves the same ChatPane into floating mode', async () => {
@@ -900,14 +913,15 @@ describe('global experimental preferences and compact creation controls', () => 
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { render: () => h('div') } }] });
     await router.push('/'); await router.isReady();
     const surface = mount(ImageGenerationAssistant, { props: { workspace: fixture.view, active: true, presentation: 'docked' }, global: { plugins: [router] } });
-    try {
-      await flushPromises(); expect(surface.find('[data-testid="existing-chat-pane"]').exists()).toBe(false);
-      expect(fixture.view.currentSession.value?.assistantChatId).toBe(a.id);
-      chatChoices.value = [a]; await vi.dynamicImportSettled(); await flushPromises();
-      expect(surface.get('[data-testid="existing-chat-pane"]').attributes('data-chat-id')).toBe(idToRaw({ id: a.id }));
-    } finally {
-      surface.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount();
+      },
+    };
+    await flushPromises(); expect(surface.find('[data-testid="existing-chat-pane"]').exists()).toBe(false);
+    expect(fixture.view.currentSession.value?.assistantChatId).toBe(a.id);
+    chatChoices.value = [a]; await vi.dynamicImportSettled(); await flushPromises();
+    expect(surface.get('[data-testid="existing-chat-pane"]').attributes('data-chat-id')).toBe(idToRaw({ id: a.id }));
   });
 });
 
@@ -973,14 +987,15 @@ describe('session navigation, deletion and persisted chat visibility', () => {
     vi.spyOn(generationComposition, 'useImageGenerationWorkspace').mockReturnValueOnce(reopened.view);
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: ImageGeneration, props: { generation: reopened.generation, active: true } }] });
     await router.push('/'); await router.isReady(); const surface = mount(RouterView, { global: { plugins: [router] } });
-    try {
-      await vi.dynamicImportSettled(); await flushPromises();
-      expect(surface.get('[data-testid="workspace-open-chat"]').text()).toBe('Open chat');
-      expect(surface.get('[data-testid="workspace-open-chat"]').attributes('aria-expanded')).toBe('false');
-      expect(document.querySelector('[data-testid="image-generation-assistant"]')).toBeNull();
-    } finally {
-      surface.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount();
+      },
+    };
+    await vi.dynamicImportSettled(); await flushPromises();
+    expect(surface.get('[data-testid="workspace-open-chat"]').text()).toBe('Open chat');
+    expect(surface.get('[data-testid="workspace-open-chat"]').attributes('aria-expanded')).toBe('false');
+    expect(document.querySelector('[data-testid="image-generation-assistant"]')).toBeNull();
   });
 });
 
@@ -997,21 +1012,22 @@ describe('read-only translation controls', () => {
     const writeText = vi.fn().mockResolvedValue(undefined); vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
     const surface = mount(ImageGenerationTranslationButton, { props: { workspace: fixture.view, text: original, field, active: true } });
     const published = mocks.publish.mock.calls.length;
-    try {
-      await surface.get('[data-testid="view-prompt-translation"]').trigger('click'); await flushPromises();
-      const dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
-      expect(dialog.get('select[data-testid="translation-language"]').element).toHaveProperty('value', 'ja');
-      expect(translationMocks.translate).not.toHaveBeenCalled();
-      await dialog.get('[data-testid="translation-start"]').trigger('click'); await flushPromises();
-      expect(translationMocks.translate).toHaveBeenCalledWith(expect.objectContaining({ prompt: original, language: 'ja', modelId: 'translator' }));
-      expect(dialog.get('[data-testid="translation-result"]').text()).toContain('柔らかな色');
-      await dialog.get('[data-testid="translation-result"] button').trigger('click'); await flushPromises();
-      expect(writeText).toHaveBeenCalledWith('柔らかな色');
-      expect(fixture.generation.parameters.value).toEqual(before); expect(mocks.publish.mock.calls.length).toBe(published);
-      expect(chatChoices.value).toEqual([]);
-    } finally {
-      surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
+      },
+    };
+    await surface.get('[data-testid="view-prompt-translation"]').trigger('click'); await flushPromises();
+    const dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
+    expect(dialog.get('select[data-testid="translation-language"]').element).toHaveProperty('value', 'ja');
+    expect(translationMocks.translate).not.toHaveBeenCalled();
+    await dialog.get('[data-testid="translation-start"]').trigger('click'); await flushPromises();
+    expect(translationMocks.translate).toHaveBeenCalledWith(expect.objectContaining({ prompt: original, language: 'ja', modelId: 'translator' }));
+    expect(dialog.get('[data-testid="translation-result"]').text()).toContain('柔らかな色');
+    await dialog.get('[data-testid="translation-result"] button').trigger('click'); await flushPromises();
+    expect(writeText).toHaveBeenCalledWith('柔らかな色');
+    expect(fixture.generation.parameters.value).toEqual(before); expect(mocks.publish.mock.calls.length).toBe(published);
+    expect(chatChoices.value).toEqual([]);
   });
 
   it('cancels and discards late translation when the prompt, language, endpoint or session changes', async () => {
@@ -1019,23 +1035,24 @@ describe('read-only translation controls', () => {
     const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
     settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, defaultModelId: 'model' } });
     const surface = mount(ImageGenerationTranslationButton, { props: { workspace: fixture.view, text: 'before', field: 'prompt', active: true } });
-    try {
-      await surface.get('button').trigger('click'); await flushPromises();
-      const dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
-      const gate = Promise.withResolvers<string>(); translationMocks.translate.mockReturnValueOnce(gate.promise);
-      await dialog.get('[data-testid="translation-start"]').trigger('click');
-      const signal: AbortSignal = translationMocks.translate.mock.calls[0]![0].signal;
-      await surface.setProps({ text: 'after' }); expect(signal.aborted).toBe(true);
-      gate.resolve('stale'); await flushPromises(); expect(dialog.find('[data-testid="translation-result"]').exists()).toBe(false);
-      const later = Promise.withResolvers<string>(); translationMocks.translate.mockReturnValueOnce(later.promise);
-      await dialog.get('[data-testid="translation-start"]').trigger('click');
-      await fixture.view.newSession({ preserveDraft: false });
-      expect(translationMocks.translate.mock.calls[1]![0].signal.aborted).toBe(true);
-      later.resolve('other session'); await flushPromises(); expect(dialog.text()).not.toContain('other session');
-      await dialog.get('[data-testid="translation-close"]').trigger('click'); expect(document.querySelector('[data-testid="prompt-translation-dialog"]')).toBeNull();
-    } finally {
-      surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
+      },
+    };
+    await surface.get('button').trigger('click'); await flushPromises();
+    const dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
+    const gate = Promise.withResolvers<string>(); translationMocks.translate.mockReturnValueOnce(gate.promise);
+    await dialog.get('[data-testid="translation-start"]').trigger('click');
+    const signal: AbortSignal = translationMocks.translate.mock.calls[0]![0].signal;
+    await surface.setProps({ text: 'after' }); expect(signal.aborted).toBe(true);
+    gate.resolve('stale'); await flushPromises(); expect(dialog.find('[data-testid="translation-result"]').exists()).toBe(false);
+    const later = Promise.withResolvers<string>(); translationMocks.translate.mockReturnValueOnce(later.promise);
+    await dialog.get('[data-testid="translation-start"]').trigger('click');
+    await fixture.view.newSession({ preserveDraft: false });
+    expect(translationMocks.translate.mock.calls[1]![0].signal.aborted).toBe(true);
+    later.resolve('other session'); await flushPromises(); expect(dialog.text()).not.toContain('other session');
+    await dialog.get('[data-testid="translation-close"]').trigger('click'); expect(document.querySelector('[data-testid="prompt-translation-dialog"]')).toBeNull();
   });
 
   it('persists workspace defaults and independent session model overrides without changing global connection settings', async () => {
@@ -1043,24 +1060,25 @@ describe('read-only translation controls', () => {
     const { settings, availableModels } = useSettings(); const endpoint = settings.value.endpoint, modelId = settings.value.defaultModelId;
     const globalModels = [...availableModels.value];
     const surface = mount(ImageGenerationTranslationSettings, { props: { workspace: fixture.view, scope: 'workspace' } });
-    try {
-      await surface.get('[data-testid="translation-endpoint-choice"]').setValue('ollama');
-      await surface.get('[data-testid="translation-endpoint-url"]').setValue('http://workspace.test');
-      await surface.get('[data-testid="translation-model-input"]').setValue('workspace-model');
-      await surface.get('[data-testid="translation-settings-save"]').trigger('click'); await flushPromises();
-      expect(fixture.view.catalog.value?.preferences.translation).toEqual({ endpoint: { type: 'ollama', url: 'http://workspace.test', httpHeaders: undefined }, modelId: 'workspace-model' });
-      await surface.setProps({ scope: 'session' });
-      await surface.get('[data-testid="translation-model-input"]').setValue('session-model');
-      await surface.get('[data-testid="translation-settings-save"]').trigger('click'); await flushPromises();
-      expect(fixture.view.currentSession.value?.translation).toEqual({ endpoint: undefined, modelId: 'session-model' });
-      await fixture.view.reload(); expect(fixture.view.currentSession.value?.translation?.modelId).toBe('session-model');
-      translationMocks.provider.mockResolvedValue({ listModels: vi.fn(async () => ['private-model']) });
-      surface.getComponent(ModelSelector).vm.$emit('refresh'); await flushPromises();
-      expect(surface.getComponent(ModelSelector).props('models')).toEqual(['private-model']);
-      expect(availableModels.value).toEqual(globalModels); expect(settings.value.endpoint).toEqual(endpoint); expect(settings.value.defaultModelId).toBe(modelId);
-    } finally {
-      surface.unmount();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount();
+      },
+    };
+    await surface.get('[data-testid="translation-endpoint-choice"]').setValue('ollama');
+    await surface.get('[data-testid="translation-endpoint-url"]').setValue('http://workspace.test');
+    await surface.get('[data-testid="translation-model-input"]').setValue('workspace-model');
+    await surface.get('[data-testid="translation-settings-save"]').trigger('click'); await flushPromises();
+    expect(fixture.view.catalog.value?.preferences.translation).toEqual({ endpoint: { type: 'ollama', url: 'http://workspace.test', httpHeaders: undefined }, modelId: 'workspace-model' });
+    await surface.setProps({ scope: 'session' });
+    await surface.get('[data-testid="translation-model-input"]').setValue('session-model');
+    await surface.get('[data-testid="translation-settings-save"]').trigger('click'); await flushPromises();
+    expect(fixture.view.currentSession.value?.translation).toEqual({ endpoint: undefined, modelId: 'session-model' });
+    await fixture.view.reload(); expect(fixture.view.currentSession.value?.translation?.modelId).toBe('session-model');
+    translationMocks.provider.mockResolvedValue({ listModels: vi.fn(async () => ['private-model']) });
+    surface.getComponent(ModelSelector).vm.$emit('refresh'); await flushPromises();
+    expect(surface.getComponent(ModelSelector).props('models')).toEqual(['private-model']);
+    expect(availableModels.value).toEqual(globalModels); expect(settings.value.endpoint).toEqual(endpoint); expect(settings.value.defaultModelId).toBe(modelId);
   });
 
   it('hides disabled RPC choices in translation settings and preserves a saved RPC reference', async () => {
@@ -1068,22 +1086,23 @@ describe('read-only translation controls', () => {
     const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
     settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, experimental: { ...originalSettings.experimental, naidanRpc: 'disabled' } } });
     const surface = mount(ImageGenerationTranslationSettings, { props: { workspace: fixture.view, scope: 'workspace' }, global: { stubs: { RpcRegistrationSelect: true } } });
-    try {
-      await flushPromises();
-      expect(surface.get('[data-testid="translation-endpoint-choice"]').find('option[value="naidan_rpc"]').exists()).toBe(false);
-      await fixture.view.updatePreferences({ change: { type: 'translation', translation: { endpoint: { type: 'naidan_rpc', registrationId: undefined }, modelId: 'remote-translator', lmParameters: undefined } } });
-      await flushPromises();
-      const select = surface.get('[data-testid="translation-endpoint-choice"]');
-      expect(select.element).toHaveProperty('value', 'naidan_rpc');
-      expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', true);
-      await surface.get('[data-testid="translation-settings-save"]').trigger('click'); await flushPromises();
-      expect(fixture.view.catalog.value?.preferences.translation).toEqual({ endpoint: { type: 'naidan_rpc', registrationId: undefined }, modelId: 'remote-translator', lmParameters: undefined });
-      settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, experimental: { ...originalSettings.experimental, naidanRpc: 'enabled' } } });
-      await flushPromises(); expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', false);
-      expect(translationMocks.translate).not.toHaveBeenCalled();
-    } finally {
-      surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
+      },
+    };
+    await flushPromises();
+    expect(surface.get('[data-testid="translation-endpoint-choice"]').find('option[value="naidan_rpc"]').exists()).toBe(false);
+    await fixture.view.updatePreferences({ change: { type: 'translation', translation: { endpoint: { type: 'naidan_rpc', registrationId: undefined }, modelId: 'remote-translator', lmParameters: undefined } } });
+    await flushPromises();
+    const select = surface.get('[data-testid="translation-endpoint-choice"]');
+    expect(select.element).toHaveProperty('value', 'naidan_rpc');
+    expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', true);
+    await surface.get('[data-testid="translation-settings-save"]').trigger('click'); await flushPromises();
+    expect(fixture.view.catalog.value?.preferences.translation).toEqual({ endpoint: { type: 'naidan_rpc', registrationId: undefined }, modelId: 'remote-translator', lmParameters: undefined });
+    settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, experimental: { ...originalSettings.experimental, naidanRpc: 'enabled' } } });
+    await flushPromises(); expect(select.get('option[value="naidan_rpc"]').element).toHaveProperty('disabled', false);
+    expect(translationMocks.translate).not.toHaveBeenCalled();
   });
 });
 
@@ -1176,28 +1195,29 @@ describe('accepted activity, compact presentation and retained translations', ()
     const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
     settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, defaultModelId: 'model' } });
     const surface = mount(ImageGenerationTranslationButton, { props: { workspace: fixture.view, text: 'before', field: 'prompt', active: true } });
-    try {
-      await surface.get('button').trigger('click'); await flushPromises();
-      let dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
-      const gate = Promise.withResolvers<string>(); translationMocks.translate.mockReturnValueOnce(gate.promise);
-      await dialog.get('[data-testid="translation-start"]').trigger('click');
-      translationMocks.translate.mock.calls[0]![0].onText({ text: 'part' }); await flushPromises();
-      expect(dialog.get('[data-testid="translation-partial"]').text()).toContain('part');
-      gate.resolve('translated'); await flushPromises();
-      await dialog.get('[data-testid="translation-close"]').trigger('click');
-      await surface.setProps({ text: '' }); expect(surface.get('button').element.matches(':disabled')).toBe(false);
-      await surface.get('button').trigger('click'); await flushPromises(); dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
-      expect(dialog.get('[data-testid="translation-result"]').text()).toContain('translated'); expect(dialog.find('[data-testid="translation-stale"]').exists()).toBe(true);
-      expect(dialog.get('[data-testid="translation-start"]').element.matches(':disabled')).toBe(true);
-      await surface.setProps({ text: 'after' }); translationMocks.translate.mockRejectedValueOnce(new Error('limit'));
-      await dialog.get('[data-testid="translation-start"]').trigger('click'); await flushPromises();
-      expect(dialog.get('[data-testid="translation-result"]').text()).toContain('translated');
-      expect(dialog.get('[role="alert"]').text()).toContain('limit');
-      await surface.setProps({ field: 'negativePrompt' }); expect(dialog.find('[data-testid="translation-result"]').exists()).toBe(false);
-      await surface.setProps({ field: 'prompt', text: 'before' }); expect(dialog.find('[data-testid="translation-stale"]').exists()).toBe(false);
-    } finally {
-      surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
+      },
+    };
+    await surface.get('button').trigger('click'); await flushPromises();
+    let dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
+    const gate = Promise.withResolvers<string>(); translationMocks.translate.mockReturnValueOnce(gate.promise);
+    await dialog.get('[data-testid="translation-start"]').trigger('click');
+    translationMocks.translate.mock.calls[0]![0].onText({ text: 'part' }); await flushPromises();
+    expect(dialog.get('[data-testid="translation-partial"]').text()).toContain('part');
+    gate.resolve('translated'); await flushPromises();
+    await dialog.get('[data-testid="translation-close"]').trigger('click');
+    await surface.setProps({ text: '' }); expect(surface.get('button').element.matches(':disabled')).toBe(false);
+    await surface.get('button').trigger('click'); await flushPromises(); dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
+    expect(dialog.get('[data-testid="translation-result"]').text()).toContain('translated'); expect(dialog.find('[data-testid="translation-stale"]').exists()).toBe(true);
+    expect(dialog.get('[data-testid="translation-start"]').element.matches(':disabled')).toBe(true);
+    await surface.setProps({ text: 'after' }); translationMocks.translate.mockRejectedValueOnce(new Error('limit'));
+    await dialog.get('[data-testid="translation-start"]').trigger('click'); await flushPromises();
+    expect(dialog.get('[data-testid="translation-result"]').text()).toContain('translated');
+    expect(dialog.get('[role="alert"]').text()).toContain('limit');
+    await surface.setProps({ field: 'negativePrompt' }); expect(dialog.find('[data-testid="translation-result"]').exists()).toBe(false);
+    await surface.setProps({ field: 'prompt', text: 'before' }); expect(dialog.find('[data-testid="translation-stale"]').exists()).toBe(false);
   });
 });
 
@@ -1220,23 +1240,24 @@ it('retains the chosen translation language when reopening a previous translatio
   const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
   settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, defaultModelId: 'model' } });
   const surface = mount(ImageGenerationTranslationButton, { props: { workspace: fixture.view, text: 'cat', field: 'prompt', active: true } });
-  try {
-    await surface.get('button').trigger('click'); await flushPromises();
-    let dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
-    await dialog.get('[data-testid="translation-language"]').setValue('ja');
-    translationMocks.translate.mockResolvedValueOnce('猫');
-    await dialog.get('[data-testid="translation-start"]').trigger('click'); await flushPromises();
-    await dialog.get('[data-testid="translation-close"]').trigger('click');
-    await surface.setProps({ text: '' });
-    expect(surface.get('button').element.matches(':disabled')).toBe(false);
-    await surface.get('button').trigger('click'); await flushPromises();
-    dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
-    expect(dialog.get<HTMLSelectElement>('[data-testid="translation-language"]').element.value).toBe('ja');
-    expect(dialog.get('[data-testid="translation-result"]').text()).toContain('猫');
-    expect(dialog.get('[data-testid="translation-start"]').element.matches(':disabled')).toBe(true);
-  } finally {
-    surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
+    },
+  };
+  await surface.get('button').trigger('click'); await flushPromises();
+  let dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
+  await dialog.get('[data-testid="translation-language"]').setValue('ja');
+  translationMocks.translate.mockResolvedValueOnce('猫');
+  await dialog.get('[data-testid="translation-start"]').trigger('click'); await flushPromises();
+  await dialog.get('[data-testid="translation-close"]').trigger('click');
+  await surface.setProps({ text: '' });
+  expect(surface.get('button').element.matches(':disabled')).toBe(false);
+  await surface.get('button').trigger('click'); await flushPromises();
+  dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
+  expect(dialog.get<HTMLSelectElement>('[data-testid="translation-language"]').element.value).toBe('ja');
+  expect(dialog.get('[data-testid="translation-result"]').text()).toContain('猫');
+  expect(dialog.get('[data-testid="translation-start"]').element.matches(':disabled')).toBe(true);
 });
 
 it('shows a successful translation even when the bounded history cannot retain it', async () => {
@@ -1244,21 +1265,22 @@ it('shows a successful translation even when the bounded history cannot retain i
   const { settings, TEST_ONLY: settingsTest } = useSettings(), originalSettings = settings.value;
   settingsTest.__testOnlySetSettings({ newSettings: { ...originalSettings, defaultModelId: 'model' } });
   const surface = mount(ImageGenerationTranslationButton, { props: { workspace: fixture.view, text: 'cat', field: 'prompt', active: true } });
-  try {
-    await surface.get('button').trigger('click'); await flushPromises();
-    const dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
-    translationMocks.translate.mockResolvedValueOnce('previous success');
-    await dialog.get('[data-testid="translation-start"]').trigger('click'); await flushPromises();
-    const oversized = 'x'.repeat(262145);
-    translationMocks.translate.mockResolvedValueOnce(oversized);
-    await dialog.get('[data-testid="translation-start"]').trigger('click'); await flushPromises();
-    expect(dialog.get('[data-testid="translation-completed-uncached"] p').text()).toBe(oversized);
-    expect(dialog.get('[data-testid="translation-result"]').text()).toContain('previous success');
-    expect(dialog.find('[data-testid="translation-partial"]').exists()).toBe(false);
-    expect(dialog.find('[role="alert"]').exists()).toBe(false);
-  } finally {
-    surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      surface.unmount(); settingsTest.__testOnlySetSettings({ newSettings: originalSettings });
+    },
+  };
+  await surface.get('button').trigger('click'); await flushPromises();
+  const dialog = new DOMWrapper(document.querySelector<HTMLElement>('[data-testid="prompt-translation-dialog"]')!);
+  translationMocks.translate.mockResolvedValueOnce('previous success');
+  await dialog.get('[data-testid="translation-start"]').trigger('click'); await flushPromises();
+  const oversized = 'x'.repeat(262145);
+  translationMocks.translate.mockResolvedValueOnce(oversized);
+  await dialog.get('[data-testid="translation-start"]').trigger('click'); await flushPromises();
+  expect(dialog.get('[data-testid="translation-completed-uncached"] p').text()).toBe(oversized);
+  expect(dialog.get('[data-testid="translation-result"]').text()).toContain('previous success');
+  expect(dialog.find('[data-testid="translation-partial"]').exists()).toBe(false);
+  expect(dialog.find('[role="alert"]').exists()).toBe(false);
 });
 
 it('does not let an older failed session-order update block the next accepted session', async () => {

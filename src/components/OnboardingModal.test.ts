@@ -18,7 +18,7 @@ import { detectOllama } from '@/utils/ollama-detection';
 import {
   TEST_ONLY as promptApiRuntimeTestOnly,
 } from '@/features/prompt-api/runtime';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { BROWSER_PROVIDED_LM_MODEL_ID } from '@/features/prompt-api';
 
 // Mock the services.
@@ -372,24 +372,25 @@ describe('OnboardingModal.vue', () => {
         },
       },
     });
-    try {
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        wrapper.unmount(); list.mockRestore();
+      },
+    };
+    await flushPromises();
+    if (type === 'llama_cpp_browser') {
+      wrapper.findComponent({ name: 'PreparedManager' }).vm.$emit('runtimeReady', true);
       await flushPromises();
-      if (type === 'llama_cpp_browser') {
-        wrapper.findComponent({ name: 'PreparedManager' }).vm.$emit('runtimeReady', true);
-        await flushPromises();
-      }
-      const selector = type === 'llama_cpp_browser' || type === 'transformers_js'
-        ? '[data-testid="onboarding-local-start"]'
-        : '[data-testid="onboarding-finish-button"]';
-      expect(wrapper.get(selector).attributes('disabled')).toBeUndefined();
-      await wrapper.get(selector).trigger('click');
-      await flushPromises();
-      expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({
-        patch: expect.objectContaining({ titleGeneration: expect.objectContaining({ lmParameters: expect.objectContaining({ reasoning: { effort: 'none' } }) }) }),
-      }));
-    } finally {
-      wrapper.unmount(); list.mockRestore();
     }
+    const selector = type === 'llama_cpp_browser' || type === 'transformers_js'
+      ? '[data-testid="onboarding-local-start"]'
+      : '[data-testid="onboarding-finish-button"]';
+    expect(wrapper.get(selector).attributes('disabled')).toBeUndefined();
+    await wrapper.get(selector).trigger('click');
+    await flushPromises();
+    expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({
+      patch: expect.objectContaining({ titleGeneration: expect.objectContaining({ lmParameters: expect.objectContaining({ reasoning: { effort: 'none' } }) }) }),
+    }));
   });
 
   it.each([undefined, 'high'] as const)('preserves a saved title thinking preference %s through onboarding', async effort => {

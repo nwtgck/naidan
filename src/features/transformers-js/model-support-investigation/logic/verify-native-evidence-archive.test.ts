@@ -17,11 +17,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  try {
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      vi.unstubAllGlobals();
+    },
+  };
+  expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 
 // Synthetic DTOs isolate archive referential integrity. These are neither

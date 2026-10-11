@@ -17,6 +17,7 @@ const startup = computed(() => props.startupState.value);
 const {
   onboardingPresentation,
   appInteraction,
+  finishHomeIntroduction,
 } = provideAppPresentation({ startupState: props.startupState });
 
 const appContentInert = computed(() => {
@@ -87,7 +88,7 @@ defineExpose({
   </div>
 
   <Transition name="modal">
-    <OnboardingModal v-if="renderOnboarding" />
+    <OnboardingModal v-if="renderOnboarding" @dismiss="finishHomeIntroduction" />
   </Transition>
 
   <GlobalDialogHost />

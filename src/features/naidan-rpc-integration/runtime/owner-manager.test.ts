@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { NaidanPeerManager } from './manager';
 import type { RpcLink, RpcManagerDependencies } from './manager';
 import { acquireRpcOwner } from './owner';
-import { createWebLocksFixture } from './test-support/web-locks';
+import { createWebLocksFixture } from './test-support/web-locks.test-support';
 import { encodePeerKey } from './identity';
 import { transportPair } from '@/features/naidan-rpc/test-transport';
 import { createInferenceBudget } from '@/features/naidan-rpc-integration/handlers/inference/budget';
@@ -15,11 +15,12 @@ const registryAccess: NaidanRpcRegistryAccess = { providerGeneration: 1, registr
 const cleanups: (() => Promise<void>)[] = [];
 
 afterEach(async () => {
-  try {
-    for (const cleanup of cleanups.splice(0)) await cleanup();
-  } finally {
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      vi.unstubAllGlobals();
+    },
+  };
+  for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
 function endpoint() {

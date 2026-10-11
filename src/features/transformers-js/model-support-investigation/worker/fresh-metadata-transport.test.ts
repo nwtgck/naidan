@@ -60,28 +60,29 @@ it('round-trips fresh raw metadata through the real top-level Comlink callback a
   exposeWorkerRemote<PlanningApi>({ api, endpoint: nodeEndpoint(ports.port1) });
   const remote = wrapWorkerRemote<PlanningApi>({ endpoint: nodeEndpoint(ports.port2) });
   const checkpointReceived = Promise.withResolvers<{ run: ModelSupportInvestigationPlanningWorkerRun, files: Array<{ path: string, blob: Blob }> }>();
-  try {
-    const run = await remote.runPartialInvestigation(
-      { runId, modelId, externalNetworkPolicy: 'allow', executionPlan: { repositoryDownload: true, modelLoad: false, generation: false, continuity: false, capabilityProbes: false } },
-      workerProxy({ value: () => undefined }),
-      workerProxy({ value: ({ run, replayMetadata }) => checkpointReceived.resolve({ run, files: replayMetadata ?? [] }) }),
-      workerProxy({
-        value: async ({ request }) => {
-          expect(request).toEqual({ modelId, revision, maximumBytes: 1024, repositoryFiles: [{ path: 'config.json', size: 2 }] });
-          return expected;
-        },
-      }),
-    );
-    const received = await checkpointReceived.promise;
-    expect(run.runId).toBe(runId);
-    expect(received.run.runId).toBe(runId);
-    expect(run.freshMetadata).toEqual(expected.summary);
-    expect(received.run.replayMetadata).toEqual(expected.replayMetadata);
-    expect(received.files[0]?.path).toBe('config.json');
-    expect(await received.files[0]!.blob.text()).toBe('{}');
-  } finally {
-    await releaseWorkerRemote({ remote });
-    ports.port1.close();
-    ports.port2.close();
-  }
+  await using _cleanupResource = {
+    async [Symbol.asyncDispose]() {
+      await releaseWorkerRemote({ remote });
+      ports.port1.close();
+      ports.port2.close();
+    },
+  };
+  const run = await remote.runPartialInvestigation(
+    { runId, modelId, externalNetworkPolicy: 'allow', executionPlan: { repositoryDownload: true, modelLoad: false, generation: false, continuity: false, capabilityProbes: false } },
+    workerProxy({ value: () => undefined }),
+    workerProxy({ value: ({ run, replayMetadata }) => checkpointReceived.resolve({ run, files: replayMetadata ?? [] }) }),
+    workerProxy({
+      value: async ({ request }) => {
+        expect(request).toEqual({ modelId, revision, maximumBytes: 1024, repositoryFiles: [{ path: 'config.json', size: 2 }] });
+        return expected;
+      },
+    }),
+  );
+  const received = await checkpointReceived.promise;
+  expect(run.runId).toBe(runId);
+  expect(received.run.runId).toBe(runId);
+  expect(run.freshMetadata).toEqual(expected.summary);
+  expect(received.run.replayMetadata).toEqual(expected.replayMetadata);
+  expect(received.files[0]?.path).toBe('config.json');
+  expect(await received.files[0]!.blob.text()).toBe('{}');
 });

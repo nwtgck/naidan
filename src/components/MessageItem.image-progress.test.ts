@@ -1,6 +1,6 @@
 import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import MessageItem from './MessageItem.vue';

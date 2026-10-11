@@ -3,7 +3,7 @@ import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatToolsMenu from './ChatToolsMenu.vue';
 import { ref, nextTick } from 'vue';
 import type { Reasoning } from '@/01-models/types';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 const mockWindowSize = {
   width: ref(1024),
@@ -131,24 +131,20 @@ describe('ChatToolsMenu', () => {
   });
 
   it('does not pass extraneous class attributes to image generation settings', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    using warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    try {
-      wrapper = mount(ChatToolsMenu, {
-        props: { ...defaultProps, isImageMode: true },
-        attachTo: document.body,
-      });
-      await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
-      await flushPromises();
-      await vi.dynamicImportSettled();
+    wrapper = mount(ChatToolsMenu, {
+      props: { ...defaultProps, isImageMode: true },
+      attachTo: document.body,
+    });
+    await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
 
-      const extraneousAttributeWarnings = warnSpy.mock.calls.filter((call) =>
-        call.some((value) => String(value).includes('Extraneous non-props attributes')),
-      );
-      expect(extraneousAttributeWarnings).toHaveLength(0);
-    } finally {
-      warnSpy.mockRestore();
-    }
+    const extraneousAttributeWarnings = warnSpy.mock.calls.filter((call) =>
+      call.some((value) => String(value).includes('Extraneous non-props attributes')),
+    );
+    expect(extraneousAttributeWarnings).toHaveLength(0);
   });
 
   it('shows resolution, count and model selectors when image mode is on', async () => {

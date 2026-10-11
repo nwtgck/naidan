@@ -61,24 +61,25 @@ describe('GPT-OSS model Load allocation boundaries', () => {
     });
     const failure = new RangeError('Controlled allocation refusal before native allocation');
     const trap = trapLargeModelAllocation({ failure });
-    try {
-      await expect(h.load()).rejects.toBe(failure);
-      expect(trap.requests).toEqual([{ bytes: target.bytes, boundary: 'readResponse' }]);
-      expect(targetPulls).toBe(0);
-      expect(h.raw.sessions).not.toHaveBeenCalled();
-      expect(h.diagnostics().events.filter(event => event.kind === 'allocation-failed')).toEqual([
-        expect.objectContaining({ resource: target.path, requestedBytes: target.bytes, errorName: 'RangeError' }),
-      ]);
-      expect(h.raw.transport).not.toHaveBeenCalled();
-      expect(h.raw.mutations).not.toHaveBeenCalled();
-      expect(h.raw.unknownRequests).toEqual([]);
-    } finally {
-      try {
-        await h.close();
-      } finally {
-        trap.restore();
-      }
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        try {
+          await h.close();
+        } finally {
+          trap.restore();
+        }
+      },
+    };
+    await expect(h.load()).rejects.toBe(failure);
+    expect(trap.requests).toEqual([{ bytes: target.bytes, boundary: 'readResponse' }]);
+    expect(targetPulls).toBe(0);
+    expect(h.raw.sessions).not.toHaveBeenCalled();
+    expect(h.diagnostics().events.filter(event => event.kind === 'allocation-failed')).toEqual([
+      expect.objectContaining({ resource: target.path, requestedBytes: target.bytes, errorName: 'RangeError' }),
+    ]);
+    expect(h.raw.transport).not.toHaveBeenCalled();
+    expect(h.raw.mutations).not.toHaveBeenCalled();
+    expect(h.raw.unknownRequests).toEqual([]);
   }, 60000);
 
   it('stops an entirely unsaved local Load before weights, ORT or any implicit Download', async () => {
@@ -96,18 +97,19 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       },
     });
     const download = vi.spyOn(h.service, 'downloadModel');
-    try {
-      await expect(h.service.loadDownloadedModel({ modelId })).rejects.toThrow('Downloaded model is incomplete; no locally complete namespace was planned');
-      expect(h.observations.fs.files.size).toBe(0);
-      expect(h.observations.fs.activity).toEqual([]);
-      expect(h.observations.modelLoadCalls).toEqual([]);
-      expect(h.observations.ortCalls).toEqual([]);
-      expect(h.observations.inferenceCalls).toEqual([]);
-      expect(h.observations.forbiddenTransport).toEqual([]);
-      expect(download).not.toHaveBeenCalled();
-    } finally {
-      download.mockRestore(); await h.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        download.mockRestore(); await h.close();
+      },
+    };
+    await expect(h.service.loadDownloadedModel({ modelId })).rejects.toThrow('Downloaded model is incomplete; no locally complete namespace was planned');
+    expect(h.observations.fs.files.size).toBe(0);
+    expect(h.observations.fs.activity).toEqual([]);
+    expect(h.observations.modelLoadCalls).toEqual([]);
+    expect(h.observations.ortCalls).toEqual([]);
+    expect(h.observations.inferenceCalls).toEqual([]);
+    expect(h.observations.forbiddenTransport).toEqual([]);
+    expect(download).not.toHaveBeenCalled();
   }, 60000);
 
   it('copies all eight explicitly tiny bodies once and enters the spied session only after every required read', async () => {
@@ -142,41 +144,42 @@ describe('GPT-OSS model Load allocation boundaries', () => {
       expect((await h.registry()).filter(path => path.startsWith('onnx/')).sort()).toEqual(resources.map(item => item.path).sort());
       return h.load();
     })();
-    try {
-      await Promise.race([entered.promise, loading.then(() => {
-        throw new Error('Load settled before the gated reader');
-      })]);
-      expect(h.raw.sessions).not.toHaveBeenCalled();
-      release.resolve();
-      const model = await loading;
-      expect(h.raw.sessions).toHaveBeenCalledTimes(1);
-      const call = h.raw.sessions.mock.calls[0];
-      if (call === undefined) throw new Error('Missing ORT boundary');
-      const core = z.instanceof(Uint8Array).parse(call[0]);
-      const external = z.object({ externalData: z.array(z.object({ path: z.string(), data: z.instanceof(Uint8Array) })).optional() }).passthrough().parse(call[1]).externalData ?? [];
-      const bindings = new Map([[resources[0]!.path, core], ...external.map(item => [`onnx/${item.path}`, item.data] as const)]);
-      expect([...bindings.keys()].sort()).toEqual(resources.map(item => item.path).sort());
-      for (const parts of chunks) for (const part of parts) part.fill(255);
-      for (const item of resources) {
-        expect([...(bindings.get(item.path) ?? [])]).toEqual(expected.get(item.path));
-        expect(pulls.filter(path => path === item.path)).toHaveLength(2);
-      }
-      const events = h.diagnostics().events;
-      const allocations = events.filter(event => event.kind === 'allocation-succeeded');
-      expect(allocations.map(event => [event.resource, event.requestedBytes]).sort()).toEqual(resources.map(item => [item.path, 6]).sort());
-      const returned = events.filter(event => event.kind === 'read-returned');
-      expect(returned.map(event => event.resource).sort()).toEqual(resources.map(item => item.path).sort());
-      const entering = events.find(event => event.kind === 'session-entering');
-      expect(entering).toBeDefined();
-      expect(returned.every(event => event.sequence < entering!.sequence)).toBe(true);
-      expect(h.raw.transport).not.toHaveBeenCalled();
-      expect(h.raw.mutations).not.toHaveBeenCalled();
-      await model.dispose();
-    } finally {
-      release.resolve();
-      await loading.catch(() => undefined);
-      await h.close();
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        release.resolve();
+        await loading.catch(() => undefined);
+        await h.close();
+      },
+    };
+    await Promise.race([entered.promise, loading.then(() => {
+      throw new Error('Load settled before the gated reader');
+    })]);
+    expect(h.raw.sessions).not.toHaveBeenCalled();
+    release.resolve();
+    const model = await loading;
+    expect(h.raw.sessions).toHaveBeenCalledTimes(1);
+    const call = h.raw.sessions.mock.calls[0];
+    if (call === undefined) throw new Error('Missing ORT boundary');
+    const core = z.instanceof(Uint8Array).parse(call[0]);
+    const external = z.object({ externalData: z.array(z.object({ path: z.string(), data: z.instanceof(Uint8Array) })).optional() }).passthrough().parse(call[1]).externalData ?? [];
+    const bindings = new Map([[resources[0]!.path, core], ...external.map(item => [`onnx/${item.path}`, item.data] as const)]);
+    expect([...bindings.keys()].sort()).toEqual(resources.map(item => item.path).sort());
+    for (const parts of chunks) for (const part of parts) part.fill(255);
+    for (const item of resources) {
+      expect([...(bindings.get(item.path) ?? [])]).toEqual(expected.get(item.path));
+      expect(pulls.filter(path => path === item.path)).toHaveLength(2);
     }
+    const events = h.diagnostics().events;
+    const allocations = events.filter(event => event.kind === 'allocation-succeeded');
+    expect(allocations.map(event => [event.resource, event.requestedBytes]).sort()).toEqual(resources.map(item => [item.path, 6]).sort());
+    const returned = events.filter(event => event.kind === 'read-returned');
+    expect(returned.map(event => event.resource).sort()).toEqual(resources.map(item => item.path).sort());
+    const entering = events.find(event => event.kind === 'session-entering');
+    expect(entering).toBeDefined();
+    expect(returned.every(event => event.sequence < entering!.sequence)).toBe(true);
+    expect(h.raw.transport).not.toHaveBeenCalled();
+    expect(h.raw.mutations).not.toHaveBeenCalled();
+    await model.dispose();
   }, 60000);
 
   it('propagates a partial tiny core read error and isolates a fresh Load', async () => {
@@ -201,11 +204,12 @@ describe('GPT-OSS model Load allocation boundaries', () => {
             }
             secondPull.resolve();
             await release.promise;
-            try {
-              if (!responseCancelled) controller.error(cause);
-            } finally {
-              lateFinished.resolve();
-            }
+            using _cleanupResource = {
+              [Symbol.dispose]() {
+                lateFinished.resolve();
+              },
+            };
+            if (!responseCancelled) controller.error(cause);
           },
           cancel() {
             responseCancelled = true; if (responsePulls > 0) cancelled++;
@@ -240,16 +244,17 @@ describe('GPT-OSS model Load allocation boundaries', () => {
     const previous = h.diagnostics();
     vi.unstubAllGlobals();
     const next = await createModelLoadAllocationRuntime({ modelId, paths: resources.map(item => item.path), response: () => new Response(new Uint8Array([7, 8]), { headers: { 'Content-Length': '2' } }) });
-    try {
-      const model = await next.load();
-      expect(next.raw.sessions).toHaveBeenCalledTimes(1);
-      expect(next.diagnostics().events.filter(event => event.kind === 'allocation-succeeded').map(event => event.requestedBytes)).toEqual(Array(8).fill(2));
-      expect(next.diagnostics().events.some(event => event.kind === 'read-failed')).toBe(false);
-      expect(h.diagnostics()).toEqual(previous);
-      await model.dispose();
-    } finally {
-      await next.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await next.close();
+      },
+    };
+    const model = await next.load();
+    expect(next.raw.sessions).toHaveBeenCalledTimes(1);
+    expect(next.diagnostics().events.filter(event => event.kind === 'allocation-succeeded').map(event => event.requestedBytes)).toEqual(Array(8).fill(2));
+    expect(next.diagnostics().events.some(event => event.kind === 'read-failed')).toBe(false);
+    expect(h.diagnostics()).toEqual(previous);
+    await model.dispose();
   }, 60000);
 
   it('cancels a partial tiny core, drains its late source completion, and isolates a fresh Load', async () => {
@@ -274,11 +279,12 @@ describe('GPT-OSS model Load allocation boundaries', () => {
             }
             secondPull.resolve();
             await release.promise;
-            try {
-              if (!responseCancelled) controller.error(cause);
-            } finally {
-              lateFinished.resolve();
-            }
+            using _cleanupResource = {
+              [Symbol.dispose]() {
+                lateFinished.resolve();
+              },
+            };
+            if (!responseCancelled) controller.error(cause);
           },
           cancel() {
             responseCancelled = true; if (responsePulls > 0) cancelled++;
@@ -313,15 +319,16 @@ describe('GPT-OSS model Load allocation boundaries', () => {
     const previous = h.diagnostics();
     vi.unstubAllGlobals();
     const next = await createModelLoadAllocationRuntime({ modelId, paths: resources.map(item => item.path), response: () => new Response(new Uint8Array([7, 8]), { headers: { 'Content-Length': '2' } }) });
-    try {
-      const model = await next.load();
-      expect(next.raw.sessions).toHaveBeenCalledTimes(1);
-      expect(next.diagnostics().events.filter(event => event.kind === 'allocation-succeeded').map(event => event.requestedBytes)).toEqual(Array(8).fill(2));
-      expect(next.diagnostics().events.some(event => event.kind === 'read-failed')).toBe(false);
-      expect(h.diagnostics()).toEqual(previous);
-      await model.dispose();
-    } finally {
-      await next.close();
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        await next.close();
+      },
+    };
+    const model = await next.load();
+    expect(next.raw.sessions).toHaveBeenCalledTimes(1);
+    expect(next.diagnostics().events.filter(event => event.kind === 'allocation-succeeded').map(event => event.requestedBytes)).toEqual(Array(8).fill(2));
+    expect(next.diagnostics().events.some(event => event.kind === 'read-failed')).toBe(false);
+    expect(h.diagnostics()).toEqual(previous);
+    await model.dispose();
   }, 60000);
 });

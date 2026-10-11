@@ -7,8 +7,8 @@ import { nextTick, ref, reactive, computed, type ComputedRef } from 'vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '@/composables/useChatDraft';
-import { setupScrollToMock } from '@/utils/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { setupScrollToMock } from '@/utils/utils.test-support';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import type { WeshMount } from '@/features/wesh/types';
 import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/01-models/ids';
 
@@ -236,7 +236,7 @@ vi.mock('@/composables/useAppPresentation', () => ({
   }),
 }));
 
-vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction', () => ({
+vi.mock('../composables/useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction.test-support', () => ({
   useChatWhichExistsOnlyForLegacyTestsThatMustNotBeRemovedAndMustNeverBeUsedInProduction: () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: mockCurrentChatGroup,
@@ -1017,83 +1017,86 @@ Question`,
 
   it('shows the neural sync effect only after a successful compact action', async () => {
     vi.useFakeTimers();
-    try {
-      mockActiveMessages.value = Array.from({ length: 9 }, (_, index) => (createTextNode({ id: toMessageId({ raw: `message-${index + 1}` }), role: index % 2 === 0 ? 'user' : 'assistant', text: `Message ${index + 1}`, createdAt: index + 1 }))) as MessageNode[];
-      wrapper = mountChatPane( {
-        global: { plugins: [router] },
-      });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        vi.useRealTimers();
+      },
+    };
+    mockActiveMessages.value = Array.from({ length: 9 }, (_, index) => (createTextNode({ id: toMessageId({ raw: `message-${index + 1}` }), role: index % 2 === 0 ? 'user' : 'assistant', text: `Message ${index + 1}`, createdAt: index + 1 }))) as MessageNode[];
+    wrapper = mountChatPane( {
+      global: { plugins: [router] },
+    });
 
-      await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
-      await wrapper.find('[data-testid="compact-context-button"]').trigger('click');
-      await wrapper.findComponent({ name: 'ContextCompactSettingsDialog' }).vm.$emit('confirm', {
-        keepCount: 6,
-        instruction: 'Edited compact prompt',
-      });
-      await flushPromises();
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.find('[data-testid="compact-context-button"]').trigger('click');
+    await wrapper.findComponent({ name: 'ContextCompactSettingsDialog' }).vm.$emit('confirm', {
+      keepCount: 6,
+      instruction: 'Edited compact prompt',
+    });
+    await flushPromises();
 
-      expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(true);
 
-      await vi.advanceTimersByTimeAsync(1200);
-      await nextTick();
+    await vi.advanceTimersByTimeAsync(1200);
+    await nextTick();
 
-      expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(false);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(false);
   });
 
   it('does not show the neural sync effect when compact progress becomes complete without a local compact action', async () => {
     vi.useFakeTimers();
-    try {
-      wrapper = mountChatPane( {
-        global: { plugins: [router] },
-      });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        vi.useRealTimers();
+      },
+    };
+    wrapper = mountChatPane( {
+      global: { plugins: [router] },
+    });
 
-      mockContextCompactProgress.value = {
-        phase: 'complete',
-        requestPreview: undefined,
-        outputPreview: '# Compact Context',
-      };
-      await nextTick();
+    mockContextCompactProgress.value = {
+      phase: 'complete',
+      requestPreview: undefined,
+      outputPreview: '# Compact Context',
+    };
+    await nextTick();
 
-      expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(false);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(false);
   });
 
   it('clears the neural sync effect when chatId changes', async () => {
     vi.useFakeTimers();
-    try {
-      mockActiveMessages.value = Array.from({ length: 9 }, (_, index) => (createTextNode({ id: toMessageId({ raw: `message-${index + 1}` }), role: index % 2 === 0 ? 'user' : 'assistant', text: `Message ${index + 1}`, createdAt: index + 1 }))) as MessageNode[];
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        vi.useRealTimers();
+      },
+    };
+    mockActiveMessages.value = Array.from({ length: 9 }, (_, index) => (createTextNode({ id: toMessageId({ raw: `message-${index + 1}` }), role: index % 2 === 0 ? 'user' : 'assistant', text: `Message ${index + 1}`, createdAt: index + 1 }))) as MessageNode[];
 
-      wrapper = mountChatPane( {
-        global: { plugins: [router] },
-      });
+    wrapper = mountChatPane( {
+      global: { plugins: [router] },
+    });
 
-      await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
-      await wrapper.find('[data-testid="compact-context-button"]').trigger('click');
-      await wrapper.findComponent({ name: 'ContextCompactSettingsDialog' }).vm.$emit('confirm', {
-        keepCount: 6,
-        instruction: 'Edited compact prompt',
-      });
-      await flushPromises();
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.find('[data-testid="compact-context-button"]').trigger('click');
+    await wrapper.findComponent({ name: 'ContextCompactSettingsDialog' }).vm.$emit('confirm', {
+      keepCount: 6,
+      instruction: 'Edited compact prompt',
+    });
+    await flushPromises();
 
-      expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(true);
 
-      mockCurrentChat.value = {
-        ...(mockCurrentChat.value as Chat),
-        id: toChatId({ raw: 'chat-2' }),
-        title: 'Chat 2',
-      };
-      await wrapper.setProps({
-        chatId: toChatId({ raw: 'chat-2' }),
-      });
+    mockCurrentChat.value = {
+      ...(mockCurrentChat.value as Chat),
+      id: toChatId({ raw: 'chat-2' }),
+      title: 'Chat 2',
+    };
+    await wrapper.setProps({
+      chatId: toChatId({ raw: 'chat-2' }),
+    });
 
-      expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(false);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(false);
   });
 
   it('should show the abort button and hide the send button during streaming', async () => {
@@ -1336,26 +1339,27 @@ Question`,
 
   it('should open the title dialog and save a manual title', async () => {
     vi.useFakeTimers();
-    try {
-      mockActiveMessages.value = [createTextNode({ id: toMessageId({ raw: 'm1' }), role: 'user', text: 'test', createdAt: 0 })];
-      wrapper = mountChatPane( {
-        global: { plugins: [router] },
-      });
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        vi.useRealTimers();
+      },
+    };
+    mockActiveMessages.value = [createTextNode({ id: toMessageId({ raw: 'm1' }), role: 'user', text: 'test', createdAt: 0 })];
+    wrapper = mountChatPane( {
+      global: { plugins: [router] },
+    });
 
-      expect(wrapper.find('[data-testid="regenerate-title-button"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="regenerate-title-button"]').exists()).toBe(false);
 
-      await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
-      await flushPromises();
-      expect(wrapper.find('[data-testid="chat-title-dialog"]').exists()).toBe(true);
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-testid="chat-title-dialog"]').exists()).toBe(true);
 
-      await wrapper.find('[data-testid="chat-title-input"]').setValue('Manual Title');
-      await vi.advanceTimersByTimeAsync(600);
-      await flushPromises();
+    await wrapper.find('[data-testid="chat-title-input"]').setValue('Manual Title');
+    await vi.advanceTimersByTimeAsync(600);
+    await flushPromises();
 
-      expect(mockRenameChat).toHaveBeenCalledWith({ id: toChatId({ raw: '1' }), newTitle: 'Manual Title' });
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(mockRenameChat).toHaveBeenCalledWith({ id: toChatId({ raw: '1' }), newTitle: 'Manual Title' });
   });
 
   it('should generate a title from the title dialog using the selected global title model', async () => {
@@ -2033,18 +2037,19 @@ describe.each([
     mockFetchAvailableModels.mockImplementationOnce(() => new Promise<void>(resolve => {
       finishModelDiscovery = resolve;
     }));
-    try {
-      wrapper = mountChatPane({
-        props: { autoSendPrompt: 'hello from a link' },
-        global: { plugins: [router] },
-      });
-      await flushPromises();
-      expect(mockSendMessage).toHaveBeenCalledTimes(1);
-      expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: 'hello from a link' }));
-      expect(wrapper.emitted('auto-sent')).toHaveLength(1);
-    } finally {
-      finishModelDiscovery?.();
-    }
+    using _cleanupResource = {
+      [Symbol.dispose]() {
+        finishModelDiscovery?.();
+      },
+    };
+    wrapper = mountChatPane({
+      props: { autoSendPrompt: 'hello from a link' },
+      global: { plugins: [router] },
+    });
+    await flushPromises();
+    expect(mockSendMessage).toHaveBeenCalledTimes(1);
+    expect(mockSendMessage).toHaveBeenCalledWith(expect.objectContaining({ content: 'hello from a link' }));
+    expect(wrapper.emitted('auto-sent')).toHaveLength(1);
   });
 
   it('keeps empty and whitespace-only llama.cpp browser messages disabled', async () => {

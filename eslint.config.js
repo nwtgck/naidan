@@ -1,3 +1,6 @@
+import vueParser from 'vue-eslint-parser';
+import testResourceManagement from './eslint-local-rules/test-resource-management.js';
+import noTestSupportImports from './eslint-local-rules/no-test-support-imports.js';
 import requireDtozod from './eslint-local-rules/require-dtozod.js';
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
@@ -88,11 +91,12 @@ import testStructureSpacing from './eslint-local-rules/test-structure-spacing.js
 //   }
 // );
 
-export default tseslint.config(
+const mainConfig = tseslint.config(
   {
     // Preserve upstream structure; Naidan-owned fix integration code and tests remain linted.
     // Temporary test support is excluded from tsconfig.app.json and uses isolated lint configurations.
-    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/*.test.ts', 'eslint-local-rules/fixtures/**', 'src/test-tmp/**', 'scripts/**', 'build/transformers-js-fixes/upstream/**'],
+    // Generated, vendored and deliberate negative fixtures are not owned lint targets.
+    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/fixtures/**', 'src/test-tmp/**', 'build/transformers-js-fixes/upstream/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -114,6 +118,7 @@ export default tseslint.config(
         __BUILD_MODE_IS_HOSTED__: 'readonly',
         __BUILD_MODE_IS_TEST__: 'readonly',
         __APP_VERSION__: 'readonly',
+        __APP_SOURCE__: 'readonly',
         __PWA_BUILD_ID__: 'readonly',
       },
     },
@@ -221,3 +226,37 @@ export default tseslint.config(
     }
   }
 );
+
+// These owned files have always been excluded from the type-aware rules. Keep
+// that behavior, but check their test/runtime boundaries in the SAME invocation.
+// Do not chain a second command: npm run lint -- <options> must still reach ESLint.
+const boundaryOnlyPaths = ['scripts/**', 'eslint-local-rules/*.test.ts'];
+const boundaryOnlyFiles = ['scripts/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,vue}', 'eslint-local-rules/*.test.ts'];
+const plugins = Object.assign({}, ...mainConfig.map(config => config.plugins));
+
+export default [
+  ...mainConfig.map(config => {
+    if (Object.keys(config).every(key => key === 'name' || key === 'ignores')) return config;
+    return { ...config, ignores: [...(config.ignores ?? []), ...boundaryOnlyPaths] };
+  }),
+  {
+    name: 'naidan/owned-boundaries-without-typechecking',
+    files: boundaryOnlyFiles,
+    // Register names used by existing inline directives without enabling their
+    // unrelated rules or reporting those intentionally inactive directives.
+    plugins,
+    linterOptions: { reportUnusedDisableDirectives: 'off' },
+    languageOptions: {
+      parser: tseslint.parser,
+      sourceType: 'module',
+      ecmaVersion: 'latest',
+      parserOptions: { project: false },
+    },
+  },
+  {
+    files: ['scripts/**/*.vue'],
+    languageOptions: { parser: vueParser, parserOptions: { parser: tseslint.parser, project: false } },
+  },
+  testResourceManagement,
+  noTestSupportImports,
+];

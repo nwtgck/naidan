@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { ref, shallowRef } from 'vue';
 import { useImageEngineState } from './use-image-engine-state';
-import { engineSnapshotFixture } from './test-utils/engine-state';
+import { engineSnapshotFixture } from './test-utils/engine-state.test-support';
 import type { ImageClient } from './worker/types';
 import type { ImageEngineInspection } from './engine-state';
 import type { Progress } from './types';

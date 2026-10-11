@@ -11,7 +11,7 @@ import { useBinaryActions } from '@/composables/useBinaryActions';
 import { storageService } from '@/00-storage/service';
 import { toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/01-models/ids';
 import type { UserMessageNode } from '@/01-models/types';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { TEST_ONLY } from '@/utils/stream-download';
 
 vi.mock('@/00-storage/service', () => ({

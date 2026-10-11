@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { runProviderConversationForTest } from '@/features/lm/provider-test-support';
+import { runProviderConversationForTest } from '@/features/lm/provider.test-support';
 import type { ToolCall } from '@/01-models/types';
 import type { InferenceGenerationCallback } from './generation-events';
 import { toToolCallId } from '@/01-models/ids';
@@ -76,13 +76,14 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  try {
-    await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
-    expect(forbiddenFetch).not.toHaveBeenCalled();
-  } finally {
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    },
+  };
+  await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
+  expect(forbiddenFetch).not.toHaveBeenCalled();
 });
 
 // Controlled clients exercise the actual service and Provider ownership rules.
@@ -128,16 +129,17 @@ describe('Transformers.js inference scope ownership', () => {
         },
       }),
     });
-    try {
-      expect(await secondOutcome.promise).toMatchObject({ status: 'rejected', error: expect.any(Error) });
-      expect(client.generateText).toHaveBeenCalledTimes(1);
-      expect(client.interrupt).not.toHaveBeenCalled();
-      release.resolve();
-      expect(await operation).toEqual({ status: 'fulfilled' });
-    } finally {
-      release.resolve();
-      await operation;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        release.resolve();
+        await operation;
+      },
+    };
+    expect(await secondOutcome.promise).toMatchObject({ status: 'rejected', error: expect.any(Error) });
+    expect(client.generateText).toHaveBeenCalledTimes(1);
+    expect(client.interrupt).not.toHaveBeenCalled();
+    release.resolve();
+    expect(await operation).toEqual({ status: 'fulfilled' });
   });
 
   it('drains an unawaited successful child after callback return before releasing the lane', async () => {
@@ -174,22 +176,23 @@ describe('Transformers.js inference scope ownership', () => {
     });
     await callbackFinished.promise;
     const second = observe({ promise: owner.service.generateText(generationArgs({ continuationOwner: 'second' })) });
-    try {
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(firstSettled).toBe(false);
-      expect(trace).toEqual(['first:start', 'callback:finished']);
-      release.resolve();
-      expect(await first).toEqual({ status: 'fulfilled' });
-      expect(await child).toEqual({ status: 'fulfilled' });
-      expect(await second).toEqual({ status: 'fulfilled' });
-      expect(trace).toEqual(['first:start', 'callback:finished', 'first:settled', 'second:start']);
-    } finally {
-      release.resolve();
-      await first;
-      await second;
-      await child;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        release.resolve();
+        await first;
+        await second;
+        await child;
+      },
+    };
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(firstSettled).toBe(false);
+    expect(trace).toEqual(['first:start', 'callback:finished']);
+    release.resolve();
+    expect(await first).toEqual({ status: 'fulfilled' });
+    expect(await child).toEqual({ status: 'fulfilled' });
+    expect(await second).toEqual({ status: 'fulfilled' });
+    expect(trace).toEqual(['first:start', 'callback:finished', 'first:settled', 'second:start']);
   });
 
   it('drains an unawaited rejected child after callback throw and preserves the callback error', async () => {
@@ -230,22 +233,23 @@ describe('Transformers.js inference scope ownership', () => {
     });
     await callbackFinished.promise;
     const second = observe({ promise: owner.service.generateText(generationArgs({ continuationOwner: 'second' })) });
-    try {
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(firstSettled).toBe(false);
-      expect(trace).toEqual(['first:start', 'callback:finished']);
-      release.resolve();
-      expect(await first).toEqual({ status: 'rejected', error: callbackError });
-      expect(await child).toEqual({ status: 'rejected', error: childError });
-      expect(await second).toEqual({ status: 'fulfilled' });
-      expect(trace).toEqual(['first:start', 'callback:finished', 'first:settled', 'second:start']);
-    } finally {
-      release.resolve();
-      await first;
-      await second;
-      await child;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        release.resolve();
+        await first;
+        await second;
+        await child;
+      },
+    };
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(firstSettled).toBe(false);
+    expect(trace).toEqual(['first:start', 'callback:finished']);
+    release.resolve();
+    expect(await first).toEqual({ status: 'rejected', error: callbackError });
+    expect(await child).toEqual({ status: 'rejected', error: childError });
+    expect(await second).toEqual({ status: 'fulfilled' });
+    expect(trace).toEqual(['first:start', 'callback:finished', 'first:settled', 'second:start']);
   });
 
   it('retires the old epoch before a fresh runtime and ignores late child failure and callbacks', async () => {
@@ -280,16 +284,17 @@ describe('Transformers.js inference scope ownership', () => {
         signal: undefined,
         operation: async ({ scope }) => {
           escaped.resolve(scope);
-          try {
-            await scope.generateText({
-              ...generationArgs({ continuationOwner: 'old' }),
-              onChunk: ({ chunk }) => {
-                chunks.push(chunk);
-              },
-            });
-          } finally {
-            oldChildSettled.resolve();
-          }
+          using _cleanupResource = {
+            [Symbol.dispose]() {
+              oldChildSettled.resolve();
+            },
+          };
+          await scope.generateText({
+            ...generationArgs({ continuationOwner: 'old' }),
+            onChunk: ({ chunk }) => {
+              chunks.push(chunk);
+            },
+          });
         },
       }),
     });
@@ -297,47 +302,49 @@ describe('Transformers.js inference scope ownership', () => {
     const waiting = observe({ promise: owner.service.loadDownloadedModel({ modelId: 'fixture/waiting' }) });
     const restart = observe({ promise: owner.service.restart() });
     const coalesced = observe({ promise: owner.service.restart() });
+    // eslint-disable-next-line prefer-const -- Cleanup is registered before initialization and must also handle a throwing initializer.
     let fresh: ReturnType<typeof observe> | undefined;
-    try {
-      await disposing.promise;
-      expect(createWorkerClient).toHaveBeenCalledTimes(1);
-      const retiredScope = await escaped.promise;
-      expect(retiredScope.signal.aborted).toBe(true);
-      expect(() => retiredScope.assertActive()).toThrow();
-      expect(await old).toMatchObject({ status: 'rejected', error: { reason: 'restarted' } });
-      expect(await waiting).toMatchObject({ status: 'rejected', error: { reason: 'restarted' } });
-      expect(await observe({ promise: owner.service.loadDownloadedModel({ modelId: 'fixture/during-reset' }) })).toMatchObject({ status: 'rejected' });
-      finishDispose.resolve();
-      expect(await restart).toEqual({ status: 'fulfilled' });
-      expect(await coalesced).toEqual({ status: 'fulfilled' });
-      expect(oldClient.dispose).toHaveBeenCalledTimes(1);
-      expect(createWorkerClient).toHaveBeenCalledTimes(2);
-      await owner.service.loadDownloadedModel({ modelId: 'fixture/fresh' });
-      fresh = observe({ promise: owner.service.generateText(generationArgs({ continuationOwner: 'fresh' })) });
-      await freshEntered.promise;
-      releaseOld.resolve();
-      await oldChildSettled.promise;
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(chunks).toEqual([]);
-      expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/fresh' });
-      expect(freshClient.dispose).not.toHaveBeenCalled();
-      expect(createWorkerClient).toHaveBeenCalledTimes(2);
-      releaseFresh.resolve();
-      expect(await fresh).toEqual({ status: 'fulfilled' });
-      await owner.service.generateText(generationArgs({ continuationOwner: 'later' }));
-      expect(freshClient.generateText).toHaveBeenCalledTimes(2);
-    } finally {
-      finishDispose.resolve();
-      releaseOld.resolve();
-      releaseFresh.resolve();
-      await restart;
-      await coalesced;
-      await old;
-      await oldChildSettled.promise;
-      await waiting;
-      await fresh;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        finishDispose.resolve();
+        releaseOld.resolve();
+        releaseFresh.resolve();
+        await restart;
+        await coalesced;
+        await old;
+        await oldChildSettled.promise;
+        await waiting;
+        await fresh;
+      },
+    };
+    await disposing.promise;
+    expect(createWorkerClient).toHaveBeenCalledTimes(1);
+    const retiredScope = await escaped.promise;
+    expect(retiredScope.signal.aborted).toBe(true);
+    expect(() => retiredScope.assertActive()).toThrow();
+    expect(await old).toMatchObject({ status: 'rejected', error: { reason: 'restarted' } });
+    expect(await waiting).toMatchObject({ status: 'rejected', error: { reason: 'restarted' } });
+    expect(await observe({ promise: owner.service.loadDownloadedModel({ modelId: 'fixture/during-reset' }) })).toMatchObject({ status: 'rejected' });
+    finishDispose.resolve();
+    expect(await restart).toEqual({ status: 'fulfilled' });
+    expect(await coalesced).toEqual({ status: 'fulfilled' });
+    expect(oldClient.dispose).toHaveBeenCalledTimes(1);
+    expect(createWorkerClient).toHaveBeenCalledTimes(2);
+    await owner.service.loadDownloadedModel({ modelId: 'fixture/fresh' });
+    fresh = observe({ promise: owner.service.generateText(generationArgs({ continuationOwner: 'fresh' })) });
+    await freshEntered.promise;
+    releaseOld.resolve();
+    await oldChildSettled.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(chunks).toEqual([]);
+    expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/fresh' });
+    expect(freshClient.dispose).not.toHaveBeenCalled();
+    expect(createWorkerClient).toHaveBeenCalledTimes(2);
+    releaseFresh.resolve();
+    expect(await fresh).toEqual({ status: 'fulfilled' });
+    await owner.service.generateText(generationArgs({ continuationOwner: 'later' }));
+    expect(freshClient.generateText).toHaveBeenCalledTimes(2);
   });
 
   it('does not publish a replacement when retiring the old client fails', async () => {
@@ -382,26 +389,27 @@ describe('Transformers.js inference scope ownership', () => {
       await publishCompletedCall({ onEvent, toolCall: { id: toToolCallId({ raw: 'synthetic-owned-tool' }), type: 'function', function: { name: tool.name, arguments: '{}' } } });
     });
     const oldChat = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/old', messages: [{ role: 'user', content: 'Synthetic tool request.' }], onChunk: vi.fn(), tools: [tool], onToolEvent, onToolResult }) });
-    try {
-      const toolSignal = await toolEntered.promise;
-      await owner.service.restart();
-      expect(await oldChat).toMatchObject({ status: 'rejected', error: { reason: 'restarted' } });
-      expect(toolSignal?.aborted).toBe(true);
-      await runProviderConversationForTest({ provider, model: 'fixture/fresh', messages: [{ role: 'user', content: 'Independent synthetic request.' }], onChunk: vi.fn() });
-      releaseTool.resolve();
-      await toolReturned.promise;
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(onToolEvent).not.toHaveBeenCalled();
-      await vi.waitFor(() => expect(onToolResult).toHaveBeenCalledExactlyOnceWith({ id: 'synthetic-owned-tool', result: { status: 'success', content: 'retired tool result' } }));
-      expect(oldClient.generateMessage).toHaveBeenCalledTimes(1);
-      expect(freshClient.generateMessage).toHaveBeenCalledTimes(1);
-      expect(freshClient.dispose).not.toHaveBeenCalled();
-      expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/fresh' });
-    } finally {
-      releaseTool.resolve();
-      await oldChat;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        releaseTool.resolve();
+        await oldChat;
+      },
+    };
+    const toolSignal = await toolEntered.promise;
+    await owner.service.restart();
+    expect(await oldChat).toMatchObject({ status: 'rejected', error: { reason: 'restarted' } });
+    expect(toolSignal?.aborted).toBe(true);
+    await runProviderConversationForTest({ provider, model: 'fixture/fresh', messages: [{ role: 'user', content: 'Independent synthetic request.' }], onChunk: vi.fn() });
+    releaseTool.resolve();
+    await toolReturned.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onToolEvent).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(onToolResult).toHaveBeenCalledExactlyOnceWith({ id: 'synthetic-owned-tool', result: { status: 'success', content: 'retired tool result' } }));
+    expect(oldClient.generateMessage).toHaveBeenCalledTimes(1);
+    expect(freshClient.generateMessage).toHaveBeenCalledTimes(1);
+    expect(freshClient.dispose).not.toHaveBeenCalled();
+    expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/fresh' });
   });
 
   it('revokes a noncooperative Provider tool rejecting after restart while retaining its failure only in the original history', async () => {
@@ -431,26 +439,27 @@ describe('Transformers.js inference scope ownership', () => {
       await publishCompletedCall({ onEvent, toolCall: { id: toToolCallId({ raw: 'synthetic-owned-tool' }), type: 'function', function: { name: tool.name, arguments: '{}' } } });
     });
     const oldChat = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/old', messages: [{ role: 'user', content: 'Synthetic tool request.' }], onChunk: vi.fn(), tools: [tool], onToolEvent, onToolResult }) });
-    try {
-      const toolSignal = await toolEntered.promise;
-      await owner.service.restart();
-      expect(await oldChat).toMatchObject({ status: 'rejected', error: { reason: 'restarted' } });
-      expect(toolSignal?.aborted).toBe(true);
-      await runProviderConversationForTest({ provider, model: 'fixture/fresh', messages: [{ role: 'user', content: 'Independent synthetic request.' }], onChunk: vi.fn() });
-      releaseTool.resolve();
-      await toolReturned.promise;
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(onToolEvent).not.toHaveBeenCalled();
-      await vi.waitFor(() => expect(onToolResult).toHaveBeenCalledExactlyOnceWith({ id: 'synthetic-owned-tool', result: { status: 'error', code: 'other', message: 'Tool execution was interrupted before completion.' } }));
-      expect(oldClient.generateMessage).toHaveBeenCalledTimes(1);
-      expect(freshClient.generateMessage).toHaveBeenCalledTimes(1);
-      expect(freshClient.dispose).not.toHaveBeenCalled();
-      expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/fresh' });
-    } finally {
-      releaseTool.resolve();
-      await oldChat;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        releaseTool.resolve();
+        await oldChat;
+      },
+    };
+    const toolSignal = await toolEntered.promise;
+    await owner.service.restart();
+    expect(await oldChat).toMatchObject({ status: 'rejected', error: { reason: 'restarted' } });
+    expect(toolSignal?.aborted).toBe(true);
+    await runProviderConversationForTest({ provider, model: 'fixture/fresh', messages: [{ role: 'user', content: 'Independent synthetic request.' }], onChunk: vi.fn() });
+    releaseTool.resolve();
+    await toolReturned.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onToolEvent).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(onToolResult).toHaveBeenCalledExactlyOnceWith({ id: 'synthetic-owned-tool', result: { status: 'error', code: 'other', message: 'Tool execution was interrupted before completion.' } }));
+    expect(oldClient.generateMessage).toHaveBeenCalledTimes(1);
+    expect(freshClient.generateMessage).toHaveBeenCalledTimes(1);
+    expect(freshClient.dispose).not.toHaveBeenCalled();
+    expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/fresh' });
   });
 
   it('retires a canceled Provider AutoLoad before starting the queued model on a fresh client', async () => {
@@ -466,11 +475,12 @@ describe('Transformers.js inference scope ownership', () => {
     original.loadDownloadedModel.mockImplementation(async () => {
       trace.push('old:load');
       loadEntered.resolve();
-      try {
-        return await pendingLoad.promise;
-      } finally {
-        loadSettled.resolve();
-      }
+      using _cleanupResource = {
+        [Symbol.dispose]() {
+          loadSettled.resolve();
+        },
+      };
+      return await pendingLoad.promise;
     });
     original.dispose.mockImplementation(async () => {
       trace.push('old:dispose-start');
@@ -497,32 +507,33 @@ describe('Transformers.js inference scope ownership', () => {
     void first.then(() => {
       firstSettled = true;
     });
-    try {
-      // No Worker interrupt contract exists for Load. Cancel the owning chat;
-      // the service must retire its captured client, not issue an interrupt RPC.
-      abort.abort();
-      expect(original.dispose).toHaveBeenCalledTimes(1);
-      await disposalEntered.promise;
-      await loadSettled.promise;
-      expect(firstSettled).toBe(false);
-      expect(factory).toHaveBeenCalledTimes(1);
-      expect(original.interrupt).not.toHaveBeenCalled();
-      expect(original.generateMessage).not.toHaveBeenCalled();
-      expect(replacement.loadDownloadedModel).not.toHaveBeenCalled();
-      expect(replacement.generateMessage).not.toHaveBeenCalled();
-      releaseDisposal.resolve();
-      expect(await first).toMatchObject({ status: 'rejected', error: { message: 'Generation aborted' } });
-      expect(await second).toEqual({ status: 'fulfilled' });
-      expect(trace).toEqual(['old:load', 'old:dispose-start', 'old:dispose-complete', 'fresh:load:fixture/next', 'fresh:generate']);
-      expect(factory).toHaveBeenCalledTimes(2);
-      expect(original.generateMessage).not.toHaveBeenCalled();
-      expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/next' });
-    } finally {
-      releaseDisposal.resolve();
-      pendingLoad.reject(new Error('Synthetic Load test cleanup'));
-      await first;
-      await second;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        releaseDisposal.resolve();
+        pendingLoad.reject(new Error('Synthetic Load test cleanup'));
+        await first;
+        await second;
+      },
+    };
+    // No Worker interrupt contract exists for Load. Cancel the owning chat;
+    // the service must retire its captured client, not issue an interrupt RPC.
+    abort.abort();
+    expect(original.dispose).toHaveBeenCalledTimes(1);
+    await disposalEntered.promise;
+    await loadSettled.promise;
+    expect(firstSettled).toBe(false);
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(original.interrupt).not.toHaveBeenCalled();
+    expect(original.generateMessage).not.toHaveBeenCalled();
+    expect(replacement.loadDownloadedModel).not.toHaveBeenCalled();
+    expect(replacement.generateMessage).not.toHaveBeenCalled();
+    releaseDisposal.resolve();
+    expect(await first).toMatchObject({ status: 'rejected', error: { message: 'Generation aborted' } });
+    expect(await second).toEqual({ status: 'fulfilled' });
+    expect(trace).toEqual(['old:load', 'old:dispose-start', 'old:dispose-complete', 'fresh:load:fixture/next', 'fresh:generate']);
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(original.generateMessage).not.toHaveBeenCalled();
+    expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/next' });
   });
 
   it('rejects queued and later Provider chats when canceled AutoLoad retirement fails', async () => {
@@ -550,28 +561,29 @@ describe('Transformers.js inference scope ownership', () => {
     const first = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/old', messages: [], onChunk: vi.fn(), signal: abort.signal }) });
     await loadEntered.promise;
     const waiting = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/waiting', messages: [], onChunk: vi.fn() }) });
-    try {
-      abort.abort();
-      await disposalEntered.promise;
-      expect(factory).toHaveBeenCalledTimes(1);
-      expect(replacement.loadDownloadedModel).not.toHaveBeenCalled();
-      releaseDisposal.resolve();
-      expect(await first).toEqual({ status: 'rejected', error: disposalError });
-      expect(await waiting).toEqual({ status: 'rejected', error: disposalError });
-      expect(await observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/later', messages: [], onChunk: vi.fn() }) })).toEqual({ status: 'rejected', error: disposalError });
-      expect(factory).toHaveBeenCalledTimes(1);
-      expect(original.dispose).toHaveBeenCalledTimes(1);
-      expect(original.generateMessage).not.toHaveBeenCalled();
-      expect(original.interrupt).not.toHaveBeenCalled();
-      expect(replacement.loadDownloadedModel).not.toHaveBeenCalled();
-      expect(replacement.generateMessage).not.toHaveBeenCalled();
-      expect(owner.service.getState()).toMatchObject({ status: 'error', activeModelId: undefined });
-    } finally {
-      releaseDisposal.resolve();
-      pendingLoad.reject(new Error('Synthetic Load test cleanup'));
-      await first;
-      await waiting;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        releaseDisposal.resolve();
+        pendingLoad.reject(new Error('Synthetic Load test cleanup'));
+        await first;
+        await waiting;
+      },
+    };
+    abort.abort();
+    await disposalEntered.promise;
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(replacement.loadDownloadedModel).not.toHaveBeenCalled();
+    releaseDisposal.resolve();
+    expect(await first).toEqual({ status: 'rejected', error: disposalError });
+    expect(await waiting).toEqual({ status: 'rejected', error: disposalError });
+    expect(await observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/later', messages: [], onChunk: vi.fn() }) })).toEqual({ status: 'rejected', error: disposalError });
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(original.dispose).toHaveBeenCalledTimes(1);
+    expect(original.generateMessage).not.toHaveBeenCalled();
+    expect(original.interrupt).not.toHaveBeenCalled();
+    expect(replacement.loadDownloadedModel).not.toHaveBeenCalled();
+    expect(replacement.generateMessage).not.toHaveBeenCalled();
+    expect(owner.service.getState()).toMatchObject({ status: 'error', activeModelId: undefined });
   });
 
   it('keeps a successful Provider tool and its continuation ahead of a queued different-model chat', async () => {
@@ -612,24 +624,25 @@ describe('Transformers.js inference scope ownership', () => {
     const first = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/old', messages: [{ role: 'user', content: 'Synthetic tool request.' }], onChunk: vi.fn(), tools: [tool], onToolResult }) });
     await toolEntered.promise;
     const second = observe({ promise: runProviderConversationForTest({ provider, model: 'fixture/next', messages: [{ role: 'user', content: 'Independent next request.' }], onChunk: vi.fn() }) });
-    try {
-      expect(trace).toEqual(['load:fixture/old', 'old:initial', 'tool:entered']);
-      expect(client.loadDownloadedModel).toHaveBeenCalledTimes(1);
-      expect(client.generateMessage).toHaveBeenCalledTimes(1);
-      releaseTool.resolve();
-      expect(await first).toEqual({ status: 'fulfilled' });
-      expect(await second).toEqual({ status: 'fulfilled' });
-      expect(trace).toEqual(['load:fixture/old', 'old:initial', 'tool:entered', 'tool:completed', 'old:continuation', 'load:fixture/next', 'next:initial']);
-      expect(onToolResult).toHaveBeenCalledExactlyOnceWith({ id: toolId, result: { status: 'success', content: 'Synthetic tool result.' } });
-      expect(client.generateMessage.mock.calls[1]?.[0].messages.at(-1)).toEqual({ role: 'tool', content: 'Synthetic tool result.', tool_call_id: toolId });
-      expect(client.generateMessage.mock.calls[2]?.[0].messages).toEqual([{ role: 'user', content: 'Independent next request.' }]);
-      expect(client.interrupt).not.toHaveBeenCalled();
-      expect(client.dispose).not.toHaveBeenCalled();
-    } finally {
-      releaseTool.resolve();
-      await first;
-      await second;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        releaseTool.resolve();
+        await first;
+        await second;
+      },
+    };
+    expect(trace).toEqual(['load:fixture/old', 'old:initial', 'tool:entered']);
+    expect(client.loadDownloadedModel).toHaveBeenCalledTimes(1);
+    expect(client.generateMessage).toHaveBeenCalledTimes(1);
+    releaseTool.resolve();
+    expect(await first).toEqual({ status: 'fulfilled' });
+    expect(await second).toEqual({ status: 'fulfilled' });
+    expect(trace).toEqual(['load:fixture/old', 'old:initial', 'tool:entered', 'tool:completed', 'old:continuation', 'load:fixture/next', 'next:initial']);
+    expect(onToolResult).toHaveBeenCalledExactlyOnceWith({ id: toolId, result: { status: 'success', content: 'Synthetic tool result.' } });
+    expect(client.generateMessage.mock.calls[1]?.[0].messages.at(-1)).toEqual({ role: 'tool', content: 'Synthetic tool result.', tool_call_id: toolId });
+    expect(client.generateMessage.mock.calls[2]?.[0].messages).toEqual([{ role: 'user', content: 'Independent next request.' }]);
+    expect(client.interrupt).not.toHaveBeenCalled();
+    expect(client.dispose).not.toHaveBeenCalled();
   });
 
   it('drains a normally canceled noncooperative Provider tool before admitting the queued chat', async () => {
@@ -677,31 +690,32 @@ describe('Transformers.js inference scope ownership', () => {
     void second.then(() => {
       secondSettled = true;
     });
-    try {
-      abort.abort();
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(toolSignal?.aborted).toBe(true);
-      expect(firstSettled).toBe(false);
-      expect(secondSettled).toBe(false);
-      expect(trace).toEqual(['load:fixture/old', 'old:initial', 'tool:entered']);
-      expect(client.dispose).not.toHaveBeenCalled();
-      expect(client.interrupt).not.toHaveBeenCalled();
-      releaseTool.resolve();
-      expect(await first).toMatchObject({ status: 'rejected', error: { message: 'Generation aborted' } });
-      expect(await second).toEqual({ status: 'fulfilled' });
-      expect(trace).toEqual(['load:fixture/old', 'old:initial', 'tool:entered', 'tool:completed', 'load:fixture/next', 'next:initial']);
-      expect(onToolEvent).not.toHaveBeenCalled();
-      expect(onToolResult).toHaveBeenCalledExactlyOnceWith({ id: 'synthetic-canceled-tool', result: { status: 'success', content: 'Canceled tool result.' } });
-      expect(client.generateMessage).toHaveBeenCalledTimes(2);
-      expect(client.generateMessage.mock.calls[1]?.[0].messages).toEqual([{ role: 'user', content: 'Independent request after cancellation.' }]);
-      expect(client.dispose).not.toHaveBeenCalled();
-      expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/next' });
-    } finally {
-      releaseTool.resolve();
-      await first;
-      await second;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        releaseTool.resolve();
+        await first;
+        await second;
+      },
+    };
+    abort.abort();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(toolSignal?.aborted).toBe(true);
+    expect(firstSettled).toBe(false);
+    expect(secondSettled).toBe(false);
+    expect(trace).toEqual(['load:fixture/old', 'old:initial', 'tool:entered']);
+    expect(client.dispose).not.toHaveBeenCalled();
+    expect(client.interrupt).not.toHaveBeenCalled();
+    releaseTool.resolve();
+    expect(await first).toMatchObject({ status: 'rejected', error: { message: 'Generation aborted' } });
+    expect(await second).toEqual({ status: 'fulfilled' });
+    expect(trace).toEqual(['load:fixture/old', 'old:initial', 'tool:entered', 'tool:completed', 'load:fixture/next', 'next:initial']);
+    expect(onToolEvent).not.toHaveBeenCalled();
+    expect(onToolResult).toHaveBeenCalledExactlyOnceWith({ id: 'synthetic-canceled-tool', result: { status: 'success', content: 'Canceled tool result.' } });
+    expect(client.generateMessage).toHaveBeenCalledTimes(2);
+    expect(client.generateMessage.mock.calls[1]?.[0].messages).toEqual([{ role: 'user', content: 'Independent request after cancellation.' }]);
+    expect(client.dispose).not.toHaveBeenCalled();
+    expect(owner.service.getState()).toMatchObject({ status: 'ready', activeModelId: 'fixture/next' });
   });
 
   it('holds the lane after actual Worker interrupt acknowledgement until the native boundary settles', async () => {

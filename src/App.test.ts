@@ -15,6 +15,9 @@ vi.mock('@/composables/useAppPresentation', () => ({
   provideAppPresentation: () => ({
     onboardingPresentation,
     appInteraction,
+    homeIntroduction: ref({ kind: 'inactive' }),
+    continueHomeIntroduction: vi.fn(),
+    finishHomeIntroduction: vi.fn(),
   }),
 }));
 

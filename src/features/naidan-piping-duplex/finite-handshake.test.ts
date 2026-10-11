@@ -6,7 +6,7 @@ import { connectPinnedKeys } from '@/features/naidan-piping-duplex/pinned-contac
 import { FiniteTransferEndpoint } from '@/features/naidan-piping-duplex/finite-transfer';
 import { FiniteMemoryRelay } from '@/features/naidan-piping-duplex/finite-memory-relay.test-support';
 import { PipingRetirementError } from '@/features/naidan-piping-duplex/lifetime';
-import { useOfflineScope } from '@/features/naidan-piping-duplex/test-support';
+import { useOfflineScope } from '@/features/naidan-piping-duplex/index.test-support';
 
 useOfflineScope();
 

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, useId } from 'vue';
+import { usePageDocumentMetadata } from '@/composables/useDocumentMetadata';
+import { modelLaunchMetadata } from '@/features/llama-cpp-browser/model-launch/document-metadata';
 import { ArrowRightIcon, Loader2Icon, MessageCircleIcon, HardDriveIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
 import { useSettings } from '@/composables/useSettings';
@@ -10,11 +12,18 @@ import LlamaCppBrowserModelLaunchPrivacy from './LlamaCppBrowserModelLaunchPriva
 import LlamaCppBrowserModelLaunchHeading from './LlamaCppBrowserModelLaunchHeading.vue';
 import LlamaCppBrowserModelLoadProgress from './LlamaCppBrowserModelLoadProgress.vue';
 
-const props = defineProps<{ state: ModelLaunchChatUi }>();
+const props = defineProps<{ state: ModelLaunchChatUi, routePath: string }>();
 const { settings } = useSettings();
 const headingId = useId();
 const target = computed(() => props.state.selectedTarget.value);
 const repository = computed(() => target.value?.selection.repository ?? props.state.launch.value?.target.selection.repository ?? props.state.presentation?.value?.repository ?? '');
+usePageDocumentMetadata({
+  source: computed(() => !props.state.visible.value || props.state.composerVisibility.value !== 'hidden' || repository.value.length === 0
+    ? undefined : {
+      routePath: props.routePath,
+      metadata: modelLaunchMetadata({ repository: repository.value, variant: props.state.label.value || props.state.presentation.value?.requestedVariant }),
+    }),
+});
 const size = computed(() => target.value?.selection.files.reduce((sum, file) => sum + file.size, 0));
 const displayedJob = computed(() => {
   const job = props.state.job.value;

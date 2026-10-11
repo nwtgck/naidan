@@ -89,6 +89,10 @@ export const snapshotSchema = z.object({
   plan: planSchema,
   environment: z.object({
     appVersion: z.string(),
+    appSource: z.object({
+      sourceCommit: z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/).optional(),
+      workingTree: z.enum(['clean', 'dirty', 'unknown']),
+    }).strict(),
     buildMode: z.string(),
     userAgent: z.string(),
     hardwareConcurrency: z.number().int().nonnegative(),

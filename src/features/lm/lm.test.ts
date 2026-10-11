@@ -4,7 +4,7 @@ import { OllamaProvider } from '@/features/lm/ollama';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { LmProvider } from '@/01-models/lm';
 import type { LmFetch } from './fetch';
-import { consumeProviderGenerationForTest } from './provider-test-support';
+import { consumeProviderGenerationForTest } from './provider.test-support';
 
 function request({ model }: { model: string }): Parameters<LmProvider['chat']>[0] {
   return { debug: undefined, messages: [], model, parameters: undefined, tools: undefined, readBinaryObject: undefined, signal: undefined };

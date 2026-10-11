@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import ImageGenerationCopyButton from './ImageGenerationCopyButton.vue';
 let wrapper: VueWrapper | undefined;
 const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');

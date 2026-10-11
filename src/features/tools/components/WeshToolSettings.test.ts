@@ -1,7 +1,7 @@
 import type { ChatId } from '@/01-models/ids';
 import { toChatId } from '@/01-models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { mount, flushPromises } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 import WeshToolSettings from './WeshToolSettings.vue';

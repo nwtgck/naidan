@@ -79,16 +79,17 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  try {
-    // Controlled clients settle their pending operations in each test. Cleanup
-    // failure cases are asserted locally and must not hide other owner cleanup.
-    await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-    expect(fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
-  } finally {
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-  }
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    },
+  };
+  // Controlled clients settle their pending operations in each test. Cleanup
+  // failure cases are asserted locally and must not hide other owner cleanup.
+  await Promise.all(owners.splice(0).map(owner => owner.dispose().catch(() => undefined)));
+  expect(globalThis.fetch).not.toHaveBeenCalled();
+  expect(fs.activity.filter(item => !['stat', 'body-read'].includes(item.operation))).toEqual([]);
 });
 
 // Real service + Provider + trace; only the native Worker client and read-only
@@ -124,34 +125,35 @@ describe('isolated fixed Production Provider capture owner', () => {
       loadStatus: 'idle',
     });
     const running = owner.run();
-    try {
-      await firstEntered.promise;
-      const first = owner.getProgress();
-      expect(first).toMatchObject({
-        run: { status: 'running' },
-        loadStatus: 'ready',
-        settledRequests: 0,
-        activeRequest: { runId: 'progress', requestId: 'progress-first-turn', scenario: 'first-turn' },
-      });
-      expect(Object.isFrozen(first)).toBe(true);
-      releaseFirst.resolve();
-      await secondEntered.promise;
-      expect(owner.getProgress()).toMatchObject({
-        run: { status: 'running' },
-        settledRequests: 1,
-        activeRequest: { runId: 'progress', requestId: 'progress-continuity', scenario: 'continuity' },
-      });
-      expect(first.settledRequests).toBe(0);
-      releaseSecond.resolve();
-      await running;
-      expect(owner.getProgress()).toMatchObject({ run: { status: 'completed' }, settledRequests: 3, activeRequest: undefined });
-      await owner.dispose();
-      expect(owner.getProgress()).toMatchObject({ run: { status: 'completed' }, lifetime: 'closed', loadStatus: 'idle' });
-    } finally {
-      releaseFirst.resolve();
-      releaseSecond.resolve();
-      await running;
-    }
+    await using _cleanupResource = {
+      async [Symbol.asyncDispose]() {
+        releaseFirst.resolve();
+        releaseSecond.resolve();
+        await running;
+      },
+    };
+    await firstEntered.promise;
+    const first = owner.getProgress();
+    expect(first).toMatchObject({
+      run: { status: 'running' },
+      loadStatus: 'ready',
+      settledRequests: 0,
+      activeRequest: { runId: 'progress', requestId: 'progress-first-turn', scenario: 'first-turn' },
+    });
+    expect(Object.isFrozen(first)).toBe(true);
+    releaseFirst.resolve();
+    await secondEntered.promise;
+    expect(owner.getProgress()).toMatchObject({
+      run: { status: 'running' },
+      settledRequests: 1,
+      activeRequest: { runId: 'progress', requestId: 'progress-continuity', scenario: 'continuity' },
+    });
+    expect(first.settledRequests).toBe(0);
+    releaseSecond.resolve();
+    await running;
+    expect(owner.getProgress()).toMatchObject({ run: { status: 'completed' }, settledRequests: 3, activeRequest: undefined });
+    await owner.dispose();
+    expect(owner.getProgress()).toMatchObject({ run: { status: 'completed' }, lifetime: 'closed', loadStatus: 'idle' });
   });
 
   it('samples only small progress counters without copying trace payloads or invoking a UI callback', async () => {

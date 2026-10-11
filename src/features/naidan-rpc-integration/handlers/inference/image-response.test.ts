@@ -14,12 +14,13 @@ function output(): ImageExecutionOutput {
 
 async function collect<T>({ stream }: { stream: ReadableStream<T> }): Promise<T[]> {
   const reader = stream.getReader(); const values: T[] = [];
-  try {
-    for (;;) {
-      const next = await reader.read(); if (next.done) return values; values.push(next.value);
-    }
-  } finally {
-    reader.releaseLock();
+  using _cleanupResource = {
+    [Symbol.dispose]() {
+      reader.releaseLock();
+    },
+  };
+  for (;;) {
+    const next = await reader.read(); if (next.done) return values; values.push(next.value);
   }
 }
 

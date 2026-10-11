@@ -29,7 +29,7 @@ import {
   type DebugFileProtocolStandaloneVerificationReport,
 } from '@/features/file-protocol-standalone/debug/verification/report';
 import StandaloneVerificationPage from './standalone.vue';
-import { ensureAllStringsForTest } from '@/strings/test-utils';
+import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 
 function createDebugVerificationReport({
   passed = 12,

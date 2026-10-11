@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useTransformersJsDocumentTitle } from '@/features/transformers-js/composables/useTransformersJsDocumentTitle';
 import { downloadStream } from "@/utils/stream-download";
 import { createTextExportStream } from "@/utils/text-export-stream";
 import { ensureStrings, lazyStrings } from '@/strings';
@@ -157,6 +158,12 @@ const chatPaneState = useChatPaneState({
 const chat = chatPaneState.chat;
 const chatGroup = chatPaneState.chatGroup;
 const activeMessages = chatPaneState.activeMessages;
+const { print } = usePrint();
+const documentRoutePath = computed(() => `/chat/${idToRaw({ id: props.chatId })}`);
+useTransformersJsDocumentTitle({
+  routePath: documentRoutePath,
+  visibility: computed(() => activeMessages.value.length > 0 && chatPaneState.resolvedSettings.value?.endpoint.type === 'transformers_js' ? 'visible' : 'hidden'),
+});
 const allMessages = chatPaneState.allMessages;
 const resolvedSettings = chatPaneState.resolvedSettings;
 const modelLaunch = useModelLaunchChat({ chat, resolved: computed(() => resolvedSettings.value ?? undefined) });
@@ -628,7 +635,7 @@ async function openChatFileExplorer() {
 
 async function handlePrint(): Promise<void> {
   if (chat.value) {
-    usePrint().print({
+    print({
       title: chat.value.title || await ensureStrings.ChatPane__chat(),
       mode: 'chat',
     });
@@ -1735,7 +1742,7 @@ watch(
             @select-suggestion="(text) => chatInputRef?.applySuggestion({ text })"
           >
             <template v-if="modelLaunch.visible.value" #primary>
-              <LlamaCppBrowserModelLaunchCard :state="modelLaunch" />
+              <LlamaCppBrowserModelLaunchCard :state="modelLaunch" :route-path="documentRoutePath" />
             </template>
             <template v-if="firefoxWebGpuWarning.visible.value || modelRecovery.visible.value" #notice>
               <LlamaCppBrowserFirefoxWebGpuWarning v-if="firefoxWebGpuWarning.visible.value" />
