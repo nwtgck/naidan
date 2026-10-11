@@ -16,7 +16,7 @@ vi.mock('@/features/llama-cpp-browser/hugging-face/storage', () => ({ installedS
 const muse = preferredQuantizationHint({ suggestion: modelSuggestions.find(entry => entry.id === 'muse-glimmer-30b')! });
 const main = 'Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf';
 const projector = 'mmproj-Muse-Glimmer-30B-Q4_K_M.gguf';
-const local: LocalModel = { id: `hf.co/${muse.repository}:${encodeURIComponent(main)}`, name: `hf.co/${muse.repository}:KQuant-17GB-Q4_K_M`, size: 128, importedAt: 1 };
+const local: LocalModel = { id: `hf.co/${muse.hfRepository}:${encodeURIComponent(main)}`, name: `hf.co/${muse.hfRepository}:KQuant-17GB-Q4_K_M`, size: 128, importedAt: 1 };
 const revision = 'a'.repeat(40);
 const wrappers: VueWrapper[] = [];
 
@@ -28,7 +28,7 @@ function render({ models }: { models: LocalModel[] }): VueWrapper {
 beforeEach(async () => {
   vi.resetAllMocks(); queueTest.reset(); metadataTest.reset();
   vi.mocked(installedSelection).mockResolvedValue(undefined);
-  vi.mocked(discoverRepository).mockResolvedValue({ repository: muse.repository, revision, ...groupModelFiles({ files: [main, projector, 'dflash-Q4_K_M.gguf'].map(path => ({ path, size: 128 })) }) });
+  vi.mocked(discoverRepository).mockResolvedValue({ repository: muse.hfRepository, revision, ...groupModelFiles({ files: [main, projector, 'dflash-Q4_K_M.gguf'].map(path => ({ path, size: 128 })) }) });
   await ensureAllStringsForTest({ locale: 'en' });
 });
 
@@ -98,7 +98,7 @@ describe('offline-first suggested model UI', () => {
     expect(details.attributes('inert')).toBeUndefined();
     const repositoryRow = details.get('[data-testid="llama-suggestion-repository-row"]');
     const toolbar = details.get('[data-testid="llama-suggestion-plan-toolbar"]');
-    expect(repositoryRow.get('[data-testid="llama-suggestion-repository"]').attributes('href')).toBe(`https://huggingface.co/${muse.repository}`);
+    expect(repositoryRow.get('[data-testid="llama-suggestion-repository"]').attributes('href')).toBe(`https://huggingface.co/${muse.hfRepository}`);
     expect(repositoryRow.find('[data-testid="llama-suggestion-check"]').exists()).toBe(false);
     expect(toolbar.find('[data-testid="llama-suggestion-repository"]').exists()).toBe(false);
     await toggle.trigger('click');
@@ -141,7 +141,7 @@ describe('offline-first suggested model UI', () => {
     expect(row.get('[data-testid="llama-download-plan-files"]').text()).toContain(main);
     expect(row.get('[data-testid="llama-download-plan-files"]').text()).not.toContain(projector);
     const link = row.get('[data-testid="llama-download-plan-files"] a');
-    expect(link.attributes('href')).toBe(`https://huggingface.co/${muse.repository}/resolve/${revision}/${main}?download=true`);
+    expect(link.attributes('href')).toBe(`https://huggingface.co/${muse.hfRepository}/resolve/${revision}/${main}?download=true`);
     expect(link.attributes('download')).toBeDefined();
     await row.get('[role="switch"]').trigger('click'); await flushPromises();
     expect(row.get('[data-testid="llama-download-plan-files"]').text()).toContain(projector);
@@ -201,7 +201,7 @@ describe('offline-first suggested model UI', () => {
     await wrapper.setProps({ defaultModel: { endpoint: { type: 'llama_cpp_browser' }, modelId: local.name } });
     expect(row.get('[data-testid="llama-default-model-action"]').text()).toBe('In use');
     expect(row.get('[data-testid="llama-default-model-action"]').attributes('disabled')).toBeDefined();
-    await wrapper.setProps({ models: [{ ...local, id: `hf.co/${muse.repository}:model-Q8_0.gguf` }] }); await flushPromises();
+    await wrapper.setProps({ models: [{ ...local, id: `hf.co/${muse.hfRepository}:model-Q8_0.gguf` }] }); await flushPromises();
     expect(row.find('[data-testid="llama-suggestion-download"]').exists()).toBe(true);
     expect(discoverRepository).not.toHaveBeenCalled();
   });
@@ -228,7 +228,7 @@ describe('the original catalog reused for audio', () => {
 
   it('selects a locally installed audio model without changing the chat default or contacting its repository', async () => {
     const hint = audioModelCatalog[0]!.quantizationHints[0];
-    const saved: LocalModel = { id: `hf.co/${hint.repository}:Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf`, name: 'Saved voice', size: 128, importedAt: 1 };
+    const saved: LocalModel = { id: `hf.co/${hint.hfRepository}:Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf`, name: 'Saved voice', size: 128, importedAt: 1 };
     const view = audioCatalog(); await view.setProps({ models: [saved] }); await flushPromises();
     const row = view.get('[data-testid="llama-suggestion-audio-qwen3-tts-0-6b"]');
     // Required companion mode checks actual stored selection, not just a name.
@@ -243,7 +243,7 @@ describe('the original catalog reused for audio', () => {
 
   it('resolves the main model and required companion only after a user download action', async () => {
     const quant = audioModelCatalog[0]!.quantizationHints[0];
-    vi.mocked(discoverRepository).mockResolvedValue({ repository: quant.repository, revision, ...groupModelFiles({ files: ['Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-Q8_0.gguf'].map(path => ({ path, size: 128 })) }) });
+    vi.mocked(discoverRepository).mockResolvedValue({ repository: quant.hfRepository, revision, ...groupModelFiles({ files: ['Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-Q8_0.gguf'].map(path => ({ path, size: 128 })) }) });
     const view = audioCatalog(); await flushPromises();
     await view.get('[data-testid="llama-suggestion-audio-qwen3-tts-0-6b"] [data-testid="llama-suggestion-download"]').trigger('click');
     await vi.waitFor(() => expect(downloadRepository).toHaveBeenCalledOnce());
@@ -252,7 +252,7 @@ describe('the original catalog reused for audio', () => {
 
   it('does not start a main-only download if the required companion cannot be found', async () => {
     const quant = audioModelCatalog[0]!.quantizationHints[0];
-    vi.mocked(discoverRepository).mockResolvedValue({ repository: quant.repository, revision, ...groupModelFiles({ files: [{ path: 'Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', size: 128 }] }) });
+    vi.mocked(discoverRepository).mockResolvedValue({ repository: quant.hfRepository, revision, ...groupModelFiles({ files: [{ path: 'Qwen3-TTS-12Hz-0.6B-Base.Q4_K_M.gguf', size: 128 }] }) });
     const view = audioCatalog(); await flushPromises();
     await view.get('[data-testid="llama-suggestion-audio-qwen3-tts-0-6b"] [data-testid="llama-suggestion-download"]').trigger('click');
     await vi.waitFor(() => expect(getDownloadQueue().jobs.value.some(job => job.status === 'failed')).toBe(true));

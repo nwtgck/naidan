@@ -61,7 +61,7 @@ describe.each(cases)('Gemma QAT suggestion $id', fixture => {
     expect(quantization).toEqual({
       id: 'qat-q4_0',
       checkpoint: 'qat',
-      repository: fixture.repository,
+      hfRepository: fixture.repository,
       preferredQuantization: 'Q4_0',
       approximateModelBytes: fixture.approximateModelBytes,
       approximateMultimodalBytes: fixture.approximateMultimodalBytes,

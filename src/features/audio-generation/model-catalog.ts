@@ -11,8 +11,8 @@ export const audioModelCatalog: readonly ModelSuggestion[] = [
     developer: 'Qwen · mradermacher',
     companion: 'required',
     quantizationHints: [
-      { id: 'q4_k_m', repository: 'mradermacher/Qwen3-TTS-12Hz-0.6B-Base-GGUF', preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 361_000_000, approximateMultimodalBytes: 401_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 8 },
-      { id: 'q8_0', repository: 'mradermacher/Qwen3-TTS-12Hz-0.6B-Base-GGUF', preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 646_000_000, approximateMultimodalBytes: 401_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 8 },
+      { id: 'q4_k_m', hfRepository: 'mradermacher/Qwen3-TTS-12Hz-0.6B-Base-GGUF', preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 361_000_000, approximateMultimodalBytes: 401_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 8 },
+      { id: 'q8_0', hfRepository: 'mradermacher/Qwen3-TTS-12Hz-0.6B-Base-GGUF', preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 646_000_000, approximateMultimodalBytes: 401_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 8 },
     ],
   },
   {
@@ -21,8 +21,8 @@ export const audioModelCatalog: readonly ModelSuggestion[] = [
     developer: 'Qwen · ggml-org',
     companion: 'required',
     quantizationHints: [
-      { id: 'q4_k_m', repository: 'ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF', preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 1_040_000_000, approximateMultimodalBytes: 446_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 8 },
-      { id: 'q8_0', repository: 'ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF', preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 1_850_000_000, approximateMultimodalBytes: 446_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 8 },
+      { id: 'q4_k_m', hfRepository: 'ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF', preferredQuantization: 'Q4_K_M', checkpoint: 'standard', approximateModelBytes: 1_040_000_000, approximateMultimodalBytes: 446_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 8 },
+      { id: 'q8_0', hfRepository: 'ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF', preferredQuantization: 'Q8_0', checkpoint: 'standard', approximateModelBytes: 1_850_000_000, approximateMultimodalBytes: 446_000_000, suggestedMemoryGiB: 8, suggestedMultimodalMemoryGiB: 8 },
     ],
   },
 ];

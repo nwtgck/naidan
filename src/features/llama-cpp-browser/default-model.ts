@@ -24,7 +24,7 @@ export function localModelDisplayName({ model }: { model: LocalModel }): string 
     if (!token) return model.name;
     for (const suggestion of modelSuggestions) {
       const quantization = suggestion.quantizationHints.find(choice =>
-        model.id.toLowerCase().startsWith(`hf.co/${choice.repository}:`.toLowerCase())
+        model.id.toLowerCase().startsWith(`hf.co/${choice.hfRepository}:`.toLowerCase())
         && choice.preferredQuantization === token);
       if (quantization) return `${suggestion.name} · ${suggestedQuantizationLabel({ quantization })}`;
     }

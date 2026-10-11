@@ -20,7 +20,7 @@ describe('source-qualified linked model identities', () => {
   it('does not case-fold linked root identities when matching an installed catalog choice', () => {
     const quantization: SuggestedQuantization = {
       id: 'q4',
-      repository: 'owner/repo',
+      hfRepository: 'owner/repo',
       preferredQuantization: 'Q4_K_M',
       checkpoint: 'standard',
       approximateModelBytes: 128,
@@ -28,7 +28,7 @@ describe('source-qualified linked model identities', () => {
       suggestedMemoryGiB: 1,
       suggestedMultimodalMemoryGiB: undefined,
     };
-    const id = hostModelReference({ directoryId: 'Root-A', repository: quantization.repository, modelPath: 'model-Q4_K_M.gguf' });
+    const id = hostModelReference({ directoryId: 'Root-A', repository: quantization.hfRepository, modelPath: 'model-Q4_K_M.gguf' });
     const installed = { id, name: id, size: 128, importedAt: 1 };
 
     expect(findLocalSuggestedModel({ quantization, models: [installed], destination: { kind: 'host', directoryId: 'root-a' } })).toBeUndefined();

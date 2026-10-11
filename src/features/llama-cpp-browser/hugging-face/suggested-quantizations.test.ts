@@ -31,10 +31,10 @@ describe('static quantization intent', () => {
     for (const suggestion of modelSuggestions) {
       expect(new Set(suggestion.quantizationHints.map(choice => choice.id)).size).toBe(suggestion.quantizationHints.length);
       for (const quantization of suggestion.quantizationHints) {
-        expect(quantization.repository).toMatch(/^[^/]+\/[^/]+$/);
+        expect(quantization.hfRepository).toMatch(/^[^/]+\/[^/]+$/);
         const key = suggestionDownloadKey({ suggestionId: suggestion.id, quantization, multimodal: 'off' });
         expect(key).not.toBe(suggestionDownloadKey({ suggestionId: suggestion.id, quantization, multimodal: 'on' }));
-        expect(key).not.toBe(suggestionDownloadKey({ suggestionId: suggestion.id, quantization: { ...quantization, repository: 'another/source' }, multimodal: 'off' }));
+        expect(key).not.toBe(suggestionDownloadKey({ suggestionId: suggestion.id, quantization: { ...quantization, hfRepository: 'another/source' }, multimodal: 'off' }));
         expect(key).toBe(suggestionDownloadKey({ suggestionId: suggestion.id, quantization: { ...quantization, approximateModelBytes: 1, approximateMultimodalBytes: 2 }, multimodal: 'off' }));
       }
     }
@@ -43,14 +43,14 @@ describe('static quantization intent', () => {
 
   it('never falls back to a community source or a different token when the requested checkpoint is absent', () => {
     const main = { path: 'gemma-4-E2B_q4_0-it.gguf', size: 17 };
-    const googleCatalog = { repository: qat.repository, revision, ...groupModelFiles({ files: [main] }) };
-    const sameTokenOtherSource = { ...qat, repository: q4.repository, checkpoint: 'standard' as const };
+    const googleCatalog = { repository: qat.hfRepository, revision, ...groupModelFiles({ files: [main] }) };
+    const sameTokenOtherSource = { ...qat, hfRepository: q4.hfRepository, checkpoint: 'standard' as const };
     expect(() => resolveSuggestionPlan({ quantization: sameTokenOtherSource, catalog: googleCatalog, multimodal: 'off' })).toThrow(SuggestionPlanError);
-    expect(() => resolveSuggestionPlan({ quantization: q4, catalog: { ...googleCatalog, repository: q4.repository }, multimodal: 'off' })).toThrow(SuggestionPlanError);
-    const local = { id: `hf.co/${qat.repository}:${encodeURIComponent(main.path)}`, name: main.path, size: main.size, importedAt: 1 };
+    expect(() => resolveSuggestionPlan({ quantization: q4, catalog: { ...googleCatalog, repository: q4.hfRepository }, multimodal: 'off' })).toThrow(SuggestionPlanError);
+    const local = { id: `hf.co/${qat.hfRepository}:${encodeURIComponent(main.path)}`, name: main.path, size: main.size, importedAt: 1 };
     expect(findLocalSuggestedModel({ quantization: sameTokenOtherSource, models: [local] })).toBeUndefined();
     expect(localModelDisplayName({ model: local })).toBe('Gemma 4 E2B it · Q4_0 (QAT)');
-    const community = { ...local, id: `hf.co/${q4.repository}:gemma-4-E2B-it-Q4_K_M.gguf` };
+    const community = { ...local, id: `hf.co/${q4.hfRepository}:gemma-4-E2B-it-Q4_K_M.gguf` };
     expect(localModelDisplayName({ model: community })).toBe('Gemma 4 E2B it · Q4_K_M');
   });
 });
@@ -62,10 +62,10 @@ describe.each(modelSuggestions.flatMap(suggestion => suggestion.quantizationHint
     const main = { path: `updated-name-${quantization.preferredQuantization}.gguf`, size: 128 };
     const projector = { path: 'mmproj-updated-name-F16.gguf', size: 96 };
     const other = { path: `dflash-updated-name-${quantization.preferredQuantization}.gguf`, size: 64 };
-    const catalog = { repository: quantization.repository, revision, ...groupModelFiles({ files: [projector, other, main] }) };
-    expect(resolveSuggestionPlan({ quantization, catalog, multimodal: 'off' })).toEqual({ repository: quantization.repository, revision, files: [main] });
+    const catalog = { repository: quantization.hfRepository, revision, ...groupModelFiles({ files: [projector, other, main] }) };
+    expect(resolveSuggestionPlan({ quantization, catalog, multimodal: 'off' })).toEqual({ repository: quantization.hfRepository, revision, files: [main] });
     expect(resolveSuggestionPlan({ quantization, catalog, multimodal: 'on' }).files).toEqual([main, projector]);
-    const local = { id: `hf.co/${quantization.repository}:${encodeURIComponent(main.path)}`, name: main.path, size: main.size, importedAt: 1 };
+    const local = { id: `hf.co/${quantization.hfRepository}:${encodeURIComponent(main.path)}`, name: main.path, size: main.size, importedAt: 1 };
     expect(findLocalSuggestedModel({ quantization, models: [local] })).toBe(local);
     expect(localModelDisplayName({ model: local })).toBe(`${suggestion.name} · ${suggestedQuantizationLabel({ quantization })}`);
     expect(() => resolveSuggestionPlan({ quantization, catalog: { ...catalog, ...groupModelFiles({ files: [main, { ...main, path: `another-${main.path}` }] }) }, multimodal: 'off' })).toThrow(SuggestionPlanError);

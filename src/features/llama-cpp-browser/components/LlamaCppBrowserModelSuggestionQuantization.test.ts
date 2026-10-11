@@ -23,12 +23,12 @@ const communityProjector = 'mmproj-community-gemma-4-E2B-it-F16.gguf';
 const revision = 'a'.repeat(40);
 const otherRevision = 'b'.repeat(40);
 const officialCatalog: RepositoryCatalog = {
-  repository: official.repository,
+  repository: official.hfRepository,
   revision,
   ...groupModelFiles({ files: [{ path: qatPath, size: 128 }, { path: qatProjector, size: 96 }] }),
 };
 const communityCatalog: RepositoryCatalog = {
-  repository: community.repository,
+  repository: community.hfRepository,
   revision: otherRevision,
   ...groupModelFiles({
     files: [
@@ -40,8 +40,8 @@ const communityCatalog: RepositoryCatalog = {
     ],
   }),
 };
-const localQat: LocalModel = { id: `hf.co/${official.repository}:${encodeURIComponent(qatPath)}`, name: `hf.co/${official.repository}:${qatPath}`, size: 128, importedAt: 1 };
-const localCommunity: LocalModel = { id: `hf.co/${community.repository}:gemma-4-E2B-it-Q4_K_M.gguf`, name: `hf.co/${community.repository}:Q4_K_M`, size: 144, importedAt: 1 };
+const localQat: LocalModel = { id: `hf.co/${official.hfRepository}:${encodeURIComponent(qatPath)}`, name: `hf.co/${official.hfRepository}:${qatPath}`, size: 128, importedAt: 1 };
+const localCommunity: LocalModel = { id: `hf.co/${community.hfRepository}:gemma-4-E2B-it-Q4_K_M.gguf`, name: `hf.co/${community.hfRepository}:Q4_K_M`, size: 144, importedAt: 1 };
 const wrappers: VueWrapper[] = [];
 
 function render({ suggestion, models }: { suggestion: ModelSuggestion, models: LocalModel[] }): VueWrapper {
@@ -77,8 +77,8 @@ beforeEach(async () => {
   vi.mocked(installedSelection).mockResolvedValue(undefined);
   vi.mocked(repositoryDirectories).mockResolvedValue([]);
   vi.mocked(discoverRepository).mockImplementation(async ({ input }) => {
-    if (input === official.repository) return officialCatalog;
-    if (input === community.repository) return communityCatalog;
+    if (input === official.hfRepository) return officialCatalog;
+    if (input === community.hfRepository) return communityCatalog;
     throw new Error(`Unexpected metadata source: ${input}`);
   });
   await ensureAllStringsForTest({ locale: 'en' });
@@ -102,7 +102,7 @@ describe('catalog quantization selection', () => {
     expect(selected({ wrapper })).toBe('qat-q4_0');
     const initialSize = wrapper.get('[data-testid="llama-suggestion-metadata"] p').text();
     await select.setValue('q8_0'); await flushPromises();
-    expect(wrapper.get('[data-testid="llama-suggestion-repository"]').attributes('href')).toBe(`https://huggingface.co/${community.repository}`);
+    expect(wrapper.get('[data-testid="llama-suggestion-repository"]').attributes('href')).toBe(`https://huggingface.co/${community.hfRepository}`);
     expect(wrapper.get('[data-testid="llama-suggestion-metadata"] p').text()).not.toBe(initialSize);
     await wrapper.get('[data-testid="llama-suggestion-details-toggle"]').trigger('click');
     await wrapper.get('[data-testid="llama-suggestion-multimodal"]').trigger('click');
@@ -136,7 +136,7 @@ describe('catalog quantization selection', () => {
     expect(files.text()).toContain('gemma-4-E2B-it-Q6_K.gguf');
     expect(files.text()).toContain(communityProjector);
     expect(files.text()).not.toContain(qatProjector);
-    expect(files.findAll('a').every(link => link.attributes('href')?.includes(`/${community.repository}/resolve/${otherRevision}/`))).toBe(true);
+    expect(files.findAll('a').every(link => link.attributes('href')?.includes(`/${community.hfRepository}/resolve/${otherRevision}/`))).toBe(true);
     expect(discoverRepository).toHaveBeenCalledTimes(2);
     await wrapper.get('select').setValue('qat-q4_0'); await flushPromises();
     const originalFiles = wrapper.get('[data-testid="llama-download-plan-files"]');
@@ -146,7 +146,7 @@ describe('catalog quantization selection', () => {
   });
 
   it('allows disabling multimodal when the chosen source no longer has the hinted projector', async () => {
-    vi.mocked(discoverRepository).mockResolvedValueOnce({ repository: community.repository, revision, ...groupModelFiles({ files: [{ path: 'gemma-4-E2B-it-Q4_K_M.gguf', size: 128 }] }) });
+    vi.mocked(discoverRepository).mockResolvedValueOnce({ repository: community.hfRepository, revision, ...groupModelFiles({ files: [{ path: 'gemma-4-E2B-it-Q4_K_M.gguf', size: 128 }] }) });
     const wrapper = render({ suggestion: gemma, models: [] }); await flushPromises();
     await wrapper.get('[data-testid="llama-suggestion-multimodal"]').trigger('click');
     await wrapper.get('select').setValue('q4_k_m');
@@ -169,7 +169,7 @@ describe('catalog quantization selection', () => {
     await wrapper.get('[data-testid="llama-suggestion-multimodal"]').trigger('click'); await flushPromises();
     await wrapper.get('[data-testid="llama-suggestion-download"]').trigger('click'); await flushPromises();
     const first = vi.mocked(downloadRepository).mock.calls[0]![0];
-    expect(first.selection.repository).toBe(community.repository);
+    expect(first.selection.repository).toBe(community.hfRepository);
     expect(first.selection.revision).toBe(otherRevision);
     expect(first.selection.files.map(file => file.path)).toEqual(['gemma-4-E2B-it-Q8_0.gguf', communityProjector]);
     expect(wrapper.get('select').attributes('disabled')).toBeDefined();
@@ -219,7 +219,7 @@ describe('catalog quantization selection', () => {
   it.each(['missing', 'ambiguous'] as const)('does not guess a fallback source or quantization when the requested choice is %s', async problem => {
     const files = [{ path: 'gemma-4-E2B-it-Q4_K_M.gguf', size: 128 }];
     if (problem === 'ambiguous') files.push({ path: 'one-Q8_0.gguf', size: 192 }, { path: 'two-Q8_0.gguf', size: 192 });
-    vi.mocked(discoverRepository).mockResolvedValueOnce({ repository: community.repository, revision, ...groupModelFiles({ files }) });
+    vi.mocked(discoverRepository).mockResolvedValueOnce({ repository: community.hfRepository, revision, ...groupModelFiles({ files }) });
     const wrapper = render({ suggestion: gemma, models: [] }); await flushPromises();
     await wrapper.get('select').setValue('q8_0'); await flushPromises();
     await wrapper.get('[data-testid="llama-suggestion-download"]').trigger('click'); await flushPromises();
@@ -227,7 +227,7 @@ describe('catalog quantization selection', () => {
     expect(wrapper.find('[role="alert"]').exists()).toBe(true);
     expect(selected({ wrapper })).toBe('q8_0');
     expect(downloadRepository).not.toHaveBeenCalled(); expect(discoverRepository).toHaveBeenCalledOnce();
-    expect(vi.mocked(discoverRepository).mock.calls[0]?.[0].input).toBe(community.repository);
+    expect(vi.mocked(discoverRepository).mock.calls[0]?.[0].input).toBe(community.hfRepository);
     await wrapper.get('select').setValue('qat-q4_0'); await flushPromises();
     expect(wrapper.find('[data-testid="llama-download-job"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="llama-suggestion-download"]').exists()).toBe(true);
@@ -235,8 +235,8 @@ describe('catalog quantization selection', () => {
   });
 
   it('uses the public inventory name when a repository lookup returns the canonical Host ID', async () => {
-    const canonical = { ...localQat, id: `host/root/${official.repository}:${qatPath}`, name: `host/root/${official.repository}:${qatPath}` };
-    const available = { ...canonical, name: `host/Models/${official.repository}:${qatPath}` };
+    const canonical = { ...localQat, id: `host/root/${official.hfRepository}:${qatPath}`, name: `host/root/${official.hfRepository}:${qatPath}` };
+    const available = { ...canonical, name: `host/Models/${official.hfRepository}:${qatPath}` };
     vi.mocked(installedSelection).mockResolvedValue(canonical);
     const wrapper = render({ suggestion: gemma, models: [available] });
     await wrapper.setProps({ destination: { kind: 'host', directoryId: 'root' } });

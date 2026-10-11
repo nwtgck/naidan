@@ -20,7 +20,7 @@ function matchingCandidates({ quantization, models }: { quantization: SuggestedQ
 /** Pure resolution: approximate catalog fields never validate or identify files. */
 export function resolveSuggestionPlan({ quantization, catalog, multimodal }: { quantization: SuggestedQuantization, catalog: RepositoryCatalog, multimodal: MultimodalDownload }): DownloadSelection {
   // Do not silently follow a renamed/transferred repository for one-click installs.
-  if (catalog.repository.toLowerCase() !== quantization.repository.toLowerCase()) throw new SuggestionPlanError();
+  if (catalog.repository.toLowerCase() !== quantization.hfRepository.toLowerCase()) throw new SuggestionPlanError();
   const candidates = matchingCandidates({ quantization, models: catalog.models });
   if (candidates.length !== 1) throw new SuggestionPlanError();
   const files = [...candidates[0]!.files];
@@ -44,14 +44,14 @@ export function findLocalSuggestedModel({ quantization, models, destination }: {
       const path = (() => {
         switch (target.kind) {
         case 'opfs': {
-          const prefix = `hf.co/${quantization.repository}:`.toLowerCase();
+          const prefix = `hf.co/${quantization.hfRepository}:`.toLowerCase();
           return model.id.toLowerCase().startsWith(prefix) ? decodeURIComponent(model.id.slice(prefix.length)) : undefined;
         }
         case 'host': {
           if (!model.id.startsWith('host/')) return undefined;
           const reference = parseHostModelReference({ name: model.id });
           // Native directory IDs and filesystem paths are case-sensitive.
-          return reference.destination.directoryId === target.directoryId && reference.repository === quantization.repository ? reference.modelPath : undefined;
+          return reference.destination.directoryId === target.directoryId && reference.repository === quantization.hfRepository ? reference.modelPath : undefined;
         }
         default: { const exhaustive: never = target; throw new Error(String(exhaustive)); }
         }

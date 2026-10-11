@@ -132,17 +132,17 @@ Run AI models directly inside your browser—no inference server required. Your 
 
 Choose a model to open a chat in Naidan:
 
-- [Gemma 4 E2B it](https://naidan.pages.dev/#/?llama-cpp-browser-model=google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0) <small>QAT Q4_0</small>
-- [Gemma 4 E4B it](https://naidan.pages.dev/#/?llama-cpp-browser-model=google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0) <small>QAT Q4_0</small>
-- [Gemma 4 26B-A4B it](https://naidan.pages.dev/#/?llama-cpp-browser-model=google/gemma-4-26B-A4B-it-qat-q4_0-gguf:Q4_0) <small>QAT Q4_0</small>
-- [gpt-oss-20b](https://naidan.pages.dev/#/?llama-cpp-browser-model=ggml-org/gpt-oss-20b-GGUF:MXFP4) <small>MXFP4</small>
-- [Qwen3.5 9B](https://naidan.pages.dev/#/?llama-cpp-browser-model=lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M) <small>Q4_K_M</small>
-- [Qwen3.6 35B-A3B](https://naidan.pages.dev/#/?llama-cpp-browser-model=ggml-org/Qwen3.6-35B-A3B-GGUF:Q4_K_M) <small>Q4_K_M</small>
-- [Qwen3.8 27B](https://naidan.pages.dev/#/?llama-cpp-browser-model=ggml-org/Qwen3.8-27B-GGUF:Q4_K_M) <small>Q4_K_M</small>
-- [LFM2.5 230M](https://naidan.pages.dev/#/?llama-cpp-browser-model=LiquidAI/LFM2.5-230M-GGUF:Q4_K_M) <small>Q4_K_M</small>
-- [LFM2.5 2.6B](https://naidan.pages.dev/#/?llama-cpp-browser-model=LiquidAI/LFM2.5-2.6B-GGUF:Q4_K_M) <small>Q4_K_M</small>
-- [Muse-Glimmer 30B](https://naidan.pages.dev/#/?llama-cpp-browser-model=meta-models/Muse-Glimmer-30B-GGUF:Q4_K_M) <small>Q4_K_M</small>
-- [SmolLM2 135M Instruct](https://naidan.pages.dev/#/?llama-cpp-browser-model=lmstudio-community/SmolLM2-135M-Instruct-GGUF:Q4_K_M) <small>Q4_K_M</small>
+- [Gemma 4 E2B it](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0) <small>QAT Q4_0</small>
+- [Gemma 4 E4B it](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0) <small>QAT Q4_0</small>
+- [Gemma 4 26B-A4B it](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf:Q4_0) <small>QAT Q4_0</small>
+- [gpt-oss-20b](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/ggml-org/gpt-oss-20b-GGUF:MXFP4) <small>MXFP4</small>
+- [Qwen3.5 9B](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M) <small>Q4_K_M</small>
+- [Qwen3.6 35B-A3B](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/ggml-org/Qwen3.6-35B-A3B-GGUF:Q4_K_M) <small>Q4_K_M</small>
+- [Qwen3.8 27B](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/ggml-org/Qwen3.8-27B-GGUF:Q4_K_M) <small>Q4_K_M</small>
+- [LFM2.5 230M](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M) <small>Q4_K_M</small>
+- [LFM2.5 2.6B](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/LiquidAI/LFM2.5-2.6B-GGUF:Q4_K_M) <small>Q4_K_M</small>
+- [Muse-Glimmer 30B](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/meta-models/Muse-Glimmer-30B-GGUF:Q4_K_M) <small>Q4_K_M</small>
+- [SmolLM2 135M Instruct](https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF:Q4_K_M) <small>Q4_K_M</small>
 
 ### Image and Audio Generation
 
@@ -179,7 +179,7 @@ Naidan supports URL fragment parameters (following the `#`) to automate actions 
 
 -   `q`: **Auto-Prompt**. Automatically creates a new chat and sends this message upon opening.
 -   `model`: **Model Override**. Specifies the model ID to use for the new chat.
--   `llama-cpp-browser-model`: **Browser Model Launch**. Opens a new chat for a browser-based Hugging Face GGUF model. Accepts a repository ID with an optional quantization suffix (e.g., `LiquidAI/LFM2.5-230M-GGUF:Q4_K_M`).
+-   `llama-cpp-browser-model`: **Browser Model Launch**. Opens a new chat for a browser-based Hugging Face GGUF model. Accepts a Hugging Face repository reference with an optional quantization suffix (e.g., `hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M`).
 -   `chat-group`: **Target Group**. The name or ID of the group for the new chat. If the group doesn't exist, it is created automatically.
 -   `system-prompt` (or `sp`): **System Prompt Override**. Specifies the system prompt for the new chat. This will set the chat's system behavior to `override` with the provided content.
 -   `global-endpoint-type`: **Global Endpoint Type**. Specifies the type of the global endpoint (`openai` or `ollama`).
@@ -194,7 +194,7 @@ Naidan supports URL fragment parameters (following the `#`) to automate actions 
 -   **Quick Question**: Start a chat immediately with a prompt.
     `index.html#/?q=%s`
 -   **Browser Model Launch**: Open a chat with a specific browser-based AI model.
-    `https://naidan.pages.dev/#/?llama-cpp-browser-model=LiquidAI/LFM2.5-230M-GGUF:Q4_K_M`
+    `https://naidan.pages.dev/#/?llama-cpp-browser-model=hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M`
 -   **Custom Behavior**: Start a chat with a specific system instruction.
     `index.html#/?sp=You+are+a+concise+assistant&q=%s`
 -   **Organized Chat**: Start a chat directly inside a specific group.

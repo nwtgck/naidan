@@ -28,6 +28,7 @@ import { createTwClassNodeTransform } from './build/static-tailwind/tw-class-cor
 import { createTwClassVitePlugin } from './build/static-tailwind/tw-class-vite-plugin';
 import { createInitialThemeHtmlPlugin } from './build/initial-theme-html';
 import { createDocumentMetadataHtmlPlugin } from './build/document-metadata-html';
+import { createFragmentSitemapPlugin } from './build/fragment-sitemap';
 import { isPrivacyFetchBrokerChunk } from './build/privacy-fetch-broker-assets';
 import { createPrivacyFetchBrokerDevHeadersPlugin } from './build/privacy-fetch-broker-dev';
 import { createDevServerIsolationPlugin, DEV_SERVER_ISOLATION_HEADERS } from './build/dev-server-isolation';
@@ -250,6 +251,7 @@ export default defineConfig(({ mode, command }) => {
       createDevServerIsolationPlugin(),
       ...transformersJsFixes.plugins,
       createDocumentMetadataHtmlPlugin(),
+      createFragmentSitemapPlugin(),
       createInitialThemeHtmlPlugin(),
       createBoundaryStringsPlugin(),
       VueRouter({
