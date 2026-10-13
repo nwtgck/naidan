@@ -414,3 +414,41 @@ img { max-width:100%; height:auto; }
 .language-page nav { display:flex;gap:28px;color:var(--blue); }
 @media(max-width:620px) { .pair-grid{grid-template-columns:1fr;} .prose{padding:48px 22px 65px;} .prose .lead{font-size:15px;} .nav-controls{gap:6px;} .brand-docs,.brand-sep{display:none;} }
 @media(prefers-reduced-motion:reduce){ html{scroll-behavior:auto;} *,*::before,*::after{animation:none!important;transition:none!important;} }
+
+/* All motion explains a feature; it starts automatically but remains optional. */
+html[data-docs-starting] [data-docs-language-fallback] { visibility: hidden; }
+[data-docs-external-icon] { display: inline-block; width: .95em; height: .95em; margin-inline-start: .32em; flex-shrink: 0; vertical-align: -.09em; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.motion-preference { display: flex; }
+.motion-preference-control { position: relative; cursor: pointer; color: var(--muted); width: 36px; padding: 0; font-size: 15px; }
+.motion-preference-control input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; }
+.motion-preference-control:focus-within { outline: 2px solid var(--blue); outline-offset: 5px; }
+.resume-motion-label { display: none; }
+.motion-preference-control:has(input:checked) .pause-motion-label { display: none; }
+.motion-preference-control:has(input:checked) .resume-motion-label { display: inline; }
+html:has(#docs-pause-motion:checked) [data-docs-animation],
+html:has(#docs-pause-motion:checked) [data-docs-animation] *,
+html:has(#docs-pause-motion:checked) [data-docs-animation] *::before,
+html:has(#docs-pause-motion:checked) [data-docs-animation] *::after { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) {
+  [data-docs-animation], [data-docs-animation] *, [data-docs-animation] *::before, [data-docs-animation] *::after { animation: none !important; transition: none !important; }
+  .motion-preference { display: none; }
+}
+
+/* Guides keep readable prose around wider, source-derived demonstrations. */
+.guide-figure { margin: 32px 0 44px; }
+.guide-figure figcaption { margin-top: 16px; max-width: 720px; line-height: 1.85; }
+.decision-list { margin-block: 28px 40px; border-top: 1px solid var(--line); }
+.decision-list > section { display: grid; grid-template-columns: 42px 1fr; gap: 16px; padding-block: 22px; border-bottom: 1px solid var(--line); }
+.decision-list > section > span { font: 13px ui-monospace,monospace; color: var(--blue); padding-top: 5px; }
+.decision-list h3 { margin: 0 0 8px; }
+.decision-list p { margin: 0; }
+.guide-steps { padding-left: 26px; }
+.guide-steps > li { padding-left: 10px; margin-block: 20px; }
+.guide-steps > li::marker { color: var(--blue); font-weight: 700; }
+.guide-steps h3 { font-size: 18px; margin: 0 0 8px; }
+.guide-steps p { margin: 0; }
+.download-link { display: inline-flex; align-items: center; border: 1px solid var(--blue-strong); border-radius: 12px; padding: 12px 19px; color: var(--text); background: var(--surface-2); font-weight: 600; text-decoration: none; }
+.prose .pair-grid h3 { margin-top: 0; }
+@media(max-width:620px) { .prose .pair-grid { grid-template-columns: 1fr; } .prose .panel { padding: 22px; } }
+
+@media(max-width:375px) { .brand-text { display: none; } }

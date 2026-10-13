@@ -108,9 +108,10 @@ describe('HTML composition and locale contracts', () => {
   });
 
   it('has manual language links without script execution', () => {
-    using parsed = parsePage({ html: renderLocaleRoot({ assets: emptyAssets }) });
+    using parsed = parsePage({ html: renderLocaleRoot({ assets: emptyAssets, bootstrap: '/docs/__locale.js', pages: { en: { body: '<h1>English</h1>', title: 'English', description: 'Home', locale: 'en', page: 'index' }, ja: { body: '<h1>日本語</h1>', title: '日本語', description: 'ホーム', locale: 'ja', page: 'index' } } }) });
     expect([...parsed.document.querySelectorAll('a')].map(a => a.getAttribute('href'))).toEqual(['/docs/en/', '/docs/ja/']);
-    expect(parsed.document.querySelector('script')).toBeNull();
+    expect(parsed.document.querySelector('script')?.getAttribute('type')).toBeNull();
+    expect(parsed.document.querySelectorAll('template[data-docs-locale]')).toHaveLength(2);
   });
 
   it('does not recognize fake island markers inside escaped prose', () => {

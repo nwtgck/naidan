@@ -262,6 +262,12 @@ export default [
     files: ['docs/**/*.{ts,vue}', 'build/docs-dev-bridge.ts'],
     languageOptions: { parserOptions: { project: ['./docs/tsconfig.json'] } },
   },
+  {
+    ...requireNamedArgs,
+    name: 'naidan/docs-named-arguments',
+    files: ['docs/**/*.ts', 'docs/**/*.vue', 'build/docs-dev-bridge.ts'],
+    ignores: ['docs/**/*.test.ts', 'docs/**/*.spec.ts'],
+  },
   testResourceManagement,
   noTestSupportImports,
 ];

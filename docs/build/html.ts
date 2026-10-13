@@ -1,4 +1,5 @@
 import { JSDOM } from 'jsdom';
+import { EXTERNAL_LINK_PATH, EXTERNAL_LINK_LABEL } from '../site/external-link';
 import type { z } from 'zod';
 import { DOCS_BASE, DOCS_LOCALES, DOCS_LOCALE_NAMES, docsHref } from '../site/routes';
 import type { PageAssets, RenderedPage } from './contracts';
@@ -6,6 +7,7 @@ import { ISLAND_ENTRIES } from './ids';
 import { branchingPayloadSchema, entryMessagesSchema } from '../site/messages';
 import { strings as entryEn } from '../strings/entry/en';
 import { strings as entryJa } from '../strings/entry/ja';
+import type { DocsLocale } from '../site/routes';
 
 function appendAssets({ document, assets }: { document: Document; assets: PageAssets }): void {
   for (const href of new Set(assets.styles)) {
@@ -69,7 +71,7 @@ export function renderDocument({ page, assets }: { page: RenderedPage; assets: P
     }
     document.body.append(document.importNode(JSDOM.fragment(body), true));
     // Vue owns escaping. jsdom owns parsing/serialization; no HTML regex rewrites.
-    validateBody({ document });
+    validateBody({ document, locale });
     appendAssets({ document, assets });
     return dom.serialize();
   } finally {
@@ -77,7 +79,33 @@ export function renderDocument({ page, assets }: { page: RenderedPage; assets: P
   }
 }
 
-function validateBody({ document }: { document: Document }): void {
+function markExternalLink({ document, anchor, locale }: { document: Document; anchor: Element; locale: DocsLocale }): void {
+  // Post-render additions inside an island would cause a hydration mismatch. Such
+  // links must use ExternalLink.vue, which renders this same indication itself.
+  const icons = anchor.querySelectorAll('[data-docs-external-icon]');
+  if (icons.length) {
+    if (icons.length !== 1 || icons[0]?.localName !== 'svg' || icons[0].getAttribute('aria-hidden') !== 'true' || icons[0].querySelector('path')?.getAttribute('d') !== EXTERNAL_LINK_PATH || !Array.from(anchor.querySelectorAll('.sr-only')).some(label => label.textContent === EXTERNAL_LINK_LABEL[locale])) {
+      throw new Error('Invalid external-link indication; use ExternalLink.vue');
+    }
+    return;
+  }
+  if (anchor.closest('[data-docs-island]')) throw new Error('Use ExternalLink.vue for external links inside an island');
+  anchor.setAttribute('data-docs-external', '');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('data-docs-external-icon', '');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', EXTERNAL_LINK_PATH);
+  svg.append(path);
+  const text = document.createElement('span');
+  text.className = 'sr-only';
+  text.textContent = EXTERNAL_LINK_LABEL[locale];
+  anchor.append(svg, text);
+}
+
+function validateBody({ document, locale }: { document: Document; locale: DocsLocale }): void {
   if (document.querySelectorAll('h1').length !== 1) throw new Error('A Docs page must render exactly one h1');
   if (document.body.querySelector('script, iframe, object, embed, base')) throw new Error('Active content in static Docs body');
   const origin = 'https://naidan-docs.invalid';
@@ -99,6 +127,7 @@ function validateBody({ document }: { document: Document }): void {
       if (element.tagName === 'A' && url.origin !== origin) {
         element.setAttribute('rel', 'noopener noreferrer');
         element.setAttribute('referrerpolicy', 'no-referrer');
+        markExternalLink({ document, anchor: element, locale });
       }
     }
   }
@@ -140,9 +169,43 @@ function renderEntryDocument({ assets, kind }: { assets: PageAssets; kind: 'lang
   }
 }
 
-export function renderLocaleRoot({ assets }: { assets: PageAssets }): string {
-  // Both language links are always available, including when scripts are disabled.
-  return renderEntryDocument({ assets, kind: 'language' });
+export function renderLocaleRoot({ assets, pages, bootstrap }: {
+  assets: PageAssets;
+  pages: Record<DocsLocale, RenderedPage>;
+  bootstrap: string;
+}): string {
+  const dom = new JSDOM(renderEntryDocument({ assets, kind: 'language' }));
+  try {
+    const document = dom.window.document;
+    document.querySelector('main')?.setAttribute('data-docs-language-fallback', '');
+    const meta = document.createElement('meta');
+    meta.name = 'description';
+    document.head.append(meta);
+    for (const locale of DOCS_LOCALES) {
+      const page = pages[locale];
+      if (page.page !== 'index' || page.locale !== locale) throw new Error('Invalid localized Docs home');
+      if (findIslands({ body: page.body }).length) throw new Error('The language-neutral home requires static components');
+      const localized = new JSDOM(renderDocument({ page, assets: { styles: [], scripts: [] } }));
+      try {
+        const template = document.createElement('template');
+        template.dataset.docsLocale = locale;
+        template.dataset.title = localized.window.document.title;
+        template.dataset.description = page.description;
+        for (const child of localized.window.document.body.childNodes) template.content.append(document.importNode(child, true));
+        document.body.append(template);
+      } finally {
+        localized.window.close();
+      }
+    }
+    const script = document.createElement('script');
+    script.src = bootstrap;
+    // This is deliberately classic and synchronous, rather than a deferred module.
+    // External/self-hosted code works under the existing CSP without inline grants.
+    document.head.append(script);
+    return dom.serialize();
+  } finally {
+    dom.window.close();
+  }
 }
 
 export function renderNotFound({ assets }: { assets: PageAssets }): string {

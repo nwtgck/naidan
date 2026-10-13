@@ -25,11 +25,11 @@ export const strings = {
       "Alternative explanation"
     ],
     "reset": "Return to original",
-    "note": "Illustrative conversation only. Your Naidan chats are unchanged.",
+    "note": "Choose a path in this sample conversation. Both replies remain available.",
   },
   "detail": {
-    "title": "Keep the earlier path",
-    "body": "Changing which branch you view does not overwrite the other branch. A Chat Group can organize related Chats while each Chat keeps its conversation paths.",
+    "title": "Switch paths or start a separate Chat",
+    "body": "Branches created by editing or regenerating can be compared within the same Chat. Fork creates a separate Chat from a chosen point instead. Use a branch for another continuation, or a fork for independent work. A Chat Group can keep related Chats together.",
   },
   "next": "Explore the browser shell",
 } satisfies BranchingMessages;

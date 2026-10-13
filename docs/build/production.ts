@@ -6,12 +6,14 @@ import type { Plugin, UserConfig } from 'vite';
 import { DOCS_BASE, DOCS_PAGES, DOCS_LOCALES, docsHref } from '../site/routes';
 import { docsCompilerConfig } from './compiler';
 import { findIslands, renderDocument, renderLocaleRoot, renderNotFound } from './html';
-import { ISLAND_ENTRIES, LOCALE_ENTRY, styleEntryId, styleEntryName } from './ids';
+import { ISLAND_ENTRIES, styleEntryId, styleEntryName } from './ids';
 import { manifestEntry, parseManifest } from './assets';
-import type { DocsRenderer } from './contracts';
+import type { DocsRenderer, RenderedPage } from './contracts';
+import type { DocsLocale } from '../site/routes';
+import { compileLocaleBootstrap } from './locale-bootstrap';
 
 export function docsBuildConfig({ root }: { root: string }): UserConfig {
-  const inputs: Record<string, string> = { locale: path.resolve(root, LOCALE_ENTRY) };
+  const inputs: Record<string, string> = {};
   for (const page of DOCS_PAGES) inputs[styleEntryName({ page: page.id })] = styleEntryId({ page: page.id });
   for (const [name, file] of Object.entries(ISLAND_ENTRIES)) inputs[`island-${name}`] = path.resolve(root, file);
   return mergeConfig(docsCompilerConfig({ root }), {
@@ -29,8 +31,11 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
   return {
     name: 'naidan-docs-output',
     apply: 'build',
+    async buildStart() {
+      this.emitFile({ type: 'asset', fileName: undefined, name: 'locale.js', source: await compileLocaleBootstrap({ root }) });
+    },
     // writeBundle runs only after a successful client build, including manifest.
-    async writeBundle() {
+    async writeBundle(_options, bundle) {
       const output = path.resolve(root, 'dist');
       const cache = path.resolve(root, '.cache');
       await mkdir(cache, { recursive: true });
@@ -53,14 +58,16 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
         const renderer = await import(pathToFileURL(path.join(temporary, 'renderer.js')).href) as DocsRenderer;
         if (typeof renderer.renderPage !== 'function') throw new Error('Invalid Docs renderer module');
         const files = new Map<string, string>();
-        const localeAssets = manifestEntry({ manifest, name: 'locale' });
-        if (!localeAssets.script) throw new Error('Missing locale entry script');
-        files.set('index.html', renderLocaleRoot({ assets: { styles: localeAssets.styles, scripts: [localeAssets.script] } }));
-        // Nested 404 leaves the application's root SPA routing unchanged.
-        files.set('404.html', renderNotFound({ assets: { styles: localeAssets.styles, scripts: [] } }));
+        const entryAsset = Object.values(bundle).find(item => item.type === 'asset' && item.names.includes('locale.js'));
+        if (!entryAsset) throw new Error('Missing Docs locale bootstrap');
+        const bootstrap = `${DOCS_BASE}${entryAsset.fileName}`;
+        const homeAssets = manifestEntry({ manifest, name: styleEntryName({ page: 'index' }) });
+        const renderedPages = new Map<string, RenderedPage>();
+        files.set('404.html', renderNotFound({ assets: { styles: homeAssets.styles, scripts: [] } }));
         for (const locale of DOCS_LOCALES) {
           for (const page of DOCS_PAGES) {
             const rendered = await renderer.renderPage({ locale, page: page.id });
+            renderedPages.set(docsHref({ locale, page: page.id }), rendered);
             const assets = manifestEntry({ manifest, name: styleEntryName({ page: page.id }) });
             const scripts: string[] = [];
             for (const island of findIslands({ body: rendered.body })) {
@@ -74,6 +81,13 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
             files.set(relative, renderDocument({ page: rendered, assets: { styles: assets.styles, scripts } }));
           }
         }
+        const home = ({ locale }: { locale: DocsLocale }): RenderedPage => {
+          const result = renderedPages.get(docsHref({ locale, page: 'index' }));
+          if (!result) throw new Error(`Missing home for ${locale}`);
+          return result;
+        };
+        const homes = { en: home({ locale: 'en' }), ja: home({ locale: 'ja' }) } satisfies Record<DocsLocale, RenderedPage>;
+        files.set('index.html', renderLocaleRoot({ pages: homes, bootstrap, assets: { styles: homeAssets.styles, scripts: [] } }));
         // Render/validate every page before publishing any HTML.
         for (const [file, html] of files) {
           const target = path.resolve(output, file);

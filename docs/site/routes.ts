@@ -9,6 +9,7 @@ export const DOCS_PAGES = [
   { id: 'files/privacy', path: 'files/privacy/', source: 'pages/files/privacy.vue' },
   { id: 'work/boundary', path: 'work/boundary/', source: 'pages/work/boundary.vue' },
   { id: 'chat/branching', path: 'chat/branching/', source: 'pages/chat/branching.vue' },
+  { id: 'run/standalone', path: 'run/standalone/', source: 'pages/run/standalone.vue' },
   { id: 'work/browser-shell', path: 'work/browser-shell/', source: 'pages/work/browser-shell.vue' },
 ] as const;
 export type DocsPageId = typeof DOCS_PAGES[number]['id'];

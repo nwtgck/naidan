@@ -74,11 +74,18 @@ defineExpose({
             <use href="#i-sun" />
           </svg>
         </label>
+        <div class="motion-preference">
+          <label class="control motion-preference-control" :title="s.pauseMotion">
+            <input id="docs-pause-motion" type="checkbox" :aria-label="s.pauseMotion" data-testid="docs-pause-motion">
+            <span class="pause-motion-label" aria-hidden="true">Ⅱ</span><span class="resume-motion-label" aria-hidden="true">▷</span>
+            <span class="sr-only resume-motion-label">{{ s.resumeMotion }}</span>
+          </label>
+        </div>
         <a
           href="/"
           class="nav-launch"
           :aria-label="s.launch"
-        ><span class="nav-open-text">{{ s.launch }}</span><span aria-hidden="true">↗</span></a>
+        ><span class="nav-open-text">{{ s.launch }}</span><span aria-hidden="true">→</span></a>
       </div>
     </div>
   </header>

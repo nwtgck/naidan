@@ -1,26 +1,33 @@
 import type { ShellMessages } from '../../../site/messages';
 
 export const strings = {
-  "title": "Use a shell in your browser",
-  "description": "Work with files and conversation context through familiar commands inside the browser.",
+  "title": "Work with a shell inside the browser",
+  "description": "Use familiar file, text and Git commands without handing over the PC’s native shell.",
   "intro": [
-    "A shell is a practical way for AI to inspect a project and make changes. It does not have to be your device’s native shell. Naidan provides a shell environment inside the browser."
+    "Inspecting a project is easier with tools that can list, search and transform files. Naidan provides those tools inside the browser, with access to the workspace and folders selected for the Chat."
   ],
+  "diagramCaption": "The terminal layout follows Naidan’s Shell view. This read-only example lists the current Chat through /sys/fs/naidan; paths belong to the browser’s virtual filesystem.",
   "sections": [
     {
-      "title": "Familiar commands, browser-contained execution",
-      "body": "The shell, internally called Wesh, provides commands for file operations, text processing and local Git workflows. Its filesystem is defined by the mounts available to the Chat.",
+      "title": "Familiar commands, a browser-backed filesystem",
+      "body": "The shell is called Wesh internally. Commands such as ls, cat, grep, sed, jq and Git operate on its mounted filesystems. An OS executable is not automatically a Wesh command: each supported command is implemented for this environment.",
     },
     {
-      "title": "Choose the working data",
-      "body": "Use a separate workspace or a linked folder and select read-only or writable access. Global, Chat Group and Chat settings determine the effective mounts.",
+      "title": "A workspace scoped to the conversation",
+      "body": "Shell-enabled Chats can have a writable workspace. Global, Chat Group and Chat settings resolve which folders are mounted; a more specific mount at the same path takes precedence. Read-only settings separate inspecting data from modifying it.",
     },
     {
-      "title": "Let AI inspect conversation context",
-      "body": "Naidan projects selected Chat data into a read-only virtual filesystem at /sys/fs/naidan. Choose whether the shell sees the current Chat, its Chat Group, or the main Chat collection.",
+      "title": "Let the AI read the conversation as files",
+      "body": "Naidan projects Chat information into /sys/fs/naidan as read-only Markdown and JSON files. Choose the current Chat, its Chat Group or the main Chat collection as the visible scope. These familiar file formats let the AI use ordinary shell commands to find information without exposing all history by default.",
     }
   ],
+  "stepsTitle": "Give a Chat a working shell",
+  "steps": [
+    "Open the Chat’s tool settings and enable Shell. Check whether a setting is inherited from the Chat Group or global settings.",
+    "Inspect the effective folder mounts, write access and which Chats the shell can see.",
+    "Start with a listing or a read-only question. When using the human-facing terminal, choose the session belonging to the same Chat."
+  ],
   "exampleTitle": "Inspect the current Chat",
-  "exampleNote": "The paths shown here are examples for a shell session with the current Chat exposed. They are not paths on the host operating system.",
-  "next": "Choose file and folder access",
+  "exampleNote": "These commands read the current Chat when that scope is enabled. The metadata file describes the Chat; content-md and branches expose its messages and paths. This example does not modify data.",
+  "next": "Set file and folder access",
 } satisfies ShellMessages;

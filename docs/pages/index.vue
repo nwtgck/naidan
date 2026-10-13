@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import BrowserMock from '../site/BrowserMock.vue';
+import BoundaryDiagram from '../site/demos/BoundaryDiagram.vue';
 import type { HomeMessages } from '../site/messages';
 import { docsHref } from '../site/routes';
 import type { DocsLocale } from '../site/routes';
@@ -52,33 +53,7 @@ defineExpose({
         <p class="section-description">{{ s.howLead }}</p>
       </div>
       <div class="how-grid">
-        <div
-          class="boundary-card"
-          lang="en"
-        >
-          <div class="boundary-top"><svg
-            class="icon"
-            aria-hidden="true"
-          >
-            <use href="#i-shield" />
-          </svg><strong>YOUR DEVICE</strong></div>
-          <div class="boundary-inside">
-            <div class="boundary-inside-label">BROWSER SANDBOX</div>
-            <div class="boundary-nodes">
-              <div class="boundary-node"><strong>Input</strong><small>Text · Files</small></div><span
-                class="boundary-flow"
-                aria-hidden="true"
-              >↔</span>
-              <div class="boundary-node"><strong>AI models</strong><small>WebGPU · WebAssembly</small></div>
-            </div>
-            <div class="boundary-output">Text · Images · Speech</div>
-          </div>
-          <div class="boundary-optional">
-            <div><strong>Optional local engine</strong>
-              <p>Ollama · llama.cpp server<br>Separate process and permissions</p>
-            </div>
-          </div>
-        </div>
+        <BoundaryDiagram />
         <div class="mechanism-list">
           <section
             v-for="(item, index) in s.mechanisms"
@@ -109,6 +84,12 @@ defineExpose({
           </section>
         </div>
       </div>
+    </div>
+  </section>
+  <section class="standalone-section wrap" data-testid="docs-home-standalone">
+    <div class="local-file-badge" aria-hidden="true"><span>index.html</span><code>file://</code></div>
+    <div><h2 class="section-title">{{ s.standalone.title }}</h2><p>{{ s.standalone.body }}</p>
+      <a class="next-link" :href="docsHref({ locale, page: 'run/standalone' })">{{ s.standaloneLink }} <span aria-hidden="true">→</span></a>
     </div>
   </section>
   <section
@@ -162,7 +143,7 @@ defineExpose({
            aria-hidden="true"
          >
            <use href="#i-folder" />
-         </svg></span><span aria-hidden="true">↗</span></span>
+         </svg></span><span aria-hidden="true">→</span></span>
           <h3 class="card-title">{{ s.guides.files.title }}</h3>
           <p class="card-desc">{{ s.guides.files.body }}</p>
         </a>
@@ -174,7 +155,7 @@ defineExpose({
            aria-hidden="true"
          >
            <use href="#i-shield" />
-         </svg></span><span aria-hidden="true">↗</span></span>
+         </svg></span><span aria-hidden="true">→</span></span>
           <h3 class="card-title">{{ s.guides.boundary.title }}</h3>
           <p class="card-desc">{{ s.guides.boundary.body }}</p>
         </a>
@@ -186,7 +167,7 @@ defineExpose({
            aria-hidden="true"
          >
            <use href="#i-branch" />
-         </svg></span><span aria-hidden="true">↗</span></span>
+         </svg></span><span aria-hidden="true">→</span></span>
           <h3 class="card-title">{{ s.guides.branching.title }}</h3>
           <p class="card-desc">{{ s.guides.branching.body }}</p>
         </a>
@@ -198,7 +179,7 @@ defineExpose({
            aria-hidden="true"
          >
            <use href="#i-terminal" />
-         </svg></span><span aria-hidden="true">↗</span></span>
+         </svg></span><span aria-hidden="true">→</span></span>
           <h3 class="card-title">{{ s.guides.shell.title }}</h3>
           <p class="card-desc">{{ s.guides.shell.body }}</p>
         </a>
@@ -208,6 +189,13 @@ defineExpose({
 </template>
 
 <style scoped>
+.standalone-section { display: grid; grid-template-columns: 160px 1fr; gap: 36px; align-items: center; padding-block: 64px; }
+.standalone-section p { color: var(--muted); max-width: 760px; line-height: 1.95; }
+.local-file-badge { border: 1px solid var(--line-strong); border-radius: 22px; aspect-ratio: 1; display: grid; place-content: center; gap: 15px; text-align: center; background: linear-gradient(145deg,var(--surface),var(--bg)); }
+.local-file-badge span { font-size: 13px; color: var(--muted); }
+.local-file-badge code { color: var(--blue); font-size: 28px; }
+@media(max-width:620px) { .standalone-section { grid-template-columns: 1fr; gap: 20px; padding-block: 40px; } .local-file-badge { aspect-ratio: auto; display:flex; align-items:center; padding:18px; justify-content:space-between; } }
+
 .hero {
   gap: 45px;
   padding-top: 70px;

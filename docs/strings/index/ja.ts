@@ -2,7 +2,7 @@ import type { HomeMessages } from '../../site/messages';
 
 export const strings = {
   "title": "安全性を徹底追求した、簡単に使えるAI環境。",
-  "mock": "英語画面を想定した説明図です。このページでAIモデルは実行していません。",
+  "mock": "Naidanの画面構成を再現した会話例です。表示内容はサンプルです。",
   "headline": [
     "安全性を徹底追求した、",
     "簡単に使えるAI環境。"
@@ -53,6 +53,8 @@ export const strings = {
     }
   ],
   "storageNote": "この設定はNaidanの会話データの保持方法を選ぶものです。モデルのキャッシュ、書き出したファイル、OSのメモリ管理は別に扱われます。",
+  "standalone": { "title": "ページを開くだけ。配信用サーバーも用意しない。", "body": "Standalone版をダウンロードして展開すると、index.htmlをfile://で開いて使えます。アプリを配信するためのローカルサーバーやインストーラーを用意する代わりに、普段のブラウザで起動します。モデルの取得や接続先は、選んだ使い方で決まります。" },
+  "standaloneLink": "Standalone\u7248\u3092file://\u3067\u4f7f\u3046",
   "guidesTitle": "知りたい機能から探す",
   "guidesLead": "関心のあるガイドから読み始められます。使い方と、選ぶ際に知っておきたい点を一緒に説明します。",
   "guides": {

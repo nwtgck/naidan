@@ -23,7 +23,7 @@ export function createDocsDevBridge(): Plugin {
         }
         try {
           pending ??= (async () => {
-            const factory = await server.ssrLoadModule('/docs/build/dev.ts') as { createDocsDevServer: (args: { root: string; parentServer: ViteDevServer }) => Promise<ViteDevServer> };
+            const factory = await server.ssrLoadModule('/docs/build/dev.ts') as { createDocsDevServer: ({ root, parentServer }: { root: string; parentServer: ViteDevServer }) => Promise<ViteDevServer> };
             if (typeof factory.createDocsDevServer !== 'function') throw new Error('Invalid Docs development module');
             return factory.createDocsDevServer({ root: path.resolve(server.config.root, 'docs'), parentServer: server });
           })().catch(error => {

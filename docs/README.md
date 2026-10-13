@@ -3,8 +3,9 @@
 Docs live beside the application source but have an independent build. The
 production output is complete static HTML, not a second single-page application.
 The homepage follows the documentation prototype: an explanation of the design
-intent, implementation details, and links to concrete features. Its English mock
-interface is an illustration, not a captured or running model.
+intent, implementation details, and links to concrete features. Its English demonstrations reproduce the application’s layout, colors and controls.
+They use sample data, rather than importing the application stores or inference runtime.
+See `site/demos/README.md` for their source counterparts and maintenance rules.
 
 ## Commands and ownership
 
@@ -15,6 +16,7 @@ npm run dev
 npm run build:docs
 npm run typecheck:docs
 npm run test:docs
+npm run lint:docs
 ```
 
 The normal development server serves the app at `/` and Docs at `/docs/` on the
@@ -22,11 +24,14 @@ same port. Docs initialize lazily on the first Docs request. The normal applicat
 `build`, `build:all`, Hosted ZIP and Standalone builds do not build or package Docs.
 The dedicated Docs build writes to `docs/dist/`, not the application's `dist/`.
 
-The normal test run excludes the Docs suite. `test:docs` uses the repository's
-non-interactive `test:only-failed` reporter and a small independent Vitest config.
+The normal test run excludes the Docs suite. `test:docs` runs plain `vitest run` with a small independent Vitest config.
 It exercises actual Vite builds and development requests without loading model
-artifacts or building the application. Scoped lint still uses the repository's
-rules, with the independent Docs TypeScript project.
+artifacts or building the application. Docs are included by the normal `eslint .` invocation, with the independent Docs
+TypeScript project. `lint:docs` runs the same rules for Docs and the development
+bridge only. CI partitions application files, string catalogs and Docs into three
+lint jobs to avoid retaining their compiler graphs in one process, and records
+heap configuration, peak RSS and exit status. The existing `lint` status remains a gate on all three scopes. This partition preserves coverage;
+increasing the heap limit alone is not a substitute for investigating memory use.
 
 ## Shared development and production rendering
 
@@ -88,9 +93,10 @@ The existing examples exercise different delivery requirements.
 | --- | --- |
 | `index` | Static homepage, native checkbox-based theme choice |
 | `files/privacy` | Static text and CSS |
-| `work/boundary` | Opt-in CSS animation, including reduced-motion support |
+| `work/boundary` | Automatic local-inference diagram with reduced-motion support |
 | `chat/branching` | Static text plus one hydrated Vue demonstration |
-| `work/browser-shell` | Static shell/permission guide |
+| `work/browser-shell` | Source-derived shell demonstration and permission guide |
+| `run/standalone` | Animated file:// walkthrough, download and setup guide |
 
 Use normal CSS classes in Docs; do not copy app Tailwind class names into this
 isolated compiler. Page-specific `<style scoped>`, imported styles and local
@@ -98,8 +104,19 @@ asset imports go through Vite. Keep reusable Docs components inside `docs/`.
 
 The dictionaries are build inputs. A static page does not fetch a runtime locale
 catalog. The language switch is an ordinary link to the corresponding page.
-Only `/docs/` detects browser language, with explicit English/Japanese links when
-scripts are disabled. Explicit language URLs are never redirected by preference.
+Only `/docs/` selects the browser language at runtime. It contains two inert,
+pre-rendered home templates, not client-side translation catalogs. A small classic
+head script mounts one template in place; there is no second navigation or
+pre-redirect language screen. Development and production use the same compiled
+bootstrap and the same templates. Explicit language URLs remain plain static HTML.
+
+When JavaScript is disabled or blocked, the root shows explicit language links.
+The bootstrap marks startup before the body is parsed, and clears that marker on
+completion or failure. A watchdog restores the fallback on unexpected failure.
+This avoids a wrong-language flash; loading the stylesheet or bootstrap can still
+involve a short wait. It is not a guarantee of instant content on a slow network.
+Only static components are allowed in the language-neutral home; build validation
+rejects islands there until a deliberate activation contract is implemented.
 
 ## Interactive demonstrations
 
@@ -151,3 +168,18 @@ These initial pages are a base for adding features, not a complete guide catalog
 Search indexing, real app screenshots and offline Docs support are not implemented
 here. Screenshot generation should remain a separate explicit operation when it
 is added, not a prerequisite for every Docs build.
+
+## Link and motion contracts
+
+The shared DOM compositor marks every external HTTP(S) link with an inline SVG
+external-link icon and a localized accessible suffix. Same-site links keep normal
+navigation styling. An interactive island must use `site/ExternalLink.vue` for
+external links so server composition does not add children that hydration removes.
+No CSS-generated text, remote icon font or hover-only indicator is involved.
+
+Every guide has automatically running, explanatory CSS motion. Users can pause
+all demonstrations with the page control, and reduced-motion preferences yield
+stationary, complete diagrams. Animation does not initiate a model download,
+permission request or shell command. The branching demonstration is the only
+Vue-hydrated example; its animation follows the selected branch without changing
+the user's selection or announcing a stream of automated updates.

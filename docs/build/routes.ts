@@ -4,6 +4,7 @@ import type { DocsLocale, DocsPageId } from '../site/routes';
 export type DocsRoute =
   | { kind: 'outside' }
   | { kind: 'asset' }
+  | { kind: 'bootstrap' }
   | { kind: 'invalid' }
   | { kind: 'missing' }
   | { kind: 'redirect'; location: string }
@@ -29,6 +30,7 @@ export function resolveDocsRoute({ requestUrl }: { requestUrl: string }): DocsRo
   if (!pathname.startsWith(DOCS_BASE)) return { kind: 'outside' };
   const rest = pathname.slice(DOCS_BASE.length - 1);
   if (devDirectories.some(prefix => rest.startsWith(prefix))) return { kind: 'asset' };
+  if (pathname === `${DOCS_BASE}__locale.js`) return { kind: 'bootstrap' };
   if (pathname === DOCS_BASE) return { kind: 'root' };
   if (pathname === `${DOCS_BASE}index.html`) return { kind: 'redirect', location: `${DOCS_BASE}${url.search}` };
   for (const locale of DOCS_LOCALES) {

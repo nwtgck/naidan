@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import FolderAccessDemo from '../../site/demos/FolderAccessDemo.vue';
 import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
 import type { FilesMessages } from '../../site/messages';
@@ -27,6 +28,7 @@ defineExpose({
       :key="paragraph"
       class="lead"
     >{{ paragraph }}</p>
+    <figure class="guide-figure"><FolderAccessDemo /><figcaption class="caption">{{ s.diagramCaption }}</figcaption></figure>
     <div class="pair-grid methods">
       <section
         v-for="method in s.methods"
@@ -39,6 +41,7 @@ defineExpose({
     </div>
     <h2>{{ s.permissions.title }}</h2>
     <p>{{ s.permissions.body }}</p>
+    <div class="decision-list"><section v-for="(item, index) in s.checklist" :key="item.title"><span aria-hidden="true">0{{ index + 1 }}</span><div><h3>{{ item.title }}</h3><p>{{ item.body }}</p></div></section></div>
     <h2>{{ s.stepsTitle }}</h2>
     <ol>
       <li

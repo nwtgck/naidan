@@ -2,7 +2,7 @@ import type { HomeMessages } from '../../site/messages';
 
 export const strings = {
   "title": "An easy-to-use AI environment, built around privacy.",
-  "mock": "Illustration of an English interface. No model is running.",
+  "mock": "A sample conversation using Naidan’s chat layout and controls.",
   "headline": [
     "An easy-to-use AI environment, ",
     "built around privacy."
@@ -53,6 +53,8 @@ export const strings = {
     }
   ],
   "storageNote": "This choice concerns Naidan’s conversation storage. Model caches, exported files and operating-system memory management have separate lifetimes.",
+  "standalone": { "title": "Open a file. Keep the app server out of the setup.", "body": "Download and extract the Standalone edition, then open index.html with file://. The application runs in your usual browser, without a local server or installer to serve it. Model downloads and engine connections depend on the setup you choose." },
+  "standaloneLink": "Use the Standalone edition with file://",
   "guidesTitle": "Find what you want to do.",
   "guidesLead": "Open the guide you need. Each page includes its own context, examples and important choices.",
   "guides": {

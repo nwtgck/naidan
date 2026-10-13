@@ -11,6 +11,7 @@ const stepSchema = z.object({
 });
 const workflowSchema = z.object({
   jobs: z.record(z.string(), z.object({
+    strategy: z.object({ matrix: z.object({ include: z.array(z.object({ scope: z.string(), command: z.string() })).optional() }) }).optional(),
     needs: z.union([z.string(), z.array(z.string())]).optional(),
     if: z.string().optional(),
     steps: z.array(stepSchema).optional(),
@@ -20,6 +21,24 @@ const raw: unknown = parse(readFileSync(new URL('../../.github/workflows/main.ym
 const workflow = workflowSchema.parse(raw);
 
 describe('Docs publication boundaries', () => {
+  it('partitions CI lint without exempting Docs, strings or the dev bridge', () => {
+    expect(workflow.jobs.lint?.needs).toBe('lint_scopes');
+    expect(workflow.jobs.lint?.steps?.[0]?.run).toBe('test "${{ needs.lint_scopes.result }}" = success');
+    const entries = workflow.jobs.lint_scopes?.strategy?.matrix.include;
+    expect(entries).toEqual([
+      { scope: 'application', command: "npm run lint -- --ignore-pattern 'docs/**' --ignore-pattern 'build/docs-dev-bridge.ts' --ignore-pattern 'src/strings/**'" },
+      { scope: 'strings', command: 'npm exec -- eslint src/strings --max-warnings 0' },
+      { scope: 'docs', command: 'npm run lint:docs' },
+    ]);
+    const schema = z.object({ scripts: z.record(z.string(), z.string()) });
+    const value: unknown = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+    const scripts = schema.parse(value).scripts;
+    expect(scripts.lint).toBe('eslint . --max-warnings 0');
+    expect(scripts['lint:docs']).toBe('eslint docs build/docs-dev-bridge.ts --max-warnings 0');
+    expect(scripts['test:docs']).toBe('vitest run --config docs/vitest.config.ts docs');
+    expect(workflow.jobs.lint_scopes?.steps?.find(step => step.name === 'Upload lint diagnostics')?.with?.name).toBe('lint-diagnostics-${{ matrix.scope }}');
+  });
+
   it('builds Docs in an independent job with its own checks and artifact', () => {
     const job = workflow.jobs.build_docs;
     expect(job?.needs).toBeUndefined();

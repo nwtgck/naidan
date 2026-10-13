@@ -4,8 +4,10 @@ import type { ViteDevServer, ModuleNode, InlineConfig, Plugin } from 'vite';
 import { docsCompilerConfig } from './compiler';
 import { resolveDocsRoute } from './routes';
 import { findIslands, renderDocument, renderLocaleRoot, renderNotFound } from './html';
-import { ISLAND_ENTRIES, LOCALE_ENTRY, styleEntryId } from './ids';
-import type { DocsRenderer } from './contracts';
+import { ISLAND_ENTRIES, styleEntryId } from './ids';
+import type { DocsRenderer, RenderedPage } from './contracts';
+import type { DocsLocale } from '../site/routes';
+import { compileLocaleBootstrap } from './locale-bootstrap';
 
 function devHref({ moduleUrl }: { moduleUrl: string }): string {
   return moduleUrl.startsWith('/docs/') ? moduleUrl : `/docs${moduleUrl}`;
@@ -37,6 +39,7 @@ async function devStyles({ server, entry }: { server: ViteDevServer; entry: stri
 }
 
 function createDocsRequestPlugin(): Plugin {
+  let bootstrap: Promise<string> | undefined;
   return {
     name: 'naidan-docs-requests',
     configureServer(server) {
@@ -59,6 +62,13 @@ function createDocsRequestPlugin(): Plugin {
         try {
           let html: string;
           switch (route.kind) {
+          case 'bootstrap':
+            bootstrap ??= compileLocaleBootstrap({ root: server.config.root }).catch(error => {
+              bootstrap = undefined; throw error;
+            });
+            response.setHeader('Content-Type', 'text/javascript; charset=utf-8');
+            sendBody({ body: await bootstrap });
+            return;
           case 'outside':
           case 'asset':
             return next();
@@ -71,13 +81,18 @@ function createDocsRequestPlugin(): Plugin {
             sendBody({ body: 'Invalid Docs request' }); return;
           case 'missing': {
             response.statusCode = 404;
-            const styles = await devStyles({ server, entry: `/${LOCALE_ENTRY}` });
+            const styles = await devStyles({ server, entry: styleEntryId({ page: 'index' }) });
             html = renderNotFound({ assets: { styles, scripts: ['/docs/@vite/client'] } });
             break;
           }
           case 'root': {
-            const styles = await devStyles({ server, entry: `/${LOCALE_ENTRY}` });
-            html = renderLocaleRoot({ assets: { styles, scripts: ['/docs/@vite/client', devHref({ moduleUrl: `/${LOCALE_ENTRY}` })] } });
+            const renderer = await server.ssrLoadModule('/server.ts') as DocsRenderer;
+            const pages = {
+              en: await renderer.renderPage({ locale: 'en', page: 'index' }),
+              ja: await renderer.renderPage({ locale: 'ja', page: 'index' }),
+            } satisfies Record<DocsLocale, RenderedPage>;
+            const styles = await devStyles({ server, entry: styleEntryId({ page: 'index' }) });
+            html = renderLocaleRoot({ pages, bootstrap: '/docs/__locale.js', assets: { styles, scripts: ['/docs/@vite/client'] } });
             break;
           }
           case 'page': {
@@ -107,6 +122,7 @@ function createDocsRequestPlugin(): Plugin {
     handleHotUpdate(context) {
       // A page includes build-time strings; reload the Docs document, not the app.
       // Vite invalidates imported SSR modules before the next render.
+      bootstrap = undefined;
       context.server.ws.send({ type: 'full-reload', path: '*' });
       return [];
     },

@@ -15,7 +15,7 @@ export type RenderedPage = {
   page: DocsPageId;
 };
 export type DocsRenderer = {
-  renderPage: (args: { locale: DocsLocale; page: DocsPageId }) => Promise<RenderedPage>;
+  renderPage: ({ locale, page }: { locale: DocsLocale; page: DocsPageId }) => Promise<RenderedPage>;
 };
 export type PageRegistry = {
   pages: Record<DocsPageId, RegisteredPage>;

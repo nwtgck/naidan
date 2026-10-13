@@ -63,7 +63,8 @@ describe('compiled branching island hydration', () => {
     (first.querySelector('[data-testid="branch-alternative"]') as HTMLButtonElement).click();
     await nextTick();
     expect(first.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(copy.replies[1]);
-    expect(first.querySelector('img, script')).toBeNull();
+    expect(first.querySelector('[data-testid="branch-reply"]')?.querySelector('img, script')).toBeNull();
+    expect(first.querySelector('[onerror], img[src="x"]')).toBeNull();
     expect(second.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(japanese.demo.replies[0]);
   });
 

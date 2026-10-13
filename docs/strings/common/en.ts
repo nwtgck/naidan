@@ -6,8 +6,9 @@ export const strings = {
   "guides": "Explore",
   "source": "Source",
   "launch": "Open Naidan",
+  pauseMotion: 'Pause motion',
+  resumeMotion: 'Resume motion',
   "lightTheme": "Use light theme",
   "footer": "Naidan · AI in your browser",
-  "mock": "Illustration, not a running session. No model is loaded on this page.",
   "back": "All guides",
 } satisfies CommonMessages;
