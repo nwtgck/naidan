@@ -584,3 +584,18 @@ describe('page reloads using real generated workers', () => {
     expect(second.controller).not.toBeNull();
   });
 });
+
+describe('independently published Docs', () => {
+  it.each(['cache-first', 'network-only'] as const)('leaves Docs URLs to the browser in %s mode', async mode => {
+    const f = setup(), worker = f.make(a);
+    await worker.lifecycle('install'); await worker.lifecycle('activate');
+    if (mode === 'network-only') await worker.message({ clientId: 'page', data: { type: USE_NETWORK_MESSAGE } });
+    f.requested.length = 0;
+    for (const suffix of ['docs', 'docs?lang=ja', 'docs/', 'docs/ja/', 'docs/assets/example.js']) {
+      const response = await worker.request({ url: new URL(suffix, scope).href, navigation: true });
+      expect(response.status).toBe(404);
+      expect(await response.text()).toBe('missing');
+    }
+    expect(f.requested).toHaveLength(5);
+  });
+});

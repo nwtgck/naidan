@@ -96,7 +96,7 @@ const mainConfig = tseslint.config(
     // Preserve upstream structure; Naidan-owned fix integration code and tests remain linted.
     // Temporary test support is excluded from tsconfig.app.json and uses isolated lint configurations.
     // Generated, vendored and deliberate negative fixtures are not owned lint targets.
-    ignores: ['dist/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/fixtures/**', 'src/test-tmp/**', 'build/transformers-js-fixes/upstream/**'],
+    ignores: ['dist/**', 'docs/dist/**', 'docs/.cache/**', 'node_modules/**', 'public/**', 'naidan-server/**', 'eslint-local-rules/fixtures/**', 'src/test-tmp/**', 'build/transformers-js-fixes/upstream/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -256,6 +256,11 @@ export default [
   {
     files: ['scripts/**/*.vue'],
     languageOptions: { parser: vueParser, parserOptions: { parser: tseslint.parser, project: false } },
+  },
+  {
+    name: 'naidan/docs-typechecking',
+    files: ['docs/**/*.{ts,vue}', 'build/docs-dev-bridge.ts'],
+    languageOptions: { parserOptions: { project: ['./docs/tsconfig.json'] } },
   },
   testResourceManagement,
   noTestSupportImports,

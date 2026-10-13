@@ -1,5 +1,6 @@
 /// <reference types="vitest" />
 import { createTestOnlyBoundaryPlugin } from './build/test-only-boundary';
+import { createDocsDevBridge } from './build/docs-dev-bridge';
 import { createStableDiffusionCppBrowserBuild } from './src/features/stable-diffusion-cpp-browser/build-runtime';
 import { createLlamaCppBrowserBuild } from './src/features/llama-cpp-browser/build-core';
 import VueRouter from 'vue-router/vite';
@@ -246,6 +247,7 @@ export default defineConfig(({ mode, command }) => {
       plugins: () => [...(mode === 'test' && command !== 'build' ? [] : [createTestOnlyBoundaryPlugin()]), ...transformersJsFixes.worker.plugins(), createLlamaCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode }).corePlugin],
     },
     plugins: [
+      mode !== 'test' && createDocsDevBridge(),
       (mode !== 'test' || command === 'build') && createTestOnlyBoundaryPlugin(),
       createStableDiffusionCppBrowserBuild({ rootDir: __dirname, mode: llamaCppBuildMode }),
       createDevServerIsolationPlugin(),
@@ -409,6 +411,7 @@ export default defineConfig(({ mode, command }) => {
       execArgv: ['--experimental-vm-modules', '--no-compilation-cache'],
       exclude: [
         ...configDefaults.exclude,
+        'docs/**',
         'src/test-tmp/**',
         'src/lint-rule-tmp/**',
       ],

@@ -1,0 +1,13 @@
+import type { DocsPageId } from '../site/routes';
+
+export const REGISTRY_ID = 'virtual:naidan-docs/registry';
+export const ISLAND_ENTRIES = { branching: 'islands/branching/client.ts' } as const;
+export const LOCALE_ENTRY = 'client/locale.ts';
+
+export function styleEntryId({ page }: { page: DocsPageId }): string {
+  return `virtual:naidan-docs/styles/${page}`;
+}
+
+export function styleEntryName({ page }: { page: DocsPageId }): string {
+  return `style-${page.replaceAll('/', '-')}`;
+}

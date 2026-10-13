@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.node.json",
+  "include": ["**/*.ts", "**/*.vue", "../build/docs-dev-bridge.ts"],
+  "exclude": ["dist", ".cache"],
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noEmit": true
+  }
+}
