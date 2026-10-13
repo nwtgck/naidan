@@ -198,6 +198,19 @@ defineExpose({
   }
 }
 
+:global(html:has(#docs-pause-motion:checked)) .folder-demo .copy-track i { animation:none!important;opacity:0; }
+
+:global(html:has(#docs-pause-motion:checked)) .folder-demo .copied-file {
+  animation: none !important;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px #3b82f60a;
+}
+
+@media(prefers-reduced-motion:reduce) {
+  .folder-demo .copy-track i { animation:none!important;opacity:0; }
+  .folder-demo .copied-file { animation:none!important;border-color:var(--blue);box-shadow:0 0 0 3px #3b82f60a; }
+}
+
 @media(max-width:640px) {
   .folder-demo {
     grid-template-columns: 1fr;

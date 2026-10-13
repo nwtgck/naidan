@@ -22,7 +22,7 @@ export const strings = {
     ],
   },
   boundary: boundaryComparisonEn,
-  "title": "AI in your browser, with control over your data",
+  "title": "An AI environment in your web browser",
   "headline": [
     "An easy-to-use AI environment, ",
     "built around privacy."
@@ -45,7 +45,7 @@ export const strings = {
     },
     {
       "title": "Network access has an explicit scope",
-      "body": "The Local-only deployment uses Content Security Policy (CSP) to limit connections to the site itself and local servers. Browser developer tools help you inspect traffic.",
+      "body": "The Local-only deployment uses Content Security Policy (CSP) to limit the page's API request destinations to its own site and local servers. Browser developer tools help you inspect traffic.",
     }
   ],
   "boundaryNote": "Model downloads contact their distribution service. When you choose an external engine or tool, its permissions and connections also become part of your setup.",
@@ -54,14 +54,14 @@ export const strings = {
   "models": [
     {
       "title": "Run it in the browser",
-      "body": "Download a supported model and use your device for generation. Model support and performance depend on your browser and hardware.",
+      "body": "Download or import a supported model and use your device for generation. Local-only blocks external model downloads; you can import a GGUF you already have. Model support and performance depend on your browser and hardware.",
     },
     {
       "title": "Connect a local engine",
       "body": "Ollama and llama.cpp server run independently of Naidan. Connect through their APIs when their model support or performance better fits your work. These engines use the permissions of their native process.",
     }
   ],
-  storageCaption: 'Local Storage is an alternative when OPFS is unavailable. Its capacity and support for saving sent images are limited.',
+  storageCaption: 'The diagram’s “all data” and “no persistent footprint” refer to data held by the selected in-memory Naidan storage provider, including chats and settings.',
   "storageTitle": "Save your conversations, or keep them in memory.",
   "storageLead": "Choose whether Naidan writes conversation data to persistent browser storage.",
   "storage": [
@@ -74,7 +74,7 @@ export const strings = {
       "body": "Memory mode keeps conversation data in the running session instead of writing it to persistent storage. Reloading the page ends that session.",
     }
   ],
-  "storageNote": "This choice concerns Naidan’s conversation storage. Model caches, exported files and operating-system memory management have separate lifetimes.",
+  "storageNote": "This choice covers chats, groups, settings and files held by Naidan’s selected storage provider. Model caches, exported files and operating-system memory management have separate lifetimes.",
   "standalone": { "title": "Double-click to start using AI.", "body": "Extract the Standalone ZIP, then double-click index.html on your PC. Naidan opens in your browser without an installer or a server to serve the app. Then choose a model or local engine for your work." },
   "standaloneLink": "Start without an installer or app server",
   "guidesTitle": "Find what you want to do.",

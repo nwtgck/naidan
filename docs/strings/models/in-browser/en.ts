@@ -41,20 +41,20 @@ export const strings = {
     },
     {
       title: 'Prepare the model files',
-      body: 'Use the ［Model catalog］ to inspect a suggested model and its size before ［Download］, or import a GGUF file or model folder you already have. For a Hugging Face repository, check the file plan and quantization before downloading. Large models take storage and memory.',
+      body: 'Use the ［Model catalog］ to inspect a suggested model and its size before ［Download］, or import a GGUF file or model folder you already have. For a Hugging Face repository, check the file plan and quantization before downloading. Local-only cannot download from Hugging Face; import a GGUF obtained separately, or download in a Hosted edition that permits the required model file hosts. Large models take storage and memory.',
     },
     {
       title: 'Select it for conversation',
-      body: 'Pick the imported model in ［Default model］ during setup, or choose it in the ［Connection］ settings and ［Save changes］. Existing and new conversations that inherit the global model use this default; a chat or group can choose another model.',
+      body: 'Pick the imported model in ［Default Model］ during setup, or choose it in the ［Connection］ settings and ［Save Changes］. Existing and new conversations that inherit the global model use this default; a chat or group can choose another model.',
     },
     {
       title: 'Try a short message',
-      body: 'Select ［Get started］ and send a simple text prompt. If the model is missing when you send, Naidan offers a path back to model preparation while keeping your draft.',
+      body: 'After first-run setup, select ［Get Started］. If you changed an existing setup, close ［Settings］ after ［Save Changes］ and select ［New Chat］. Send a short text prompt. If the model is missing, Naidan offers a path back to model preparation while keeping your draft.',
     },
   ],
   limitsTitle: 'Before using images or other media',
   limits: [
-    'An image attached to a llama.cpp chat needs a matching mmproj GGUF alongside the model. The current llama.cpp chat input does not support audio or video. Generating an image or speech uses separate model features and setup.',
+    'To attach an image to a llama.cpp chat, you need a matching mmproj GGUF, the model’s companion file for image input. The current llama.cpp chat input does not support audio or video. Generating an image or speech uses separate model features and setup.',
     'Standalone includes browser llama.cpp through its embedded WebGPU runtime, without a CPU fallback. The hosted edition has more execution profiles. Check the in-app availability notice on your browser and device. Transformers.js is a hosted-only choice.',
     'Downloaded models and chat history have different storage controls. Removing browser site data can remove cached models; choosing a device model folder depends on browser permission and folder access.',
   ],

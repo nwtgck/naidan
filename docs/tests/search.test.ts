@@ -2,6 +2,8 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Script } from 'node:vm';
+import { MessageChannel } from 'node:worker_threads';
+import * as Comlink from 'comlink';
 import { JSDOM } from 'jsdom';
 import { build } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
@@ -9,8 +11,8 @@ import { docsBuildConfig } from '../build/production';
 import { DOCS_PAGES, docsHref } from '../site/routes';
 import { parseSearchIndex, purposeDocs, searchDocs } from '../site/search';
 import type { SearchIndex } from '../site/search';
-import { parseWorkerRequest } from '../islands/search/worker-contracts';
-import type { SearchWorkerRequest, SearchWorkerResponse } from '../islands/search/worker-contracts';
+import { parseWorkerRequest, parseWorkerResponse } from '../islands/search/worker-contracts';
+import type { SearchWorkerApi, SearchWorkerRequest, SearchWorkerResponse } from '../islands/search/worker-contracts';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
 describe('Docs search', () => {
@@ -30,6 +32,14 @@ describe('Docs search', () => {
     expect(searchDocs({ index, query: '保存' })[0]?.snippet).toContain('保存');
     const english: SearchIndex = { locale: 'en', entries: [{ href: '/docs/en/data/backup/', title: 'Back up ZIP files', description: 'Save a ZIP', headings: ['Restore a backup'], paragraphs: ['Restore your conversations from a ZIP.'] }] };
     expect(searchDocs({ index: english, query: 'BACKUP zip' })).toHaveLength(1);
+    expect(searchDocs({ index: english, query: 'BACKUP unicorn' })).toEqual([]);
+    const broad: SearchIndex = { locale: 'ja', entries: Array.from({ length: 8 }, (_, number) => ({ href: `/docs/ja/example-${number}/`, title: `保存先 ${number}`, description: '', headings: [], paragraphs: [] })) };
+    expect(searchDocs({ index: broad, query: '保存先を変えたい' })).toHaveLength(5);
+    expect(parseWorkerResponse({ value: { kind: 'results', requestId: 1, results: [{ href: '/docs/ja/', title: 'Home', snippet: '' }] }, locale: 'ja' })).toEqual({ kind: 'results', requestId: 1, results: [{ href: '/docs/ja/', title: 'Home', snippet: '' }] });
+    expect(() => parseWorkerResponse({ value: { kind: 'results', requestId: 1, results: [{ href: '/docs/en/data/backup/', title: 'Wrong locale', snippet: '' }] }, locale: 'ja' })).toThrow();
+    for (const href of ['/docs/ja/../../', '/docs/ja/unregistered/', '/docs/ja/files/privacy/?q=1']) {
+      expect(() => parseWorkerResponse({ value: { kind: 'results', requestId: 1, results: [{ href, title: 'Unregistered', snippet: '' }] }, locale: 'ja' })).toThrow();
+    }
   });
 
   it('publishes locale-specific article indexes and serves the same content in development', async () => {
@@ -70,16 +80,36 @@ describe('Docs search', () => {
     const japanese = parseSearchIndex({ value: JSON.parse(await readFile(path.join(fixture.docs, 'dist/search-ja.json'), 'utf8')) as unknown, locale: 'ja' });
     expect(searchDocs({ index: japanese, query: 'バックアップ ZIP' }).some(item => item.href === '/docs/ja/data/backup/')).toBe(true);
     expect(searchDocs({ index: japanese, query: '新しいチャット' }).some(item => item.href === '/docs/ja/')).toBe(false);
+    for (const [query, expectedHref] of [
+      ['バックアップしたい', '/docs/ja/data/backup/'],
+      ['バックアップしたいです。', '/docs/ja/data/backup/'],
+      ['保存先を変えたい', '/docs/ja/data/storage/'],
+      ['ファイルを渡したい', '/docs/ja/files/privacy/'],
+      ['音声を保存したい', '/docs/ja/audio/speech/'],
+      ['シェルを有効にしたい', '/docs/ja/work/browser-shell/'],
+    ] as const) {
+      const results = searchDocs({ index: japanese, query });
+      expect(results[0]?.href).toBe(expectedHref);
+      expect(results.length).toBeLessThanOrEqual(5);
+    }
+    expect(searchDocs({ index: japanese, query: 'GGUF' }).some(item => item.href === '/docs/ja/models/llama-cpp-browser/')).toBe(true);
+    expect(searchDocs({ index: japanese, query: '量子ユニコーンを飼いたい' })).toEqual([]);
+    expect(searchDocs({ index: japanese, query: 'したい' })).toEqual([]);
+    expect(searchDocs({ index: japanese, query: 'をしたい。' })).toEqual([]);
+    expect(searchDocs({ index: japanese, query: '絵をしたい' })).toEqual([]);
+    expect(searchDocs({ index: japanese, query: 'AIを使いたい' }).length).toBeLessThanOrEqual(5);
     expect(() => parseSearchIndex({ value: { locale: 'ja', entries: [{ href: 'https://elsewhere.example/', title: 'Wrong', headings: [], paragraphs: [] }] }, locale: 'ja' })).toThrow();
+    expect(() => parseSearchIndex({ value: { ...japanese, locale: 'en' }, locale: 'ja' })).toThrow();
+    expect(() => parseSearchIndex({ value: { ...japanese, entries: [{ ...japanese.entries[0], headings: [1] }, ...japanese.entries.slice(1)] }, locale: 'ja' })).toThrow();
+    expect(() => parseSearchIndex({ value: { ...japanese, entries: japanese.entries.slice(1) }, locale: 'ja' })).toThrow();
+    expect(() => parseSearchIndex({ value: { ...japanese, entries: [...japanese.entries.slice(1), japanese.entries[1]] }, locale: 'ja' })).toThrow();
     const workerAsset = (await readdir(path.join(fixture.docs, 'dist/assets'))).find(file => /^worker-.+\.js$/u.test(file));
     if (!workerAsset) throw new Error('Missing generated Docs search worker');
-    const workerMessages: SearchWorkerResponse[] = [];
-    let receive: ((event: { data: unknown }) => void) | undefined;
-    const endpoint = {
-      addEventListener: vi.fn((_type: string, listener: (event: { data: unknown }) => void) => {
-        receive = listener;
-      }),
-      postMessage: vi.fn((message: SearchWorkerResponse) => workerMessages.push(message)),
+    const channel = new MessageChannel();
+    using _ports = {
+      [Symbol.dispose]() {
+        channel.port1.close(); channel.port2.close();
+      },
     };
     let englishFailures = 1;
     const fetchIndex = vi.fn(async (url: string) => {
@@ -92,12 +122,21 @@ describe('Docs search', () => {
     });
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     using _errors = { [Symbol.dispose]: () => errors.mockRestore() };
-    new Script(await readFile(path.join(fixture.docs, 'dist/assets', workerAsset), 'utf8')).runInNewContext({ self: endpoint, fetch: fetchIndex, console });
-    if (!receive) throw new Error('Generated Docs worker did not register its request handler');
-    receive({ data: { requestId: 1, locale: 'ja', query: '' } });
-    receive({ data: { requestId: 2, locale: 'ja', query: 'バックアップ' } });
-    receive({ data: { requestId: 3, locale: 'ja', query: '保存先' } });
-    await vi.waitFor(() => expect(workerMessages).toHaveLength(3));
+    new Script(await readFile(path.join(fixture.docs, 'dist/assets', workerAsset), 'utf8')).runInNewContext({
+      addEventListener: channel.port2.addEventListener.bind(channel.port2),
+      removeEventListener: channel.port2.removeEventListener.bind(channel.port2),
+      postMessage: channel.port2.postMessage.bind(channel.port2),
+      fetch: fetchIndex,
+      console,
+    });
+    channel.port2.start();
+    const remote = Comlink.wrap<SearchWorkerApi>(channel.port1 as unknown as Comlink.Endpoint);
+    using _remote = { [Symbol.dispose]: () => remote[Comlink.releaseProxy]() };
+    const workerMessages = await Promise.all([
+      remote.search({ request: { requestId: 1, locale: 'ja', query: '' } }),
+      remote.search({ request: { requestId: 2, locale: 'ja', query: 'バックアップ' } }),
+      remote.search({ request: { requestId: 3, locale: 'ja', query: '保存先' } }),
+    ]);
     expect(fetchIndex).toHaveBeenCalledTimes(1);
     const purposeMessage = workerMessages.find(message => message.requestId === 1);
     expect(purposeMessage?.kind).toBe('results');
@@ -107,13 +146,16 @@ describe('Docs search', () => {
     expect(firstMessage?.kind).toBe('results');
     if (firstMessage?.kind !== 'results') throw new Error('Missing Docs worker search results');
     expect(firstMessage.results.some(hit => hit.href === '/docs/ja/data/backup/')).toBe(true);
-    receive({ data: { requestId: 4, locale: 'en', query: 'backup' } });
-    await vi.waitFor(() => expect(workerMessages).toHaveLength(4));
-    expect(workerMessages[3]).toEqual({ kind: 'error', requestId: 4 });
-    receive({ data: { requestId: 5, locale: 'en', query: 'backup' } });
-    await vi.waitFor(() => expect(workerMessages).toHaveLength(5));
+    expect(await remote.search({ request: { requestId: 4, locale: 'en', query: 'backup' } })).toEqual({ kind: 'error', requestId: 4 });
+    expect((await remote.search({ request: { requestId: 5, locale: 'en', query: 'backup' } })).kind).toBe('results');
     expect(fetchIndex).toHaveBeenCalledTimes(3);
-    expect(workerMessages[4]?.kind).toBe('results');
+    await expect(remote.search({ request: { requestId: 6, locale: 'fr', query: '' } as unknown as SearchWorkerRequest })).rejects.toThrow();
+    expect(fetchIndex).toHaveBeenCalledTimes(3);
+    const natural = await remote.search({ request: { requestId: 7, locale: 'ja', query: '保存先を変えたい' } });
+    expect(natural.kind).toBe('results');
+    if (natural.kind !== 'results') throw new Error('Missing Docs natural-language search results');
+    expect(natural.results[0]?.href).toBe('/docs/ja/data/storage/');
+    expect(fetchIndex).toHaveBeenCalledTimes(3);
   });
 
   it('hydrates the header palette and ignores stale worker results', async () => {
@@ -142,16 +184,44 @@ describe('Docs search', () => {
         this.removeAttribute('open');
       },
     });
-    const listeners = new Set<(event: MessageEvent<unknown>) => void>();
+    const channel = new MessageChannel();
+    using _ports = {
+      [Symbol.dispose]() {
+        channel.port1.close(); channel.port2.close();
+      },
+    };
     const requests: SearchWorkerRequest[] = [];
+    const pending = new Map<number, { resolve: (response: unknown) => void; reject: (error: unknown) => void }>();
+    const mockApi: SearchWorkerApi = {
+      search({ request }) {
+        const parsed = parseWorkerRequest({ value: request });
+        requests.push(parsed);
+        return new Promise((resolve, reject) => pending.set(parsed.requestId, {
+          resolve: response => resolve(response as SearchWorkerResponse),
+          reject,
+        }));
+      },
+    };
+    Comlink.expose(mockApi, channel.port2 as unknown as Comlink.Endpoint);
     const worker = {
       onerror: null,
-      addEventListener: vi.fn((_name: string, listener: (event: MessageEvent<unknown>) => void) => listeners.add(listener)),
-      removeEventListener: vi.fn((_name: string, listener: (event: MessageEvent<unknown>) => void) => listeners.delete(listener)),
-      postMessage: vi.fn((value: unknown) => requests.push(parseWorkerRequest({ value }))),
-      terminate: vi.fn(),
+      addEventListener: channel.port1.addEventListener.bind(channel.port1),
+      removeEventListener: channel.port1.removeEventListener.bind(channel.port1),
+      postMessage: channel.port1.postMessage.bind(channel.port1),
+      terminate: vi.fn(() => {
+        channel.port1.close(); channel.port2.close();
+      }),
+      start: channel.port1.start.bind(channel.port1),
       emit({ response }: { response: SearchWorkerResponse }) {
-        for (const listener of listeners) listener({ data: response } as MessageEvent<unknown>);
+        this.deliver({ requestId: response.requestId, response });
+      },
+      deliver({ requestId, response }: { requestId: number; response: unknown }) {
+        pending.get(requestId)?.resolve(response);
+        pending.delete(requestId);
+      },
+      reject({ requestId, error }: { requestId: number; error: unknown }) {
+        pending.get(requestId)?.reject(error);
+        pending.delete(requestId);
       },
     };
     const workerConstructor = vi.fn(function() {
@@ -183,11 +253,11 @@ describe('Docs search', () => {
     trigger?.click();
     expect(root.querySelector('dialog')?.open).toBe(true);
     expect(page.document.body.style.overflow).toBe('hidden');
-    expect(requests).toHaveLength(1);
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
     worker.emit({ response: { kind: 'error', requestId: requests[0]?.requestId ?? -1 } });
     await vi.waitFor(() => expect(root.querySelector('[role="alert"]')?.textContent).toContain('読み込めません'));
     root.querySelector<HTMLButtonElement>('.docs-search-retry')?.click();
-    expect(requests).toHaveLength(2);
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
     const purposeMatches = purposeDocs({ index });
     worker.emit({ response: { kind: 'results', requestId: requests[1]?.requestId ?? -1, results: purposeMatches } });
     await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(5));
@@ -197,14 +267,13 @@ describe('Docs search', () => {
     const stableStatus = root.querySelector('.search-status');
     input.value = 'バックアップ';
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
-    expect(requests).toHaveLength(3);
+    await vi.waitFor(() => expect(requests).toHaveLength(3));
     await vi.waitFor(() => expect(root.querySelector('.search-status')?.textContent).toContain('検索しています… · 目的から探す'));
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/');
     const matches = searchDocs({ index, query: 'バックアップ' }).map(({ href, title, snippet }) => ({ href, title, snippet }));
     worker.emit({ response: { kind: 'results', requestId: requests[2]?.requestId ?? -1, results: matches } });
-    await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a').length).toBeGreaterThan(0));
-    worker.emit({ response: { kind: 'results', requestId: requests[1]?.requestId ?? -1, results: [] } });
+    await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/backup/'));
     const first = root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a');
     expect(first?.getAttribute('href')).toBe('/docs/ja/data/backup/');
     input.focus();
@@ -217,54 +286,76 @@ describe('Docs search', () => {
     content.scrollTop = 50;
     input.value = '保存先';
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
-    expect(requests).toHaveLength(4);
+    await vi.waitFor(() => expect(requests).toHaveLength(4));
     await vi.waitFor(() => expect(root.querySelector('.search-status')?.textContent).toContain('前の検索結果: “バックアップ”'));
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     expect(root.querySelector('.search-status')).toBe(stableStatus);
     expect(content.scrollTop).toBe(50);
     expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/backup/');
     expect(root.querySelector('.search-status')?.textContent).toContain('検索しています');
-    worker.emit({ response: { kind: 'results', requestId: requests[2]?.requestId ?? -1, results: [] } });
-    expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/backup/');
     const storageMatches = searchDocs({ index, query: '保存先' }).map(({ href, title, snippet }) => ({ href, title, snippet }));
     worker.emit({ response: { kind: 'results', requestId: requests[3]?.requestId ?? -1, results: storageMatches } });
     await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/storage/'));
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     expect(root.querySelector('.search-status')).toBe(stableStatus);
     expect(root.querySelector('.search-status')?.textContent).not.toContain('前の検索結果');
+    input.value = 'stale';
+    input.dispatchEvent(new dom.Event('input', { bubbles: true }));
+    await vi.waitFor(() => expect(requests).toHaveLength(5));
     input.value = '';
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
-    expect(requests).toHaveLength(5);
+    await vi.waitFor(() => expect(requests).toHaveLength(6));
     await vi.waitFor(() => expect(root.querySelector('.search-status')?.textContent).toContain('前の検索結果: “保存先”'));
     expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/storage/');
-    worker.emit({ response: { kind: 'results', requestId: requests[3]?.requestId ?? -1, results: [] } });
+    worker.deliver({ requestId: requests[4]?.requestId ?? -1, response: { kind: 'results', requestId: requests[4]?.requestId ?? -1, results: [{ href: 7, title: 'Malformed', snippet: '' }] } });
+    await new Promise(resolve => setTimeout(resolve, 0));
     expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/storage/');
-    worker.emit({ response: { kind: 'results', requestId: requests[4]?.requestId ?? -1, results: purposeMatches } });
-    await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(5));
+    expect(root.querySelector('[role="alert"]')).toBeNull();
+    expect(worker.terminate).not.toHaveBeenCalled();
+    worker.emit({ response: { kind: 'results', requestId: requests[5]?.requestId ?? -1, results: purposeMatches } });
+    await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/'));
     expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/');
     expect(root.querySelector('.search-status')?.textContent).toContain('目的から探す');
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     input.focus();
     input.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     expect(page.document.activeElement).toBe(root.querySelector('[data-testid="docs-search-results"] a'));
+    input.value = '保存先';
+    input.dispatchEvent(new dom.Event('input', { bubbles: true }));
+    await vi.waitFor(() => expect(requests).toHaveLength(7));
     const cancel = new dom.Event('cancel', { cancelable: true });
     root.querySelector('dialog')?.dispatchEvent(cancel);
     expect(root.querySelector('dialog')?.open).toBe(false);
     expect(page.document.activeElement).toBe(trigger);
     expect(page.document.body.style.overflow).toBe('');
+    input.value = '';
+    input.dispatchEvent(new dom.Event('input', { bubbles: true }));
     page.document.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true }));
     expect(root.querySelector('dialog')?.open).toBe(true);
-    expect(requests).toHaveLength(6);
+    await vi.waitFor(() => expect(requests).toHaveLength(8));
     await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(0));
-    worker.emit({ response: { kind: 'results', requestId: requests[4]?.requestId ?? -1, results: storageMatches } });
+    worker.reject({ requestId: requests[6]?.requestId ?? -1, error: new Error('Stale request failed') });
+    await new Promise(resolve => setTimeout(resolve, 0));
     expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(0);
-    worker.emit({ response: { kind: 'results', requestId: requests[5]?.requestId ?? -1, results: purposeMatches } });
+    expect(root.querySelector('[role="alert"]')).toBeNull();
+    expect(worker.terminate).not.toHaveBeenCalled();
+    worker.emit({ response: { kind: 'results', requestId: requests[7]?.requestId ?? -1, results: purposeMatches } });
     await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(5));
     page.document.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true }));
     expect(root.querySelector('dialog')?.open).toBe(false);
     expect(workerConstructor).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
+    trigger?.click();
+    await vi.waitFor(() => expect(requests).toHaveLength(9));
+    worker.deliver({ requestId: requests[8]?.requestId ?? -1, response: { kind: 'results', requestId: (requests[8]?.requestId ?? -1) + 1, results: purposeMatches } });
+    await vi.waitFor(() => expect(root.querySelector('[role="alert"]')?.textContent).toContain('読み込めません'));
+    expect(root.querySelector<HTMLButtonElement>('.docs-search-retry')).not.toBeNull();
+    expect(worker.terminate).toHaveBeenCalledOnce();
+    const app = (root as HTMLElement & { __vue_app__?: { unmount: () => void } }).__vue_app__;
+    if (!app) throw new Error('Missing hydrated Docs search app');
+    app.unmount();
+    expect(worker.terminate).toHaveBeenCalledOnce();
   });
 
   it('activates search only after the language-neutral home mounts its chosen locale', async () => {

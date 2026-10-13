@@ -7,6 +7,7 @@ import { strings as english } from '../strings/chat/branching/en';
 import { strings as japanese } from '../strings/chat/branching/ja';
 import { strings as englishCommon } from '../strings/common/en';
 import { strings as japaneseCommon } from '../strings/common/ja';
+import { visibleGuideText } from './ui-label.test-support';
 import type { BranchingCopy, ReplicaChromeCopy } from '../site/messages';
 
 async function createDemo({ copy, chrome }: { copy: BranchingCopy; chrome: ReplicaChromeCopy }) {
@@ -115,12 +116,14 @@ describe('walkthrough motion and user selection', () => {
       expect(section.findAll('.caption-reserve')).toHaveLength(4);
       expect(section.find('aside').exists()).toBe(index === 3);
       await section.get('[data-testid="branch-step-1"]').trigger('click');
+      if (index === 0) expect(section.get('[data-testid="branch-stage-caption"] .ui-label').text()).toBe(copy.ui.sendAndBranch);
+      if (index === 3) expect(section.get('[data-testid="branch-stage-caption"] .ui-label').text()).toBe(copy.ui.fork);
       await section.get('[data-testid="branch-step-2"]').trigger('click');
       await section.get('[data-testid="branch-step-3"]').trigger('click');
       expect(section.get('[data-testid="branch-conversation-reserve"]').element).toBe(element);
       const captions = copy.stages[index];
       if (!captions) throw new Error(`Missing captions for ${method}`);
-      expect(section.get('[data-testid="branch-stage-caption"]').text()).toBe(captions[3]);
+      expect(section.get('[data-testid="branch-stage-caption"]').text()).toBe(visibleGuideText({ text: captions[3] }));
     }
   });
 
@@ -170,5 +173,24 @@ describe('walkthrough motion and user selection', () => {
     await wrapper.get('[data-testid="branch-step-2"]').trigger('click');
     expect(wrapper.get('[data-testid="branch-reply"]').text()).toBe(english.demo.editedReply);
     expect(wrapper.attributes('data-playback')).toBe('manual');
+  });
+
+  it('settles an already mounted automatic walkthrough when the shared pause control changes', async () => {
+    const pause = document.createElement('input');
+    pause.type = 'checkbox';
+    pause.id = 'docs-pause-motion';
+    document.body.append(pause);
+    using _cleanup = { [Symbol.dispose]: () => pause.remove() };
+    using demo = await createDemo({ copy: english.demo, chrome: englishCommon.chrome });
+    const wrapper = demo.wrapper.get('[data-testid="branch-method-edit"]');
+    expect(wrapper.attributes('data-stage')).toBe('0');
+    expect(wrapper.attributes('data-playback')).toBe('automatic');
+
+    pause.checked = true;
+    pause.dispatchEvent(new Event('change', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.attributes('data-stage')).toBe('2');
+    expect(wrapper.attributes('data-playback')).toBe('manual');
+    expect(wrapper.get('[data-testid="branch-reply"]').text()).toBe(english.demo.editedReply);
   });
 });

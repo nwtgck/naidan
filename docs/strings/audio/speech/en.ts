@@ -1,12 +1,12 @@
 export const strings = {
-  title: 'Generate speech on your device without sending text to a server',
+  title: 'Generate speech on your device: Keep your text local',
   description: 'Use a local speech model to generate audio without sending text or reference voice to an inference server, then save the finished WAV.',
   intro: '［Audio generation］ uses a local speech model to turn your text into a WAV on this device. The text you enter, and any optional reference audio, stay on your device during generation. Once the app, runtime and model files are available, no inference-server connection is needed; downloading missing files or updates still uses the network.',
   launch: { before: 'First, open ', after: ' to start in the audio workspace.' },
   steps: {
     open: {
       title: '1. Open Audio generation and prepare a model',
-      body: 'The link above opens ［Audio generation］ directly. You can also open ［More actions］ in the sidebar and choose ［Audio generation］. Pick a detected speech model, or open ［Models and runtime］ to import a matching backbone GGUF and audio mmproj together or obtain the pair from a repository. Detection reads local metadata; it does not download or load a model, and it does not prove compatibility.',
+      body: 'The link above opens ［Audio generation］ directly. You can also open ［More Actions］ in the sidebar and choose ［Audio generation］. Pick a detected speech model, or open ［Models and runtime］ to import a matching backbone GGUF and audio mmproj together or obtain the pair from a repository. The backbone is the speech model; the matching mmproj handles audio generation, so an arbitrary pair may not work. Local-only cannot fetch the pair from an external repository; obtain both files separately and import them there. Detection reads local metadata; it does not download or load a model, and it does not prove compatibility.',
       caption: 'Open the separate audio workspace and select a compatible local model pair.',
     },
     text: {
@@ -16,7 +16,7 @@ export const strings = {
     },
     generate: {
       title: '3. Generate and follow progress',
-      body: 'Select ［Generate audio］. Progress appears on the page, and a completed result is added under ［Generated audio］. During a longer run, ［Capture audio so far］ adds an intermediate WAV while generation continues; ［Finish and keep audio］ ends with the audio accumulated so far. ［Cancel and discard］ throws away the uncaptured part.',
+      body: 'Select ［Generate audio］. Progress appears on the page, and a completed result is added under ［Generated audio］. During a longer run, ［Get audio so far］ adds an intermediate WAV while generation continues; ［Finish generation and keep audio］ ends with the audio accumulated so far. ［Cancel and discard］ throws away the uncaptured part.',
       caption: 'Generation reports progress before a completed result appears in page history.',
     },
     save: {
@@ -58,8 +58,8 @@ export const strings = {
     deleteAudio: 'Delete audio',
     deleteAllAudio: 'Delete all audio',
     resultSettings: 'Generation settings',
-    preview: 'Capture audio so far',
-    finish: 'Finish and keep audio',
+    preview: 'Get audio so far',
+    finish: 'Finish generation and keep audio',
     cancel: 'Cancel and discard',
     play: 'Play',
     saveWav: 'Save WAV',

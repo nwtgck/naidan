@@ -22,6 +22,9 @@ async function renderGuide({ kind, locale }: { kind: 'openai' | 'browser'; local
 describe('endpoint connection guides', () => {
   it.each(['en', 'ja'] as const)('places each OpenAI-compatible action beside its scene in %s', async locale => {
     using page = await renderGuide({ kind: 'openai', locale });
+    const launch = page.document.querySelector<HTMLAnchorElement>('[data-docs-app-entry-path]');
+    expect(launch?.getAttribute('href')).toBe('https://naidan.nwtgck.org/#/');
+    expect(launch?.textContent).toBe('/#/');
     const sections = [...page.document.querySelectorAll('article section.walkthrough-step')];
     expect(sections).toHaveLength(5);
     expect(sections.map(section => section.querySelector('[data-docs-animation]')?.getAttribute('data-docs-animation'))).toEqual([

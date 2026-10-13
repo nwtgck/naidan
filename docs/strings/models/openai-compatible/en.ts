@@ -2,6 +2,7 @@ export const strings = {
   title: 'Connect to an OpenAI-compatible server',
   description: 'Set an OpenAI-compatible endpoint in Naidan, check its model list, and choose the default for chats that inherit it.',
   intro: 'Use this route when an inference server or API exposes OpenAI-compatible model and chat endpoints. Start with a server that is already running and has a model available. Naidan connects from your browser; it does not start the server.',
+  launch: { before: 'First, open ', after: ' to start Naidan. If first-run setup appears, close it with the × at the top right, then follow step 1.' },
   before: 'The local presets fill in LM Studio at http://localhost:1234/v1 or llama-server at http://localhost:8080/v1. Choose the preset that matches your server, or enter its actual base URL. A remote API may require custom HTTP headers. Its authentication, CORS policy and model support depend on that service.',
   steps: {
     open: {
@@ -11,7 +12,7 @@ export const strings = {
     },
     provider: {
       title: '2. Choose the provider and URL',
-      body: 'Set ［API Provider］ to ［OpenAI Compatible］. Choose the ［LM Studio (local)］ or ［llama-server (local)］ preset if it matches your server. Each preset sets the provider and URL together. For another compatible service, type its base URL, including a path such as /v1 when that service requires it.',
+      body: 'Set ［API Provider］ to ［OpenAI Compatible］. Choose the ［LM Studio (local)］ or ［llama-server (local)］ preset if it matches your server. Each preset sets the provider and URL together. For another compatible service, type its base URL, including a path such as /v1 when that service requires it. Local-only and Curated block arbitrary external API URLs; use an edition such as regular Hosted that permits the chosen service.',
       caption: 'A local preset fills the base URL. The example shows LM Studio; use your server’s actual address.',
     },
     headers: {
@@ -21,7 +22,7 @@ export const strings = {
     },
     check: {
       title: '4. Check the connection',
-      body: 'Select ［Check connection］. Naidan requests the server’s model list and briefly displays ［Connected］ after a successful response. In ［Settings］, changing a localhost address can also start this check automatically. A failed check may indicate a wrong URL, an unavailable server, or a browser CORS, origin or CSP restriction.',
+      body: 'Select ［Check Connection］. Naidan requests the server’s model list and briefly displays ［Connected］ after a successful response. In ［Settings］, changing a localhost address can also start this check automatically. A failed check may indicate a wrong URL, an unavailable server, or a browser CORS, origin or CSP restriction.',
       caption: 'The model-list request moves from checking to ［Connected］ on success.',
     },
     model: {
@@ -49,7 +50,7 @@ export const strings = {
     headerName: 'Header Name (e.g. X-API-Key)',
     headerValue: 'Value',
     noHeaders: 'No custom headers configured',
-    checkConnection: 'Check connection',
+    checkConnection: 'Check Connection',
     automaticCheck: 'Connection check is automatically performed only for localhost URLs.',
     connected: 'Connected',
     modelSelection: 'Model Selection',

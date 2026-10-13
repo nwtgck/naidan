@@ -18,6 +18,34 @@ const editions = [
 ] as const;
 
 describe('shell guide tool-call demonstration', () => {
+  it.each(editions)('shows the Chat Tools and Shell switch walkthrough before the longer guide in $locale', async ({ locale, strings, common }) => {
+    const html = await renderToString(createSSRApp({ render: () => h(ShellGuide, { s: strings, locale, common }) }));
+    using page = {
+      window: new JSDOM(html).window,
+      [Symbol.dispose]() {
+        this.window.close();
+      },
+    };
+    const document = page.window.document;
+    const walkthrough = document.querySelector('[data-testid="docs-shell-walkthrough"]');
+    expect(document.querySelector('[data-docs-app-entry-path]')?.getAttribute('data-docs-app-entry-path')).toBe('/#/');
+    const open = walkthrough?.querySelector('[data-testid="docs-shell-enable-open"]');
+    const enable = walkthrough?.querySelector('[data-testid="docs-shell-enable-enable"]');
+    expect(walkthrough?.previousElementSibling?.querySelector('[data-testid="docs-shell-demo"]')).not.toBeNull();
+    expect([...walkthrough?.querySelectorAll('figure') ?? []]).toHaveLength(2);
+    expect(open?.getAttribute('data-docs-animation')).toBe('shell-enable-open');
+    expect(enable?.getAttribute('data-docs-animation')).toBe('shell-enable-enable');
+    expect(open?.textContent).toContain(strings.walkthrough.demo.optionsTools);
+    expect(open?.querySelector('[data-testid="docs-shell-tools-trigger"]')).not.toBeNull();
+    expect(enable?.querySelector('[data-testid="docs-shell-switch"]')?.textContent).toContain(strings.walkthrough.demo.on);
+    expect(enable?.querySelector('[data-testid="docs-shell-settings-result"]')?.textContent).toContain(strings.walkthrough.demo.shellSettings);
+    expect(walkthrough?.textContent).toContain('/sys/fs/naidan');
+    expect(walkthrough?.querySelectorAll('.ui-label').length).toBeGreaterThan(4);
+    expect(walkthrough?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/files/privacy/`);
+    expect(walkthrough?.textContent).toContain(strings.walkthrough.use.filesLink);
+    expect(walkthrough?.querySelector('button, input, textarea, [tabindex], script')).toBeNull();
+  });
+
   it.each(editions)('renders a coherent five-call file task and complete transcript in $locale', async ({ locale, strings, common }) => {
     const html = await renderToString(createSSRApp({ render: () => h(ShellGuide, { s: strings, locale, common }) }));
     using page = {

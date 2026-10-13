@@ -78,7 +78,7 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
         const homeBrandAssets = manifestEntry({ manifest, name: 'home-brand' });
         if (!homeBrandAssets.script) throw new Error('Missing Docs home brand client');
         const renderedPages = new Map<string, RenderedPage>();
-        files.set('404.html', renderNotFound({ assets: { styles: homeAssets.styles, scripts: [] } }));
+        files.set('404.html', renderNotFound({ assets: { styles: homeAssets.styles, scripts: [] }, bootstrap }));
         for (const locale of DOCS_LOCALES) {
           for (const page of DOCS_PAGES) {
             const rendered = await renderer.renderPage({ locale, page: page.id });
@@ -101,7 +101,7 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
             }
             if (!assets.styles.length) throw new Error(`Missing styles for ${page.id}`);
             const relative = `${docsHref({ locale, page: page.id }).slice(DOCS_BASE.length)}index.html`;
-            files.set(relative, renderProductionDocument({ page: rendered, assets: { styles: assets.styles, scripts } }));
+            files.set(relative, renderProductionDocument({ page: rendered, assets: { styles: assets.styles, scripts }, bootstrap }));
           }
         }
         const home = ({ locale }: { locale: DocsLocale }): RenderedPage => {

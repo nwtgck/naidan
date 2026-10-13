@@ -7,6 +7,7 @@ import type { ViteDevServer } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import type { DocsRenderer } from '../build/contracts';
 import { createDocsDevBridge } from '../../build/docs-dev-bridge';
+import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
 type BridgeMiddleware = (request: { url: string; method: string }, response: { statusCode: number; end: (body?: string) => void }, next: (error?: unknown) => void) => Promise<void>;
 
@@ -64,6 +65,42 @@ it('replaces the Docs child after compiler edits before serving another request'
 });
 
 describe('Docs development registry', () => {
+  it('serves a styled 404 while the home page has a syntax error', async () => {
+    await using fixture = await createSiteFixture();
+    const homeFile = path.join(fixture.docs, 'pages/index.vue');
+    const homeSource = await readFile(homeFile, 'utf8');
+    const brokenHome = homeSource.replace('<script setup lang="ts">', `\
+<script setup lang="ts">
+const broken = ;`);
+    expect(brokenHome).not.toBe(homeSource);
+    await using dev = await startSiteDev({ root: fixture.root });
+    expect((await dev.request({ url: '/docs/en/' })).status).toBe(200);
+
+    await writeFile(homeFile, brokenHome);
+    await vi.waitFor(async () => {
+      expect((await dev.request({ url: '/docs/en/' })).status).toBe(500);
+    }, { timeout: 5000, interval: 100 });
+    const missing = await dev.request({ url: '/docs/en/not-a-page/' });
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get('content-type')).toContain('text/html');
+    using page = parsePage({ html: await missing.text() });
+    expect(page.document.title).toBe('404 | Naidan Docs');
+    expect(page.document.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex');
+    const stylesheet = page.document.querySelector('link[rel="stylesheet"]')?.getAttribute('href');
+    expect(stylesheet).toBe('/docs/site/site.css?direct');
+    const css = await dev.request({ url: stylesheet ?? '' });
+    expect(css.status).toBe(200);
+    expect(css.headers.get('content-type')).toContain('text/css');
+    expect(await css.text()).toContain('.language-page');
+
+    expect((await dev.request({ url: '/docs/en/work/browser-shell/' })).status).toBe(200);
+
+    await writeFile(homeFile, homeSource);
+    await vi.waitFor(async () => {
+      expect((await dev.request({ url: '/docs/en/' })).status).toBe(200);
+    }, { timeout: 5000, interval: 100 });
+  });
+
   it('isolates a broken page and language, then recovers in the same SSR server', async () => {
     const repository = process.cwd();
     const fixture = await mkdtemp(path.join(os.tmpdir(), 'docs-registry-'));

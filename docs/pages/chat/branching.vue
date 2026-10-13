@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import BranchingDemo from '../../islands/branching/BranchingDemo.vue';
+import AppEntryLink from '../../site/AppEntryLink.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
+import UiText from '../../site/UiText.vue';
+import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
 import type { BranchingMessages, CommonMessages } from '../../site/messages';
 
@@ -28,12 +31,13 @@ defineExpose({
       :key="paragraph"
       class="lead"
     >{{ paragraph }}</p>
+    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" /><UiText :text="s.launch.after" />{{ s.modelGuide.before }}<a :href="docsHref({ locale, page: 'models/in-browser' })">{{ s.modelGuide.link }}</a>{{ s.modelGuide.after }}</p>
     <h2>{{ s.stepsTitle }}</h2>
     <ol>
       <li
         v-for="step in s.steps"
         :key="step"
-      >{{ step }}</li>
+      ><UiText :text="step" /></li>
     </ol>
     <h2>{{ s.demoTitle }}</h2>
     <div
@@ -43,7 +47,7 @@ defineExpose({
       <BranchingDemo :copy="s.demo" :chrome="common.chrome" />
     </div>
     <h2>{{ s.detail.title }}</h2>
-    <p>{{ s.detail.body }}</p>
+    <p><UiText :text="s.detail.body" /></p>
     <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'chat/super-edit', title: s.next, description: s.nextDescription }]" />
   </article>
 </template>

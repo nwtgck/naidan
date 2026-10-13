@@ -1,8 +1,9 @@
 import { parseSearchIndex, purposeDocs, searchDocs, searchIndexHref } from '../../site/search';
 import type { SearchIndex } from '../../site/search';
 import type { DocsLocale } from '../../site/routes';
-import { sendSearchResponse, subscribeSearchRequests } from './transport';
-import type { SearchWorkerRequest } from './worker-contracts';
+import { parseWorkerRequest } from './worker-contracts';
+import type { SearchWorkerApi } from './worker-contracts';
+import { exposeSearchWorker } from './transport';
 const indexes = new Map<DocsLocale, Promise<SearchIndex>>();
 
 async function loadIndex({ locale }: { locale: DocsLocale }): Promise<SearchIndex> {
@@ -19,21 +20,20 @@ async function loadIndex({ locale }: { locale: DocsLocale }): Promise<SearchInde
   return pending;
 }
 
-async function respond({ request }: { request: SearchWorkerRequest }): Promise<void> {
-  try {
-    const index = await loadIndex({ locale: request.locale });
-    const results = request.query.trim()
-      ? searchDocs({ index, query: request.query }).map(({ href, title, snippet }) => ({ href, title, snippet }))
-      : purposeDocs({ index });
-    sendSearchResponse({ response: { kind: 'results', requestId: request.requestId, results } });
-  } catch (error) {
-    console.error('[Docs search] Worker search failed.', error);
-    sendSearchResponse({ response: { kind: 'error', requestId: request.requestId } });
-  }
-}
-
-subscribeSearchRequests({
-  onRequest: ({ request }) => {
-    void respond({ request });
+const api: SearchWorkerApi = {
+  async search({ request }) {
+    const parsed = parseWorkerRequest({ value: request });
+    try {
+      const index = await loadIndex({ locale: parsed.locale });
+      const results = parsed.query.trim()
+        ? searchDocs({ index, query: parsed.query }).map(({ href, title, snippet }) => ({ href, title, snippet }))
+        : purposeDocs({ index });
+      return { kind: 'results', requestId: parsed.requestId, results };
+    } catch (error) {
+      console.error('[Docs search] Worker search failed.', error);
+      return { kind: 'error', requestId: parsed.requestId };
+    }
   },
-});
+};
+
+exposeSearchWorker({ api });

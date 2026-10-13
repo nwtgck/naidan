@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import BranchingMethod from './BranchingMethod.vue';
+import UiText from '../../site/UiText.vue';
 import type { BranchingCopy, ReplicaChromeCopy } from '../../site/messages';
 
 defineProps<{ copy: BranchingCopy; chrome: ReplicaChromeCopy }>();
@@ -17,7 +18,7 @@ defineExpose({
 
 <template>
   <div class="branch-sections" data-testid="branch-demo">
-    <p class="branch-note">{{ copy.note }}</p>
+    <p class="branch-note"><UiText :text="copy.note" /></p>
     <BranchingMethod v-for="method in methods" :key="method" :variant="method" :copy="copy" :chrome="chrome" />
   </div>
 </template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
+import AppEntryLink from '../../site/AppEntryLink.vue';
 import ExternalLink from '../../site/ExternalLink.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
 import NaidanRpcStep from '../../site/demos/NaidanRpcStep.vue';
@@ -15,6 +16,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article class="prose" data-testid="docs-models-naidan-rpc">
     <h1>{{ s.title }}</h1>
     <p class="lead"><UiText :text="s.intro" /></p>
+    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
+    <p class="hosted-example"><UiText :text="s.hostedExample.body" /> <ExternalLink href="https://naidan.pages.dev/" :locale="locale">{{ s.hostedExample.link }}</ExternalLink></p>
 
     <section v-for="(step, key) in s.steps" :key="key" class="rpc-step" :aria-labelledby="`rpc-${key}`" data-testid="rpc-guide-step">
       <h2 :id="`rpc-${key}`">{{ step.title }}</h2>

@@ -18,7 +18,7 @@ defineExpose({
 <template>
   <details class="docs-guide-menu" data-testid="docs-guide-menu">
     <summary class="control docs-guide-trigger">
-      {{ copy.title }}<span class="docs-guide-chevron" aria-hidden="true">⌄</span>
+      {{ copy.title }}<svg class="docs-guide-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="m2 4 4 4 4-4" /></svg>
     </summary>
     <div class="docs-guide-panel">
       <DocsGuideTree :locale="locale" :page="page" :copy="copy" :label="copy.title" id-prefix="header" group-mode="expanded" />

@@ -98,8 +98,8 @@ function createDocsRequestPlugin(): Plugin {
             sendBody({ body: 'Invalid Docs request' }); return;
           case 'missing': {
             response.statusCode = 404;
-            const styles = await devStyles({ server, entry: styleEntryId({ page: 'index' }) });
-            html = renderNotFound({ assets: { styles, scripts: ['/docs/@vite/client'] } });
+            const styles = await devStyles({ server, entry: '/site/site.css' });
+            html = renderNotFound({ assets: { styles, scripts: ['/docs/@vite/client'] }, bootstrap: '/docs/__locale.js' });
             break;
           }
           case 'root': {
@@ -120,7 +120,7 @@ function createDocsRequestPlugin(): Plugin {
             const scripts = findIslands({ body: rendered.body }).map(name => devHref({ moduleUrl: `/${ISLAND_ENTRIES[name]}` }));
             if (hasHomeBrand({ body: rendered.body })) scripts.push(devHref({ moduleUrl: `/${HOME_BRAND_CLIENT}` }));
             if (hasAppEntryLinks({ body: rendered.body })) scripts.push(devHref({ moduleUrl: `/${APP_ENTRY_CLIENT}` }));
-            html = renderDocument({ page: rendered, assets: { styles, scripts: ['/docs/@vite/client', ...scripts] } });
+            html = renderDocument({ page: rendered, assets: { styles, scripts: ['/docs/@vite/client', ...scripts] }, bootstrap: '/docs/__locale.js' });
             break;
           }
           default: {

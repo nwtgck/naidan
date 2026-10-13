@@ -38,7 +38,7 @@ defineExpose({
       :data-group="group.id"
     >
       <summary v-if="groupMode === 'disclosure'" :id="`docs-guide-group-${idPrefix}-${group.id}`">
-        {{ group.label }}<span class="docs-guide-chevron" aria-hidden="true">⌄</span>
+        {{ group.label }}<svg class="docs-guide-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="m2 4 4 4 4-4" /></svg>
       </summary>
       <h2 v-else :id="`docs-guide-group-${idPrefix}-${group.id}`">{{ group.label }}</h2>
       <ul>

@@ -1,28 +1,33 @@
+import { z } from 'zod';
+import { DOCS_PAGES, docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
 
-export type SearchHit = { href: string; title: string; snippet: string };
-export type SearchWorkerRequest = { requestId: number; locale: DocsLocale; query: string };
-export type SearchWorkerResponse =
-  | { kind: 'results'; requestId: number; results: SearchHit[] }
-  | { kind: 'error'; requestId: number };
+const searchHitSchema = z.object({ href: z.string(), title: z.string(), snippet: z.string() });
+export type SearchHit = z.infer<typeof searchHitSchema>;
+
+export const searchWorkerRequestSchema = z.object({
+  requestId: z.number().int().safe(),
+  locale: z.enum(['en', 'ja']),
+  query: z.string(),
+});
+export type SearchWorkerRequest = z.infer<typeof searchWorkerRequestSchema>;
+
+const searchWorkerResponseSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('results'), requestId: z.number().int().safe(), results: z.array(searchHitSchema) }),
+  z.object({ kind: z.literal('error'), requestId: z.number().int().safe() }),
+]);
+export type SearchWorkerResponse = z.infer<typeof searchWorkerResponseSchema>;
+
+export type SearchWorkerApi = {
+  search: ({ request }: { request: SearchWorkerRequest }) => Promise<SearchWorkerResponse>;
+};
 
 export function parseWorkerRequest({ value }: { value: unknown }): SearchWorkerRequest {
-  if (typeof value !== 'object' || value === null
-    || !('requestId' in value) || typeof value.requestId !== 'number' || !Number.isSafeInteger(value.requestId)
-    || !('locale' in value) || (value.locale !== 'en' && value.locale !== 'ja')
-    || !('query' in value) || typeof value.query !== 'string') throw new Error('Invalid Docs search request');
-  return value as SearchWorkerRequest;
+  return searchWorkerRequestSchema.parse(value);
 }
 
 export function parseWorkerResponse({ value, locale }: { value: unknown; locale: DocsLocale }): SearchWorkerResponse {
-  if (typeof value !== 'object' || value === null
-    || !('requestId' in value) || typeof value.requestId !== 'number' || !Number.isSafeInteger(value.requestId)
-    || !('kind' in value)) throw new Error('Invalid Docs search response');
-  if (value.kind === 'error') return { kind: 'error', requestId: value.requestId };
-  if (value.kind !== 'results' || !('results' in value) || !Array.isArray(value.results)
-    || !value.results.every((item: unknown) => typeof item === 'object' && item !== null
-      && 'href' in item && typeof item.href === 'string' && item.href.startsWith(`/docs/${locale}/`)
-      && 'title' in item && typeof item.title === 'string'
-      && 'snippet' in item && typeof item.snippet === 'string')) throw new Error('Invalid Docs search response');
-  return { kind: 'results', requestId: value.requestId, results: value.results as SearchHit[] };
+  const validHrefs = new Set(DOCS_PAGES.map(page => docsHref({ locale, page: page.id })));
+  return searchWorkerResponseSchema.refine(response => response.kind === 'error'
+    || response.results.every(hit => validHrefs.has(hit.href))).parse(value);
 }

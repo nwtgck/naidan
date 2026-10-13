@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { SearchPayload } from './contracts';
-import { sendSearchRequest, subscribeSearchResponses } from './transport';
+import { releaseSearchWorker, wrapSearchWorker } from './transport';
+import type { SearchWorkerRemote } from './transport';
+import { parseWorkerResponse } from './worker-contracts';
 import type { SearchHit, SearchWorkerRequest } from './worker-contracts';
 import { isDocsArticleHref } from '../../site/navigation-prefetch';
 
@@ -26,7 +28,7 @@ const resultsLabel = computed(() => {
 let previousFocus: HTMLElement | undefined;
 let previousOverflow: string | undefined;
 let searchWorker: Worker | undefined;
-let unsubscribeResponses: (() => void) | undefined;
+let searchRemote: SearchWorkerRemote | undefined;
 let requestId = 0;
 
 // DOM listeners require the browser's positional callback signature.
@@ -42,8 +44,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', shortcutListener);
   if (dialog.value?.open) dialog.value.close();
   restorePage();
-  searchWorker?.terminate();
-  unsubscribeResponses?.();
+  disposeWorker();
 });
 
 defineExpose({
@@ -54,12 +55,19 @@ defineExpose({
   }) || {}),
 });
 
+function disposeWorker(): void {
+  try {
+    if (searchRemote) releaseSearchWorker({ remote: searchRemote });
+  } finally {
+    searchRemote = undefined;
+    searchWorker?.terminate();
+    searchWorker = undefined;
+  }
+}
+
 function workerFailed({ error }: { error: unknown }): void {
   console.error('[Docs search] Worker search failed.', error);
-  unsubscribeResponses?.();
-  unsubscribeResponses = undefined;
-  searchWorker?.terminate();
-  searchWorker = undefined;
+  disposeWorker();
   requestId += 1;
   results.value = [];
   displayedQuery.value = '';
@@ -68,41 +76,45 @@ function workerFailed({ error }: { error: unknown }): void {
 
 function submitSearch(): void {
   if (!dialog.value?.open) return;
-  requestId += 1;
+  const currentRequestId = ++requestId;
   // Keep the previous list in place while the Worker searches. Its query is
   // labelled separately so it cannot be mistaken for results of the new input.
   status.value = 'loading';
   try {
-    if (!searchWorker) {
-      searchWorker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
-      unsubscribeResponses = subscribeSearchResponses({
-        worker: searchWorker,
-        locale: props.locale,
-        onResponse: ({ response }) => {
-          if (response.requestId !== requestId || !dialog.value?.open) return;
-          switch (response.kind) {
-          case 'results':
-            results.value = response.results;
-            displayedQuery.value = query.value.trim();
-            status.value = 'ready';
-            return;
-          case 'error':
-            results.value = [];
-            displayedQuery.value = '';
-            status.value = 'error';
-            return;
-          default: {
-            const unreachable: never = response;
-            throw new Error(`Unknown Docs search response: ${String(unreachable)}`);
-          }
-          }
-        },
-        onError: ({ error }) => workerFailed({ error }),
-      });
-      searchWorker.onerror = event => workerFailed({ error: event });
+    if (!searchRemote) {
+      const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+      searchWorker = worker;
+      searchRemote = wrapSearchWorker({ worker });
+      worker.onerror = event => {
+        if (worker === searchWorker) workerFailed({ error: event });
+      };
     }
-    const message: SearchWorkerRequest = { requestId, locale: props.locale, query: query.value };
-    sendSearchRequest({ worker: searchWorker, request: message });
+    const remote = searchRemote;
+    const isCurrent = () => remote === searchRemote && currentRequestId === requestId && !!dialog.value?.open;
+    const request: SearchWorkerRequest = { requestId: currentRequestId, locale: props.locale, query: query.value };
+    void remote.search({ request }).then(value => {
+      if (!isCurrent()) return;
+      const response = parseWorkerResponse({ value, locale: props.locale });
+      if (response.requestId !== currentRequestId) throw new Error('Mismatched Docs search response ID');
+      switch (response.kind) {
+      case 'results':
+        results.value = response.results;
+        displayedQuery.value = query.value.trim();
+        status.value = 'ready';
+        return;
+      case 'error':
+        results.value = [];
+        displayedQuery.value = '';
+        status.value = 'error';
+        return;
+      default: {
+        const unreachable: never = response;
+        throw new Error(`Unknown Docs search response: ${String(unreachable)}`);
+      }
+      }
+    }).catch(error => {
+      if (isCurrent()) workerFailed({ error });
+    });
   } catch (error) {
     workerFailed({ error });
   }

@@ -36,6 +36,10 @@ describe('media workflow guides', () => {
     expect(page.document.querySelector('[data-testid="image-step-reuse"] [data-testid="image-result-viewer"]')).not.toBeNull();
     expect(page.document.querySelector('[data-testid="image-step-reuse"]')?.textContent).toContain(copy.demo.reuseSettings);
     expect(page.document.querySelector('[data-testid="image-step-reuse"]')?.textContent).toContain(copy.demo.download);
+    const exampleImages = [...page.document.querySelectorAll('[data-testid="image-step-generate"] .complete img, [data-testid="image-step-generate"] .asset img, [data-testid="image-step-reuse"] .complete img, [data-testid="image-step-reuse"] .asset img, [data-testid="image-step-reuse"] .viewer-image img')];
+    expect(exampleImages).toHaveLength(5);
+    expect(new Set(exampleImages.map(image => image.getAttribute('src'))).size).toBe(1);
+    expect(page.document.querySelector('[data-testid="image-step-reuse"] .viewer-side p')?.textContent).toBe(copy.demo.promptSample);
     expect(page.document.querySelector('article')?.textContent).toContain(visibleGuideText({ text: copy.storage }));
     expect(page.document.querySelector('article')?.textContent).not.toContain('Naidan RPC');
     expect(page.document.querySelectorAll('figure button, figure input, figure a, figure audio')).toHaveLength(0);

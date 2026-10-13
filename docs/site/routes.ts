@@ -8,6 +8,8 @@ export const DOCS_PAGES = [
   { id: 'index', path: '', source: 'pages/index.vue' },
   { id: 'about/open-source', path: 'about/open-source/', source: 'pages/about/open-source.vue' },
   { id: 'files/privacy', path: 'files/privacy/', source: 'pages/files/privacy.vue' },
+  { id: 'files/explorer', path: 'files/explorer/', source: 'pages/files/explorer.vue' },
+  { id: 'files/settings', path: 'files/settings/', source: 'pages/files/settings.vue' },
   { id: 'work/app-permissions', path: 'work/app-permissions/', source: 'pages/work/app-permissions.vue' },
   { id: 'work/boundary', path: 'work/boundary/', source: 'pages/work/boundary.vue' },
   { id: 'work/local-only', path: 'work/local-only/', source: 'pages/work/local-only.vue' },
@@ -16,6 +18,7 @@ export const DOCS_PAGES = [
   { id: 'chat/groups', path: 'chat/groups/', source: 'pages/chat/groups.vue' },
   { id: 'chat/super-edit', path: 'chat/super-edit/', source: 'pages/chat/super-edit.vue' },
   { id: 'run/standalone', path: 'run/standalone/', source: 'pages/run/standalone.vue' },
+  { id: 'run/offline', path: 'run/offline/', source: 'pages/run/offline.vue' },
   { id: 'models/in-browser', path: 'models/in-browser/', source: 'pages/models/in-browser.vue' },
   { id: 'models/llama-cpp-browser', path: 'models/llama-cpp-browser/', source: 'pages/models/llama-cpp-browser.vue' },
   { id: 'models/transformers-js', path: 'models/transformers-js/', source: 'pages/models/transformers-js.vue' },
@@ -30,6 +33,7 @@ export const DOCS_PAGES = [
   { id: 'images/create', path: 'images/create/', source: 'pages/images/create.vue' },
   { id: 'audio/speech', path: 'audio/speech/', source: 'pages/audio/speech.vue' },
   { id: 'work/browser-shell', path: 'work/browser-shell/', source: 'pages/work/browser-shell.vue' },
+  { id: 'work/wikipedia', path: 'work/wikipedia/', source: 'pages/work/wikipedia.vue' },
 ] as const;
 export type DocsPageId = typeof DOCS_PAGES[number]['id'];
 

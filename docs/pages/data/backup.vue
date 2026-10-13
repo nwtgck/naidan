@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
+import AppEntryLink from '../../site/AppEntryLink.vue';
 import BackupSettingsStep from '../../site/demos/BackupSettingsStep.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
@@ -14,6 +15,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article class="prose" data-testid="docs-data-backup">
     <h1>{{ s.title }}</h1>
     <p class="lead"><UiText :text="s.intro" /></p>
+    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" /><UiText :text="s.launch.after" /></p>
 
     <section v-for="stage in (['export', 'preview', 'mode'] as const)" :key="stage" class="walkthrough-step" :aria-labelledby="`backup-${stage}`">
       <h2 :id="`backup-${stage}`">{{ s.steps[stage].title }}</h2>

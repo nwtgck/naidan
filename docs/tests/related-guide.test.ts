@@ -56,18 +56,21 @@ describe('related guide links', () => {
   it.each([
     { locale: 'en' as const, common: english, copy: standaloneEn },
     { locale: 'ja' as const, common: japanese, copy: standaloneJa },
-  ])('keeps the $locale Standalone guide linked to both access comparison and Naidan boundaries', async ({ locale, common, copy }) => {
+  ])('connects the $locale Standalone guide to offline use and access boundaries', async ({ locale, common, copy }) => {
     const html = await renderToString(createSSRApp(StandalonePage, { locale, common, s: copy }));
     using page = parsePage({ html });
     const related = page.document.querySelector('[data-docs-related-guide]');
     const links = [...(related?.querySelectorAll('a') ?? [])];
     expect(links.map(link => link.getAttribute('href'))).toEqual([
+      `/docs/${locale}/run/offline/`,
       `/docs/${locale}/work/app-permissions/`,
       `/docs/${locale}/work/boundary/`,
     ]);
-    expect(links[0]?.textContent).toContain(copy.permissionsGuideTitle);
-    expect(links[0]?.textContent).toContain(copy.permissionsGuideDescription);
-    expect(links[1]?.textContent).toContain(copy.next);
-    expect(links[1]?.textContent).toContain(copy.nextDescription);
+    expect(links[0]?.textContent).toContain(copy.offlineGuideTitle);
+    expect(links[0]?.textContent).toContain(copy.offlineGuideDescription);
+    expect(links[1]?.textContent).toContain(copy.permissionsGuideTitle);
+    expect(links[1]?.textContent).toContain(copy.permissionsGuideDescription);
+    expect(links[2]?.textContent).toContain(copy.next);
+    expect(links[2]?.textContent).toContain(copy.nextDescription);
   });
 });

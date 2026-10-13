@@ -4,6 +4,7 @@ export const strings = {
   title: 'OpenAI互換サーバーに接続する',
   description: 'NaidanでOpenAI互換の接続先とモデル一覧を確認し、設定を継承する会話のデフォルトモデルを選びます。',
   intro: 'OpenAI互換のモデル取得とチャット用APIを提供するサーバーに接続する手順です。サーバーが起動し、利用できるモデルがある状態から始めます。Naidanはブラウザから接続しますが、サーバー自体は起動しません。',
+  launch: { before: 'まず ', after: ' を開いてNaidanを起動します。初回設定が表示されたら右上の × で閉じ、手順1に進みます。' },
   before: 'ローカル用のプリセットには、LM Studioの http://localhost:1234/v1 と llama-serverの http://localhost:8080/v1 があります。実際の接続先に合うものを選ぶか、ベースURLを入力してください。外部APIではHTTPヘッダーが必要な場合があります。認証方法、CORSの設定、利用できるモデルは接続先ごとに異なります。',
   steps: {
     open: {
@@ -13,12 +14,12 @@ export const strings = {
     },
     provider: {
       title: '2. 接続方式とURLを選ぶ',
-      body: '［API プロバイダー］を［OpenAI 互換］にします。接続先が合う場合は［LM Studio (local)］か［llama-server (local)］を選びます。プリセットは方式とURLを一緒に設定します。別の互換サービスでは、必要なら /v1 などのパスを含めたベースURLを入力してください。',
+      body: '［API プロバイダー］を［OpenAI 互換］にします。接続先が合う場合は［LM Studio (local)］か［llama-server (local)］を選びます。プリセットは方式とURLを一緒に設定します。別の互換サービスでは、必要なら /v1 などのパスを含めたベースURLを入力してください。ローカルのみ版とCurated版では任意の外部APIのURLには接続できません。その接続先を許可する通常のHosted版などを使ってください。',
       caption: 'ローカル用プリセットでベースURLを入力します。図はLM Studioの例です。',
     },
     headers: {
       title: '3. 必要な場合だけヘッダーを追加する',
-      body: '接続先から指定されたヘッダーがある場合は、［カスタムHTTPヘッダー］の［ヘッダーを追加］を選び、名前と値を入力します。Naidanはリクエストにそのヘッダーを付けます。不要ならこの操作は飛ばしてください。共有するURLには認証情報を含めないようにします。',
+      body: '接続先から指定されたヘッダーがある場合は、［カスタム HTTP ヘッダー］の［ヘッダーを追加］を選び、名前と値を入力します。Naidanはリクエストにそのヘッダーを付けます。不要ならこの操作は飛ばしてください。共有するURLには認証情報を含めないようにします。',
       caption: '［ヘッダーを追加］で名前と値の入力欄が現れます。このローカル接続例では空欄の行を削除してから確認します。',
     },
     check: {
@@ -46,7 +47,7 @@ export const strings = {
     endpointUrl: 'エンドポイント URL',
     lmStudioPreset: 'LM Studio (local)',
     llamaServerPreset: 'llama-server (local)',
-    customHttpHeaders: 'カスタムHTTPヘッダー',
+    customHttpHeaders: 'カスタム HTTP ヘッダー',
     addHeader: 'ヘッダーを追加',
     headerName: 'ヘッダー名（例: X-API-Key）',
     headerValue: '値',

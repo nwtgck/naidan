@@ -81,7 +81,7 @@ describe('static component authoring boundaries', () => {
 describe('HTML composition and locale contracts', () => {
   it('escapes document metadata with DOM APIs and preserves the rendered body', () => {
     const title = '</title><script>alert("title")</script>';
-    const html = renderDocument({ page: { title, description: '" onload=bad', body: '<h1>Readable &amp; safe</h1><p>&lt;script&gt;not executed&lt;/script&gt;</p>', locale: 'ja', page: 'index' }, assets: emptyAssets });
+    const html = renderDocument({ page: { title, description: '" onload=bad', body: '<h1>Readable &amp; safe</h1><p>&lt;script&gt;not executed&lt;/script&gt;</p>', locale: 'ja', page: 'index' }, assets: emptyAssets, bootstrap: undefined });
     using parsed = parsePage({ html });
     expect(parsed.document.title).toBe(`${title} | Naidan`);
     expect(parsed.document.querySelector('meta[name="description"]')?.getAttribute('content')).toBe('" onload=bad');
@@ -99,11 +99,11 @@ describe('HTML composition and locale contracts', () => {
     '<h1>A</h1><svg><use xlink:href="javascript:bad()"></use></svg>',
     '<h1>A</h1><img src="data:image/svg+xml,anything">',
   ])('rejects unsupported rendered markup using DOM parsing: %s', body => {
-    expect(() => renderDocument({ page: { body, title: 'Test', description: 'Test', locale: 'en', page: 'index' }, assets: emptyAssets })).toThrow();
+    expect(() => renderDocument({ page: { body, title: 'Test', description: 'Test', locale: 'en', page: 'index' }, assets: emptyAssets, bootstrap: undefined })).toThrow();
   });
 
   it('sets an explicit referrer policy on external links', () => {
-    using parsed = parsePage({ html: renderDocument({ page: { body: '<h1>Title</h1><a href="https://example.test/">Outside</a>', title: 'Title', description: 'Test', locale: 'en', page: 'index' }, assets: emptyAssets }) });
+    using parsed = parsePage({ html: renderDocument({ page: { body: '<h1>Title</h1><a href="https://example.test/">Outside</a>', title: 'Title', description: 'Test', locale: 'en', page: 'index' }, assets: emptyAssets, bootstrap: undefined }) });
     expect(parsed.document.querySelector('a')?.getAttribute('referrerpolicy')).toBe('no-referrer');
   });
 

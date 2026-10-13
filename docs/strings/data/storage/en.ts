@@ -2,6 +2,7 @@ export const strings = {
   title: 'Choose where your conversations are saved',
   description: 'Compare browser storage and temporary memory, switch the place used for conversations, and request stronger protection from browser cleanup.',
   intro: 'Naidan keeps conversations in this browser. The ［Storage］ settings distinguish where conversation data is kept from the separate request for persistent browser storage. Choose a place that fits your data.',
+  launch: { before: 'Open ', after: ' to check where this browser saves conversations. If first-time setup appears, close it with ×, then use ［Settings］ in the sidebar to reach ［Storage］.' },
   steps: {
     open: {
       title: '1. Open Storage settings',
@@ -10,20 +11,20 @@ export const strings = {
     },
     choose: {
       title: '2. Choose a storage provider',
-      body: 'Choose OPFS for larger browser data and attachments when the browser supports it. ［Local Storage］ has a smaller capacity and cannot keep sent images permanently. Memory keeps conversation data only for this page session; a reload or closing the tab loses it. Selecting another provider opens a confirmation, then Naidan copies chats, groups, and settings into the new provider.',
-      caption: 'The example switches from OPFS to Memory and confirms the migration.',
+      body: 'Choose OPFS for larger browser data and attachments when the browser supports it. ［Local Storage］ has a smaller capacity and cannot keep sent images permanently. Choose ［Ephemeral］ (memory mode) only for temporary storage: reloading or closing the tab loses chats, groups, and settings copied into it. Selecting another provider opens a confirmation, then Naidan copies chats, groups, and settings into the new provider.',
+      caption: 'The example switches from OPFS to ［Ephemeral］ and confirms the migration.',
     },
     persist: {
       title: '3. Ask the browser to keep saved data',
-      body: 'If ［Persistent Storage］ shows ［Best Effort］, select ［Enable］. A ［Protected］ result means the browser accepted the request to protect this site’s data from automatic cleanup under storage pressure. The browser can decline it. This request is separate from choosing OPFS or ［Local Storage］.',
+      body: 'If ［Persistent Storage］ shows ［Best Effort］, select ［Enable］. A ［Protected］ result means the browser accepted the request to protect this site’s data from automatic cleanup under storage pressure. It does not make chats, groups, or settings in ［Ephemeral］ survive a reload. The browser can decline the request. This request is separate from choosing a storage provider.',
       caption: '［Enable］ asks the browser for persistent storage and then updates the status.',
     },
   },
   limitsTitle: 'Before you rely on one browser copy',
   limits: [
-    'Clearing site data, losing this device, or using another browser can still leave you without your conversations. Download a fresh ZIP when the data matters.',
-    'Changing providers copies the current data; it does not erase every trace in the old provider. Moving from OPFS or Memory to Local Storage warns when attachments will become inaccessible.',
-    'Memory applies to conversation storage. It does not promise that every other browser preference or bootstrap value leaves no persistent trace.',
+    'Clearing site data, losing this device, or using another browser can still leave you without your conversations. Export a fresh conversation backup ZIP when the data matters.',
+    'Changing providers copies the current conversation data and settings; copied working-folder contents are not migrated. The switch does not erase every trace in the old provider. Moving from OPFS or ［Ephemeral］ to ［Local Storage］ warns when attachments will become inaccessible.',
+    '［Ephemeral］ applies to the selected Naidan storage provider, including chats and settings. Other browser preferences and model caches may still remain on this device.',
   ],
   backupLink: 'Back up and restore conversations with a ZIP',
   nextDescription: 'Export a ZIP copy, inspect it before import, and choose how to restore it.',

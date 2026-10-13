@@ -2,7 +2,9 @@ export const strings = {
   title: 'Continue a long conversation with a shorter context',
   description: 'Use Compact Context to summarize older messages, keep recent messages, and continue in a new branch of the same Chat.',
   intro: 'When a Chat becomes long, ［Compact Context］ asks your selected model to summarize its older messages. The summary and the recent messages you keep form a new path in the same Chat.',
+  launch: { before: 'Open ', after: ' and choose the long Chat you want to continue. If first-time setup appears, choose a working endpoint and model and finish setup before compacting.' },
   prerequisite: 'Choose a working model and endpoint first. Read the generated summary before relying on it: a model can miss or misstate details.',
+  setup: { before: 'If you still need to set up a model, see ', link: 'local model connection options', between: ' or ', browserLink: 'browser model setup', after: '.' },
   steps: {
     open: {
       title: '1. Open Compact Context from the Chat header',
@@ -11,7 +13,7 @@ export const strings = {
     },
     keep: {
       title: '2. Choose how many recent messages to keep',
-      body: 'The dialog starts at six recent messages. Move the slider or choose a preset to set the count; the older messages shown as “To compact” will be summarized. A preset is unavailable when the Chat is too short for that count.',
+      body: 'The dialog initially keeps up to six recent messages. In a shorter Chat, the count drops so at least one older message remains to summarize. Move the slider or choose a preset to set the count; the older messages shown as “To compact” will be summarized. A preset is unavailable when the Chat is too short for that count.',
       caption: 'Here, four older messages are summarized and six recent messages are kept.',
     },
     run: {

@@ -2,6 +2,7 @@ export const strings = {
   title: 'Back up and restore conversations with a ZIP',
   description: 'Export conversation data to a ZIP, inspect an archive before importing it, and choose whether to add it or replace current data.',
   intro: '［Export / Import］ in ［Storage］ settings is experimental. It creates a ZIP copy of the conversation data held by the current storage provider. Make a new copy after important changes, keep it somewhere you can find it, and choose the import mode deliberately when you restore it.',
+  launch: { before: 'Open ', after: ' to back up the conversations in this browser. If first-time setup appears, close it with ×, then use ［Settings］ in the sidebar and open ［Storage］.' },
   steps: {
     export: {
       title: '1. Download a ZIP from Storage settings',
@@ -15,12 +16,12 @@ export const strings = {
     },
     mode: {
       title: '3. Add data or restore by replacing it',
-      body: '［Append (Merge)］ keeps current chats and groups, adds imported items with new IDs, and by default keeps the current endpoint and model settings while adding imported profiles. ［Replace (Restore)］ clears current data and restores the ZIP state. You can adjust the settings fields shown below the mode choices. After selecting ［Import］, Naidan verifies the archive, imports it, then reloads the page.',
+      body: '［Append (Merge)］ keeps current chats and groups, adds imported items with new IDs, and by default keeps the current endpoint and model settings while adding imported profiles. ［Replace (Restore)］ clears current data and restores the ZIP state. If OPFS is the current storage provider, ［Replace (Restore)］ also deletes folders copied into that provider, which this ZIP cannot restore; download any files you need from those copies before replacing. You can adjust the settings fields shown below the mode choices. After selecting ［Import］, Naidan verifies the archive, imports it, then reloads the page.',
       caption: '［Append (Merge)］ is the initial choice; ［Replace (Restore)］ clears current data before restoring.',
     },
   },
   scopeTitle: 'What this ZIP covers',
-  scopeBody: 'A normal ZIP includes the current provider’s settings, conversation structure, chat content, and available binary objects. ［Local Storage］ does not persist sent image files, so its ZIP cannot recover them. The ZIP does not include downloaded model files or caches, files inside linked volumes or host folders, the complete image generation session and history, or RPC trust keys. ［Replace (Restore)］ also removes image generation history that the ZIP cannot restore.',
+  scopeBody: 'A normal ZIP includes the current provider’s settings, conversation structure, chat content, and available binary objects. ［Local Storage］ does not persist sent image files, so its ZIP cannot recover them. The ZIP does not include downloaded model files or caches, copied folders held in browser storage, linked folders on your device, the complete image generation session and history, or RPC trust keys. ［Replace (Restore)］ also removes image generation history that the ZIP cannot restore.',
   careTitle: 'Keep the copy useful',
   careBody: 'Finish edits before exporting: the archive stream is not locked against changes throughout its creation. A ZIP is a manual copy of the data at export time, not an automatic backup. Connection settings, including URL and HTTP headers, may be present; the ZIP has no password or encryption option in this flow. Store and share it accordingly.',
   storageLink: 'Choose where your conversations are saved',

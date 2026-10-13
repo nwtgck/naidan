@@ -14,7 +14,7 @@ import ExternalLink from '../site/ExternalLink.vue';
 import { createSiteFixture, parsePage } from './site.test-support';
 
 function compose({ body, locale }: { body: string; locale: DocsLocale }): string {
-  return renderDocument({ page: { page: 'index', locale, body, title: 'Test', description: 'Description' }, assets: { styles: [], scripts: [] } });
+  return renderDocument({ page: { page: 'index', locale, body, title: 'Test', description: 'Description' }, assets: { styles: [], scripts: [] }, bootstrap: undefined });
 }
 
 describe('external link presentation', () => {
@@ -98,6 +98,9 @@ describe('accessible guide presentation', () => {
       expect(pause?.checked).toBe(false);
       expect(pause?.getAttribute('aria-label')).toBeTruthy();
       const scripts = [...document.document.querySelectorAll<HTMLScriptElement>('script[src]')].map(script => script.getAttribute('src') ?? '');
+      const bootstrap = document.document.querySelector('script:not([type])[src]');
+      expect(bootstrap?.parentElement).toBe(document.document.head);
+      expect(bootstrap?.getAttribute('src')).toMatch(/^\/docs\/assets\/locale-.+\.js$/);
       expect(scripts.filter(src => src.includes('/island-search-'))).toHaveLength(1);
       const branching = document.document.querySelector('[data-docs-island="branching"]') !== null;
       const appEntry = document.document.querySelector('a[data-docs-app-entry-path]') !== null;
@@ -105,7 +108,14 @@ describe('accessible guide presentation', () => {
       expect(scripts.filter(src => src.includes('/island-branching-'))).toHaveLength(Number(branching));
       expect(scripts.filter(src => src.includes('/app-entry-'))).toHaveLength(Number(appEntry));
       expect(scripts.filter(src => src.includes('/home-brand-'))).toHaveLength(Number(homeBrand));
-      expect(scripts).toHaveLength(1 + Number(branching) + Number(appEntry) + Number(homeBrand));
+      expect(scripts).toHaveLength(2 + Number(branching) + Number(appEntry) + Number(homeBrand));
+      const source = document.document.querySelector<HTMLAnchorElement>('a.source-icon');
+      expect(source?.hasAttribute('aria-label')).toBe(false);
+      expect(source?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+      const sourceLabels = [...source?.querySelectorAll('.sr-only') ?? []].map(label => label.textContent ?? '');
+      expect(sourceLabels).toHaveLength(2);
+      expect(sourceLabels[0]).toBeTruthy();
+      expect(sourceLabels[1]).toBe(EXTERNAL_LINK_LABEL[locale]);
       if (animations.length > 0) {
         const tree = parseCss(output.css);
         const keyframes: string[] = [], motions: string[] = [], pauseRules: string[] = [], reduced: string[] = [];
@@ -185,7 +195,21 @@ describe('accessible guide presentation', () => {
         expect(diagram.hasAttribute('lang')).toBe(false);
       }
       const folder = document.document.querySelector('[data-testid="folder-access-demo"]');
-      if (page === 'files/privacy') expect(folder).not.toBeNull();
+      if (page === 'files/privacy') {
+        expect(folder).not.toBeNull();
+        const guide = document.document.querySelector('[data-testid="docs-files"]');
+        expect(guide?.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')).not.toBeNull();
+        expect(guide?.querySelector('.app-entry-intro a[href] + a')?.getAttribute('href')).toBe(`/docs/${locale}/models/in-browser/`);
+        expect(guide?.querySelector('.app-entry-intro')?.textContent).toContain(locale === 'ja' ? 'ツール呼び出しに対応するモデル' : 'model that supports tool calls');
+        const steps = guide?.querySelectorAll('ol > li');
+        expect(steps).toHaveLength(5);
+        expect(steps?.[1]?.querySelector('.ui-label')?.textContent).toBe(locale === 'ja' ? 'ファイル' : 'Files');
+        expect(steps?.[1]?.textContent).toContain(locale === 'ja' ? '読み取り専用' : 'read-only');
+        expect(steps?.[1]?.textContent).toContain(locale === 'ja' ? '画像入力に対応するモデル' : 'model that accepts image input');
+        expect(steps?.[1]?.textContent).toContain(locale === 'ja' ? '送信する前に' : 'before sending the message');
+        expect(steps?.[2]?.textContent).toContain(locale === 'ja' ? '手順4へ進みます' : 'continue with step 4');
+        expect(steps?.[3]?.textContent).toContain(locale === 'ja' ? 'シェル' : 'Shell');
+      }
       if (folder) {
         expect(folder.textContent).toContain(expected.folder);
         expect(folder.textContent).toContain(expected.access);

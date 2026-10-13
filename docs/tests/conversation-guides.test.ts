@@ -19,6 +19,10 @@ describe('conversation guides', () => {
     const html = await renderToString(createSSRApp(CompactPage, { s: copy, locale, common }));
     using page = parsePage({ html });
     const { document } = page;
+    expect(document.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('/#/');
+    expect(document.querySelector('.prerequisite a')?.getAttribute('href')).toBe(`/docs/${locale}/models/local-engines/`);
+    expect(document.querySelector('.prerequisite a')?.textContent).toBe(copy.setup.link);
+    expect(document.querySelectorAll('.prerequisite a')[1]?.getAttribute('href')).toBe(`/docs/${locale}/models/in-browser/`);
     expect(document.querySelectorAll('section.walkthrough-step')).toHaveLength(4);
     expect([...document.querySelectorAll('section.walkthrough-step')].map(section => section.querySelector('h2')?.textContent)).toEqual([
       copy.steps.open.title, copy.steps.keep.title, copy.steps.run.title, copy.steps.result.title,
@@ -51,6 +55,7 @@ describe('conversation guides', () => {
     const html = await renderToString(createSSRApp(GroupsPage, { s: copy, locale, common }));
     using page = parsePage({ html });
     const { document } = page;
+    expect(document.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('/#/');
     expect(document.querySelectorAll('section.walkthrough-step')).toHaveLength(4);
     expect([...document.querySelectorAll('section.walkthrough-step')].map(section => section.querySelector('h2')?.textContent)).toEqual([
       copy.steps.create.title, copy.steps.move.title, copy.steps.add.title, copy.steps.tidy.title,

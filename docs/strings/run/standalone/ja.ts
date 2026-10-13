@@ -55,4 +55,6 @@ export const strings = {
   nextDescription: 'ブラウザの許可範囲と、ローカルAIが使えるデータの境界を確認します。',
   permissionsGuideTitle: 'Webアプリとネイティブアプリの権限を比べる',
   permissionsGuideDescription: 'ブラウザ、デスクトップ、CLI、モバイルでアクセスできる範囲を比べます。',
+  offlineGuideTitle: 'Hosted版をオフラインで使う',
+  offlineGuideDescription: '接続を切る前にHosted版のPWAとブラウザ内モデルを準備します。',
 } satisfies StandaloneMessages;

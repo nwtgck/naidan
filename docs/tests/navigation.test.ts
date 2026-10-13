@@ -22,6 +22,8 @@ describe('all-page Docs navigation', () => {
   it.each(DOCS_LOCALES)('lists every %s route once as a normal link, with one current page', async locale => {
     for (const route of DOCS_PAGES) {
       using rendered = await renderLayout({ locale, page: route.id });
+      const header = rendered.document.querySelector('[data-testid="docs-header"]');
+      expect(header?.classList.contains('docs-article-page')).toBe(route.id !== 'index');
       const menu = rendered.document.querySelector('[data-testid="docs-guide-menu"]');
       expect(menu?.tagName).toBe('DETAILS');
       expect(menu?.querySelector('summary')?.textContent?.trim()).toContain(copy[locale].navigation.title);

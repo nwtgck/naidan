@@ -4,11 +4,13 @@ export const strings = {
   intro: [
     'Keep the original conversation while choosing where and how its next path begins.',
   ],
+  launch: { before: 'Open ', after: ' to start. If first-time setup appears, choose a working endpoint and model and finish setup before sending or generating replies. Then open a Chat with messages, or start one and exchange a few messages before branching.' },
+  modelGuide: { before: ' For an in-browser model, see ', link: 'browser model setup', after: '.' },
   stepsTitle: 'Create and switch conversation paths',
   steps: [
-    'Below a message, use the pencil to edit, the send icon to resend, or the circular arrow to regenerate an answer. After editing, choose Send & Branch.',
+    'Below a message, use the pencil to edit, the send icon to resend, or the circular arrow to regenerate an answer. After editing, choose ［Send & Branch］.',
     'Use the arrows around the version number to switch paths. They appear below your message for edit and resend, and below the answer for regenerate.',
-    'For a separate Chat, choose More actions → Fork Chat below a message. It opens with the current path through that message; the header fork button includes the last message instead.',
+    'For a separate Chat, choose ［More actions］ → ［Fork Chat］ below a message. It opens with the current path through that message; the header fork button includes the last message instead.',
   ],
   demoTitle: 'Try each way to branch the conversation',
   demo: {
@@ -24,7 +26,7 @@ export const strings = {
     chatTitle: 'Browser models',
     forkTitle: 'Fork of Browser models',
     reset: 'Return to original',
-    note: 'Each example plays automatically. Choose a step or use its controls to pause it. Replay restarts it; the page pause control shows the result.',
+    note: 'Each example plays automatically. Choose a step or use its controls to pause it. ［Replay this method］ restarts it; the page pause control shows the result.',
     methods: [
       { title: 'Edit', body: 'Change the question, then send it as a new version.' },
       { title: 'Resend', body: 'Send the same question again as a new version.' },
@@ -32,10 +34,10 @@ export const strings = {
       { title: 'Fork Chat', body: 'Open an independent Chat from the selected message.' },
     ] satisfies [unknown, unknown, unknown, unknown],
     stages: [
-      ['Choose the pencil below your message.', 'Edit the text in place, then choose Send & Branch.', 'The revised question and new response form version 2 / 2.', 'Choose the left arrow below your message to return to the original question and its answer.'],
+      ['Choose the pencil below your message.', 'Edit the text in place, then choose ［Send & Branch］.', 'The revised question and new response form version 2 / 2.', 'Choose the left arrow below your message to return to the original question and its answer.'],
       ['Choose the send icon below your message.', 'The same question becomes version 2 / 2, and a new response starts.', 'The new version has its own answer.', 'Choose the left arrow below your message to return to its original continuation.'],
       ['Choose the circular arrow below the assistant response.', 'Your question stays the same; a new assistant version starts.', 'The new answer is assistant version 2 / 2.', 'Choose the left arrow below the answer to compare it with version 1 / 2.'],
-      ['Choose More actions below the user message.', 'Choose Fork Chat from the three-dot menu.', 'The new Chat opens with the selected user message. Its later answer was not copied, and no new answer starts automatically.', 'Select the original Chat in the sidebar: its answer is still there. Both Chats remain available.'],
+      ['Choose ［More actions］ below the user message.', 'Choose ［Fork Chat］ from the three-dot menu.', 'The new Chat opens with the selected user message. Its later answer was not copied, and no new answer starts automatically.', 'Select the original Chat in the sidebar: its answer is still there. Both Chats remain available.'],
     ] satisfies [[string, string, string, string], [string, string, string, string], [string, string, string, string], [string, string, string, string]],
     controls: {
       steps: 'Walkthrough steps',
@@ -72,7 +74,7 @@ export const strings = {
   },
   detail: {
     title: 'Keep versions in one Chat, or continue in a separate Chat',
-    body: 'Edit, resend, and regenerate keep alternatives in one Chat. Editing an assistant answer uses Update & Branch, which saves a version without generating. Fork Chat opens a separate Chat in the same Chat Group, such as “Fork of Browser models”.',
+    body: 'Edit, resend, and regenerate keep alternatives in one Chat. Editing an assistant answer uses ［Update & Branch］, which saves a version without generating. ［Fork Chat］ opens a separate Chat in the same Chat Group, such as “Fork of Browser models”.',
   },
   next: 'Rewrite a conversation path',
   nextDescription: 'Edit and reorder the selected path, then apply it as a new branch while preserving the original.',

@@ -1,23 +1,23 @@
 export const strings = {
-  title: 'Generate AI images on your device without sending prompts to a server',
+  title: 'Generate AI images on your device: Keep prompts local',
   description: 'Use a local image model to generate without sending prompts to an inference server, then inspect the result and reuse its settings.',
-  intro: 'The image workspace uses a model on your device to generate from your prompt. Prepare the model files, make your first image, then reuse its settings for another attempt.',
+  intro: 'Use a model on your device in the image workspace to generate from your prompt. Prepare the model files, make your first image, then reuse its settings for another attempt.',
   launch: { before: 'First, open ', after: ' to start in the image workspace.' },
   steps: {
     open: {
       title: '1. Open the image workspace',
-      body: 'The link above opens ［Image generation］ directly. You can also open ［More actions］ in the sidebar and choose ［Image generation］. The workspace opens on a session, with settings on the left and execution, previews and results on the right. This is separate from generating an image inside an Ollama chat.',
+      body: 'The link above opens ［Image generation］ directly. You can also open ［More Actions］ in the sidebar and choose ［Image generation］. The workspace opens on a session, with settings on the left and execution, previews and results on the right. This is separate from generating an image inside an Ollama chat.',
       caption: 'The sidebar menu opens the session workspace.',
     },
     model: {
       title: '2. Prepare and select an image model',
-      body: 'Choose ［Prepare a model］ beside ［Image model］. In ［Models］, choose an available model or download the files for a catalog entry to a supported destination, then select it for the workspace. Check the model’s file size and required components before downloading. Catalog entries do not guarantee that every device or input will work.',
+      body: 'Open ［Components］, then check that ［Compute with］ shows ［This device］; switch it back if an earlier session restored another destination. Then choose ［Prepare a model］ beside ［Image model］. In ［Models］, choose an available model or download the files for a catalog entry to a supported destination, then select it for the workspace. Local-only cannot download catalog model files from external hosts; import a model folder obtained separately in ［Models］. Check the model’s file size and required components before downloading. Catalog entries do not guarantee that every device or input will work.',
       caption: '［Prepare a model］, then return to the workspace with it selected.',
     },
     generate: {
       title: '3. Enter a prompt and generate one image',
-      body: 'Leave ［Images per run］ at 1, enter a ［Prompt］, and choose ［Generate］. The ［Execution, previews and temporary results］ panel shows progress, then a preview. The result also appears under ［Runs］ and ［Gallery］ when the session can save it. If ［Generate without saving］ appears, choose it only for a temporary result and download any image you want to keep. You can change the prompt during a run; those edits apply to the next generation.',
-      caption: 'A prompt starts a run; progress gives way to a preview and saved result.',
+      body: 'Leave ［Images per run］ at 1, enter a ［Prompt］, and choose ［Generate］. The ［Execution, previews and temporary results］ panel shows progress, then a preview. The result also appears under ［Runs］ and ［Gallery］ when saving is enabled and the session can save it. If ［Generate without saving in this workspace］ appears, choose it only for a temporary result and download any image you want to keep. You can change the prompt during a run; those edits apply to the next generation.',
+      caption: 'A prompt starts a run; progress gives way to a preview, and a saved result if saving is enabled and succeeds.',
     },
     reuse: {
       title: '4. Inspect the result and try another version',
@@ -26,7 +26,7 @@ export const strings = {
     },
   },
   storageTitle: 'Keep the work you want to return to',
-  storage: 'The session draft and results need browser storage (OPFS) and Web Locks. When session storage is unavailable, the workspace may offer ［Generate without saving］; that result is not a saved session. Image sessions use an experimental data format that may change without migration. Save important images, prompts and settings outside Naidan. Session ZIP exports include inputs and outputs and local model paths, but not the model weights; a regular chat backup does not preserve the whole image session.',
+  storage: 'The session draft and results need browser storage (OPFS) and Web Locks. When session storage is unavailable, the workspace may offer ［Generate without saving in this workspace］; that result is not a saved session. Image sessions use an experimental data format that may change without migration. Save important images, prompts and settings outside Naidan. Session ZIP exports include inputs and outputs and local model paths, but not the model weights; a regular chat backup does not preserve the whole image session.',
   nextTitle: 'After your first image',
   next: 'The same workspace can generate several images, search a gallery, mark favorites, compare two saved images, and reuse an image as an initial or reference image. An initial image and a reference image serve different purposes and are optional for a first text prompt.',
   demo: {
@@ -52,7 +52,7 @@ export const strings = {
     prompt: 'Prompt',
     negativePrompt: 'Negative prompt',
     imageSize: 'Image size',
-    promptSample: 'A small red kite above a quiet lake',
+    promptSample: 'An orange cat sitting by a sunlit window',
     generate: 'Generate',
     execution: 'Execution, previews and temporary results',
     visualProgress: 'Visual progress',

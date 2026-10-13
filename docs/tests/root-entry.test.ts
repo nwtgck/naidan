@@ -3,11 +3,11 @@ import path from 'node:path';
 import { Script } from 'node:vm';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { build } from 'vite';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { docsBuildConfig } from '../build/production';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
-type EntryFixture = { html: string; script: string; en: string; ja: string };
+type EntryFixture = { html: string; script: string; en: string; ja: string; missing: string };
 let compiled: EntryFixture | undefined;
 
 function entry(): EntryFixture {
@@ -41,6 +41,12 @@ function parseBody({ target, source }: { target: JSDOM; source: string }): void 
   target.window.document.dispatchEvent(new target.window.Event('DOMContentLoaded'));
 }
 
+function restoreFromCache({ dom }: { dom: JSDOM }): void {
+  const restored = new dom.window.Event('pageshow');
+  Object.defineProperty(restored, 'persisted', { value: true });
+  dom.window.dispatchEvent(restored);
+}
+
 beforeAll(async () => {
   await using fixture = await createSiteFixture();
   await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' });
@@ -54,6 +60,7 @@ beforeAll(async () => {
     script: await readFile(path.join(dist, script.slice('/docs/'.length)), 'utf8'),
     en: await readFile(path.join(dist, 'en/index.html'), 'utf8'),
     ja: await readFile(path.join(dist, 'ja/index.html'), 'utf8'),
+    missing: await readFile(path.join(dist, '404.html'), 'utf8'),
   };
 });
 
@@ -128,6 +135,222 @@ describe('language-neutral entrance without navigation', () => {
     expect(browser.dom.window.location.pathname).toBe('/docs/en/');
   });
 
+  it('restores preferences before an article body arrives and saves native control changes across locales', async () => {
+    using en = createBrowser({ url: 'https://example.test/docs/en/', languages: ['ja'] });
+    en.dom.window.document.documentElement.lang = 'en';
+    en.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'light', motion: 'paused' }));
+    new Script(entry().script).runInContext(en.dom.getInternalVMContext());
+    expect(en.dom.window.document.documentElement.dataset.theme).toBe('light');
+    expect(en.dom.window.document.documentElement.lang).toBe('en');
+    expect(en.dom.window.document.body.textContent).toBe('');
+    parseBody({ target: en.dom, source: entry().en });
+    await Promise.resolve();
+    const light = en.dom.window.document.querySelector<HTMLInputElement>('#docs-light-theme');
+    const pause = en.dom.window.document.querySelector<HTMLInputElement>('#docs-pause-motion');
+    expect(light?.checked).toBe(true);
+    expect(pause?.checked).toBe(true);
+    expect(en.dom.window.document.querySelectorAll('h1')).toHaveLength(1);
+    expect(en.dom.window.document.documentElement.hasAttribute('data-docs-starting')).toBe(false);
+    if (!light || !pause) throw new Error('Missing Docs preference controls');
+    light.checked = false;
+    light.dispatchEvent(new en.dom.window.Event('change', { bubbles: true }));
+    expect(en.dom.window.document.documentElement.dataset.theme).toBe('dark');
+    expect(JSON.parse(en.dom.window.localStorage.getItem('naidan-docs-preferences') ?? '')).toEqual({ theme: 'dark', motion: 'paused' });
+
+    using ja = createBrowser({ url: 'https://example.test/docs/ja/', languages: ['en'] });
+    ja.dom.window.document.documentElement.lang = 'ja';
+    ja.dom.window.localStorage.setItem('naidan-docs-preferences', en.dom.window.localStorage.getItem('naidan-docs-preferences') ?? '');
+    new Script(entry().script).runInContext(ja.dom.getInternalVMContext());
+    parseBody({ target: ja.dom, source: entry().ja });
+    await Promise.resolve();
+    expect(ja.dom.window.document.documentElement.lang).toBe('ja');
+    expect(ja.dom.window.document.querySelector<HTMLInputElement>('#docs-light-theme')?.checked).toBe(false);
+    expect(ja.dom.window.document.querySelector<HTMLInputElement>('#docs-pause-motion')?.checked).toBe(true);
+    expect(ja.dom.window.document.querySelector('h1')?.textContent).toBeTruthy();
+    expect(en.errors).toEqual([]);
+    expect(ja.errors).toEqual([]);
+  });
+
+  it('restores controls after mounting the language-neutral home template', async () => {
+    using browser = createBrowser({ url: 'https://example.test/docs/', languages: ['ja'] });
+    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'light', motion: 'paused' }));
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    expect(browser.dom.window.document.documentElement.dataset.theme).toBe('light');
+    parseBody({ target: browser.dom, source: entry().html });
+    await Promise.resolve();
+    expect(browser.dom.window.document.documentElement.lang).toBe('ja');
+    expect(browser.dom.window.document.querySelector<HTMLInputElement>('#docs-light-theme')?.checked).toBe(true);
+    expect(browser.dom.window.document.querySelector<HTMLInputElement>('#docs-pause-motion')?.checked).toBe(true);
+    expect(browser.errors).toEqual([]);
+  });
+
+  it('refreshes a restored article from storage after a back-forward cache navigation', async () => {
+    using browser = createBrowser({ url: 'https://example.test/docs/en/', languages: ['en'] });
+    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'dark', motion: 'auto' }));
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    parseBody({ target: browser.dom, source: entry().en });
+    await Promise.resolve();
+    const light = browser.dom.window.document.querySelector<HTMLInputElement>('#docs-light-theme');
+    const pause = browser.dom.window.document.querySelector<HTMLInputElement>('#docs-pause-motion');
+    expect(light?.checked).toBe(false);
+    expect(pause?.checked).toBe(false);
+    const changes: string[] = [];
+    light?.addEventListener('change', () => changes.push('theme'));
+    pause?.addEventListener('change', () => changes.push('motion'));
+    expect(changes).toEqual([]);
+    const write = vi.spyOn(browser.dom.window.Storage.prototype, 'setItem');
+    using _restoreWrite = { [Symbol.dispose]: () => write.mockRestore() };
+
+    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'light', motion: 'paused' }));
+    restoreFromCache({ dom: browser.dom });
+    expect(browser.dom.window.document.documentElement.dataset.theme).toBe('light');
+    expect(light?.checked).toBe(true);
+    expect(pause?.checked).toBe(true);
+    expect(changes).toEqual(['theme', 'motion']);
+    expect(write).toHaveBeenCalledTimes(1);
+
+    restoreFromCache({ dom: browser.dom });
+    expect(changes).toEqual(['theme', 'motion']);
+    expect(write).toHaveBeenCalledTimes(1);
+    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'dark', motion: 'paused' }));
+    restoreFromCache({ dom: browser.dom });
+    expect(changes).toEqual(['theme', 'motion', 'theme']);
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(browser.dom.window.document.querySelector('h1')?.textContent).toBeTruthy();
+    expect(browser.errors).toEqual([]);
+  });
+
+  it('keeps the current selection when a saved value becomes unreadable during cache restore', async () => {
+    using browser = createBrowser({ url: 'https://example.test/docs/en/', languages: ['en'] });
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    parseBody({ target: browser.dom, source: entry().en });
+    await Promise.resolve();
+    const light = browser.dom.window.document.querySelector<HTMLInputElement>('#docs-light-theme');
+    const pause = browser.dom.window.document.querySelector<HTMLInputElement>('#docs-pause-motion');
+    if (!light || !pause) throw new Error('Missing Docs preference controls');
+    light.checked = true;
+    light.dispatchEvent(new browser.dom.window.Event('change', { bubbles: true }));
+    pause.checked = true;
+    pause.dispatchEvent(new browser.dom.window.Event('change', { bubbles: true }));
+    const read = vi.spyOn(browser.dom.window.Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('Read denied');
+    });
+    using _restoreRead = { [Symbol.dispose]: () => read.mockRestore() };
+    const write = vi.spyOn(browser.dom.window.Storage.prototype, 'setItem');
+    using _restoreWrite = { [Symbol.dispose]: () => write.mockRestore() };
+
+    restoreFromCache({ dom: browser.dom });
+    expect(light.checked).toBe(true);
+    expect(pause.checked).toBe(true);
+    expect(browser.dom.window.document.documentElement.dataset.theme).toBe('light');
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(write).not.toHaveBeenCalled();
+    expect(browser.errors).toEqual([]);
+  });
+
+  it('keeps an unsaved selection instead of restoring an older stored value', async () => {
+    using browser = createBrowser({ url: 'https://example.test/docs/en/', languages: ['en'] });
+    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'dark', motion: 'auto' }));
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    parseBody({ target: browser.dom, source: entry().en });
+    await Promise.resolve();
+    const light = browser.dom.window.document.querySelector<HTMLInputElement>('#docs-light-theme');
+    const pause = browser.dom.window.document.querySelector<HTMLInputElement>('#docs-pause-motion');
+    if (!light || !pause) throw new Error('Missing Docs preference controls');
+    const write = vi.spyOn(browser.dom.window.Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('Write denied');
+    });
+    using _restoreWrite = { [Symbol.dispose]: () => write.mockRestore() };
+    light.checked = true;
+    light.dispatchEvent(new browser.dom.window.Event('change', { bubbles: true }));
+    pause.checked = true;
+    pause.dispatchEvent(new browser.dom.window.Event('change', { bubbles: true }));
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(browser.dom.window.localStorage.getItem('naidan-docs-preferences') ?? '')).toEqual({ theme: 'dark', motion: 'auto' });
+
+    restoreFromCache({ dom: browser.dom });
+    expect(light.checked).toBe(true);
+    expect(pause.checked).toBe(true);
+    expect(browser.dom.window.document.documentElement.dataset.theme).toBe('light');
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(browser.errors).toEqual([]);
+  });
+
+  it('keeps the current selection when stored data becomes invalid during cache restore', async () => {
+    using browser = createBrowser({ url: 'https://example.test/docs/en/', languages: ['en'] });
+    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'light', motion: 'paused' }));
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    parseBody({ target: browser.dom, source: entry().en });
+    await Promise.resolve();
+    browser.dom.window.localStorage.setItem('naidan-docs-preferences', '{broken');
+    const write = vi.spyOn(browser.dom.window.Storage.prototype, 'setItem');
+    using _restoreWrite = { [Symbol.dispose]: () => write.mockRestore() };
+
+    restoreFromCache({ dom: browser.dom });
+    expect(browser.dom.window.document.querySelector<HTMLInputElement>('#docs-light-theme')?.checked).toBe(true);
+    expect(browser.dom.window.document.querySelector<HTMLInputElement>('#docs-pause-motion')?.checked).toBe(true);
+    expect(browser.dom.window.document.documentElement.dataset.theme).toBe('light');
+    expect(write).not.toHaveBeenCalled();
+    expect(browser.errors).toEqual([]);
+  });
+
+  it.each(['{broken', '{"theme":"blue","motion":"paused"}'])('keeps the article readable with invalid saved preferences: %s', async stored => {
+    using browser = createBrowser({ url: 'https://example.test/docs/en/', languages: ['en'] });
+    browser.dom.window.localStorage.setItem('naidan-docs-preferences', stored);
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    parseBody({ target: browser.dom, source: entry().en });
+    await Promise.resolve();
+    expect(browser.dom.window.document.documentElement.dataset.theme).toBe('dark');
+    expect(browser.dom.window.document.querySelector<HTMLInputElement>('#docs-light-theme')?.checked).toBe(false);
+    expect(browser.dom.window.document.querySelector<HTMLInputElement>('#docs-pause-motion')?.checked).toBe(false);
+    expect(browser.dom.window.document.querySelector('h1')?.textContent).toBeTruthy();
+    expect(browser.errors).toEqual([]);
+  });
+
+  it('keeps native controls usable when storage access fails', async () => {
+    using browser = createBrowser({ url: 'https://example.test/docs/en/', languages: ['en'] });
+    Object.defineProperty(browser.dom.window, 'localStorage', {
+      configurable: true,
+      get: () => {
+        throw new Error('Storage denied');
+      },
+    });
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    parseBody({ target: browser.dom, source: entry().en });
+    await Promise.resolve();
+    const light = browser.dom.window.document.querySelector<HTMLInputElement>('#docs-light-theme');
+    const pause = browser.dom.window.document.querySelector<HTMLInputElement>('#docs-pause-motion');
+    expect(light?.checked).toBe(false);
+    expect(pause?.checked).toBe(false);
+    if (!light || !pause) throw new Error('Missing Docs preference controls');
+    light.checked = true;
+    light.dispatchEvent(new browser.dom.window.Event('change', { bubbles: true }));
+    pause.checked = true;
+    pause.dispatchEvent(new browser.dom.window.Event('change', { bubbles: true }));
+    expect(browser.dom.window.document.documentElement.dataset.theme).toBe('light');
+    expect(light.checked).toBe(true);
+    expect(pause.checked).toBe(true);
+    restoreFromCache({ dom: browser.dom });
+    expect(light.checked).toBe(true);
+    expect(pause.checked).toBe(true);
+    expect(browser.dom.window.document.documentElement.dataset.theme).toBe('light');
+    expect(browser.dom.window.document.querySelector('h1')?.textContent).toBeTruthy();
+    expect(browser.errors).toEqual([]);
+  });
+
+  it('applies the saved theme to the static 404 without mounting a locale template', () => {
+    using browser = createBrowser({ url: 'https://example.test/docs/missing/', languages: ['ja'] });
+    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'light', motion: 'paused' }));
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    expect(browser.dom.window.document.documentElement.dataset.theme).toBe('light');
+    expect(browser.dom.window.document.documentElement.hasAttribute('data-docs-starting')).toBe(false);
+    parseBody({ target: browser.dom, source: entry().missing });
+    expect(browser.dom.window.document.querySelector('[data-docs-language-fallback]')).toBeNull();
+    expect(browser.dom.window.document.querySelector('#docs-pause-motion')).toBeNull();
+    expect(browser.dom.window.document.querySelector('h1')?.textContent).toBe('Naidan Docs');
+    expect(browser.errors).toEqual([]);
+  });
+
   it('serves the same compiled bootstrap and templates in development', async () => {
     await using fixture = await createSiteFixture();
     await using dev = await startSiteDev({ root: fixture.root });
@@ -144,7 +367,11 @@ describe('language-neutral entrance without navigation', () => {
       const template = page.document.querySelector<HTMLTemplateElement>(`template[data-docs-locale="${locale}"]`);
       expect(template?.content.querySelectorAll('[data-docs-animation]').length).toBeGreaterThan(0);
       expect(template?.content.querySelector('h1')?.textContent).toBe(locale === 'en' ? 'An easy-to-use AI environment, built around privacy.' : '安全性を徹底追求した、簡単に使えるAI環境。');
+      using article = parsePage({ html: await (await dev.request({ url: `/docs/${locale}/` })).text() });
+      expect(article.document.querySelector('script:not([type])[src]')?.getAttribute('src')).toBe(bootstrap);
     }
+    using missing = parsePage({ html: await (await dev.request({ url: '/docs/missing/' })).text() });
+    expect(missing.document.querySelector('script:not([type])[src]')?.getAttribute('src')).toBe(bootstrap);
     const head = await dev.request({ url: '/docs/__locale.js', method: 'HEAD' });
     expect(head.status).toBe(200);
     expect(await head.text()).toBe('');

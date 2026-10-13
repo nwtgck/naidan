@@ -16,7 +16,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article class="prose" data-testid="docs-models-browser-provided">
     <h1>{{ s.title }}</h1>
     <p class="lead"><UiText :text="s.intro" /></p>
-    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'connection' }" :locale="locale" display="url" />{{ s.launch.after }}</p>
+    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'connection' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
     <p class="app-entry-onboarding"><UiText :text="s.onboarding" /></p>
     <p class="before-step"><UiText :text="s.before" /><span class="requirements-source"><ExternalLink href="https://developer.chrome.com/docs/ai/prompt-api" :locale="locale">{{ s.requirementsSource }}</ExternalLink></span></p>
 

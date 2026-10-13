@@ -5,6 +5,7 @@ export const strings = {
     "Ask AI to find unfinished tasks in project notes, compare files or process a table. With Shell enabled, the AI can use familiar commands through a tool call, read the result and continue its answer.",
     "The commands run in the browser’s shell, with access to the workspace and folders made available to the Chat. You choose the folder mounts and write access in advance."
   ],
+  "launch": { "before": "Open ", "after": " and choose a chat with a model that supports tool calls." },
   "diagramCaption": "A sample task in a writable local project: the AI checks Git, searches with grep, reads with sed, creates task-summary.md with cat <<EOF and checks the saved file and Git state. Each command is a separate shell_execute call. Completed call headers stay in the conversation; the current call shows its script and result. The scene replays together, and the full transcript remains available to read. No model, command or file operation runs in this demonstration.",
   "demo": {
     "title": "Project tasks",
@@ -45,18 +46,53 @@ export const strings = {
     "responseLead": "Created task-summary.md with these two tasks. Git reports the summary as a new, untracked file.",
     "responseItems": ["Confirm the venue.", "Send invitations."],
   },
+  "walkthrough": {
+    "title": "Enable Shell in this Chat",
+    "open": {
+      "title": "1. Open the Chat tools",
+      "body": "Below the message box, select the gear-shaped ［Tools］ button beside the attachment button. The ［Options/Tools］ sheet opens from the bottom of the Chat.",
+      "caption": "The Chat’s ［Tools］ button opens its tool settings.",
+    },
+    "enable": {
+      "title": "2. Turn on Shell",
+      "body": "In the tool settings, find ［Shell］ (［Shell in browser］) and turn its switch on. If you already attached a folder and Shell is on, leave it on. ［Shell settings］ appears beneath the tools. The ordinary chat switch leaves the /sys/fs/naidan mount off by default. Turning on ［Mount］ /sys/fs/naidan exposes chat files and every saved binary file shown in Settings ［Files］ to Shell, including files from other chats; ［Current chat］ limits chat history only. It does not grant access to unselected folders on your device.",
+      "caption": "The ［Shell］ switch changes from ［OFF］ to ［ON］ in this Chat.",
+    },
+    "use": {
+      "before": "To work with a folder on your device, open the attachment menu beside ［Tools］ and choose ［Folder (copy)］ or ［Folder (link)］. See ",
+      "filesLink": "how to choose files and access",
+      "after": ". Then ask an AI model that supports tool calls to list files at the folder’s displayed mount path, or give it another specific file task. Shell results return to the Chat, as shown above.",
+    },
+    "demo": {
+      "chatTitle": "Project tasks",
+      "messagePlaceholder": "Type a message...",
+      "model": "Model",
+      "optionsTools": "Options/Tools",
+      "think": "Think",
+      "default": "Default",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "shell": "Shell",
+      "shellDescription": "Shell in browser",
+      "off": "OFF",
+      "on": "ON",
+      "shellSettings": "Shell settings",
+      "mount": "Mount",
+    },
+  },
   "sections": [
     {
       "title": "Familiar commands, a browser-backed filesystem",
       "body": "The shell is called Wesh internally. Commands such as ls, cat, grep, sed, jq and Git operate on its mounted filesystems. An OS executable is not automatically a Wesh command: each supported command is implemented for this environment.",
     },
     {
-      "title": "A workspace scoped to the conversation",
-      "body": "Shell-enabled Chats can have a writable workspace. Global, Chat Group and Chat settings resolve which folders are mounted; a more specific mount at the same path takes precedence. Read-only access is enough for searches. Creating a file, as in the example, requires write access. Shell calls use these effective settings, without a separate approval prompt for every command.",
+      "title": "Check the folders Shell can use",
+      "body": "Shell uses the Chat’s workspace and folders made available to it. Read-only access is enough for searches. Creating a file, as in the example, requires write access to its folder. Shell calls use those access settings without a separate approval prompt for every command.",
     },
     {
       "title": "Let the AI read the conversation as files",
-      "body": "Naidan projects Chat information into /sys/fs/naidan as read-only Markdown and JSON files. Choose the current Chat, its Chat Group or the main Chat collection as the visible scope. These familiar file formats let the AI use ordinary shell commands to find information without exposing all history by default.",
+      "body": "When you mount /sys/fs/naidan, Naidan projects Chat information as read-only Markdown and JSON files. Choose the current Chat, its Chat Group or the main Chat collection to control which chat history appears. The same mount also exposes every saved binary file shown in Settings ［Files］ for listing and reading, regardless of that chat-history choice.",
     }
   ],
   "commandsTitle": "Commands available inside the browser",
@@ -94,15 +130,12 @@ export const strings = {
     },
   ],
   "commandsHelp": "See the full command list and command-specific options:",
-  "stepsTitle": "Give a Chat a working shell",
-  "steps": [
-    "Open the Chat’s tool settings and enable Shell. Check whether a setting is inherited from the Chat Group or global settings, and use a model that supports tool calls.",
-    "Inspect the effective folder mounts, write access and which Chats the shell can see. For a folder on your PC, grant the browser access when selecting it.",
-    "Ask the AI to list files or find information in a selected folder. It generates a shell_execute call, receives the command’s result and continues the conversation.",
-    "Open the process summary to inspect the tool call. Click a result preview to expand it, or open Raw JSON to inspect the arguments. The separate Shell terminal is also available when you want to run commands yourself."
-  ],
   "exampleTitle": "Inspect the current Chat",
   "exampleNote": "These commands read the current Chat when that scope is enabled. The metadata file describes the Chat; content-md and branches expose its messages and paths. This example does not modify data.",
   "next": "Choose which files and folders AI can read or edit",
   nextDescription: 'Choose the folder a browser tool may read and the changes it may make.',
+  relatedWikipedia: {
+    title: 'Search Wikipedia from a chat',
+    description: 'Enable a web lookup tool and review search and page requests when using one-time approval.',
+  },
 };

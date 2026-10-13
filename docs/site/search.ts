@@ -1,8 +1,17 @@
-import { DOCS_BASE, DOCS_PAGES, docsHref } from './routes';
+import { z } from 'zod';
+import { DOCS_BASE, DOCS_LOCALES, DOCS_PAGES, docsHref } from './routes';
 import type { DocsLocale, DocsPageId } from './routes';
 
-export type SearchEntry = { href: string; title: string; description: string; headings: string[]; paragraphs: string[] };
-export type SearchIndex = { locale: DocsLocale; entries: SearchEntry[] };
+const searchEntrySchema = z.object({
+  href: z.string(),
+  title: z.string(),
+  description: z.string(),
+  headings: z.array(z.string()),
+  paragraphs: z.array(z.string()),
+});
+const searchIndexSchema = z.object({ locale: z.enum(DOCS_LOCALES), entries: z.array(searchEntrySchema) });
+export type SearchEntry = z.infer<typeof searchEntrySchema>;
+export type SearchIndex = z.infer<typeof searchIndexSchema>;
 export type SearchResult = SearchEntry & { snippet: string; score: number };
 const PURPOSE_PAGES = ['run/standalone', 'models/ollama', 'chat/branching', 'images/create', 'data/backup'] as const satisfies readonly DocsPageId[];
 
@@ -22,9 +31,7 @@ function snippet({ paragraphs, terms }: { paragraphs: string[]; terms: string[] 
   return `${start > 0 ? '…' : ''}${excerpt}${start + 170 < paragraph.length ? '…' : ''}`;
 }
 
-export function searchDocs({ index, query }: { index: SearchIndex; query: string }): SearchResult[] {
-  const terms = normalized({ text: query }).split(' ').filter(Boolean);
-  if (!terms.length) return [];
+function rankedMatches({ index, terms }: { index: SearchIndex; terms: string[] }): SearchResult[] {
   return index.entries.flatMap(entry => {
     const title = normalized({ text: entry.title });
     const headings = entry.headings.map(text => normalized({ text }));
@@ -41,6 +48,45 @@ export function searchDocs({ index, query }: { index: SearchIndex; query: string
   }).sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
 }
 
+function japaneseIntentTerms({ query }: { query: string }): string[] | undefined {
+  const sentence = query.replace(/[。！？!?]+$/u, '').replace(/です$/u, '');
+  if (!sentence.endsWith('たい')) return undefined;
+  return sentence.split(/[をがはにでへと\s]+/u).filter(Boolean).map(clause => {
+    if (clause === 'たい' || clause === 'したい') return '';
+    return clause.endsWith('したい') && clause.length > 4 ? clause.slice(0, -3) : clause;
+  }).filter(Boolean);
+}
+
+function hasProminentTerm({ entry, term }: { entry: SearchEntry; term: string }): boolean {
+  return normalized({ text: entry.title }).includes(term)
+    || entry.headings.some(heading => normalized({ text: heading }).includes(term));
+}
+
+export function searchDocs({ index, query }: { index: SearchIndex; query: string }): SearchResult[] {
+  const text = normalized({ text: query });
+  const terms = text.split(' ').filter(Boolean);
+  if (!terms.length) return [];
+  const intentTerms = (() => {
+    switch (index.locale) {
+    case 'ja': return japaneseIntentTerms({ query: text });
+    case 'en': return undefined;
+    default: {
+      const unreachable: never = index.locale;
+      throw new Error(`Unsupported Docs search locale: ${unreachable}`);
+    }
+    }
+  })();
+  if (intentTerms !== undefined && (!intentTerms[0] || intentTerms[0].length < 2)) return [];
+  const exact = rankedMatches({ index, terms });
+  if (exact.length || intentTerms === undefined) return exact;
+  const head = intentTerms[0];
+  if (!head) return [];
+  const matches = rankedMatches({ index, terms: intentTerms }).filter(entry => hasProminentTerm({ entry, term: head }));
+  if (matches.length) return matches.slice(0, 5);
+  if (head.length < 3) return [];
+  return rankedMatches({ index, terms: [head] }).filter(entry => hasProminentTerm({ entry, term: head })).slice(0, 5);
+}
+
 export function purposeDocs({ index }: { index: SearchIndex }): Pick<SearchResult, 'href' | 'title' | 'snippet'>[] {
   return PURPOSE_PAGES.map(page => {
     const href = docsHref({ locale: index.locale, page });
@@ -51,23 +97,11 @@ export function purposeDocs({ index }: { index: SearchIndex }): Pick<SearchResul
 }
 
 export function parseSearchIndex({ value, locale }: { value: unknown; locale: DocsLocale }): SearchIndex {
-  if (typeof value !== 'object' || value === null || !('locale' in value) || value.locale !== locale
-    || !('entries' in value) || !Array.isArray(value.entries)) throw new Error('Invalid Docs search index');
+  const index = searchIndexSchema.refine(candidate => candidate.locale === locale).parse(value);
   const validHrefs = new Set(DOCS_PAGES.map(page => docsHref({ locale, page: page.id })));
-  const entries: SearchEntry[] = [];
-  for (const item of value.entries) {
-    if (typeof item !== 'object' || item === null
-      || !('href' in item) || typeof item.href !== 'string' || !validHrefs.has(item.href)
-      || !('title' in item) || typeof item.title !== 'string'
-      || !('description' in item) || typeof item.description !== 'string'
-      || !('headings' in item) || !Array.isArray(item.headings) || !item.headings.every((text: unknown) => typeof text === 'string')
-      || !('paragraphs' in item) || !Array.isArray(item.paragraphs) || !item.paragraphs.every((text: unknown) => typeof text === 'string')) {
-      throw new Error('Invalid Docs search index');
-    }
-    entries.push({ href: item.href, title: item.title, description: item.description, headings: item.headings as string[], paragraphs: item.paragraphs as string[] });
-  }
-  if (entries.length !== validHrefs.size || new Set(entries.map(item => item.href)).size !== entries.length) {
+  if (index.entries.some(item => !validHrefs.has(item.href))) throw new Error('Invalid Docs search index href');
+  if (index.entries.length !== validHrefs.size || new Set(index.entries.map(item => item.href)).size !== index.entries.length) {
     throw new Error('Incomplete Docs search index');
   }
-  return { locale, entries };
+  return index;
 }

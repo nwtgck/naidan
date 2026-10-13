@@ -42,6 +42,14 @@ function appendAssets({ document, assets }: { document: Document; assets: PageAs
   }
 }
 
+function appendBootstrap({ document, bootstrap }: { document: Document; bootstrap: string | undefined }): void {
+  if (bootstrap === undefined) return;
+  const script = document.createElement('script');
+  script.src = bootstrap;
+  // The self-hosted classic script restores preferences before body paint.
+  document.head.append(script);
+}
+
 const islandPayloadParsers = { branching: parseBranchingPayload, search: parseSearchPayload } satisfies Record<keyof typeof ISLAND_ENTRIES, ({ serialized }: { serialized: string }) => unknown>;
 
 function isIslandName(name: string): name is keyof typeof ISLAND_ENTRIES {
@@ -85,9 +93,10 @@ function appendGuidePrefetchRules({ document }: { document: Document }): void {
   document.head.append(script);
 }
 
-function renderDocumentInternal({ page, assets, guidePrefetch }: {
+function renderDocumentInternal({ page, assets, bootstrap, guidePrefetch }: {
   page: RenderedPage;
   assets: PageAssets;
+  bootstrap: string | undefined;
   guidePrefetch: 'enabled' | 'disabled';
 }): string {
   const { body, title, description, locale, page: pageId, ...unhandledPage } = page;
@@ -110,6 +119,7 @@ function renderDocumentInternal({ page, assets, guidePrefetch }: {
     // Vue owns escaping. jsdom owns parsing/serialization; no HTML regex rewrites.
     validateBody({ document, locale, page: pageId });
     appendAssets({ document, assets });
+    appendBootstrap({ document, bootstrap });
     switch (guidePrefetch) {
     case 'enabled': appendGuidePrefetchRules({ document }); break;
     case 'disabled': break;
@@ -121,12 +131,12 @@ function renderDocumentInternal({ page, assets, guidePrefetch }: {
   }
 }
 
-export function renderDocument({ page, assets }: { page: RenderedPage; assets: PageAssets }): string {
-  return renderDocumentInternal({ page, assets, guidePrefetch: 'disabled' });
+export function renderDocument({ page, assets, bootstrap }: { page: RenderedPage; assets: PageAssets; bootstrap: string | undefined }): string {
+  return renderDocumentInternal({ page, assets, bootstrap, guidePrefetch: 'disabled' });
 }
 
-export function renderProductionDocument({ page, assets }: { page: RenderedPage; assets: PageAssets }): string {
-  return renderDocumentInternal({ page, assets, guidePrefetch: 'enabled' });
+export function renderProductionDocument({ page, assets, bootstrap }: { page: RenderedPage; assets: PageAssets; bootstrap: string | undefined }): string {
+  return renderDocumentInternal({ page, assets, bootstrap, guidePrefetch: 'enabled' });
 }
 
 function markExternalLink({ document, anchor, locale }: { document: Document; anchor: Element; locale: DocsLocale }): void {
@@ -202,7 +212,7 @@ function validateBody({ document, locale, page }: { document: Document; locale: 
 
 const entryMessages = { en: entryEn, ja: entryJa };
 
-function renderEntryDocument({ assets, kind }: { assets: PageAssets; kind: 'language' | 'missing' }): string {
+function renderEntryDocument({ assets, bootstrap, kind }: { assets: PageAssets; bootstrap: string | undefined; kind: 'language' | 'missing' }): string {
   const dom = new JSDOM('<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><main class="language-page"><h1>Naidan Docs</h1><nav aria-label="Language"></nav></main></body></html>');
   try {
     const document = dom.window.document;
@@ -237,6 +247,7 @@ function renderEntryDocument({ assets, kind }: { assets: PageAssets; kind: 'lang
       nav.append(anchor);
     }
     appendAssets({ document, assets });
+    appendBootstrap({ document, bootstrap });
     return dom.serialize();
   } finally {
     dom.window.close();
@@ -249,7 +260,7 @@ function renderLocaleRootInternal({ assets, pages, bootstrap, guidePrefetch }: {
   bootstrap: string;
   guidePrefetch: 'enabled' | 'disabled';
 }): string {
-  const dom = new JSDOM(renderEntryDocument({ assets, kind: 'language' }));
+  const dom = new JSDOM(renderEntryDocument({ assets, bootstrap: undefined, kind: 'language' }));
   try {
     const document = dom.window.document;
     appendSeoLinks({ document, route: { kind: 'root' } });
@@ -261,7 +272,7 @@ function renderLocaleRootInternal({ assets, pages, bootstrap, guidePrefetch }: {
       const page = pages[locale];
       if (page.page !== 'index' || page.locale !== locale) throw new Error('Invalid localized Docs home');
       if (findIslands({ body: page.body }).some(name => name !== 'search')) throw new Error('The language-neutral home permits only the Docs search island');
-      const localized = new JSDOM(renderDocument({ page, assets: { styles: [], scripts: [] } }));
+      const localized = new JSDOM(renderDocument({ page, assets: { styles: [], scripts: [] }, bootstrap: undefined }));
       try {
         const template = document.createElement('template');
         template.dataset.docsLocale = locale;
@@ -273,11 +284,9 @@ function renderLocaleRootInternal({ assets, pages, bootstrap, guidePrefetch }: {
         localized.window.close();
       }
     }
-    const script = document.createElement('script');
-    script.src = bootstrap;
     // This is deliberately classic and synchronous, rather than a deferred module.
     // External/self-hosted code works under the existing CSP without inline grants.
-    document.head.append(script);
+    appendBootstrap({ document, bootstrap });
     switch (guidePrefetch) {
     case 'enabled': appendGuidePrefetchRules({ document }); break;
     case 'disabled': break;
@@ -305,6 +314,6 @@ export function renderProductionLocaleRoot({ assets, pages, bootstrap }: {
   return renderLocaleRootInternal({ assets, pages, bootstrap, guidePrefetch: 'enabled' });
 }
 
-export function renderNotFound({ assets }: { assets: PageAssets }): string {
-  return renderEntryDocument({ assets, kind: 'missing' });
+export function renderNotFound({ assets, bootstrap }: { assets: PageAssets; bootstrap: string | undefined }): string {
+  return renderEntryDocument({ assets, bootstrap, kind: 'missing' });
 }

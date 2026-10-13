@@ -32,6 +32,21 @@ describe('Local-only connection guide', () => {
     ]);
     for (const link of hostedLinks) expect(link.querySelector('[data-docs-external-icon]')).not.toBeNull();
     expect(article?.querySelector('.switching-note a')?.getAttribute('href')).toBe(`/docs/${locale}/data/backup/`);
+    const diagram = article?.querySelector('[data-testid="connection-policy-diagram"]');
+    expect(diagram?.querySelectorAll('.policy-row')).toHaveLength(3);
+    for (const row of diagram?.querySelectorAll('.policy-row') ?? []) {
+      expect(row.querySelector('.branch-routes')?.querySelectorAll('[data-source="page"]')).toHaveLength(2);
+      expect([...row.querySelectorAll('.branch-routes > .route')].map(route => route.getAttribute('data-destination'))).toEqual(['local', 'external']);
+    }
+    expect([...diagram?.querySelectorAll('[data-destination="local"]') ?? []].map(route => route.getAttribute('data-state'))).toEqual([
+      'allowed', 'allowed', 'standard',
+    ]);
+    expect([...diagram?.querySelectorAll('[data-destination="external"]') ?? []].map(route => route.getAttribute('data-state'))).toEqual([
+      'blocked', 'allowed', 'standard',
+    ]);
+    expect(diagram?.textContent).toContain(s.diagram.curatedServices);
+    expect(diagram?.textContent).toContain(s.diagram.noAddedLimit);
+    expect(article?.querySelector('.policy-figure figcaption')?.textContent).toBe(s.diagram.caption);
     expect(article?.querySelectorAll('.allowed-destinations > div')).toHaveLength(3);
     expect([...article?.querySelectorAll('.allowed-destinations code') ?? []].map(element => element.textContent)).toEqual([
       "'self'", 'http://localhost:*', 'http://127.0.0.1:*',

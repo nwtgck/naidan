@@ -14,7 +14,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article class="prose" data-testid="docs-images-create">
     <h1>{{ s.title }}</h1>
     <p class="lead"><UiText :text="s.intro" /></p>
-    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'image-generation' }" :locale="locale" display="url" />{{ s.launch.after }}</p>
+    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'image-generation' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
 
     <section class="media-step" aria-labelledby="image-open">
       <h2 id="image-open">{{ s.steps.open.title }}</h2>

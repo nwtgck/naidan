@@ -17,8 +17,8 @@ export const strings = {
   build: {
     title: 'Inspect how releases are built',
     body: 'On a version-tag run, GitHub Actions checks out the source, installs dependencies, builds the app, and saves the result as a build artifact. The release job downloads that artifact from the same run, adds the tag to the app ZIP names, and uploads them to GitHub Releases.',
-    note: 'The workflow and run logs let you trace this path. The workflow does not compare the app ZIPs with an independent rebuild or attach a signature linking them to the source.',
-    workflowLink: 'Read the release workflow',
+    note: 'The linked workflow shows the current definition; open it at a release tag to inspect the definition for that version alongside its run log. The workflow does not compare the app ZIPs with an independent rebuild or attach a signature linking them to the source.',
+    workflowLink: 'Read the current release workflow',
     runsLink: 'View build and release runs',
     diagram: {
       source: 'Public source',

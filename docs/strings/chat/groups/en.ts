@@ -2,6 +2,7 @@ export const strings = {
   title: 'Organize conversations with Chat Groups',
   description: 'Create a Chat Group, move an existing Chat into it, and start another Chat in that group from the sidebar.',
   intro: 'Use a Chat Group to keep conversations for one purpose together in the sidebar. A group is a single level of organization, so each Chat belongs either to one group or to the top level.',
+  launch: { before: 'Open ', after: ' to create a Chat Group from the sidebar. If first-time setup appears, close it with ×, then expand the sidebar.' },
   steps: {
     create: {
       title: '1. Create a group for a purpose',

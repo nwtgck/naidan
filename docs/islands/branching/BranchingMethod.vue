@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { BirdIcon, UserIcon, CopyIcon, PencilIcon, RefreshCwIcon, GitForkIcon, SendIcon, MoreVerticalIcon, MoreHorizontalIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, FileEditIcon, Settings2Icon, XCircleIcon, Volume2Icon, HistoryIcon, LinkIcon, PaperclipIcon, MessageSquareIcon } from 'lucide-vue-next';
 import ReplicaChrome from '../../site/demos/ReplicaChrome.vue';
+import UiText from '../../site/UiText.vue';
 import type { BranchingCopy, ReplicaChromeCopy } from '../../site/messages';
 
 type Method = 'edit' | 'resend' | 'regenerate' | 'fork';
@@ -367,8 +368,8 @@ defineExpose({
       <button type="button" class="replay" :disabled="availability === 'static'" data-testid="branch-replay" @click="replay"><RefreshCwIcon :size="12" />{{ copy.controls.replay }}</button>
     </div>
     <div class="caption-stack">
-      <p v-for="(caption, index) in copy.stages[methodIndex]" :key="index" class="stage-caption caption-reserve" aria-hidden="true">{{ caption }}</p>
-      <p class="stage-caption" :aria-live="playback === 'manual' ? 'polite' : 'off'" data-testid="branch-stage-caption">{{ copy.stages[methodIndex][stage] }}</p>
+      <p v-for="(caption, index) in copy.stages[methodIndex]" :key="index" class="stage-caption caption-reserve" aria-hidden="true"><UiText :text="caption" /></p>
+      <p class="stage-caption" :aria-live="playback === 'manual' ? 'polite' : 'off'" data-testid="branch-stage-caption"><UiText :text="copy.stages[methodIndex][stage]" /></p>
     </div>
     <span :key="`${method}-${stage}-${playback}-${sequence}`" class="walkthrough-clock" :class="{ automatic: playback === 'automatic' }" aria-hidden="true" data-testid="branch-clock" @animationiteration="advance" />
     <button class="reset" :class="{ 'reset-reserve': !hasVersions && !hasFork }" type="button" :disabled="availability === 'static' || (!hasVersions && !hasFork)" :aria-hidden="!hasVersions && !hasFork" data-testid="branch-reset" @click="reset">{{ copy.reset }}</button>

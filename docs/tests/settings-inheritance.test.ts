@@ -19,6 +19,9 @@ describe('settings inheritance guide', () => {
     using page = parsePage({ html });
     const article = page.document.querySelector('[data-testid="docs-settings-inheritance"]');
     expect(article?.querySelector('h1')?.textContent).toBe(s.title);
+    const launch = article?.querySelector<HTMLAnchorElement>('[data-docs-app-entry-path]');
+    expect(launch?.getAttribute('href')).toBe('https://naidan.nwtgck.org/#/');
+    expect(launch?.textContent).toBe('/#/');
     const sections = [...(article?.querySelectorAll('section.walkthrough-step') ?? [])];
     expect(sections).toHaveLength(5);
     const stages = ['global', 'group', 'inheritedChat', 'chatModel', 'reset'] as const;
@@ -31,7 +34,7 @@ describe('settings inheritance guide', () => {
       expect(scene?.querySelector('[data-testid="inheritance-camera-canvas"]')).not.toBeNull();
       expect(section?.querySelector('figcaption')?.textContent).toBe(visibleGuideText({ text: s.steps[stage].caption }));
     }
-    expect(article?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/models/ollama/`);
+    expect(article?.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/models/ollama/`);
     expect(article?.querySelectorAll('script, [data-docs-island]')).toHaveLength(0);
   });
 

@@ -53,4 +53,6 @@ export const strings = {
   nextDescription: 'See where browser permissions stop and which data a local model can use.',
   permissionsGuideTitle: 'Compare app access on your device',
   permissionsGuideDescription: 'See how web, desktop, command-line and mobile apps differ in what they can access.',
+  offlineGuideTitle: 'Use the hosted app offline',
+  offlineGuideDescription: 'Prepare the hosted PWA and a browser-run model before disconnecting.',
 };

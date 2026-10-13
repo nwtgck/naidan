@@ -1,15 +1,19 @@
 import { DOCS_PUBLIC_ORIGIN } from '../build/seo';
 
 export type AppDestination =
-  | { kind: 'screen'; screen: 'gguf-manager' | 'connection' | 'image-generation' | 'audio-generation' }
+  | { kind: 'screen'; screen: 'home' | 'gguf-manager' | 'transformers-js-manager' | 'connection' | 'files-settings' | 'folders-settings' | 'image-generation' | 'audio-generation' }
   | { kind: 'model'; model: string };
 
 export function appDestinationPath({ destination }: { destination: AppDestination }): string {
   switch (destination.kind) {
   case 'screen': {
     switch (destination.screen) {
+    case 'home': return '/#/';
     case 'gguf-manager': return '/#/settings/llama-cpp-browser';
+    case 'transformers-js-manager': return '/#/settings/transformers-js';
     case 'connection': return '/#/settings/connection';
+    case 'files-settings': return '/#/settings/binary-objects';
+    case 'folders-settings': return '/#/settings/volumes';
     case 'image-generation': return '/#/image-generation/';
     case 'audio-generation': return '/#/audio-generation';
     default: { const unreachable: never = destination.screen; throw new Error(`Unknown app screen: ${unreachable}`); }

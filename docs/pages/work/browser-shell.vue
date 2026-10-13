@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import AppEntryLink from '../../site/AppEntryLink.vue';
 import ShellWorkspaceDemo from '../../site/demos/ShellWorkspaceDemo.vue';
+import ShellEnableStep from '../../site/demos/ShellEnableStep.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
-import type { DocsLocale } from '../../site/routes';
+import UiText from '../../site/UiText.vue';
+import { docsHref, type DocsLocale } from '../../site/routes';
 import type { CommonMessages, ShellMessages } from '../../site/messages';
 
 defineProps<{ s: ShellMessages; locale: DocsLocale; common: CommonMessages }>();
@@ -31,7 +34,22 @@ defineExpose({
       :key="paragraph"
       class="lead"
     >{{ paragraph }}</p>
+    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
     <figure class="guide-figure"><ShellWorkspaceDemo :copy="s.demo" :chrome="common.chrome" /><figcaption class="caption">{{ s.diagramCaption }}</figcaption></figure>
+    <section class="shell-walkthrough" data-testid="docs-shell-walkthrough">
+      <h2>{{ s.walkthrough.title }}</h2>
+      <section class="shell-walkthrough-step">
+        <h3>{{ s.walkthrough.open.title }}</h3>
+        <p><UiText :text="s.walkthrough.open.body" /></p>
+        <figure class="guide-figure"><ShellEnableStep stage="open" :copy="s.walkthrough.demo" /><figcaption class="caption"><UiText :text="s.walkthrough.open.caption" /></figcaption></figure>
+      </section>
+      <section class="shell-walkthrough-step">
+        <h3>{{ s.walkthrough.enable.title }}</h3>
+        <p><UiText :text="s.walkthrough.enable.body" /></p>
+        <figure class="guide-figure"><ShellEnableStep stage="enable" :copy="s.walkthrough.demo" /><figcaption class="caption"><UiText :text="s.walkthrough.enable.caption" /></figcaption></figure>
+      </section>
+      <p><UiText :text="s.walkthrough.use.before" /><a :href="docsHref({ locale, page: 'files/privacy' })">{{ s.walkthrough.use.filesLink }}</a><UiText :text="s.walkthrough.use.after" /></p>
+    </section>
     <section
       v-for="section in s.sections"
       :key="section.title"
@@ -51,10 +69,12 @@ defineExpose({
       </ul>
       <p class="caption">{{ s.commandsHelp }} <code>help</code> · <code>help grep</code> · <code>grep --help</code></p>
     </section>
-    <h2>{{ s.stepsTitle }}</h2><ol class="guide-steps"><li v-for="step in s.steps" :key="step">{{ step }}</li></ol>
     <h2>{{ s.exampleTitle }}</h2><pre lang="en"><code>{{ example }}</code></pre>
     <p class="caption">{{ s.exampleNote }}</p>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'files/privacy', title: s.next, description: s.nextDescription }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[
+      { page: 'files/privacy', title: s.next, description: s.nextDescription },
+      { page: 'work/wikipedia', title: s.relatedWikipedia.title, description: s.relatedWikipedia.description },
+    ]" />
   </article>
 </template>
 
@@ -79,5 +99,14 @@ defineExpose({
 }
 .shell-command-list p {
   margin: 4px 0 0;
+}
+.shell-walkthrough {
+  margin-block: 35px 45px;
+}
+.shell-walkthrough-step {
+  margin-top: 25px;
+}
+.shell-walkthrough-step .guide-figure {
+  margin-top: 16px;
 }
 </style>

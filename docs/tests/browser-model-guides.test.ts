@@ -68,6 +68,12 @@ describe('browser model guides', () => {
     const html = await renderToString(createSSRApp({ render: () => h(TransformersGuide, { s, locale, common }) }));
     using page = parsePage({ html });
     const article = page.document.querySelector('[data-testid="docs-models-transformers-js"]');
+    const launch = article?.querySelector<HTMLAnchorElement>('a[data-docs-app-entry-path]');
+    expect(launch?.getAttribute('href')).toBe('https://naidan.nwtgck.org/#/settings/transformers-js');
+    expect(launch?.textContent).toBe('/#/settings/transformers-js');
+    expect(launch?.querySelector('[data-docs-external-icon], .sr-only')).toBeNull();
+    expect(article?.querySelector('.app-entry-onboarding')?.textContent).toContain('×');
+    expect(article?.querySelector('.app-entry-onboarding .ui-label')?.textContent).toBe('Transformers.js');
     expect(article?.querySelectorAll('section.walkthrough-step')).toHaveLength(4);
     for (const stage of ['open', 'download', 'resume', 'save']) {
       const scene = article?.querySelector(`[data-testid="transformers-settings-${stage}"]`);

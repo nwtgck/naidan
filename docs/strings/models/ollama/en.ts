@@ -2,6 +2,7 @@ export const strings = {
   title: 'Connect your browser chat to a local Ollama model',
   description: 'Follow the Settings controls in Naidan to connect to Ollama on your device: choose the Ollama provider, use its local URL, check the connection, and select a model.',
   intro: 'This example connects Naidan to Ollama already running on your device. Naidan does not start the Ollama process.',
+  launch: { before: 'First, open ', after: ' to start Naidan. If first-run setup appears, close it with the × at the top right, then follow step 1.' },
   before: 'Have at least one Ollama model available before connecting. You will choose the server address in the connection settings.',
   steps: {
     open: {
@@ -16,8 +17,8 @@ export const strings = {
     },
     check: {
       title: '3. Check the connection and model list',
-      body: 'Keep that Ollama URL and select ［Check connection］. The button shows a spinner while Naidan fetches the model list, then briefly says ［Connected］ on success. Naidan also checks localhost addresses automatically when the provider or URL changes in ［Settings］. If the check fails, verify the service, address and any browser CORS or origin error before continuing.',
-      caption: '［Check connection］ loads Ollama’s model list, then briefly confirms success.',
+      body: 'Keep that Ollama URL and select ［Check Connection］. The button shows a spinner while Naidan fetches the model list, then briefly says ［Connected］ on success. Naidan also checks localhost addresses automatically when the provider or URL changes in ［Settings］. If the check fails, verify the service, address and any browser CORS or origin error before continuing.',
+      caption: '［Check Connection］ loads Ollama’s model list, then briefly confirms success.',
     },
     model: {
       title: '4. Pick a default model and save',
@@ -42,7 +43,7 @@ export const strings = {
     localhostHint: 'Connection check is automatically performed only for localhost URLs.',
     customHttpHeaders: 'Custom HTTP Headers',
     addHeader: 'Add Header',
-    checkConnection: 'Check connection',
+    checkConnection: 'Check Connection',
     connected: 'Connected',
     modelSelection: 'Model Selection',
     defaultModel: 'Default Model',
@@ -55,7 +56,7 @@ export const strings = {
     settingsSaved: 'Settings Saved',
   },
   troubleTitle: 'When the model does not appear',
-  trouble: 'Check that Ollama has a model available, then use Check connection again. If the page was opened from file://, the browser may send Origin: null and the Ollama service may need to allow that origin. A hosted page can also be limited by its Content Security Policy. The browser’s network error helps identify which boundary blocked the request.',
+  trouble: 'Check that Ollama has a model available, then use ［Check Connection］ again. If the page was opened from file://, the browser may send Origin: null and the Ollama service may need to allow that origin. A hosted page can also be limited by its Content Security Policy. The browser’s network error helps identify which boundary blocked the request.',
   next: 'Connect Naidan to Ollama or a llama.cpp server',
   nextDescription: 'Compare Ollama and OpenAI-compatible connections, including their URLs and model choices.',
 };

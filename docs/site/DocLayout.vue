@@ -30,6 +30,7 @@ defineExpose({
   >{{ s.skip }}</a>
   <header
     class="topbar"
+    :class="{ 'docs-article-page': page !== 'index' }"
     data-testid="docs-header"
   >
     <div class="wrap topbar-inner">
@@ -65,9 +66,8 @@ defineExpose({
           rel="noopener noreferrer"
           referrerpolicy="no-referrer"
           class="source-icon"
-          :aria-label="s.source"
           :title="s.source"
-        ><GithubIcon class="icon sm" aria-hidden="true" /></a>
+        ><GithubIcon class="icon sm" aria-hidden="true" /><span class="sr-only">{{ s.source }}</span></a>
       </nav>
       <div class="nav-controls">
         <a

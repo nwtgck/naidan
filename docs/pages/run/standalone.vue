@@ -28,6 +28,7 @@ defineExpose({
     <div class="pair-grid"><section v-for="mode in s.modes" :key="mode.title" class="panel"><h3>{{ mode.title }}</h3><p>{{ mode.body }}</p></section></div>
     <section v-for="detail in s.details" :key="detail.title"><h2>{{ detail.title }}</h2><p>{{ detail.body }}</p></section>
     <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[
+      { page: 'run/offline', title: s.offlineGuideTitle, description: s.offlineGuideDescription },
       { page: 'work/app-permissions', title: s.permissionsGuideTitle, description: s.permissionsGuideDescription },
       { page: 'work/boundary', title: s.next, description: s.nextDescription },
     ]" />

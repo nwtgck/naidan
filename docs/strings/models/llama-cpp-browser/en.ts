@@ -4,7 +4,7 @@ export const strings = {
   intro: 'Naidan can run GGUF chat models in your browser. Choose from the models below. To use a different GGUF, open ［Settings］ to import a file from your device or download one from Hugging Face.',
   quickModels: {
     title: 'Choose a model to try in your browser',
-    body: 'Choose a model to open its chat. If it has not been downloaded, select ［Start with this model］ there; once it is ready, enter your message.',
+    body: 'Choose a model to open its chat. If it has not been downloaded, select ［Start with this model］ there; once it is ready, enter your message. Local-only cannot fetch an unprepared model from Hugging Face: import a GGUF you obtained separately, or download the model in a Hosted edition that permits the required model file hosts.',
   },
   availability: 'The llama.cpp browser option appears in both Hosted and Standalone. ［Inference settings］ checks what this browser and device support. Model compatibility and speed depend on the device and model.',
   manager: {
@@ -25,7 +25,7 @@ export const strings = {
     },
     download: {
       title: '3. Or download a GGUF from Hugging Face',
-      body: 'Enter an owner/repository name and choose ［Check model］. Review the available quantization and, if needed, its model variant. Under ［Download to］, choose ［Browser storage］ or a linked device folder that your browser supports, then select ［Download］. The manager adds the finished files to ［Imported models］. For image chat, a matching mmproj file is also needed.',
+      body: 'On Local-only, import a GGUF obtained separately as in the previous step. In an edition that permits connections to the model file hosts (Curated permits huggingface.co and *.hf.co), enter an owner/repository name and choose ［Check model］. Review the available quantization and, if needed, its model variant. Under ［Download to］, choose ［Browser storage (OPFS)］ or a linked device folder that your browser supports, then select ［Download］. The manager adds the finished files to ［Imported models］. For image chat, a matching mmproj GGUF—the model’s companion file for image input—is also needed.',
       caption: 'Check the repository, choose files and destination, then download before using the model.',
     },
     default: {
@@ -57,7 +57,7 @@ export const strings = {
     chooseModelFiles: 'Choose model files',
     sampleQuantization: 'Q4_K_M',
     downloadTo: 'Download to',
-    browserStorage: 'Browser storage',
+    browserStorage: 'Browser storage (OPFS)',
     download: 'Download',
     downloading: 'Downloading model',
     setDefault: 'Set as default',

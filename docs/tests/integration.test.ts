@@ -38,7 +38,7 @@ describe('Docs development and static output', () => {
         const islands = new Set(Array.from(production.document.querySelectorAll('[data-docs-island]'), element => element.getAttribute('data-docs-island')));
         const appEntryClient = production.document.querySelector('[data-docs-app-entry-path]') ? 1 : 0;
         const homeBrandClient = production.document.querySelector('[data-docs-hero-brand]') ? 1 : 0;
-        expect(scripts.length).toBe(islands.size + appEntryClient + homeBrandClient);
+        expect(scripts.length).toBe(1 + islands.size + appEntryClient + homeBrandClient);
         for (const element of development.document.querySelectorAll('link[rel="stylesheet"]')) {
           const asset = element.getAttribute('href');
           const css = await dev.request({ url: asset ?? '' });
@@ -233,7 +233,8 @@ describe('Docs missing-page document', () => {
     using production = parsePage({ html: await readFile(path.join(fixture.docs, 'dist/404.html'), 'utf8') });
     expect(development.document.body.innerHTML).toBe(production.document.body.innerHTML);
     expect(production.document.title).toBe('404 | Naidan Docs');
-    expect(production.document.querySelector('script')).toBeNull();
+    expect(production.document.querySelector('script:not([type])[src]')?.getAttribute('src')).toMatch(/^\/docs\/assets\/locale-.+\.js$/);
+    expect(development.document.querySelector('script:not([type])[src]')?.getAttribute('src')).toBe('/docs/__locale.js');
     expect(production.document.querySelector('a[lang="ja"]')?.getAttribute('href')).toBe('/docs/ja/');
     expect(production.document.querySelector('a[lang="en"]')?.getAttribute('href')).toBe('/docs/en/');
     expect(production.document.body.textContent).toContain('ページが見つかりません');

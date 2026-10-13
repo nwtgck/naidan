@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import ExternalLink from '../../site/ExternalLink.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
+import AppPermissionsDiagram from '../../site/demos/AppPermissionsDiagram.vue';
 import { docsHref, type DocsLocale } from '../../site/routes';
 import type { AppPermissionsMessages, CommonMessages } from '../../site/messages';
 
-defineProps<{ s: AppPermissionsMessages; locale: DocsLocale; common: CommonMessages }>();
+const props = defineProps<{ s: AppPermissionsMessages; locale: DocsLocale; common: CommonMessages }>();
+const accessCases = [
+  { mode: 'desktop' as const, card: props.s.reach.cards[0]!, caption: props.s.visual.desktop.caption },
+  { mode: 'mobile' as const, card: props.s.reach.cards[1]!, caption: props.s.visual.mobile.caption },
+  { mode: 'web' as const, card: props.s.reach.cards[2]!, caption: props.s.visual.web.caption },
+];
 
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
@@ -21,34 +27,30 @@ defineExpose({
     <p v-for="paragraph in s.intro" :key="paragraph" class="lead">{{ paragraph }}</p>
 
     <section>
-      <h2>{{ s.noPrompt.title }}</h2>
-      <p>{{ s.noPrompt.body }}</p>
-      <div class="source-links">
-        <ExternalLink v-for="source in s.noPrompt.sources" :key="source.href" :href="source.href" :locale="locale">{{ source.label }}</ExternalLink>
-      </div>
-    </section>
-
-    <section>
       <h2>{{ s.reach.title }}</h2>
       <p>{{ s.reach.intro }}</p>
-      <figure class="reach-comparison" data-testid="app-reach-comparison">
-        <div class="reach-cards">
-          <section v-for="card in s.reach.cards" :key="card.title" class="reach-card">
-            <h3>{{ card.title }}</h3>
-            <p class="scope">{{ card.scope }}</p>
-            <p>{{ card.body }}</p>
-            <div class="source-links">
-              <ExternalLink v-for="source in card.sources" :key="source.href" :href="source.href" :locale="locale">{{ source.label }}</ExternalLink>
-            </div>
-          </section>
+      <section v-for="entry in accessCases" :key="entry.mode" class="access-example" :data-testid="`access-example-${entry.mode}`">
+        <h3>{{ entry.card.title }}</h3>
+        <p class="access-scope">{{ entry.card.scope }}</p>
+        <p>{{ entry.card.body }}</p>
+        <figure class="guide-figure">
+          <AppPermissionsDiagram :mode="entry.mode" :copy="s.visual" />
+          <figcaption>{{ entry.caption }}</figcaption>
+        </figure>
+        <div class="source-links">
+          <ExternalLink v-for="source in entry.card.sources" :key="source.href" :href="source.href" :locale="locale">{{ source.label }}</ExternalLink>
         </div>
-        <figcaption>{{ s.reach.caption }} <ExternalLink :href="s.reach.sandboxSource.href" :locale="locale">{{ s.reach.sandboxSource.label }}</ExternalLink></figcaption>
-      </figure>
+      </section>
+      <p class="comparison-note">{{ s.reach.caption }} <ExternalLink :href="s.reach.sandboxSource.href" :locale="locale">{{ s.reach.sandboxSource.label }}</ExternalLink></p>
     </section>
 
     <section>
       <h2>{{ s.send.title }}</h2>
       <p>{{ s.send.first }}</p>
+      <figure class="guide-figure">
+        <AppPermissionsDiagram mode="send" :copy="s.visual" />
+        <figcaption>{{ s.visual.send.caption }}</figcaption>
+      </figure>
       <p>{{ s.send.second }}</p>
       <div class="source-links">
         <ExternalLink v-for="source in s.send.sources" :key="source.href" :href="source.href" :locale="locale">{{ source.label }}</ExternalLink>
@@ -57,9 +59,24 @@ defineExpose({
     </section>
 
     <section>
+      <h2>{{ s.noPrompt.title }}</h2>
+      <p>{{ s.noPrompt.body }}</p>
+      <figure class="guide-figure">
+        <AppPermissionsDiagram mode="noPrompt" :copy="s.visual" />
+        <figcaption>{{ s.visual.noPrompt.caption }}</figcaption>
+      </figure>
+      <div class="source-links">
+        <ExternalLink v-for="source in s.noPrompt.sources" :key="source.href" :href="source.href" :locale="locale">{{ source.label }}</ExternalLink>
+      </div>
+    </section>
+
+    <section>
       <h2>{{ s.choose.title }}</h2>
       <p>{{ s.choose.body }}</p>
       <p>{{ s.choose.note }}</p>
+      <div class="source-links">
+        <ExternalLink v-for="source in s.choose.sources" :key="source.href" :href="source.href" :locale="locale">{{ source.label }}</ExternalLink>
+      </div>
     </section>
 
     <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[
@@ -72,14 +89,11 @@ defineExpose({
 
 <style scoped>
 .source-links { display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:12px;font-size:12px;line-height:1.8; }
-.reach-comparison { margin:22px 0 0; }
-.reach-cards { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px; }
-.reach-card { display:flex;flex-direction:column;min-width:0;padding:20px;border:1px solid var(--line-strong);border-radius:14px;background:var(--surface); }
-.reach-card h3 { margin:0 0 4px;font-size:17px;line-height:1.5; }
-.reach-card .scope { margin:0 0 12px;color:var(--blue);font-size:12px;font-weight:750;line-height:1.5; }
-.reach-card > p:not(.scope) { margin:0;flex:1;font-size:13px;line-height:1.8; }
-.reach-card .source-links { margin-top:16px;padding-top:12px;border-top:1px solid var(--line); }
-.reach-comparison figcaption { margin-top:12px;color:var(--muted);font-size:12px;line-height:1.8; }
+.access-example { margin-top:30px; }
+.access-example h3 { margin-bottom:5px; }
+.access-scope { margin:0 0 12px!important; color:var(--blue)!important; font-size:12px!important; font-weight:750; }
+.guide-figure { margin:18px 0 0; }
+.guide-figure figcaption { margin-top:10px; color:var(--muted); font-size:12px; line-height:1.8; }
+.comparison-note { margin-top:18px; font-size:12px; color:var(--muted); }
 .local-only-link { margin-top:16px;font-size:13px; }
-@media(max-width:720px) { .reach-cards { grid-template-columns:1fr; } .reach-card { padding:18px; } }
 </style>

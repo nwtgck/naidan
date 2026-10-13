@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
+import AppEntryLink from '../../site/AppEntryLink.vue';
 import OpenAiCompatibleSettingsStep from '../../site/demos/OpenAiCompatibleSettingsStep.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
@@ -14,6 +15,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article class="prose" data-testid="docs-models-openai-compatible">
     <h1>{{ s.title }}</h1>
     <p class="lead"><UiText :text="s.intro" /></p>
+    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
     <p class="before-step"><UiText :text="s.before" /></p>
 
     <section class="walkthrough-step" aria-labelledby="openai-open">

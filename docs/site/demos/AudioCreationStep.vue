@@ -38,7 +38,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes generate-tap { 0%,12%,31%,100% { box-shadow:none; } 18%,25% { box-shadow:0 0 0 5px color-mix(in srgb,var(--a) 22%,transparent); } }@keyframes busy-actions { 0%,24%,65%,100% { opacity:0; } 35%,56% { opacity:1; } }@keyframes progress-show { 0%,24%,65%,100% { opacity:0; } 35%,56% { opacity:1; } }@keyframes progress-fill { 0%,25% { transform:scaleX(0); } 58%,100% { transform:scaleX(1); } }@keyframes history-show { 0%,59% { opacity:0; } 74%,100% { opacity:1; } }@keyframes save-tap { 0%,65%,85%,100% { box-shadow:none; } 71%,79% { box-shadow:0 0 0 5px color-mix(in srgb,var(--a) 22%,transparent); } }
 :global(html:has(#docs-pause-motion:checked)) .camera *, :global(html:has(#docs-pause-motion:checked)) .camera *::before, :global(html:has(#docs-pause-motion:checked)) .camera *::after { animation:none!important; }:global(html:has(#docs-pause-motion:checked)) .camera .canvas { transform:translate(var(--x1),var(--y1)) scale(var(--z1)); }:global(html:has(#docs-pause-motion:checked)) .camera .menu,:global(html:has(#docs-pause-motion:checked)) .camera .pointer,:global(html:has(#docs-pause-motion:checked)) .camera .model-before,:global(html:has(#docs-pause-motion:checked)) .camera .text-before,:global(html:has(#docs-pause-motion:checked)) .camera .busy-actions,:global(html:has(#docs-pause-motion:checked)) .camera .progress { opacity:0; }:global(html:has(#docs-pause-motion:checked)) .camera .model-after,:global(html:has(#docs-pause-motion:checked)) .camera .text-after,:global(html:has(#docs-pause-motion:checked)) .camera .history { opacity:1; }
 @media(prefers-reduced-motion:reduce) { .camera *, .camera *::before, .camera *::after { animation:none!important; }.canvas { transform:translate(var(--x1),var(--y1)) scale(var(--z1)); }.menu,.pointer,.model-before,.text-before,.busy-actions,.progress { opacity:0; }.model-after,.text-after,.history { opacity:1; } }
-@media(max-width:560px) { .camera { height:316px; }.stage-open { --x0:0px;--x1:-138px;--z1:.84; }.stage-text { --x0:-138px;--z0:.84;--x1:-155px;--y1:-230px;--z1:.85; }.stage-generate { --x0:-125px;--y0:-230px;--z0:.85;--x1:-160px;--y1:-548px;--z1:.85; }.stage-save { --x0:-125px;--y0:-548px;--z0:.85;--x1:-478px;--y1:-635px;--z1:.86; } }
+@media(max-width:560px) { .camera { height:316px; }.stage-open { --x0:0px;--x1:-138px;--z1:.84; }.stage-text { --x0:-138px;--z0:.84;--x1:-155px;--y1:-230px;--z1:.85; }.stage-generate { --x0:-125px;--y0:-230px;--z0:.85;--x1:-160px;--y1:-585px;--z1:.85; }.stage-save { --x0:-125px;--y0:-548px;--z0:.85;--x1:-478px;--y1:-635px;--z1:.86; } }
 .model-before,.model-after,.text-before,.text-after,.busy-actions,.progress,.history,.suggestion-action,.generate,.download { animation:none; }
 .stage-open .canvas { --xf:-300px;animation:open-camera 10s ease-in-out infinite; }
 .stage-open .suggestion-action { animation:open-suggestion-tap 10s linear infinite; }
@@ -72,8 +72,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   .stage-open .canvas { --xf:-550px; }
   .stage-text { --x0:-138px;--x1:-125px; }
   .stage-generate { --x0:-125px;--x1:-125px; }
+  .stage-generate .canvas { animation:generate-camera 10s ease-in-out infinite; }
+  .stage-generate .busy-actions { width:320px;flex-wrap:wrap; }
   .stage-save { --x0:-125px;--x1:-550px; }
 }
+@keyframes generate-camera { 0%,22% { transform:translate(var(--x0),var(--y0)) scale(var(--z0)); } 35%,56% { transform:translate(-255px,-360px) scale(var(--z0)); } 74%,90% { transform:translate(var(--x1),var(--y1)) scale(var(--z1)); } 100% { transform:translate(var(--x0),var(--y0)) scale(var(--z0)); } }
 .stage-text .canvas { --ym:-145px;--yl:-360px;animation:text-camera 10s ease-in-out infinite; }
 .model-field,.language-field { position:relative; }
 .model-field { z-index:3; }

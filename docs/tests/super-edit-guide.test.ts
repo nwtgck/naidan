@@ -13,6 +13,7 @@ describe('Super Edit guide', () => {
     { locale: 'ja' as const, copy: ja, common: commonJa },
   ])('renders the full workflow and its preserved-path result in $locale', async ({ locale, copy, common }) => {
     const html = await renderToString(createSSRApp(SuperEditPage, { s: copy, locale, common }));
+    expect(html).toContain('data-docs-app-entry-path="/#/"');
 
     for (const stage of ['open', 'edit', 'prompt', 'apply']) {
       expect(html).toContain(`data-docs-animation="super-edit-${stage}"`);

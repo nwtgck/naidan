@@ -1,9 +1,10 @@
 import { DOCS_BASE } from '../site/routes';
 import { selectDocsLocale } from '../site/locale';
+import { startDocsPreferences } from './preferences';
 
-// Only the language-neutral entrance uses this bootstrap. Localized pages remain
-// complete static HTML. Both translations here are inert, pre-rendered templates:
-// mounting one avoids a second navigation and never shows the wrong language.
+// Every Docs page restores its native display controls before the body is painted.
+// Only the language-neutral entrance mounts a pre-rendered language template.
+startDocsPreferences({ document, window });
 const url = new URL(window.location.href);
 if (url.pathname === DOCS_BASE || url.pathname === `${DOCS_BASE}index.html` || url.pathname === DOCS_BASE.slice(0, -1)) {
   const html = document.documentElement;

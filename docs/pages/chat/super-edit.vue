@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import SuperEditStep from '../../site/demos/SuperEditStep.vue';
+import AppEntryLink from '../../site/AppEntryLink.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
 import UiText from '../../site/UiText.vue';
 import type { CommonMessages, SuperEditMessages } from '../../site/messages';
@@ -13,6 +14,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article class="prose" data-testid="docs-chat-super-edit">
     <h1>{{ s.title }}</h1>
     <p class="lead"><UiText :text="s.intro" /></p>
+    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" /><UiText :text="s.launch.after" /></p>
 
     <section class="walkthrough-step" aria-labelledby="super-edit-open">
       <h2 id="super-edit-open">{{ s.steps.open.title }}</h2>

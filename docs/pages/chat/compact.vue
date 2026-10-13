@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
+import AppEntryLink from '../../site/AppEntryLink.vue';
 import CompactStep from '../../site/demos/CompactStep.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
+import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
 import type { CommonMessages } from '../../site/messages';
 import type { strings as compactStrings } from '../../strings/chat/compact/en';
@@ -15,7 +17,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article class="prose" data-testid="docs-chat-compact">
     <h1>{{ s.title }}</h1>
     <p class="lead"><UiText :text="s.intro" /></p>
-    <p class="prerequisite"><UiText :text="s.prerequisite" /></p>
+    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" /><UiText :text="s.launch.after" /></p>
+    <p class="prerequisite"><UiText :text="s.prerequisite" /> {{ s.setup.before }}<a :href="docsHref({ locale, page: 'models/local-engines' })">{{ s.setup.link }}</a>{{ s.setup.between }}<a :href="docsHref({ locale, page: 'models/in-browser' })">{{ s.setup.browserLink }}</a>{{ s.setup.after }}</p>
 
     <section class="walkthrough-step" aria-labelledby="compact-open">
       <h2 id="compact-open">{{ s.steps.open.title }}</h2>

@@ -4,7 +4,5 @@ export function updateAppEntryLinks({ document, locationHref }: { document: Docu
     if (!path) continue;
     const href = new URL(path, locationHref).href;
     anchor.href = href;
-    const displayedUrl = anchor.querySelector<HTMLElement>('[data-docs-app-entry-url]');
-    if (displayedUrl) displayedUrl.textContent = href;
   }
 }

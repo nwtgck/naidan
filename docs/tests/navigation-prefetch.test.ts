@@ -17,19 +17,20 @@ const body = `\
 describe('article navigation prefetch', () => {
   it('marks only registered, distinct article links in production HTML', () => {
     const page = { body, title: 'Guide', description: 'Description', locale: 'en', page: 'chat/branching' } as const;
-    using production = parsePage({ html: renderProductionDocument({ page, assets }) });
+    using production = parsePage({ html: renderProductionDocument({ page, assets, bootstrap: undefined }) });
     const marked = [...production.document.querySelectorAll<HTMLAnchorElement>('a[data-docs-guide-prefetch]')];
     expect(marked.map(anchor => anchor.getAttribute('href'))).toEqual(['/docs/en/models/in-browser/', '/docs/ja/work/boundary/']);
     const rule = production.document.querySelector('script[type="speculationrules"]');
     expect(JSON.parse(rule?.textContent ?? '')).toEqual({ prefetch: [{ where: { selector_matches: 'a[data-docs-guide-prefetch]' }, eagerness: 'moderate' }] });
 
-    using development = parsePage({ html: renderDocument({ page, assets }) });
+    using development = parsePage({ html: renderDocument({ page, assets, bootstrap: undefined }) });
     expect(development.document.querySelector('script[type="speculationrules"]')).toBeNull();
     expect(development.document.querySelectorAll('a[data-docs-guide-prefetch]')).toHaveLength(2);
 
     expect(() => renderProductionDocument({
       page: { ...page, body: '<h1>Guide</h1><a href="/" data-docs-guide-prefetch>App</a>' },
       assets,
+      bootstrap: undefined,
     })).toThrow('Invalid Docs article prefetch target');
   });
 

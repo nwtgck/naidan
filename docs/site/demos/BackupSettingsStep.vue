@@ -34,12 +34,15 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <div class="import-content">
             <div v-if="stage !== 'mode'" class="menu-pane"><div class="menu-card export-menu"><UploadIcon :size="28" /><strong>{{ copy.export }}</strong><MousePointer2Icon v-if="stage === 'export'" class="pointer menu-pointer" :size="23" /></div><div class="menu-card import-menu"><DownloadIcon :size="28" /><strong>{{ copy.import }}</strong><MousePointer2Icon v-if="stage === 'preview'" class="pointer menu-pointer" :size="23" /></div></div>
 
-            <div v-if="stage === 'export'" class="export-pane">
-              <div class="pane-heading"><UploadIcon :size="21" /><strong>{{ copy.readyToExport }}</strong></div>
-              <label class="filename-tag">{{ copy.filenameTag }}<span class="input-look" /></label>
-              <div class="exclusions"><div class="check-item"><span class="fake-check" />{{ copy.excludeChats }}</div><div class="check-item history-choice"><span class="fake-check"><CheckIcon :size="13" /></span>{{ copy.excludeHistory }}<MousePointer2Icon class="pointer history-pointer" :size="23" /></div><div class="check-item"><span class="fake-check" />{{ copy.excludeAttachments }}</div></div>
-              <div class="filename-preview"><small>{{ copy.outputFilename }}</small><strong>{{ copy.filename }}</strong></div>
-              <div class="action-row"><span class="success-message"><CheckIcon :size="18" />{{ copy.savedCopy }}</span><span class="primary-action"><UploadIcon :size="17" />{{ copy.exportNow }}<MousePointer2Icon class="pointer export-pointer" :size="23" /></span></div>
+            <div v-if="stage === 'export'" class="export-flow">
+              <div class="export-pane">
+                <div class="pane-heading"><UploadIcon :size="21" /><strong>{{ copy.readyToExport }}</strong></div>
+                <label class="filename-tag">{{ copy.filenameTag }}<span class="input-look" /></label>
+                <div class="exclusions"><div class="check-item"><span class="fake-check" />{{ copy.excludeChats }}</div><div class="check-item history-choice"><span class="fake-check"><CheckIcon :size="13" /></span>{{ copy.excludeHistory }}<MousePointer2Icon class="pointer history-pointer" :size="23" /></div><div class="check-item"><span class="fake-check" />{{ copy.excludeAttachments }}</div></div>
+                <div class="filename-preview"><small>{{ copy.outputFilename }}</small><strong>{{ copy.filename }}</strong></div>
+                <div class="action-row"><span class="primary-action"><UploadIcon :size="17" />{{ copy.exportNow }}<MousePointer2Icon class="pointer export-pointer" :size="23" /></span></div>
+              </div>
+              <div class="export-result"><CheckIcon :size="18" />{{ copy.savedCopy }}</div>
             </div>
 
             <div v-if="stage === 'preview' || stage === 'mode'" class="preview-pane">
@@ -65,7 +68,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </template>
 
 <style scoped>
-.backup-viewport { --demo-panel:var(--surface);--demo-field:var(--surface-2);--demo-line:var(--line-strong);--demo-blue:var(--blue);--demo-warning:#fbbf24;position:relative;width:100%;max-width:680px;height:350px;margin-inline:auto;overflow:hidden;border:1px solid var(--demo-line);border-radius:15px;background:var(--bg);color:var(--text);box-shadow:var(--panel-shadow); }
+.backup-viewport { --demo-panel:var(--surface);--demo-field:var(--surface-2);--demo-line:var(--line-strong);--demo-blue:var(--blue);--demo-warning:#fbbf24;position:relative;width:100%;max-width:680px;height:350px;margin-inline:auto;overflow:hidden;border:1px solid var(--demo-line);border-radius:15px;background:var(--bg);color:var(--text);box-shadow:var(--panel-shadow);container-type:inline-size; }
 :global(html:has(#docs-light-theme:checked)) .backup-viewport { --demo-warning:#92400e; }
 .camera { width:1120px;height:760px;transform-origin:top left;will-change:transform; }
 .stage-export .camera { transform:translate(-280px,-205px) scale(.95);animation:camera-export 11s ease-in-out infinite; }
@@ -110,6 +113,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .import-heading > svg { margin-left:auto;color:var(--muted); }
 .import-content { position:relative;height:470px;padding:23px; }
 .menu-pane,.export-pane,.preview-pane,.mode-pane { position:absolute;inset:23px; }
+.export-flow { position:absolute;inset:23px;display:grid;align-content:start;gap:8px; }
+.export-flow .export-pane { position:relative;inset:auto; }
 .menu-pane { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;align-content:start;opacity:0; }
 .menu-card { position:relative;display:grid;align-content:start;gap:12px;height:190px;padding:25px;border:2px solid var(--demo-line);border-radius:19px;background:var(--demo-field); }
 .menu-card svg { color:var(--demo-blue); }
@@ -132,8 +137,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .filename-preview strong { color:var(--demo-blue);font:750 13px/1.5 ui-monospace,SFMono-Regular,monospace; }
 .action-row { display:flex;align-items:center;justify-content:flex-end;gap:15px;margin-top:7px; }
 .primary-action { position:relative;display:flex;align-items:center;gap:7px;padding:11px 17px;border:1px solid #1d4ed8;border-radius:10px;background:#2563eb;color:white;font-size:12px;font-weight:850; }
-.success-message,.import-progress { display:flex;align-items:center;gap:7px;color:var(--green);font-size:12px;font-weight:800;opacity:0; }
-.stage-export .success-message { animation:export-done 11s linear infinite; }
+.export-result { display:flex;align-items:center;gap:7px;justify-self:end;padding:7px 10px;border:1px solid color-mix(in srgb,var(--green) 30%,var(--demo-line));border-radius:9px;background:color-mix(in srgb,var(--green) 9%,var(--demo-panel));color:var(--green);font-size:12px;font-weight:800;opacity:0; }
+.stage-export .export-result { animation:export-done 11s linear infinite; }
+.import-progress { display:flex;align-items:center;gap:7px;color:var(--green);font-size:12px;font-weight:800;opacity:0; }
 .upload-row { display:flex;align-items:center;gap:15px;padding:13px;border:1px dashed var(--demo-line);border-radius:11px;background:var(--demo-field); }
 .upload-action { position:relative;display:flex;align-items:center;gap:7px;padding:9px 12px;border:1px solid var(--demo-line);border-radius:8px;background:var(--demo-panel);font-size:11px;font-weight:850; }
 .upload-row strong { color:var(--demo-blue);font:750 12px/1.4 ui-monospace,SFMono-Regular,monospace; }
@@ -186,10 +192,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes camera-mode { 0%,26% { transform:translate(-280px,-270px) scale(.95); } 44%,100% { transform:translate(-310px,-235px) scale(1); } }
 @keyframes dialog-enter { 0%,17% { opacity:0;transform:translateY(8px); } 30%,100% { opacity:1;transform:none; } }
 @keyframes manage-highlight { 0%,9%,26%,100% { box-shadow:none; } 14%,20% { box-shadow:0 0 0 5px color-mix(in srgb,var(--demo-blue) 23%,transparent); } }
-@keyframes export-menu { 0%,30% { opacity:1; } 39%,100% { opacity:0; } }
-@keyframes preview-menu { 0%,20% { opacity:1; } 30%,100% { opacity:0; } }
-@keyframes export-form { 0%,33% { opacity:0; } 43%,100% { opacity:1; } }
-@keyframes preview-form { 0%,24% { opacity:0; } 35%,100% { opacity:1; } }
+@keyframes export-menu { 0%,39% { opacity:1; } 50%,100% { opacity:0; } }
+@keyframes preview-menu { 0%,32% { opacity:1; } 42%,100% { opacity:0; } }
+@keyframes export-form { 0%,48% { opacity:0; } 56%,100% { opacity:1; } }
+@keyframes preview-form { 0%,37% { opacity:0; } 45%,100% { opacity:1; } }
 @keyframes mode-preview { 0%,27% { opacity:1; } 38%,100% { opacity:0; } }
 @keyframes mode-form { 0%,31% { opacity:0; } 42%,100% { opacity:1; } }
 @keyframes history-select { 0%,53% { background:var(--demo-field); } 63%,100% { background:var(--demo-blue); } }
@@ -198,31 +204,69 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes verify-status { 0%,72%,90%,100% { opacity:0; } 78%,85% { opacity:1; } }
 @keyframes import-result { 0%,87% { opacity:0; } 94%,100% { opacity:1; } }
 @keyframes manage-pointer { 0%,8%,26%,100% { opacity:0;transform:translate(9px,9px); } 14%,20% { opacity:1;transform:none; } }
-@keyframes menu-pointer { 0%,20%,36%,100% { opacity:0;transform:translate(9px,9px); } 25%,31% { opacity:1;transform:none; } }
-@keyframes preview-menu-pointer { 0%,7%,24%,100% { opacity:0;transform:translate(9px,9px); } 12%,18% { opacity:1;transform:none; } }
+@keyframes menu-pointer { 0%,31%,43%,100% { opacity:0;transform:translate(9px,9px); } 34%,39% { opacity:1;transform:none; } }
+@keyframes preview-menu-pointer { 0%,20%,33%,100% { opacity:0;transform:translate(9px,9px); } 24%,29% { opacity:1;transform:none; } }
 @keyframes history-pointer { 0%,51%,67%,100% { opacity:0;transform:translate(9px,9px); } 57%,62% { opacity:1;transform:none; } }
 @keyframes export-pointer { 0%,73%,87%,100% { opacity:0;transform:translate(9px,9px); } 78%,83% { opacity:1;transform:none; } }
 @keyframes upload-pointer { 0%,34%,53%,100% { opacity:0;transform:translate(9px,9px); } 41%,48% { opacity:1;transform:none; } }
 @keyframes next-pointer { 0%,13%,31%,100% { opacity:0;transform:translate(9px,9px); } 20%,26% { opacity:1;transform:none; } }
 @keyframes append-pointer { 0%,43%,58%,100% { opacity:0;transform:translate(9px,9px); } 49%,54% { opacity:1;transform:none; } }
 @keyframes import-pointer { 0%,64%,79%,100% { opacity:0;transform:translate(9px,9px); } 70%,75% { opacity:1;transform:none; } }
-@media(max-width:620px) {
-  .backup-viewport { height:320px; }
-  .stage-export .camera { transform:translate(-550px,-230px) scale(.85);animation-name:camera-export-mobile; }
-  .stage-preview .camera { transform:translate(-280px,-230px) scale(.85);animation-name:camera-preview-mobile; }
-  .stage-mode .camera { transform:translate(-280px,-230px) scale(.85);animation-name:camera-mode-mobile; }
-  .stage-mode .import-progress { position:absolute;left:0;bottom:65px; }
-  @keyframes camera-export-mobile { 0%,17% { transform:translate(-600px,-110px) scale(.85); } 34%,66% { transform:translate(-350px,-155px) scale(.85); } 78%,100% { transform:translate(-550px,-230px) scale(.85); } }
-  @keyframes camera-preview-mobile { 0%,22% { transform:translate(-550px,-230px) scale(.85); } 36%,100% { transform:translate(-280px,-230px) scale(.85); } }
-  @keyframes camera-mode-mobile { 0%,12% { transform:translate(-280px,-230px) scale(.85); } 23%,32% { transform:translate(-550px,-230px) scale(.85); } 44%,63% { transform:translate(-280px,-230px) scale(.85); } 70%,82% { transform:translate(-560px,-230px) scale(.85); } 90%,100% { transform:translate(-280px,-230px) scale(.85); } }
+@media(max-width:744px) {
+  .backup-viewport { --pane-width:min(644px, calc(100cqw - 24px));--pane-x:-321px;--pane-scale:1;--left-menu-x:calc(50cqw - 412px);--right-menu-x:calc(100cqw - 850px);--export-y:-225px;--preview-y:-230px;--mode-y:-272px;height:370px; }
+  .stage-export .camera { transform:translate(var(--pane-x),var(--export-y)) scale(var(--pane-scale));animation-name:camera-export-mobile; }
+  .stage-preview .camera { transform:translate(var(--pane-x),var(--preview-y)) scale(var(--pane-scale));animation-name:camera-preview-mobile; }
+  .stage-mode .camera { transform:translate(var(--pane-x),var(--mode-y)) scale(var(--pane-scale));animation-name:camera-mode-mobile; }
+  .stage-export .export-flow { right:auto;width:var(--pane-width); }
+  .stage-export .export-pane { gap:12px; }
+  .stage-export .pane-heading { margin-bottom:8px; }
+  .stage-preview .preview-pane,.stage-mode .preview-pane,.stage-mode .mode-pane { right:auto;width:var(--pane-width); }
+  .preview-pane .pane-heading { margin-bottom:8px; }
+  .upload-row { display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;padding:8px; }
+  .upload-action { padding:7px 9px; }
+  .upload-row strong { min-width:0;overflow-wrap:anywhere;font-size:11px; }
+  .stats-grid { grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px; }
+  .stats-grid > div { padding:7px; }
+  .stats-grid strong { font-size:19px;line-height:1.2; }
+  .content-preview { gap:4px;margin-top:9px;padding:9px; }
+  .preview-pane .action-row { margin-top:9px; }
+  .mode-pane { gap:7px; }
+  .archive-summary { flex-wrap:wrap;padding:7px 9px; }
+  .archive-summary > span { margin-left:0; }
+  .mode-grid { grid-template-columns:1fr;gap:8px; }
+  .mode-card { min-height:76px;padding:10px 12px; }
+  .replace-warning { line-height:1.35; }
+  .settings-fields { gap:4px;padding:9px; }
+  .settings-fields > div { line-height:1.35; }
+  .stage-mode .action-row { justify-content:space-between;gap:6px; }
+  .stage-mode .import-progress { position:static; }
+  @keyframes camera-export-mobile { 0%,22% { transform:translate(calc(var(--left-menu-x) - 325px),-110px) scale(.85); } 31%,48% { transform:translate(var(--left-menu-x),-155px) scale(.85); } 57%,100% { transform:translate(var(--pane-x),var(--export-y)) scale(var(--pane-scale)); } }
+  @keyframes camera-preview-mobile { 0%,12% { transform:translate(var(--pane-x),var(--export-y)) scale(var(--pane-scale)); } 20%,32% { transform:translate(var(--right-menu-x),-185px) scale(.85); } 43%,100% { transform:translate(var(--pane-x),var(--preview-y)) scale(var(--pane-scale)); } }
+  @keyframes camera-mode-mobile { 0%,12% { transform:translate(var(--pane-x),var(--preview-y)) scale(var(--pane-scale)); } 23%,32% { transform:translate(var(--pane-x),var(--preview-y)) scale(var(--pane-scale)); } 44%,63% { transform:translate(var(--pane-x),var(--mode-y)) scale(var(--pane-scale)); } 70%,82% { transform:translate(var(--pane-x),calc(var(--mode-y) - 20px)) scale(var(--pane-scale)); } 90%,100% { transform:translate(var(--pane-x),var(--mode-y)) scale(var(--pane-scale)); } }
+}
+@media(min-width:640px) and (max-width:744px) {
+  .backup-viewport { --export-y:-220px;--mode-y:-235px;height:350px; }
+  .stats-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .mode-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media(max-width:639px) {
+  .stage-export .action-row { justify-content:flex-start; }
+  .stage-export .primary-action { width:100%;justify-content:center; }
+}
+@media(max-width:370px) {
+  .backup-viewport { --pane-width:320px;--pane-x:calc(50cqw - 419px);--pane-scale:.85;--export-y:-194px;--preview-y:-190px;--mode-y:-248px;height:320px; }
+  .stage-export .filename-tag,.stage-export .filename-preview small { font-size:12px; }
+  .stage-export .check-item,.stage-export .primary-action,.stage-export .export-result { font-size:13px; }
+  .upload-action,.upload-row strong,.stats-grid small,.content-preview > strong { font-size:12px; }
+  .mode-card small,.replace-warning,.settings-fields > div,.import-progress { font-size:13px; }
 }
 :global(html:has(#docs-pause-motion:checked)) .backup-viewport *,
 :global(html:has(#docs-pause-motion:checked)) .backup-viewport *::before,
 :global(html:has(#docs-pause-motion:checked)) .backup-viewport *::after { animation:none!important; }
-:global(html:has(#docs-pause-motion:checked)) .stage-export .import-window,:global(html:has(#docs-pause-motion:checked)) .stage-export .export-pane,:global(html:has(#docs-pause-motion:checked)) .stage-preview .preview-pane,:global(html:has(#docs-pause-motion:checked)) .stage-mode .mode-pane,:global(html:has(#docs-pause-motion:checked)) .stage-export .success-message,:global(html:has(#docs-pause-motion:checked)) .stage-mode .import-done { opacity:1;transform:none; }
+:global(html:has(#docs-pause-motion:checked)) .stage-export .import-window,:global(html:has(#docs-pause-motion:checked)) .stage-export .export-pane,:global(html:has(#docs-pause-motion:checked)) .stage-preview .preview-pane,:global(html:has(#docs-pause-motion:checked)) .stage-mode .mode-pane,:global(html:has(#docs-pause-motion:checked)) .stage-export .export-result,:global(html:has(#docs-pause-motion:checked)) .stage-mode .import-done { opacity:1;transform:none; }
 :global(html:has(#docs-pause-motion:checked)) .menu-pane,:global(html:has(#docs-pause-motion:checked)) .stage-mode .preview-pane,:global(html:has(#docs-pause-motion:checked)) .stage-mode .verify { opacity:0; }
 :global(html:has(#docs-pause-motion:checked)) .history-choice .fake-check { background:var(--demo-blue); }
 :global(html:has(#docs-pause-motion:checked)) .history-choice .fake-check svg { opacity:1; }
 :global(html:has(#docs-pause-motion:checked)) .pointer { display:none; }
-@media(prefers-reduced-motion:reduce) { .backup-viewport *, .backup-viewport *::before, .backup-viewport *::after { animation:none!important; } .stage-export .import-window,.stage-export .export-pane,.stage-preview .preview-pane,.stage-mode .mode-pane,.stage-export .success-message,.stage-mode .import-done { opacity:1;transform:none; } .menu-pane,.stage-mode .preview-pane,.stage-mode .verify { opacity:0; } .history-choice .fake-check { background:var(--demo-blue); } .history-choice .fake-check svg { opacity:1; } .pointer { display:none; } }
+@media(prefers-reduced-motion:reduce) { .backup-viewport *, .backup-viewport *::before, .backup-viewport *::after { animation:none!important; } .stage-export .import-window,.stage-export .export-pane,.stage-preview .preview-pane,.stage-mode .mode-pane,.stage-export .export-result,.stage-mode .import-done { opacity:1;transform:none; } .menu-pane,.stage-mode .preview-pane,.stage-mode .verify { opacity:0; } .history-choice .fake-check { background:var(--demo-blue); } .history-choice .fake-check svg { opacity:1; } .pointer { display:none; } }
 </style>

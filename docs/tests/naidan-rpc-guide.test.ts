@@ -18,6 +18,16 @@ describe('Naidan RPC guide', () => {
     using page = parsePage({ html });
     const article = page.document.querySelector('[data-testid="docs-models-naidan-rpc"]');
     expect(article?.querySelector('h1')?.textContent).toBe(copy.title);
+    const launch = article?.querySelector<HTMLAnchorElement>('.app-entry-intro a[data-docs-app-entry-path]');
+    expect(launch?.getAttribute('href')).toBe('https://naidan.nwtgck.org/#/');
+    expect(launch?.textContent).toBe('/#/');
+    expect(launch?.querySelector('[data-docs-external-icon], .sr-only')).toBeNull();
+    expect(article?.querySelector('.app-entry-intro')?.textContent).toBe(`${copy.launch.before}/#/${copy.launch.after}`);
+    const hostedExample = article?.querySelector('.hosted-example');
+    expect(hostedExample?.textContent).toContain(copy.hostedExample.body);
+    expect(hostedExample?.querySelector('[data-docs-external]')?.getAttribute('href')).toBe('https://naidan.pages.dev/');
+    expect(hostedExample?.querySelector('[data-docs-external-icon]')).toBeTruthy();
+    expect(hostedExample?.nextElementSibling?.getAttribute('data-testid')).toBe('rpc-guide-step');
     expect([...article?.querySelectorAll('[data-testid="rpc-guide-step"] > h2') ?? []].map(heading => heading.textContent)).toEqual([
       copy.steps.enable.title, copy.steps.pair.title, copy.steps.verify.title, copy.steps.provide.title, copy.steps.use.title,
     ]);

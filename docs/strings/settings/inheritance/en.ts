@@ -2,6 +2,7 @@ export const strings = {
   title: 'Choose a connection and model for each chat',
   description: 'See how chat, chat group, and global settings determine the connection and model used for a conversation, and how to change or restore each setting.',
   intro: 'A chat uses its own endpoint or model when you set one. Otherwise, it uses its chat group’s value, then the global value. The two fields resolve independently, so a chat can inherit its connection while choosing a different model.',
+  launch: { before: 'First, open ', after: ' to start Naidan. If first-run setup appears, close it with the × at the top right, then follow step 1.' },
   example: 'The addresses and model names below illustrate the controls. Select models actually available from your own servers.',
   steps: {
     global: {
@@ -30,7 +31,7 @@ export const strings = {
       caption: 'The inherited ［Endpoint Type］ choice removes the chat endpoint override. A remaining model override can be cleared from its selector.',
     },
   },
-  after: 'Use ［Restore Defaults］ in the chat or group settings only when you want to remove all local settings there. Automatic title generation has separate settings, so changing the normal chat endpoint or model does not by itself replace an inherited title-generation target.',
+  after: 'To restore only the connection or model, choose its inherited entry above. The chat or group ［Restore Defaults］ action also resets other overrides in that settings panel. Automatic title generation has separate settings, so changing the normal chat endpoint or model does not by itself replace an inherited title-generation target.',
   ollamaLink: 'Connect your browser chat to a local Ollama model',
   nextDescription: 'Choose Ollama in Settings, check its local URL, then select a chat model.',
   demo: {

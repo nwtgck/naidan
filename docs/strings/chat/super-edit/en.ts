@@ -2,10 +2,11 @@ export const strings = {
   title: 'Rewrite a conversation path',
   description: 'Use Super Edit to revise, reorder, add, and remove messages in the current conversation path, then keep the result as a new branch.',
   intro: '［Super Edit］ lets you reshape the conversation path you are viewing in one editor. You can revise text, change the order, add or remove messages, and apply the result as a new branch in the same Chat.',
+  launch: { before: 'Open ', after: ' and choose a Chat to edit, or create an empty one. If first-time setup appears, close it with ×; you can edit and apply a path manually. Set up a model before asking for a new AI reply.' },
   steps: {
     open: {
       title: '1. Open the full history editor',
-      body: 'In the Chat header, open ［More actions］ (the three dots), then choose ［Super Edit］. The editor loads the messages on the current path.',
+      body: 'In the Chat header, open ［More actions］ (the three dots), then choose ［Super Edit］. The editor loads the messages on the current path. In an empty Chat, choose ［Add First Message］ to begin.',
       caption: '［Super Edit］ sits in the Chat header menu.',
     },
     edit: {

@@ -45,7 +45,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <section class="walkthrough-step" aria-labelledby="llama-guide-open">
       <h2 id="llama-guide-open">{{ s.steps.open.title }}</h2>
-      <p class="app-entry-intro">{{ s.manager.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'gguf-manager' }" :locale="locale" display="url" />{{ s.manager.after }}</p>
+      <p class="app-entry-intro">{{ s.manager.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'gguf-manager' }" :locale="locale" display="path" />{{ s.manager.after }}</p>
       <p class="app-entry-onboarding"><UiText :text="s.manager.onboarding" /></p>
       <p><UiText :text="s.steps.open.body" /></p>
       <figure class="guide-figure">

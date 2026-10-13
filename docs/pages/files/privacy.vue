@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import FolderAccessDemo from '../../site/demos/FolderAccessDemo.vue';
+import AppEntryLink from '../../site/AppEntryLink.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
+import UiText from '../../site/UiText.vue';
+import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
 import type { FilesMessages, CommonMessages } from '../../site/messages';
 
@@ -28,28 +31,33 @@ defineExpose({
       :key="paragraph"
       class="lead"
     >{{ paragraph }}</p>
-    <figure class="guide-figure"><FolderAccessDemo :copy="s.demo" /><figcaption class="caption">{{ s.diagramCaption }}</figcaption></figure>
+    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" />{{ s.launch.after }}{{ s.modelGuide.before }}<a :href="docsHref({ locale, page: 'models/in-browser' })">{{ s.modelGuide.link }}</a>{{ s.modelGuide.after }}</p>
+    <figure class="guide-figure"><FolderAccessDemo :copy="s.demo" /><figcaption class="caption"><UiText :text="s.diagramCaption" /></figcaption></figure>
     <div class="pair-grid methods">
       <section
         v-for="method in s.methods"
         :key="method.title"
         class="panel"
       >
-        <h2>{{ method.title }}</h2>
+        <h2><UiText :text="method.title" /></h2>
         <p>{{ method.body }}</p>
       </section>
     </div>
     <h2>{{ s.permissions.title }}</h2>
-    <p>{{ s.permissions.body }}</p>
+    <p><UiText :text="s.permissions.body" /></p>
     <div class="decision-list"><section v-for="(item, index) in s.checklist" :key="item.title"><span aria-hidden="true">0{{ index + 1 }}</span><div><h3>{{ item.title }}</h3><p>{{ item.body }}</p></div></section></div>
     <h2>{{ s.stepsTitle }}</h2>
     <ol>
       <li
         v-for="step in s.steps"
         :key="step"
-      >{{ step }}</li>
+      ><UiText :text="step" /></li>
     </ol>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'work/boundary', title: s.next, description: s.nextDescription }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[
+      { page: 'files/explorer', title: s.relatedExplorer.title, description: s.relatedExplorer.description },
+      { page: 'files/settings', title: s.relatedSettings.title, description: s.relatedSettings.description },
+      { page: 'work/boundary', title: s.next, description: s.nextDescription },
+    ]" />
   </article>
 </template>
 

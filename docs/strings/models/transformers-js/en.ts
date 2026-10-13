@@ -2,16 +2,18 @@ export const strings = {
   title: 'Run ONNX language models in your browser',
   description: 'Download or import a supported ONNX language model, run it locally in the browser with the Hosted edition, and set it as the chat default.',
   intro: 'Use a supported ONNX language model for chat directly in your browser. Naidan’s Transformers.js manager downloads or imports its files and loads them from browser storage. This option is experimental and available in the Hosted edition; Standalone shows it but disables model actions.',
+  launch: { before: 'First, open ', after: ' to reach the Transformers.js model manager.' },
+  onboarding: 'If first-run setup appears, close it with the × at the top right. The linked ［Transformers.js］ settings tab stays open for the steps below.',
   availability: 'A browser that does not support or allow OPFS also disables model actions. Model support and performance depend on the model, browser and device.',
   steps: {
     open: {
       title: '1. Open the Transformers.js manager',
-      body: 'Select ［Settings］ in the sidebar, then ［Transformers.js］. In the Hosted edition, check that the manager offers ［Add New Models］. If OPFS is unavailable, the manager explains the restriction and disables model actions.',
+      body: 'In the Hosted edition, check that the manager offers ［Add New Models］. If OPFS is unavailable, the manager explains the restriction and disables model actions.',
       caption: 'The Hosted manager opens with model actions available when OPFS works.',
     },
     download: {
       title: '2. Download a model and let it load',
-      body: 'Choose one of the preset model paths or enter a Hugging Face model ID, then select ［Download Model］. Naidan explicitly downloads and saves the required files. When that succeeds, the same action continues into a separate load from the local cache. The ［Engine Control］ panel shows when the model is ready. A listed model is only an example; choose one your setup supports.',
+      body: 'Choose one of the preset model paths or enter a Hugging Face model ID, then select ［Download Model］. Local-only cannot download from Hugging Face; instead, use ［Select Model Folder］ to import an ONNX model folder obtained separately. Naidan explicitly downloads and saves the required files when the download is allowed. When that succeeds, the same action continues into a separate load from the local cache. The ［Engine Control］ panel shows when the model is ready. A listed model is only an example; choose one your setup supports.',
       caption: '［Download Model］ completes file preparation, then starts a local cache-only load.',
     },
     resume: {

@@ -2,15 +2,20 @@ export const strings = {
   title: 'Use AI models on another device for chat and images',
   description: 'Connect two Naidan browsers, verify the other device, and choose which chat or image generation functions it can provide.',
   intro: 'A model on one device can answer a chat or create an image while you work in Naidan on another. Naidan RPC connects the two browsers; the device running the model chooses which functions it shares.',
+  launch: { before: 'On each device, open ', after: ' to start Naidan. If first-run setup appears, close it with the × at the top right before following step 1.' },
+  hostedExample: {
+    body: 'The device providing a model must use the Hosted edition; Standalone can only use a peer’s inference. The public HTTPS relay in step 2 is blocked by Local-only and Curated. If either device uses one of those editions, switch it to regular Hosted before step 1. Settings on another site address do not carry over.',
+    link: 'Open regular Hosted',
+  },
   steps: {
     enable: {
       title: '1. Turn on the connection feature in both browsers',
-      body: 'Open Naidan on both devices. In each browser, open ［Settings］ → ［Developer］ → ［Experimental Features］ and select ［Enable Naidan RPC］. The ［Naidan RPC］ settings tab appears. This switch alone starts no connection or inference.',
+      body: 'In each browser, open ［Settings］ → ［Developer］ → ［Experimental Features］ and select ［Enable Naidan RPC］. The ［Naidan RPC］ settings tab appears. This switch alone starts no connection or inference.',
       caption: 'Enable the feature in both browsers, then open its settings tab.',
     },
     pair: {
       title: '2. Bring the two browsers together',
-      body: 'In ［Naidan RPC］, select ［Connect to a new peer］ on both devices. Enter the same ［Piping Server origin］ and meeting code, then select ［Start pairing］ in each browser. For a first connection, try the public HTTPS relay below. You can also use your own HTTPS relay reachable from both devices; Naidan does not start one.',
+      body: 'In ［Naidan RPC］, select ［Connect to a new peer］ on both devices. Enter the same ［Piping Server origin］ and meeting code, then select ［Start pairing］ in each browser. You can also use your own HTTPS relay when the edition permits that connection; Naidan does not start one.',
       caption: 'The same relay origin and meeting code start pairing in both browsers.',
     },
     verify: {
