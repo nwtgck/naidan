@@ -23,4 +23,5 @@ export const strings = {
     }
   ],
   "next": "Choose which files and folders AI can read or edit",
+  nextDescription: 'Grant access to a chosen folder and decide what the assistant may change.',
 };

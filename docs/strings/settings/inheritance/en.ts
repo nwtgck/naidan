@@ -31,7 +31,8 @@ export const strings = {
     },
   },
   after: 'Use ［Restore Defaults］ in the chat or group settings only when you want to remove all local settings there. Automatic title generation has separate settings, so changing the normal chat endpoint or model does not by itself replace an inherited title-generation target.',
-  ollamaLink: 'Follow the Ollama connection setup',
+  ollamaLink: 'Connect your browser chat to a local Ollama model',
+  nextDescription: 'Choose Ollama in Settings, check its local URL, then select a chat model.',
   demo: {
     app: 'Naidan',
     settings: 'Settings',

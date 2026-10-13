@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import BoundaryDiagram from '../../site/demos/BoundaryDiagram.vue';
-import { docsHref } from '../../site/routes';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
 import type { BoundaryMessages, CommonMessages } from '../../site/messages';
 
@@ -37,9 +37,6 @@ defineExpose({
       <h2>{{ section.title }}</h2>
       <p>{{ section.body }}</p>
     </section>
-    <a
-      class="next-link"
-      :href="docsHref({ locale, page: 'files/privacy' })"
-    >{{ s.next }} <span aria-hidden="true">→</span></a>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'files/privacy', title: s.next, description: s.nextDescription }]" />
   </article>
 </template>

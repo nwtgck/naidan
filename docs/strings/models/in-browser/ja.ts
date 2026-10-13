@@ -2,15 +2,15 @@ import type { InBrowserModelsMessages } from '../../../site/messages';
 
 export const strings = {
   title: 'ブラウザ内でAIモデルを動かす',
-  description: 'Naidanでブラウザ内のモデルを選び、ファイルを準備してChatを始めます。llama.cpp、Transformers.js、ブラウザ提供モデルの違いと、Standaloneで使える選択肢を確認できます。',
+  description: 'Naidanでブラウザ内のモデルを選び、ファイルを準備してチャットを始めます。llama.cpp、Transformers.js、ブラウザ提供モデルの違いと、スタンドアロン版で使える選択肢を確認できます。',
   intro: [
-    '別の推論サーバーを起動せず、手元の端末でChat用モデルを動かせます。ブラウザがモデルを読み込み、応答を生成します。GGUFモデルを持っている場合や、用意されたカタログから選びたい場合は、llama.cppから始められます。',
+    '別の推論サーバーを起動せず、手元の端末でチャット用モデルを動かせます。ブラウザがモデルを読み込み、応答を生成します。GGUFモデルを持っている場合や、用意されたカタログから選びたい場合は、llama.cppから始められます。',
     '最初にモデルファイルのダウンロードが必要なことがあります。その際は配布元へ通信します。準備後の生成には、選んだブラウザ内の実行環境を使います。対応モデルや速度は、ブラウザと端末の性能によって変わります。',
   ],
   flow: {
-    input: 'Chatのメッセージ',
+    input: 'チャットのメッセージ',
     execution: 'ブラウザ内の実行環境とモデル',
-    output: 'Chatに届く応答',
+    output: 'チャットに届く応答',
     caption: 'この方法では、選んだモデルがブラウザ内で応答を生成します。モデルファイルを準備するときには、別途ダウンロードが必要な場合があります。',
   },
   choicesTitle: '使い方に合うブラウザ内モデルを選ぶ',
@@ -19,14 +19,14 @@ export const strings = {
     {
       title: 'ブラウザ内のllama.cpp',
       guide: 'models/llama-cpp-browser',
-      availability: 'Hosted版・Standalone版で利用可能',
+      availability: 'Hosted版・スタンドアロン版で利用可能',
       body: '候補のGGUFモデルを選ぶ、Hugging Faceのリポジトリを調べる、手元のGGUFファイルやモデルフォルダを取り込む、という方法があります。モデル管理画面には取得済みのファイルが表示され、保存先にはブラウザの保存領域や、対応する環境では端末のフォルダを選べます。',
     },
     {
       title: 'Transformers.js',
       guide: 'models/transformers-js',
       availability: 'Hosted版のみ・試験的な機能',
-      body: 'Transformers.jsのモデル管理画面で対応するONNXモデルをダウンロードすると、完了後にそのモデルの読み込みが自動で始まります。取得済みのモデルには［読み込む］、未完了のモデルには［再開］が表示されます。モデルファイルはブラウザのOPFSに保存されます。Standalone版では、ローカルファイルから開いたときのWorkerとWebAssemblyの制約により利用できません。',
+      body: 'Transformers.jsのモデル管理画面で対応するONNXモデルをダウンロードすると、完了後にそのモデルの読み込みが自動で始まります。取得済みのモデルには［読み込む］、未完了のモデルには［再開］が表示されます。モデルファイルはブラウザのOPFSに保存されます。スタンドアロン版では、ローカルファイルから開いたときのWorkerとWebAssemblyの制約により利用できません。',
     },
     {
       title: 'ブラウザ提供モデル',
@@ -35,7 +35,7 @@ export const strings = {
       body: '［ブラウザ提供］を選び、利用状況を確認します。準備が必要なモデルが表示されたら［ブラウザ提供モデルを準備］を選びます。モデルはブラウザが管理するため、利用可否やダウンロードの動作もブラウザによって変わります。',
     },
   ],
-  stepsTitle: 'GGUFモデルでChatを始める',
+  stepsTitle: 'GGUFモデルでチャットを始める',
   steps: [
     {
       title: 'llama.cppを選ぶ',
@@ -56,9 +56,10 @@ export const strings = {
   ],
   limitsTitle: '画像や音声を扱う前に',
   limits: [
-    'llama.cppのChatに画像を添付するには、対応するmmproj GGUFがモデルと一緒に必要です。現在のllama.cppのChat入力は、音声と動画に対応していません。画像や音声の生成には、それぞれ別のモデル機能と設定を使います。',
-    'Standalone版にもブラウザ内のllama.cppがありますが、組み込みのWebGPU実行環境だけを使い、CPUには切り替わりません。Hosted版にはほかの実行環境もあります。ブラウザと端末で使えるかは、アプリ内の案内を確認してください。Transformers.jsはHosted版だけで使えます。',
+    'llama.cppのチャットに画像を添付するには、対応するmmproj GGUFがモデルと一緒に必要です。現在のllama.cppのチャット入力は、音声と動画に対応していません。画像や音声の生成には、それぞれ別のモデル機能と設定を使います。',
+    'スタンドアロン版にもブラウザ内のllama.cppがありますが、組み込みのWebGPU実行環境だけを使い、CPUには切り替わりません。Hosted版にはほかの実行環境もあります。ブラウザと端末で使えるかは、アプリ内の案内を確認してください。Transformers.jsはHosted版だけで使えます。',
     '取得したモデルと会話履歴では保存先の管理が異なります。ブラウザのサイトデータを削除すると、キャッシュしたモデルも失われることがあります。端末のモデルフォルダを使う場合は、ブラウザの許可とフォルダへのアクセスが必要です。',
   ],
-  next: 'Ollamaやllama.cppのサーバーに接続する',
+  next: 'NaidanからOllamaやllama.cppのサーバーに接続する',
+  nextDescription: '端末で動いている推論サーバーのURLとモデルをNaidanで選びます。',
 } satisfies InBrowserModelsMessages;

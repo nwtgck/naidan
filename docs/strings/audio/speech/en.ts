@@ -1,7 +1,7 @@
 export const strings = {
-  title: 'Turn text into speech and save a WAV',
-  description: 'Prepare an on-device speech model, enter text and a language, generate audio, and save the finished WAV before leaving the page.',
-  intro: '［Audio generation］ is its own workspace. It uses a compatible local speech model to create a WAV from your text, without an inference server once the app, runtime and model files are available. Missing files or updates still need a connection.',
+  title: 'Generate speech on your device without sending text to a server',
+  description: 'Use a local speech model to generate audio without sending text or reference voice to an inference server, then save the finished WAV.',
+  intro: '［Audio generation］ uses a local speech model to turn your text into a WAV on this device. The text you enter, and any optional reference audio, stay on your device during generation. Once the app, runtime and model files are available, no inference-server connection is needed; downloading missing files or updates still uses the network.',
   steps: {
     open: {
       title: '1. Open Audio generation and prepare a model',

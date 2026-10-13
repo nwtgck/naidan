@@ -9,6 +9,8 @@ import type { DocsRenderer, RenderedPage } from './contracts';
 import type { DocsLocale } from '../site/routes';
 import { compileLocaleBootstrap } from './locale-bootstrap';
 import { createDocsSitemap } from './seo';
+import { createSearchIndex } from './search';
+import { DOCS_PAGES, docsHref } from '../site/routes';
 
 function devHref({ moduleUrl }: { moduleUrl: string }): string {
   return moduleUrl.startsWith('/docs/') ? moduleUrl : `/docs${moduleUrl}`;
@@ -74,6 +76,16 @@ function createDocsRequestPlugin(): Plugin {
             response.setHeader('Content-Type', 'application/xml; charset=utf-8');
             sendBody({ body: createDocsSitemap() });
             return;
+          case 'search-index': {
+            const renderer = await server.ssrLoadModule('/server.ts') as DocsRenderer;
+            const pages = new Map<string, RenderedPage>();
+            for (const page of DOCS_PAGES) {
+              pages.set(docsHref({ locale: route.locale, page: page.id }), await renderer.renderPage({ locale: route.locale, page: page.id }));
+            }
+            response.setHeader('Content-Type', 'application/json; charset=utf-8');
+            sendBody({ body: JSON.stringify(createSearchIndex({ locale: route.locale, pages })) });
+            return;
+          }
           case 'outside':
           case 'asset':
             return next();
@@ -97,7 +109,7 @@ function createDocsRequestPlugin(): Plugin {
               ja: await renderer.renderPage({ locale: 'ja', page: 'index' }),
             } satisfies Record<DocsLocale, RenderedPage>;
             const styles = await devStyles({ server, entry: styleEntryId({ page: 'index' }) });
-            html = renderLocaleRoot({ pages, bootstrap: '/docs/__locale.js', assets: { styles, scripts: ['/docs/@vite/client'] } });
+            html = renderLocaleRoot({ pages, bootstrap: '/docs/__locale.js', assets: { styles, scripts: ['/docs/@vite/client', devHref({ moduleUrl: `/${ISLAND_ENTRIES.search}` })] } });
             break;
           }
           case 'page': {
@@ -122,6 +134,7 @@ function createDocsRequestPlugin(): Plugin {
             case 'page': return `${route.locale}/${route.page}`;
             case 'bootstrap':
             case 'sitemap':
+            case 'search-index':
             case 'outside':
             case 'asset':
             case 'redirect':

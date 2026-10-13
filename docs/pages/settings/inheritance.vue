@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
 import SettingsInheritanceStep from '../../site/demos/SettingsInheritanceStep.vue';
-import { docsHref } from '../../site/routes';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
 import type { CommonMessages, InheritanceGuideMessages } from '../../site/messages';
 
@@ -62,7 +62,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     </section>
 
     <p class="closing-note"><UiText :text="s.after" /></p>
-    <a class="next-link" :href="docsHref({ locale, page: 'models/ollama' })">{{ s.ollamaLink }} <span aria-hidden="true">→</span></a>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'models/ollama', title: s.ollamaLink, description: s.nextDescription }]" />
   </article>
 </template>
 

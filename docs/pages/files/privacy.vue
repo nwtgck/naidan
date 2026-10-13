@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import FolderAccessDemo from '../../site/demos/FolderAccessDemo.vue';
-import { docsHref } from '../../site/routes';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
 import type { FilesMessages, CommonMessages } from '../../site/messages';
 
@@ -49,10 +49,7 @@ defineExpose({
         :key="step"
       >{{ step }}</li>
     </ol>
-    <a
-      class="next-link"
-      :href="docsHref({ locale, page: 'work/boundary' })"
-    >{{ s.next }} <span aria-hidden="true">→</span></a>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'work/boundary', title: s.next, description: s.nextDescription }]" />
   </article>
 </template>
 

@@ -65,5 +65,6 @@ export const strings = {
   },
   troubleTitle: 'If the model list does not appear',
   trouble: 'Check the server’s base URL and its own model list first. Naidan appends /models for the check and /chat/completions for chat. If the page runs from file://, the browser can send Origin: null; a hosted page can have a Content Security Policy limiting destinations. The server must accept the browser’s request and any headers it requires.',
-  next: 'Compare local engine connections',
+  next: 'Connect Naidan to Ollama or a llama.cpp server',
+  nextDescription: 'See how Ollama and compatible servers differ in provider choice and connection checks.',
 };

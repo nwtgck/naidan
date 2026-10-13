@@ -58,5 +58,6 @@ export const strings = {
     'Standalone includes browser llama.cpp through its embedded WebGPU runtime, without a CPU fallback. The hosted edition has more execution profiles. Check the in-app availability notice on your browser and device. Transformers.js is a hosted-only choice.',
     'Downloaded models and chat history have different storage controls. Removing browser site data can remove cached models; choosing a device model folder depends on browser permission and folder access.',
   ],
-  next: 'Connect to an Ollama or llama.cpp server instead',
+  next: 'Connect Naidan to Ollama or a llama.cpp server',
+  nextDescription: 'Choose an endpoint and model on a local inference server already running on your device.',
 };

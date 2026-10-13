@@ -47,7 +47,7 @@ beforeAll(async () => {
   const dist = path.join(fixture.docs, 'dist');
   const html = await readFile(path.join(dist, 'index.html'), 'utf8');
   using parsed = parsePage({ html });
-  const script = parsed.document.querySelector('script[src]')?.getAttribute('src');
+  const script = parsed.document.querySelector('script:not([type])[src]')?.getAttribute('src');
   if (!script) throw new Error('Missing bootstrap script');
   compiled = {
     html,
@@ -58,17 +58,18 @@ beforeAll(async () => {
 });
 
 describe('language-neutral entrance without navigation', () => {
-  it('uses a single same-origin classic head script, not a deferred redirect module', () => {
+  it('uses a same-origin classic head script for locale selection and a separate search entry', () => {
     using page = parsePage({ html: entry().html });
     const scripts = page.document.querySelectorAll('script');
-    expect(scripts).toHaveLength(1);
-    const script = scripts[0];
+    expect(scripts).toHaveLength(2);
+    const script = page.document.querySelector('script:not([type])');
     expect(script?.parentElement).toBe(page.document.head);
     expect(script?.hasAttribute('type')).toBe(false);
     expect(script?.hasAttribute('async')).toBe(false);
     expect(script?.hasAttribute('defer')).toBe(false);
     expect(script?.textContent).toBe('');
     expect(script?.getAttribute('src')).toMatch(/^\/docs\/assets\/locale-.+\.js$/);
+    expect(page.document.querySelector('script[type="module"]')?.getAttribute('src')).toMatch(/^\/docs\/assets\/island-search-.+\.js$/);
     expect(page.document.querySelectorAll('template[data-docs-locale]')).toHaveLength(2);
   });
 

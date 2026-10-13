@@ -50,4 +50,5 @@ export const strings = {
     }
   ],
   "next": "Understand local AI processing and browser permissions",
+  nextDescription: 'See where browser permissions stop and which data a local model can use.',
 };

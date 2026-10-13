@@ -34,7 +34,7 @@ describe('browser model guides', () => {
     expect(article?.querySelector('[data-testid="llama-settings-default"]')?.textContent).toContain(s.demo.confirmDefault);
     expect(article?.querySelector('[data-testid="llama-settings-default"] .previous-download-result')?.textContent).toContain(s.demo.sampleFile);
     expect(article?.querySelector('[data-testid="llama-settings-default"] .confirm-panel')?.textContent).toContain(s.demo.defaultScope);
-    expect(article?.textContent).toContain('Standalone');
+    expect(article?.textContent).toContain(locale === 'en' ? 'Standalone' : 'スタンドアロン');
     expect(article?.textContent).toContain('JSPI');
     expect(article?.querySelector('button, input, select, script')).toBeNull();
   });
@@ -65,7 +65,7 @@ describe('browser model guides', () => {
     expect(save?.textContent).toContain(s.demo.apiProvider);
     expect(save?.textContent).toContain(s.demo.defaultModel);
     expect(save?.textContent).not.toContain('Endpoint URL');
-    expect(article?.textContent).toContain('Standalone');
+    expect(article?.textContent).toContain(locale === 'en' ? 'Standalone' : 'スタンドアロン');
     expect(article?.textContent).toContain('OPFS');
     expect(article?.querySelector('button, input, select, script')).toBeNull();
   });

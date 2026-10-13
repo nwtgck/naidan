@@ -126,8 +126,39 @@ The bootstrap marks startup before the body is parsed, and clears that marker on
 completion or failure. A watchdog restores the fallback on unexpected failure.
 This avoids a wrong-language flash; loading the stylesheet or bootstrap can still
 involve a short wait. It is not a guarantee of instant content on a slow network.
-Only static components are allowed in the language-neutral home; build validation
-rejects islands there until a deliberate activation contract is implemented.
+The language-neutral home permits only the registered Docs search island inside
+each inert language template. Its classic locale bootstrap mounts one template
+before the search module hydrates at `DOMContentLoaded`. Build validation still
+rejects every other island there. If scripts fail, the manual language links
+remain visible and lead to the pre-rendered localized guides.
+
+## Guide search
+
+The header's search icon opens a native dialog; Ctrl+K and Cmd+K use the same
+control. The dialog provides Escape, focus containment and background inertness.
+The island restores the previous focus and scroll state on close. The trigger is
+disabled in the static HTML until its client entry starts; the normal Guides menu
+remains available without JavaScript.
+
+Build and development derive a separate JSON index for each language from the
+rendered title, description, headings and article prose of every registered route. Demonstration
+content, navigation and mock controls are excluded. The static build renders all
+pages before writing the indexes; development generates an index only when it is
+requested, so an unrelated page failure does not stop another page from rendering.
+The index is loaded only when search opens, by a Docs-specific module Worker.
+The Worker parses and caches that language's index, searches titles, headings
+and prose with Japanese substrings and normalized English words, and ranks title
+and heading matches above body
+matches. Results contain ordinary guide links and short text snippets. The island
+ignores responses for superseded queries or a closed dialog. With an empty query,
+the Worker returns five task-oriented starting guides from the same language's
+index, using their authored descriptions; typing changes that list into search
+results without replacing the dialog or result list.
+
+The JSON fetched by the Worker, island HTML props, and structured-clone messages
+are distinct serialization boundaries with small parsers beside their consumers.
+Locally authored English and Japanese dictionaries remain statically type-checked;
+there is no runtime locale catalog or search service.
 
 ## Search metadata
 
@@ -194,8 +225,8 @@ commands or start child processes, including through helpers. There are no
 resource-management polyfills.
 
 These initial pages are a base for adding features, not a complete guide catalog.
-Site search, real app screenshots and offline Docs support are not implemented
-here. Inspect current application source and tests to maintain the replicas;
+Real app screenshots and offline Docs support are not implemented here. Inspect
+current application source and tests to maintain the replicas;
 screenshot capture is not a prerequisite for Docs work or builds.
 
 ## Link and motion contracts

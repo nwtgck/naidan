@@ -1,8 +1,9 @@
 export const strings = {
-  title: 'Use a language model provided by your browser',
-  description: 'Check browser-provided model availability in Naidan, prepare it when offered, and save it as the chat connection.',
-  intro: 'Some browsers provide a language model through the LanguageModel API. Naidan can use that browser-managed model for chat when the API and model are available on your device. There is no server URL or model file to choose in this connection.',
-  before: 'Availability belongs to the browser and device. The Status panel may say the API or model is unavailable, or may report an error. If a model is ready already, you can continue to the save step; preparation is shown only when the browser offers it.',
+  title: 'Use Chrome’s built-in AI language model',
+  description: 'Use Chrome’s on-device model for chat in Naidan: check the Chrome 148+ requirements, prepare the model, and save the connection.',
+  intro: 'On desktop Chrome 148 or later, Naidan can use Chrome’s built-in AI language model for chat through the Prompt API. You do not enter a server URL or choose a model file.',
+  before: 'Chrome requires Windows 10/11, macOS 13+, Linux, or a Chromebook Plus with ChromeOS platform 16389.0.0+; at least 22 GB free on the drive with your Chrome profile; and either a GPU with more than 4 GB VRAM or at least 16 GB RAM and four CPU cores. The first model download needs an unmetered or unlimited connection. Chrome on Android or iOS and other Chromebooks are not supported.',
+  requirementsSource: 'Chrome’s official Prompt API requirements',
   steps: {
     open: {
       title: '1. Open Connection settings',
@@ -10,13 +11,13 @@ export const strings = {
       caption: 'Open the ［Connection］ panel from the sidebar ［Settings］ button.',
     },
     select: {
-      title: '2. Choose Browser-provided and read its status',
-      body: 'Under ［API Provider］, choose ［Browser-provided］. The status panel checks whether the browser exposes a usable LanguageModel API and whether it can offer a model. The option remains visible when unavailable so you can read the reason.',
-      caption: 'The provider changes and the browser-managed model status appears below it.',
+      title: '2. Choose Chrome’s model and check its status',
+      body: 'Under ［API Provider］, choose ［Browser-provided］. The status panel checks whether Chrome can offer its model and shows whether it is ready or needs preparation. The option remains visible when unavailable so you can read the reason.',
+      caption: 'Choose ［Browser-provided］ to see Chrome’s model status below the provider.',
     },
     prepare: {
       title: '3. Prepare the model if offered',
-      body: 'If the panel offers ［Prepare browser-provided model］, select it. The browser may download and prepare its model; Naidan shows the progress or an error reported by the browser. If it already says the model is ready, you can skip this step.',
+      body: 'If the panel offers ［Prepare browser-provided model］, select it to start Chrome’s model download and preparation. Naidan shows progress or an error reported by Chrome. If the model is already ready, skip this step.',
       caption: 'The preparation action changes to download and preparation progress, then a ready state.',
     },
     save: {
@@ -53,7 +54,8 @@ export const strings = {
     saveAsNewProfile: 'Save as New Profile',
     settingsSaved: 'Settings Saved',
   },
-  unavailableTitle: 'If the browser says the model is unavailable',
-  unavailable: 'Read the status message and use its retry action if offered. Naidan cannot enable a missing LanguageModel API or install a browser-managed model itself. Browser and device support can change; use the current status shown in Naidan rather than assuming a particular browser version will work.',
-  next: 'Compare browser model options',
+  unavailableTitle: 'If Chrome says the model is unavailable',
+  unavailable: 'If Chrome meets the requirements but the status panel still says unavailable, read the reason shown there and retry if offered. Naidan cannot enable a missing LanguageModel API or install Chrome’s managed model independently.',
+  next: 'Run an AI model in your browser',
+  nextDescription: 'Compare browser-managed models with llama.cpp and Transformers.js on your device.',
 };

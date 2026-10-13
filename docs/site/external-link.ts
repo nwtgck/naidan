@@ -6,3 +6,8 @@ export const EXTERNAL_LINK_LABEL = {
   en: ' (external site)',
   ja: '（外部サイト）',
 } satisfies Record<DocsLocale, string>;
+
+export function isGitHubUrl({ href }: { href: string }): boolean {
+  const hostname = new URL(href, 'https://naidan-docs.invalid').hostname;
+  return hostname === 'github.com' || hostname === 'www.github.com';
+}

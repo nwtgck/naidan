@@ -6,6 +6,7 @@ export type DocsRoute =
   | { kind: 'asset' }
   | { kind: 'bootstrap' }
   | { kind: 'sitemap' }
+  | { kind: 'search-index'; locale: DocsLocale }
   | { kind: 'invalid' }
   | { kind: 'missing' }
   | { kind: 'redirect'; location: string }
@@ -33,6 +34,9 @@ export function resolveDocsRoute({ requestUrl }: { requestUrl: string }): DocsRo
   if (devDirectories.some(prefix => rest.startsWith(prefix))) return { kind: 'asset' };
   if (pathname === `${DOCS_BASE}__locale.js`) return { kind: 'bootstrap' };
   if (pathname === `${DOCS_BASE}sitemap.xml`) return { kind: 'sitemap' };
+  for (const locale of DOCS_LOCALES) {
+    if (pathname === `${DOCS_BASE}search-${locale}.json`) return { kind: 'search-index', locale };
+  }
   if (pathname === DOCS_BASE) return { kind: 'root' };
   if (pathname === `${DOCS_BASE}index.html`) return { kind: 'redirect', location: `${DOCS_BASE}${url.search}` };
   for (const locale of DOCS_LOCALES) {

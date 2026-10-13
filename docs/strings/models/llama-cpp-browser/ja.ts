@@ -2,9 +2,9 @@ import type { strings as english } from './en';
 
 export const strings = {
   title: 'GGUFモデルをブラウザで実行する',
-  description: '手元のGGUFファイルを取り込むかHugging Faceから取得し、Naidanのブラウザ内Chatで使うモデルを選びます。',
-  intro: 'Naidanでは、GGUF形式のChat用モデルをブラウザ内で実行できます。［設定］から、手元のファイルを取り込むか、Hugging Faceのリポジトリから取得します。どちらも同じ［取り込んだモデル］の一覧につながる方法なので、片方を選べば十分です。',
-  availability: 'llama.cpp browserはHosted版とStandalone版の両方にあります。［推論設定］では、このブラウザと端末の対応状況を確認できます。Standalone版はWebGPUとJSPIを使うwasm32またはwasm64の実行環境を含み、CPUやAsyncifyへの切り替えはありません。実際に使えるモデルや速度は端末とモデルによって変わります。',
+  description: '手元のGGUFファイルを取り込むかHugging Faceから取得し、Naidanのブラウザ内チャットで使うモデルを選びます。',
+  intro: 'Naidanでは、GGUF形式のチャット用モデルをブラウザ内で実行できます。［設定］から、手元のファイルを取り込むか、Hugging Faceのリポジトリから取得します。どちらも同じ［取り込んだモデル］の一覧につながる方法なので、片方を選べば十分です。',
+  availability: 'llama.cpp browserはHosted版とスタンドアロン版の両方にあります。［推論設定］では、このブラウザと端末の対応状況を確認できます。実際に使えるモデルや速度は端末とモデルによって変わります。',
   steps: {
     open: {
       title: '1. ブラウザ内モデルの管理画面を開く',
@@ -18,7 +18,7 @@ export const strings = {
     },
     download: {
       title: '3. またはHugging FaceからGGUFを取得する',
-      body: '「owner/repository」形式でリポジトリを入力して［モデルを確認］を押します。量子化形式と、必要ならモデルのバリエーションを確かめます。［ダウンロード先］で［ブラウザ内ストレージ］、またはブラウザが対応する連携フォルダを選び、［ダウンロード］を押します。完了すると［取り込んだモデル］に表示されます。画像付きChatには対応するmmprojファイルも必要です。',
+      body: '「owner/repository」形式でリポジトリを入力して［モデルを確認］を押します。量子化形式と、必要ならモデルのバリエーションを確かめます。［ダウンロード先］で［ブラウザ内ストレージ］、またはブラウザが対応する連携フォルダを選び、［ダウンロード］を押します。完了すると［取り込んだモデル］に表示されます。画像付きチャットには対応するmmprojファイルも必要です。',
       caption: 'リポジトリ、モデルファイル、保存先を確認してから取得します。',
     },
     default: {
@@ -59,7 +59,12 @@ export const strings = {
     confirmDefault: 'デフォルトに設定',
     inUse: '使用中',
   },
+  largeGguf: {
+    title: '大きなGGUFも分割せずに使う',
+    body: 'Naidanで使うために、大きなGGUFを分割し直す必要はありません。数十GB級の単一ファイルでも、手元のファイルをそのまま取り込むか、Hugging Faceリポジトリ内の単一GGUFを選んで取得できます。リポジトリからは指定した保存先へダウンロードした後、保存済みファイルを小分けに読み出します。',
+  },
   noteTitle: 'モデルを実行できない場合',
-  note: 'まず［実行環境］を確認し、GGUFと、必要な場合はmmprojが使うモデルに対応しているか確かめてください。ダウンロード完了はファイルが用意できた状態であり、このブラウザで実行できる保証ではありません。',
-  next: 'ブラウザ内モデルの選択肢を比較する',
+  note: 'まず［推論設定］を確認し、GGUFと、必要な場合はmmprojが使うモデルに対応しているか確かめてください。ダウンロード完了はファイルが用意できた状態であり、このブラウザで実行できる保証ではありません。スタンドアロン版にはWebGPUとJSPIを使うwasm32またはwasm64の実行環境が含まれますが、CPUやAsyncifyへの切り替えはありません。',
+  next: 'ブラウザ内でAIモデルを動かす',
+  nextDescription: 'llama.cpp、Transformers.js、ブラウザ提供モデルの違いと利用条件を比べます。',
 } satisfies typeof english;

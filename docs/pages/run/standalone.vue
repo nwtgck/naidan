@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import ExternalLink from '../../site/ExternalLink.vue';
 import StandaloneDemo from '../../site/demos/StandaloneDemo.vue';
-import { docsHref } from '../../site/routes';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
 import type { StandaloneMessages, CommonMessages } from '../../site/messages';
 defineProps<{ s: StandaloneMessages; locale: DocsLocale; common: CommonMessages }>();
@@ -27,6 +27,6 @@ defineExpose({
     <h2>{{ s.modesTitle }}</h2>
     <div class="pair-grid"><section v-for="mode in s.modes" :key="mode.title" class="panel"><h3>{{ mode.title }}</h3><p>{{ mode.body }}</p></section></div>
     <section v-for="detail in s.details" :key="detail.title"><h2>{{ detail.title }}</h2><p>{{ detail.body }}</p></section>
-    <a class="next-link" :href="docsHref({ locale, page: 'work/boundary' })">{{ s.next }} <span aria-hidden="true">→</span></a>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'work/boundary', title: s.next, description: s.nextDescription }]" />
   </article>
 </template>

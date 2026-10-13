@@ -34,14 +34,11 @@ describe('all-page Docs navigation', () => {
       expect(current).toHaveLength(1);
       expect(current[0]?.getAttribute('href')).toBe(docsHref({ locale, page: route.id }));
       expect(current[0]?.textContent?.trim()).toBe(copy[locale].navigation.pages[route.id]);
-      const breadcrumb = rendered.document.querySelector('[data-testid="docs-breadcrumb"]');
+      expect(rendered.document.querySelector('[data-testid="docs-breadcrumb"]')).toBeNull();
       if (route.id === 'index') {
-        expect(breadcrumb).toBeNull();
         expect(rendered.document.querySelector('[data-testid="docs-article-sidebar"]')).toBeNull();
         expect(rendered.document.querySelector('[data-testid="docs-article-inline-nav"]')).toBeNull();
       } else {
-        expect(breadcrumb?.getAttribute('aria-label')).toBe(copy[locale].navigation.location);
-        expect(breadcrumb?.querySelector('[aria-current="page"]')?.textContent).toBe(copy[locale].navigation.pages[route.id]);
         const sidebar = rendered.document.querySelector('[data-testid="docs-article-sidebar"]');
         expect(sidebar?.tagName).toBe('ASIDE');
         expect(sidebar?.getAttribute('aria-label')).toBe(copy[locale].navigation.sidebarTitle);
@@ -68,7 +65,7 @@ describe('all-page Docs navigation', () => {
     }
   });
 
-  it('places child guides below their parent and exposes the parent in the breadcrumb', async () => {
+  it('places child guides below their parent in both article navigation and the header menu', async () => {
     for (const route of DOCS_PAGES) {
       const placement = DOCS_NAV_PAGES[route.id];
       if (placement.parent === undefined) continue;
@@ -76,11 +73,11 @@ describe('all-page Docs navigation', () => {
       expect(parent.parent).toBeUndefined();
       expect(parent.group).toBe(placement.group);
       using rendered = await renderLayout({ locale: 'en', page: route.id });
-      const child = rendered.document.querySelector<HTMLAnchorElement>(`[data-testid="docs-guide-link"][href="${docsHref({ locale: 'en', page: route.id })}"]`);
-      const parentLink = child?.closest('.docs-guide-children')?.previousElementSibling;
-      expect(parentLink?.getAttribute('href')).toBe(docsHref({ locale: 'en', page: placement.parent }));
-      const breadcrumb = rendered.document.querySelector('[data-testid="docs-breadcrumb"]');
-      expect(breadcrumb?.querySelector(`a[href="${docsHref({ locale: 'en', page: placement.parent })}"]`)).not.toBeNull();
+      for (const nav of rendered.document.querySelectorAll('[data-testid="docs-guide-tree"]')) {
+        const child = nav.querySelector<HTMLAnchorElement>(`[data-testid="docs-guide-link"][href="${docsHref({ locale: 'en', page: route.id })}"]`);
+        const parentLink = child?.closest('.docs-guide-children')?.previousElementSibling;
+        expect(parentLink?.getAttribute('href')).toBe(docsHref({ locale: 'en', page: placement.parent }));
+      }
     }
   });
 });

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
 import BrowserModelSettingsStep from '../../site/demos/BrowserModelSettingsStep.vue';
-import { docsHref, type DocsLocale } from '../../site/routes';
+import RelatedGuide from '../../site/RelatedGuide.vue';
+import type { DocsLocale } from '../../site/routes';
 import type { CommonMessages } from '../../site/messages';
 import type { strings as english } from '../../strings/models/llama-cpp-browser/en';
 
@@ -52,9 +53,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </figure>
     </section>
 
+    <section aria-labelledby="llama-guide-large-gguf">
+      <h2 id="llama-guide-large-gguf">{{ s.largeGguf.title }}</h2>
+      <p>{{ s.largeGguf.body }}</p>
+    </section>
+
     <h2>{{ s.noteTitle }}</h2>
     <p><UiText :text="s.note" /></p>
-    <a class="next-link" :href="docsHref({ locale, page: 'models/in-browser' })">{{ s.next }} <span aria-hidden="true">→</span></a>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'models/in-browser', title: s.next, description: s.nextDescription }]" />
   </article>
 </template>
 

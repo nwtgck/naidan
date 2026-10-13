@@ -50,4 +50,5 @@ export const strings = {
     "Ask for a small inspection first, such as listing filenames. Review the result before permitting a larger edit."
   ],
   "next": "Understand local AI processing and browser permissions",
+  nextDescription: 'Trace how a permitted file reaches local AI and where browser access ends.',
 };

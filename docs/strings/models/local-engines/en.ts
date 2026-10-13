@@ -62,5 +62,6 @@ export const strings = {
     },
   ],
   boundary: 'A local URL sends chat requests to that engine process. If you use an engine on another machine or an external endpoint, prompts and selected conversation context travel to that address. Its model behavior, file access and network connections are determined by the engine and its configuration.',
-  next: 'Run a model inside the browser instead',
+  next: 'Run an AI model in your browser',
+  nextDescription: 'Compare browser runtimes that generate answers without a separate inference server.',
 };

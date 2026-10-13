@@ -38,7 +38,10 @@ describe('conversation guides', () => {
     expect(document.querySelector('[data-testid="compact-step-run"]')?.textContent).toContain(copy.demo.abortCompact);
     expect(document.querySelector('[data-testid="compact-step-result"]')?.textContent).toContain(copy.demo.summary);
     expect(document.querySelector('[data-testid="compact-step-result"]')?.textContent).toContain(copy.demo.recentMessage);
-    expect(document.querySelector('.next-link')?.getAttribute('href')).toBe(`/docs/${locale}/chat/branching/`);
+    const related = document.querySelector('[data-docs-related-guide]');
+    expect(related?.getAttribute('aria-label')).toBe(common.relatedGuides);
+    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/chat/branching/`);
+    expect(related?.textContent).toContain(copy.nextDescription);
   });
 
   it.each([
@@ -63,6 +66,9 @@ describe('conversation guides', () => {
     expect(document.querySelector('[data-testid="group-step-create"]')?.textContent).toContain(copy.demo.group);
     expect(document.querySelector('[data-testid="group-step-move"]')?.textContent).toContain(copy.demo.topLevel);
     expect(document.querySelector('[data-testid="group-step-add"]')?.textContent).toContain(copy.demo.chatTwo);
-    expect(document.querySelector('.next-link')?.getAttribute('href')).toBe(`/docs/${locale}/settings/inheritance/`);
+    const related = document.querySelector('[data-docs-related-guide]');
+    expect(related?.getAttribute('aria-label')).toBe(common.relatedGuides);
+    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/settings/inheritance/`);
+    expect(related?.textContent).toContain(copy.nextDescription);
   });
 });

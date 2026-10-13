@@ -1,7 +1,7 @@
 export const strings = {
   title: 'Choose where your conversations are saved',
   description: 'Compare browser storage and temporary memory, switch the place used for conversations, and request stronger protection from browser cleanup.',
-  intro: 'Naidan keeps conversations in this browser. The ［Storage］ settings distinguish where conversation data is kept from the separate request for persistent browser storage. Pick a place that fits your data, then keep a ZIP copy if you need to recover it later.',
+  intro: 'Naidan keeps conversations in this browser. The ［Storage］ settings distinguish where conversation data is kept from the separate request for persistent browser storage. Choose a place that fits your data.',
   steps: {
     open: {
       title: '1. Open Storage settings',
@@ -26,6 +26,7 @@ export const strings = {
     'Memory applies to conversation storage. It does not promise that every other browser preference or bootstrap value leaves no persistent trace.',
   ],
   backupLink: 'Back up and restore conversations with a ZIP',
+  nextDescription: 'Export a ZIP copy, inspect it before import, and choose how to restore it.',
   demo: {
     settings: 'Settings',
     storage: 'Storage',

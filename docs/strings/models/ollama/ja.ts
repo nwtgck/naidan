@@ -2,9 +2,9 @@ import type { OllamaGuideMessages } from '../../../site/messages';
 
 export const strings = {
   title: 'OllamaのローカルAIにブラウザから接続する',
-  description: 'Naidanの設定画面を使い、端末上のOllamaに接続します。Ollamaを選び、ローカルURLで接続を確認して、Chat用モデルを指定する手順です。',
-  intro: 'この例では、端末上でOllamaが起動していて、少なくとも1つのモデルを利用できる状態から始めます。NaidanはOllamaのHTTP APIを使ってChatしますが、Ollamaのプロセス自体は起動しません。Naidanの初回設定にも、同じプロバイダー、URL、接続確認、モデル選択があります。',
-  before: 'ローカル用のプリセットは、Ollamaが http://localhost:11434 で待ち受けている想定です。別のアドレスで動かしている場合は、実際のURLを［エンドポイント URL］に入力します。接続操作を始める前に、Ollamaと使うモデルを準備してください。',
+  description: 'Naidanの設定画面を使い、端末上のOllamaに接続します。Ollamaを選び、ローカルURLで接続を確認して、チャット用モデルを指定する手順です。',
+  intro: 'この例では、端末上で起動済みのOllamaにNaidanを接続します。NaidanからOllamaのプロセスを起動する操作はありません。',
+  before: '接続する前に、Ollamaで使うモデルを1つ以上用意してください。サーバーのアドレスは接続設定で選びます。',
   steps: {
     open: {
       title: '1. 設定から接続を開く',
@@ -58,5 +58,6 @@ export const strings = {
   },
   troubleTitle: 'モデルが表示されないとき',
   trouble: 'Ollamaでモデルを利用できるか確認して、もう一度［接続を確認］を押します。file:// で開いたページでは、ブラウザが Origin: null を送信し、Ollama側でそのオリジンの許可が必要になる場合があります。Hosted版のページには、CSPによる接続先の制限もあります。ブラウザの通信エラーを確認すると、どこで止められたかを絞り込めます。',
-  next: 'ほかのローカルエンジンへの接続方法を見る',
+  next: 'NaidanからOllamaやllama.cppのサーバーに接続する',
+  nextDescription: 'OllamaとOpenAI互換サーバーのURLやモデルの選び方を比べます。',
 } satisfies OllamaGuideMessages;

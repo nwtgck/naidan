@@ -2,7 +2,7 @@ export const strings = {
   title: 'Run a GGUF model in your browser with llama.cpp',
   description: 'Import a GGUF file or download one from Hugging Face, then choose it for browser chat in Naidan.',
   intro: 'Naidan can run a GGUF chat model in your browser. Open ［Settings］ to prepare a model you already have or download one from a Hugging Face repository. These are two ways to reach the same ［Imported models］ list; use either one.',
-  availability: 'The llama.cpp browser option appears in both Hosted and Standalone. ［Inference settings］ checks what this browser and device support. Standalone includes WebGPU with JSPI for wasm32 or wasm64; it has no CPU or Asyncify fallback. Model compatibility and speed depend on the device and model.',
+  availability: 'The llama.cpp browser option appears in both Hosted and Standalone. ［Inference settings］ checks what this browser and device support. Model compatibility and speed depend on the device and model.',
   steps: {
     open: {
       title: '1. Open the browser model manager',
@@ -57,7 +57,12 @@ export const strings = {
     confirmDefault: 'Set as default',
     inUse: 'In use',
   },
+  largeGguf: {
+    title: 'Use a large GGUF without splitting it',
+    body: 'You do not need to split a large GGUF before using it with Naidan. Even a single file tens of gigabytes in size can be imported from your device or selected from its Hugging Face repository. For a repository file, Naidan downloads it to the chosen storage, then reads the saved GGUF in bounded chunks.',
+  },
   noteTitle: 'If your model does not run',
-  note: 'Check ［Inference settings］ first, then confirm that the GGUF and any companion mmproj match the model you intend to use. A completed download only means the files are available; it does not prove that this browser can run the model.',
-  next: 'Compare browser model options',
+  note: 'Check ［Inference settings］ first, then confirm that the GGUF and any companion mmproj match the model you intend to use. A completed download only means the files are available; it does not prove that this browser can run the model. Standalone includes WebGPU with JSPI for wasm32 or wasm64, without a CPU or Asyncify fallback.',
+  next: 'Run an AI model in your browser',
+  nextDescription: 'Compare llama.cpp, Transformers.js and browser-provided models and their availability.',
 };

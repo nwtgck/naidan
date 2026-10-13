@@ -67,5 +67,6 @@ export const strings = {
   },
   troubleTitle: 'モデル一覧が表示されないとき',
   trouble: 'まずサーバーのベースURLと、サーバー自身のモデル一覧を確認します。Naidanは接続確認で /models、チャットで /chat/completions をURLに付けます。file:// で開くとブラウザが Origin: null を送る場合があり、Hosted版ではCSPが接続先を制限する場合があります。サーバーはブラウザからのリクエストと必要なヘッダーを受け入れる設定が必要です。',
-  next: 'ローカルエンジンへの接続方法を比べる',
+  next: 'NaidanからOllamaやllama.cppのサーバーに接続する',
+  nextDescription: 'Ollamaと互換サーバーのプロバイダー選択や接続確認を比べます。',
 } satisfies OpenAiCompatibleGuideMessages;

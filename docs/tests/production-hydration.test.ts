@@ -15,7 +15,7 @@ describe('emitted production island', () => {
     await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' });
     const dist = path.join(fixture.docs, 'dist');
     using page = parsePage({ html: await readFile(path.join(dist, 'en/chat/branching/index.html'), 'utf8') });
-    const source = page.document.querySelector<HTMLScriptElement>('script[src]')?.getAttribute('src');
+    const source = page.document.querySelector<HTMLScriptElement>('script[src*="island-branching"]')?.getAttribute('src');
     const root = page.document.querySelector<HTMLElement>('[data-docs-island="branching"]');
     if (!source || !root) throw new Error('Missing production branching island');
     const { copy, chrome } = parseBranchingPayload({ serialized: root.getAttribute('data-docs-props') ?? '' });
@@ -47,7 +47,7 @@ describe('emitted production island', () => {
     await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' });
     const dist = path.join(fixture.docs, 'dist');
     using page = parsePage({ html: await readFile(path.join(dist, locale, 'chat/branching/index.html'), 'utf8') });
-    const source = page.document.querySelector<HTMLScriptElement>('script[src]')?.getAttribute('src');
+    const source = page.document.querySelector<HTMLScriptElement>('script[src*="island-branching"]')?.getAttribute('src');
     const staticRoot = page.document.querySelector<HTMLElement>('[data-docs-island="branching"]');
     if (!source || !staticRoot) throw new Error('Missing production branching island');
     const { copy } = parseBranchingPayload({ serialized: staticRoot.getAttribute('data-docs-props') ?? '' });

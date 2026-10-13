@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
 import CompactStep from '../../site/demos/CompactStep.vue';
-import { docsHref } from '../../site/routes';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
 import type { CommonMessages } from '../../site/messages';
 import type { strings as compactStrings } from '../../strings/chat/compact/en';
@@ -53,7 +53,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </figure>
     </section>
 
-    <a class="next-link" :href="docsHref({ locale, page: 'chat/branching' })">{{ s.related }} <span aria-hidden="true">→</span></a>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'chat/branching', title: s.related, description: s.nextDescription }]" />
   </article>
 </template>
 

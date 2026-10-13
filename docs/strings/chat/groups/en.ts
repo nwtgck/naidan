@@ -43,5 +43,6 @@ export const strings = {
     confirm: 'Create group',
     moreActions: 'More actions',
   },
-  related: 'Learn how Chat, group, and global settings relate',
+  related: 'Choose a connection and model for each chat',
+  nextDescription: 'See which connection and model a chat inherits, and how to override either one.',
 };

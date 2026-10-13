@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
 import { docsHref } from '../../site/routes';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
 import type { CommonMessages, InBrowserModelsMessages } from '../../site/messages';
 
@@ -46,7 +47,7 @@ defineExpose({
     <div class="guide-notes">
       <p v-for="paragraph in s.limits" :key="paragraph"><UiText :text="paragraph" /></p>
     </div>
-    <a class="next-link" :href="docsHref({ locale, page: 'models/local-engines' })">{{ s.next }} <span aria-hidden="true">→</span></a>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'models/local-engines', title: s.next, description: s.nextDescription }]" />
   </article>
 </template>
 

@@ -1,7 +1,7 @@
 export const strings = {
   title: 'Download and run a Transformers.js model in your browser',
   description: 'Use the Hosted edition to download a model, let it load from the local cache, and save Transformers.js for browser chat.',
-  intro: 'Transformers.js is an experimental browser model option in the Hosted edition. Its manager stores model files in the browser’s Origin Private File System (OPFS). Standalone shows the option and its explanation, but disables its actions because local-file restrictions affect its workers and WebAssembly.',
+  intro: 'Transformers.js is an experimental browser model option in the Hosted edition. Standalone shows the option but disables its model actions.',
   availability: 'A browser that does not support or allow OPFS also disables model actions. Model support and performance depend on the model, browser and device.',
   steps: {
     open: {
@@ -54,6 +54,7 @@ export const strings = {
     settingsSaved: 'Settings Saved',
   },
   noteTitle: 'When loading fails',
-  note: 'Use the model manager to inspect the downloaded entry and any error. ［Load］ reads local model files; a missing required file is a load error. ［Resume］ is the explicit download path for an incomplete entry. The OPFS availability message can also explain why model actions are disabled.',
-  next: 'Compare browser model options',
+  note: 'Use the model manager to inspect the downloaded entry and any error. ［Load］ reads local model files; a missing required file is a load error. ［Resume］ is the explicit download path for an incomplete entry. The OPFS availability message can also explain why model actions are disabled. In Standalone, local-file restrictions affect the workers and WebAssembly required by this option.',
+  next: 'Run an AI model in your browser',
+  nextDescription: 'Compare hosted-only Transformers.js with other browser runtimes and Standalone support.',
 };

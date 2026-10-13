@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
+import ExternalLink from '../../site/ExternalLink.vue';
 import BrowserProvidedSettingsStep from '../../site/demos/BrowserProvidedSettingsStep.vue';
-import { docsHref } from '../../site/routes';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
 import type { BrowserProvidedGuideMessages, CommonMessages } from '../../site/messages';
 
@@ -14,7 +15,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article class="prose" data-testid="docs-models-browser-provided">
     <h1>{{ s.title }}</h1>
     <p class="lead"><UiText :text="s.intro" /></p>
-    <p class="before-step"><UiText :text="s.before" /></p>
+    <p class="before-step"><UiText :text="s.before" /><span class="requirements-source"><ExternalLink href="https://developer.chrome.com/docs/ai/prompt-api" :locale="locale">{{ s.requirementsSource }}</ExternalLink></span></p>
 
     <section class="walkthrough-step" aria-labelledby="browser-open">
       <h2 id="browser-open">{{ s.steps.open.title }}</h2>
@@ -42,12 +43,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <h2>{{ s.unavailableTitle }}</h2>
     <p><UiText :text="s.unavailable" /></p>
-    <a class="next-link" :href="docsHref({ locale, page: 'models/in-browser' })">{{ s.next }} <span aria-hidden="true">→</span></a>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'models/in-browser', title: s.next, description: s.nextDescription }]" />
   </article>
 </template>
 
 <style scoped>
 .before-step{padding:17px 20px;border-left:3px solid var(--blue);background:var(--surface);border-radius:0 10px 10px 0}
+.requirements-source{display:block;margin-top:10px;font-size:.9em}
 .walkthrough-step{border-top:1px solid var(--line);margin-top:38px;padding-top:22px}
 .walkthrough-step h2{margin-top:0}
 .walkthrough-step>p{margin-bottom:0}

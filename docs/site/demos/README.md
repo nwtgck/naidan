@@ -34,6 +34,8 @@ and previous Docs versions do not define current application behavior.
 | `GroupStep.vue` | `src/components/Sidebar.vue`, `ChatPaneHeader.vue`, `ChatGroupActions.vue`; `src/components/Sidebar.test.ts`, `Sidebar.dnd.test.ts`; `src/composables/chat/useChatGroups.ts` |
 | `ImageCreationStep.vue` | `src/components/SidebarDebugControls.vue`; `src/features/image-generation/components/{ImageGenerationLab,ImageGenerationWorkspace,ImageGenerationEditor,ImageGenerationMonitor,ImageGenerationGallery,ImageGenerationAssetViewer}.vue`; `src/features/stable-diffusion-cpp-browser/components/{ImageModelLibrary,ImageModelCatalog}.vue`; `src/pages/image-generation.sessions.test.ts` |
 | `AudioCreationStep.vue` | `src/components/SidebarDebugControls.vue`; `src/features/audio-generation/{AudioGenerationView.vue,README.md,AudioGenerationView.test.ts,model-catalog.ts}`; `src/features/audio-generation/components/AudioHistoryResult.vue` |
+| `SuperEditStep.vue` | `src/components/ChatPaneHeader.vue`, `src/components/HistoryManipulationModal.vue`, `src/composables/chat/chat-scoped/chat-history-flow.ts`; `src/components/HistoryManipulationModal.test.ts` |
+| `NaidanRpcStep.vue` | `src/features/naidan-rpc-integration/components/{NaidanRpcFeatureRow,NaidanRpcTab,RpcPeerProvision}.vue`; `src/features/naidan-rpc-integration/runtime/connection-permits.ts`; `src/components/ConnectionTab.vue`; `src/features/image-generation/components/ImageInferenceLocation.vue` |
 
 The chat chrome uses the application's gray-900/800 surfaces, gray-700 borders,
 blue action color, logo and Lucide icons. Ordinary CSS replaces Tailwind because

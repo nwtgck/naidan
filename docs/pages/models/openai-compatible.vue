@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
 import OpenAiCompatibleSettingsStep from '../../site/demos/OpenAiCompatibleSettingsStep.vue';
-import { docsHref } from '../../site/routes';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
 import type { CommonMessages, OpenAiCompatibleGuideMessages } from '../../site/messages';
 
@@ -48,7 +48,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <h2>{{ s.troubleTitle }}</h2>
     <p><UiText :text="s.trouble" /></p>
-    <a class="next-link" :href="docsHref({ locale, page: 'models/local-engines' })">{{ s.next }} <span aria-hidden="true">→</span></a>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'models/local-engines', title: s.next, description: s.nextDescription }]" />
   </article>
 </template>
 

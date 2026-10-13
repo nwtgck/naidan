@@ -1,7 +1,7 @@
 export const strings = {
-  title: 'Create an image in your browser and reuse its settings',
-  description: 'Prepare an image model, generate a first image in a session, inspect the result, and reuse its prompt or saved settings for another attempt.',
-  intro: 'The image workspace keeps a prompt, model choice and results together in a session. These steps use the hosted edition’s browser image runtime. Model files may need a download before generation; the image itself is generated on your device.',
+  title: 'Generate AI images on your device without sending prompts to a server',
+  description: 'Use a local image model to generate without sending prompts to an inference server, then inspect the result and reuse its settings.',
+  intro: 'The image workspace uses a model on your device to generate from your prompt. Prepare the model files, make your first image, then reuse its settings for another attempt.',
   steps: {
     open: {
       title: '1. Open the image workspace',
@@ -15,7 +15,7 @@ export const strings = {
     },
     generate: {
       title: '3. Enter a prompt and generate one image',
-      body: 'Leave ［Images per run］ at 1, enter a ［Prompt］, and choose ［Generate］. The ［Execution, previews and temporary results］ panel shows progress, then a preview. The result also appears under ［Runs］ and ［Gallery］ when the session can save it. You can change the prompt during a run; those edits apply to the next generation.',
+      body: 'Leave ［Images per run］ at 1, enter a ［Prompt］, and choose ［Generate］. The ［Execution, previews and temporary results］ panel shows progress, then a preview. The result also appears under ［Runs］ and ［Gallery］ when the session can save it. If ［Generate without saving］ appears, choose it only for a temporary result and download any image you want to keep. You can change the prompt during a run; those edits apply to the next generation.',
       caption: 'A prompt starts a run; progress gives way to a preview and saved result.',
     },
     reuse: {

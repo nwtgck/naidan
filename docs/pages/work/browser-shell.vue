@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import ShellWorkspaceDemo from '../../site/demos/ShellWorkspaceDemo.vue';
-import { docsHref } from '../../site/routes';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
 import type { CommonMessages, ShellMessages } from '../../site/messages';
 
@@ -54,10 +54,7 @@ defineExpose({
     <h2>{{ s.stepsTitle }}</h2><ol class="guide-steps"><li v-for="step in s.steps" :key="step">{{ step }}</li></ol>
     <h2>{{ s.exampleTitle }}</h2><pre lang="en"><code>{{ example }}</code></pre>
     <p class="caption">{{ s.exampleNote }}</p>
-    <a
-      class="next-link"
-      :href="docsHref({ locale, page: 'files/privacy' })"
-    >{{ s.next }} <span aria-hidden="true">→</span></a>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'files/privacy', title: s.next, description: s.nextDescription }]" />
   </article>
 </template>
 

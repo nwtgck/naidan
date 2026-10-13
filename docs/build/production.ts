@@ -12,6 +12,7 @@ import type { DocsRenderer, RenderedPage } from './contracts';
 import type { DocsLocale } from '../site/routes';
 import { compileLocaleBootstrap } from './locale-bootstrap';
 import { createDocsSitemap } from './seo';
+import { createSearchIndex } from './search';
 
 export function docsBuildConfig({ root }: { root: string }): UserConfig {
   const inputs: Record<string, string> = {};
@@ -63,6 +64,8 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
         if (!entryAsset) throw new Error('Missing Docs locale bootstrap');
         const bootstrap = `${DOCS_BASE}${entryAsset.fileName}`;
         const homeAssets = manifestEntry({ manifest, name: styleEntryName({ page: 'index' }) });
+        const searchAssets = manifestEntry({ manifest, name: 'island-search' });
+        if (!searchAssets.script) throw new Error('Missing Docs search client entry');
         const renderedPages = new Map<string, RenderedPage>();
         files.set('404.html', renderNotFound({ assets: { styles: homeAssets.styles, scripts: [] } }));
         for (const locale of DOCS_LOCALES) {
@@ -88,8 +91,11 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
           return result;
         };
         const homes = { en: home({ locale: 'en' }), ja: home({ locale: 'ja' }) } satisfies Record<DocsLocale, RenderedPage>;
-        files.set('index.html', renderLocaleRoot({ pages: homes, bootstrap, assets: { styles: homeAssets.styles, scripts: [] } }));
+        files.set('index.html', renderLocaleRoot({ pages: homes, bootstrap, assets: { styles: [...homeAssets.styles, ...searchAssets.styles], scripts: [searchAssets.script] } }));
         files.set('sitemap.xml', createDocsSitemap());
+        for (const locale of DOCS_LOCALES) {
+          files.set(`search-${locale}.json`, JSON.stringify(createSearchIndex({ locale, pages: renderedPages })));
+        }
         // Render/validate every page before publishing any HTML.
         for (const [file, html] of files) {
           const target = path.resolve(output, file);

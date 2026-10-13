@@ -1,10 +1,11 @@
 import type { BrowserProvidedGuideMessages } from '../../../site/messages';
 
 export const strings = {
-  title: 'ブラウザが提供する言語モデルを使う',
-  description: 'Naidanでブラウザ提供モデルの利用状況を確認し、必要なら準備して、会話の接続先として保存します。',
-  intro: '一部のブラウザはLanguageModel APIを通じて言語モデルを提供します。ブラウザと端末で利用できる場合、Naidanはそのブラウザ管理のモデルで会話できます。この接続方式ではサーバーURLやモデルファイルを選びません。',
-  before: '利用できるかどうかはブラウザと端末の状態によります。状態欄にAPIまたはモデルの利用不可やエラーが表示される場合もあります。すでに準備完了なら保存へ進めます。準備操作はブラウザが提供した場合だけ表示されます。',
+  title: 'Chrome組み込みのAI言語モデルを使う',
+  description: 'Chrome 148以降の端末内モデルをNaidanのチャットで使うために、利用条件を確認し、必要なら準備して接続設定を保存します。',
+  intro: 'デスクトップ版Chrome 148以降では、Prompt API経由でChrome組み込みのAI言語モデルをNaidanのチャットに使えます。サーバーURLやモデルファイルの指定は不要です。',
+  before: '対応端末はWindows 10/11、macOS 13以降、Linux、またはChromeOSプラットフォーム16389.0.0以降のChromebook Plusです。Chromeのプロファイルがあるドライブに22 GB以上の空き容量と、VRAM 4 GB超のGPU、またはメモリ16 GB以上かつ4コア以上のCPUが必要です。初回のモデルダウンロードには通信量無制限、または従量制ではない回線が必要です。Android・iOS版ChromeとChromebook Plus以外のChromeOS端末には対応していません。',
+  requirementsSource: 'Chrome公式のPrompt API利用条件',
   steps: {
     open: {
       title: '1. 接続設定を開く',
@@ -12,13 +13,13 @@ export const strings = {
       caption: 'サイドバーの［設定］から［接続］画面を開きます。',
     },
     select: {
-      title: '2. ブラウザ提供を選んで状態を読む',
-      body: '［API プロバイダー］で［ブラウザ提供］を選びます。状態欄で、ブラウザに利用できるLanguageModel APIがあるか、モデルを使えるかを確認できます。利用不可でも選択肢は表示され、理由を読めます。',
-      caption: '方式を切り替えると、その下にブラウザ管理モデルの状態が現れます。',
+      title: '2. Chromeのモデルを選んで状態を確認する',
+      body: '［API プロバイダー］で［ブラウザ提供］を選びます。状態欄にはChromeのモデルを利用できるか、準備が必要かが表示されます。利用不可でも選択肢は残るため、理由を確認できます。',
+      caption: '［ブラウザ提供］を選ぶと、その下にChromeのモデルの状態が表示されます。',
     },
     prepare: {
       title: '3. 表示された場合はモデルを準備する',
-      body: '［ブラウザ提供モデルを準備］が表示されたら選びます。ブラウザがモデルをダウンロード・準備する場合があり、Naidanは進捗やブラウザからのエラーを表示します。すでに準備完了と表示されていれば、この操作は不要です。',
+      body: '［ブラウザ提供モデルを準備］が表示されたら選び、Chromeによるモデルのダウンロードと準備を始めます。Naidanには進捗やChromeからのエラーが表示されます。すでに準備完了なら、この操作は不要です。',
       caption: '準備操作からダウンロード・準備の進捗を経て、利用可能な状態になります。',
     },
     save: {
@@ -55,7 +56,8 @@ export const strings = {
     saveAsNewProfile: '新しいプロファイルとして保存',
     settingsSaved: '設定を保存しました',
   },
-  unavailableTitle: '利用不可と表示された場合',
-  unavailable: '状態欄の説明を読み、再確認の操作があれば試してください。Naidan自体は、存在しないLanguageModel APIを有効化したり、ブラウザ管理モデルを直接インストールしたりできません。対応状況は変わり得るため、特定のブラウザのバージョンだけで判断せず、Naidanが示す現在の状態を確認してください。',
-  next: 'ほかのブラウザ内モデル方式を比べる',
+  unavailableTitle: 'Chromeで利用不可と表示された場合',
+  unavailable: '利用条件を満たすChromeでも状態欄に利用不可と表示されたら、示された理由を読み、再確認の操作があれば試してください。NaidanからLanguageModel APIを有効化したり、Chrome管理のモデルを直接インストールしたりはできません。',
+  next: 'ブラウザ内でAIモデルを動かす',
+  nextDescription: 'ブラウザ管理のモデルとllama.cppやTransformers.jsの違いを比べます。',
 } satisfies BrowserProvidedGuideMessages;

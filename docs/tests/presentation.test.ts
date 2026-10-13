@@ -44,6 +44,18 @@ describe('external link presentation', () => {
     expect(rendered.document.querySelector('a')?.outerHTML).toBe(original.document.querySelector('a')?.outerHTML);
   });
 
+  it('opens GitHub links in a new tab across composed prose and hydrated islands', async () => {
+    const github = 'https://github.com/nwtgck/naidan';
+    const island = await renderToString(createSSRApp({ render: () => h(ExternalLink, { locale: 'en', href: github }, { default: () => 'Source' }) }));
+    using page = parsePage({ html: compose({ locale: 'en', body: `<h1>Links</h1><a href="${github}">Repository</a><a href="https://example.org">Other</a><div data-docs-island="branching">${island}</div>` }) });
+    const links = page.document.querySelectorAll<HTMLAnchorElement>('a[data-docs-external]');
+    expect(links).toHaveLength(3);
+    expect([...links].map(link => link.getAttribute('target'))).toEqual(['_blank', null, '_blank']);
+    expect([...links].every(link => link.getAttribute('rel') === 'noopener noreferrer' && link.querySelectorAll('[data-docs-external-icon]').length === 1)).toBe(true);
+    using original = parsePage({ html: island });
+    expect(links[2]?.outerHTML).toBe(original.document.querySelector('a')?.outerHTML);
+  });
+
   it('requires external-link markup in interactive islands rather than creating a hydration mismatch', () => {
     expect(() => compose({ locale: 'en', body: '<h1>Demo</h1><div data-docs-island="branching"><a href="https://example.org">External</a></div>' })).toThrow('Use ExternalLink.vue');
   });
@@ -74,7 +86,7 @@ beforeAll(async () => {
 });
 
 describe('automatically animated, accessible guides', () => {
-  it.each(DOCS_PAGES)('ships native animated CSS for $id, without adding unnecessary JavaScript', page => {
+  it.each(DOCS_PAGES)('ships native animated CSS for $id alongside the small search island', page => {
     for (const locale of DOCS_LOCALES) {
       const output = pages.get(docsHref({ locale, page: page.id }));
       if (!output) throw new Error('Missing generated page');
@@ -85,7 +97,7 @@ describe('automatically animated, accessible guides', () => {
       expect(pause).not.toBeNull();
       expect(pause?.checked).toBe(false);
       expect(pause?.getAttribute('aria-label')).toBeTruthy();
-      expect(document.document.querySelectorAll('script')).toHaveLength(page.id === 'chat/branching' ? 1 : 0);
+      expect(document.document.querySelectorAll('script')).toHaveLength(page.id === 'chat/branching' ? 2 : 1);
       const tree = parseCss(output.css);
       const keyframes: string[] = [], motions: string[] = [], pauseRules: string[] = [], reduced: string[] = [];
       tree.walkAtRules('keyframes', rule => {
@@ -125,7 +137,7 @@ describe('automatically animated, accessible guides', () => {
       expect(article?.textContent).toContain('file://');
       expect(article?.textContent).toContain('index.html');
       expect(article?.textContent).toContain('assets');
-      expect(article?.textContent).toContain('Memory');
+      expect(article?.textContent).toContain(locale === 'ja' ? '一時保存方式' : 'Memory');
       expect(article?.textContent).toContain('llama.cpp server');
       expect(article?.querySelector('a[href="https://naidan.pages.dev/naidan-standalone.zip"]')).not.toBeNull();
     }

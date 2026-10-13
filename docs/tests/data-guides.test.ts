@@ -38,7 +38,10 @@ describe('data guides', () => {
     expect(choice?.textContent).toContain(s.demo.switchAndMigrate);
     expect(article?.querySelector('[data-testid="storage-step-persist"]')?.textContent).toContain(s.demo.protected);
     expect(article?.textContent).toContain(s.limits[0]);
-    expect(article?.querySelector('.next-link')?.getAttribute('href')).toBe(`/docs/${locale}/data/backup/`);
+    const related = article?.querySelector('[data-docs-related-guide]');
+    expect(related?.getAttribute('aria-label')).toBe(common.relatedGuides);
+    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/data/backup/`);
+    expect(related?.textContent).toContain(s.nextDescription);
   });
 
   it.each([
@@ -66,6 +69,9 @@ describe('data guides', () => {
     expect(mode?.textContent).toContain(s.demo.replace);
     expect(article?.textContent).toContain(visibleGuideText({ text: s.scopeBody }));
     expect(article?.textContent).toContain(s.careBody);
-    expect(article?.querySelector('.next-link')?.getAttribute('href')).toBe(`/docs/${locale}/data/storage/`);
+    const related = article?.querySelector('[data-docs-related-guide]');
+    expect(related?.getAttribute('aria-label')).toBe(common.relatedGuides);
+    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/data/storage/`);
+    expect(related?.textContent).toContain(s.nextDescription);
   });
 });

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import BranchingDemo from '../../islands/branching/BranchingDemo.vue';
-import { docsHref } from '../../site/routes';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
 import type { BranchingMessages, CommonMessages } from '../../site/messages';
 
@@ -44,9 +44,6 @@ defineExpose({
     </div>
     <h2>{{ s.detail.title }}</h2>
     <p>{{ s.detail.body }}</p>
-    <a
-      class="next-link"
-      :href="docsHref({ locale, page: 'work/browser-shell' })"
-    >{{ s.next }} <span aria-hidden="true">→</span></a>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'chat/super-edit', title: s.next, description: s.nextDescription }]" />
   </article>
 </template>

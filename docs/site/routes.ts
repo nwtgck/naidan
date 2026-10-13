@@ -6,11 +6,13 @@ export const DOCS_LOCALE_NAMES = { en: 'English', ja: '日本語' } satisfies Re
 // One route declaration owns discovery, rendering, style entries and output paths.
 export const DOCS_PAGES = [
   { id: 'index', path: '', source: 'pages/index.vue' },
+  { id: 'about/open-source', path: 'about/open-source/', source: 'pages/about/open-source.vue' },
   { id: 'files/privacy', path: 'files/privacy/', source: 'pages/files/privacy.vue' },
   { id: 'work/boundary', path: 'work/boundary/', source: 'pages/work/boundary.vue' },
   { id: 'chat/branching', path: 'chat/branching/', source: 'pages/chat/branching.vue' },
   { id: 'chat/compact', path: 'chat/compact/', source: 'pages/chat/compact.vue' },
   { id: 'chat/groups', path: 'chat/groups/', source: 'pages/chat/groups.vue' },
+  { id: 'chat/super-edit', path: 'chat/super-edit/', source: 'pages/chat/super-edit.vue' },
   { id: 'run/standalone', path: 'run/standalone/', source: 'pages/run/standalone.vue' },
   { id: 'models/in-browser', path: 'models/in-browser/', source: 'pages/models/in-browser.vue' },
   { id: 'models/llama-cpp-browser', path: 'models/llama-cpp-browser/', source: 'pages/models/llama-cpp-browser.vue' },
@@ -19,6 +21,7 @@ export const DOCS_PAGES = [
   { id: 'models/local-engines', path: 'models/local-engines/', source: 'pages/models/local-engines.vue' },
   { id: 'models/ollama', path: 'models/ollama/', source: 'pages/models/ollama.vue' },
   { id: 'models/openai-compatible', path: 'models/openai-compatible/', source: 'pages/models/openai-compatible.vue' },
+  { id: 'models/naidan-rpc', path: 'models/naidan-rpc/', source: 'pages/models/naidan-rpc.vue' },
   { id: 'settings/inheritance', path: 'settings/inheritance/', source: 'pages/settings/inheritance.vue' },
   { id: 'data/storage', path: 'data/storage/', source: 'pages/data/storage.vue' },
   { id: 'data/backup', path: 'data/backup/', source: 'pages/data/backup.vue' },

@@ -74,5 +74,6 @@ export const strings = {
     title: 'Keep versions in one Chat, or continue in a separate Chat',
     body: 'Edit, resend, and regenerate keep alternatives in one Chat. Editing an assistant answer uses Update & Branch, which saves a version without generating. Fork Chat opens a separate Chat in the same Chat Group, such as “Fork of Browser models”.',
   },
-  next: 'Explore the browser shell',
+  next: 'Rewrite a conversation path',
+  nextDescription: 'Edit and reorder the selected path, then apply it as a new branch while preserving the original.',
 };

@@ -33,7 +33,8 @@ export const strings = {
     },
   },
   after: 'チャットまたはグループの［既定値に戻す］は、その階層の個別設定をすべて解除したい場合に使います。自動タイトル生成には別の設定があり、通常の会話用の接続先やモデルだけを変えても、継承したタイトル生成先がそのまま切り替わるわけではありません。',
-  ollamaLink: 'Ollamaの接続手順を見る',
+  ollamaLink: 'OllamaのローカルAIにブラウザから接続する',
+  nextDescription: '設定でOllamaとローカルURLを選び、接続とチャット用モデルを確認します。',
   demo: {
     app: 'Naidan',
     settings: '設定',

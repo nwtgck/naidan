@@ -64,5 +64,6 @@ export const strings = {
     recentMessage: 'Let’s test the first direction.',
     version: '2 / 2',
   },
-  related: 'See how conversation branches and versions work',
+  related: 'Branch and edit AI conversations',
+  nextDescription: 'Keep an original path while editing an earlier message or trying another answer.',
 };

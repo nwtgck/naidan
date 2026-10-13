@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
 import { docsHref } from '../../site/routes';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
 import type { CommonMessages, LocalEnginesMessages } from '../../site/messages';
 
@@ -54,7 +55,7 @@ defineExpose({
       </section>
     </div>
     <p class="connection-boundary"><UiText :text="s.boundary" /></p>
-    <a class="next-link" :href="docsHref({ locale, page: 'models/in-browser' })">{{ s.next }} <span aria-hidden="true">→</span></a>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'models/in-browser', title: s.next, description: s.nextDescription }]" />
   </article>
 </template>
 

@@ -1,27 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { GithubIcon } from 'lucide-vue-next';
 import logo from '../assets/naidan.svg';
 import type { CommonMessages } from './messages';
-import { DOCS_NAV_PAGES } from './navigation';
 import { docsHref, otherLocale, DOCS_LOCALE_NAMES } from './routes';
 import type { DocsLocale, DocsPageId } from './routes';
 import DocsGuideMenu from './DocsGuideMenu.vue';
 import DocsGuideTree from './DocsGuideTree.vue';
 import DocsSymbols from './DocsSymbols.vue';
+import SearchIsland from '../islands/search/SearchIsland.vue';
 
-const props = defineProps<{ locale: DocsLocale; page: DocsPageId; s: CommonMessages }>();
-const breadcrumb = computed(() => {
-  const current = DOCS_NAV_PAGES[props.page];
-  const parent = current.parent;
-  return {
-    group: props.s.navigation.groups[current.group],
-    current: props.s.navigation.pages[props.page],
-    parent: parent === undefined ? undefined : {
-      href: docsHref({ locale: props.locale, page: parent }),
-      label: props.s.navigation.pages[parent],
-    },
-  };
-});
+defineProps<{ locale: DocsLocale; page: DocsPageId; s: CommonMessages }>();
 
 
 defineExpose({
@@ -60,15 +48,22 @@ defineExpose({
         <span class="brand-text">Naidan</span><span class="brand-sep" /><span class="brand-docs">DOCS</span>
       </a>
       <DocsGuideMenu :locale="locale" :page="page" :copy="s.navigation" />
+      <div data-docs-island="search" :data-docs-props="JSON.stringify({ locale, copy: s.searchUi })">
+        <SearchIsland :locale="locale" :copy="s.searchUi" />
+      </div>
       <nav
         class="main-nav"
         :aria-label="s.source"
       >
         <a
           href="https://github.com/nwtgck/naidan"
+          target="_blank"
           rel="noopener noreferrer"
           referrerpolicy="no-referrer"
-        >{{ s.source }}</a>
+          class="source-icon"
+          :aria-label="s.source"
+          :title="s.source"
+        ><GithubIcon class="icon sm" aria-hidden="true" /></a>
       </nav>
       <div class="nav-controls">
         <a
@@ -104,17 +99,6 @@ defineExpose({
         ><span class="nav-open-text">{{ s.launch }}</span><span aria-hidden="true">→</span></a>
       </div>
     </div>
-    <nav v-if="page !== 'index'" class="docs-breadcrumb wrap" :aria-label="s.navigation.location" data-testid="docs-breadcrumb">
-      <a :href="docsHref({ locale, page: 'index' })">{{ s.navigation.pages.index }}</a>
-      <span aria-hidden="true">›</span>
-      <span>{{ breadcrumb.group }}</span>
-      <template v-if="breadcrumb.parent">
-        <span aria-hidden="true">›</span>
-        <a :href="breadcrumb.parent.href">{{ breadcrumb.parent.label }}</a>
-      </template>
-      <span aria-hidden="true">›</span>
-      <span aria-current="page">{{ breadcrumb.current }}</span>
-    </nav>
   </header>
   <main
     id="docs-main"

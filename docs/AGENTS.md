@@ -34,6 +34,24 @@ its benefit to a reader who has never heard of Naidan. Use concise, specific
 titles in the page language. Keep the approved homepage headline. Avoid keyword
 lists, repeated boilerplate and promises about search rankings.
 
+Before structuring a guide, write down what its reader wants to decide or do and
+the concrete questions they need answered. Choose sections around those answers,
+not around an inventory of features or published files found during source review.
+For a new article or major restructure, settle an outline before writing prose:
+the intended reader, reason for visiting, questions to answer, and purpose of
+each section. Have another reviewer challenge the outline for missing questions,
+author-centered categories, unnecessary detail or order, a title it cannot
+fulfill, and claims beyond the evidence. Resolve that critique before drafting.
+This is a planning check for substantial work, not a review ritual for typos.
+Make the title's promise explicit in the body and connect each fact to a reader's
+decision. Keep technical terms when the target reader needs them, such as GGUF
+when choosing a browser model. Match the strength of a safety or provenance
+claim to its evidence. Use current application source to verify the answers.
+Start from the normal default state and introduce an exception only where it
+changes the operation at hand; do not front-load warnings about unrelated
+features. A first-time reader's review can reveal unclear prose; source review
+still checks technical accuracy.
+
 Motion starts automatically. Respect the shared pause control and reduced-motion
 preference, and leave a readable completed view of the step. Streamed examples
 append content in reading order. A replay may reset the whole scene together;

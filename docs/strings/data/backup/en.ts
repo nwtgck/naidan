@@ -24,6 +24,7 @@ export const strings = {
   careTitle: 'Keep the copy useful',
   careBody: 'Finish edits before exporting: the archive stream is not locked against changes throughout its creation. A ZIP is a manual copy of the data at export time, not an automatic backup. Connection settings, including URL and HTTP headers, may be present; the ZIP has no password or encryption option in this flow. Store and share it accordingly.',
   storageLink: 'Choose where your conversations are saved',
+  nextDescription: 'Compare browser storage and temporary memory before changing where chats are kept.',
   demo: {
     settings: 'Settings',
     storage: 'Storage',

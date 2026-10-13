@@ -45,5 +45,6 @@ export const strings = {
     confirm: 'グループを作成',
     moreActions: 'その他の操作',
   },
-  related: 'チャット・グループ・全体の設定の関係を見る',
+  related: 'チャットごとに接続先とモデルを選ぶ',
+  nextDescription: '接続先とモデルがどの設定から決まるか、個別に変える方法を確認します。',
 } satisfies GroupsGuideMessages;

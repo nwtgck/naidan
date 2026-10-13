@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
 import StorageSettingsStep from '../../site/demos/StorageSettingsStep.vue';
-import { docsHref } from '../../site/routes';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
 import type { CommonMessages, StorageGuideMessages } from '../../site/messages';
 
@@ -27,8 +27,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <section class="guide-limits" aria-labelledby="storage-limits">
       <h2 id="storage-limits">{{ s.limitsTitle }}</h2>
       <ul><li v-for="item in s.limits" :key="item"><UiText :text="item" /></li></ul>
-      <a class="next-link" :href="docsHref({ locale, page: 'data/backup' })">{{ s.backupLink }} <span aria-hidden="true">→</span></a>
     </section>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'data/backup', title: s.backupLink, description: s.nextDescription }]" />
   </article>
 </template>
 

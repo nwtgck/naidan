@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
 import BackupSettingsStep from '../../site/demos/BackupSettingsStep.vue';
-import { docsHref } from '../../site/routes';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
 import type { BackupGuideMessages, CommonMessages } from '../../site/messages';
 
@@ -29,8 +29,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <p><UiText :text="s.scopeBody" /></p>
       <h2>{{ s.careTitle }}</h2>
       <p><UiText :text="s.careBody" /></p>
-      <a class="next-link" :href="docsHref({ locale, page: 'data/storage' })">{{ s.storageLink }} <span aria-hidden="true">→</span></a>
     </section>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'data/storage', title: s.storageLink, description: s.nextDescription }]" />
   </article>
 </template>
 

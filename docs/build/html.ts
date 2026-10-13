@@ -1,9 +1,10 @@
 import { JSDOM } from 'jsdom';
-import { EXTERNAL_LINK_PATH, EXTERNAL_LINK_LABEL } from '../site/external-link';
+import { EXTERNAL_LINK_PATH, EXTERNAL_LINK_LABEL, isGitHubUrl } from '../site/external-link';
 import { DOCS_BASE, DOCS_LOCALES, DOCS_LOCALE_NAMES } from '../site/routes';
 import type { PageAssets, RenderedPage } from './contracts';
 import { ISLAND_ENTRIES } from './ids';
 import { parseBranchingPayload } from '../islands/branching/contracts';
+import { parseSearchPayload } from '../islands/search/contracts';
 import { strings as entryEn } from '../strings/entry/en';
 import { strings as entryJa } from '../strings/entry/ja';
 import type { DocsLocale } from '../site/routes';
@@ -40,7 +41,7 @@ function appendAssets({ document, assets }: { document: Document; assets: PageAs
   }
 }
 
-const islandPayloadParsers = { branching: parseBranchingPayload } satisfies Record<keyof typeof ISLAND_ENTRIES, ({ serialized }: { serialized: string }) => unknown>;
+const islandPayloadParsers = { branching: parseBranchingPayload, search: parseSearchPayload } satisfies Record<keyof typeof ISLAND_ENTRIES, ({ serialized }: { serialized: string }) => unknown>;
 
 function isIslandName(name: string): name is keyof typeof ISLAND_ENTRIES {
   return Object.hasOwn(ISLAND_ENTRIES, name);
@@ -136,6 +137,7 @@ function validateBody({ document, locale }: { document: Document; locale: DocsLo
       if (element.tagName === 'A' && url.origin !== origin) {
         element.setAttribute('rel', 'noopener noreferrer');
         element.setAttribute('referrerpolicy', 'no-referrer');
+        if (isGitHubUrl({ href: url.href })) element.setAttribute('target', '_blank');
         markExternalLink({ document, anchor: element, locale });
       }
     }
@@ -201,7 +203,7 @@ export function renderLocaleRoot({ assets, pages, bootstrap }: {
     for (const locale of DOCS_LOCALES) {
       const page = pages[locale];
       if (page.page !== 'index' || page.locale !== locale) throw new Error('Invalid localized Docs home');
-      if (findIslands({ body: page.body }).length) throw new Error('The language-neutral home requires static components');
+      if (findIslands({ body: page.body }).some(name => name !== 'search')) throw new Error('The language-neutral home permits only the Docs search island');
       const localized = new JSDOM(renderDocument({ page, assets: { styles: [], scripts: [] } }));
       try {
         const template = document.createElement('template');

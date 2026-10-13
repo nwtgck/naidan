@@ -1,8 +1,8 @@
 export const strings = {
   title: 'Connect your browser chat to a local Ollama model',
   description: 'Follow the Settings controls in Naidan to connect to Ollama on your device: choose the Ollama provider, use its local URL, check the connection, and select a model.',
-  intro: 'This example starts with Ollama already running on your device and at least one model available there. Naidan uses its HTTP API for chat; it does not start the Ollama process. If you are setting up Naidan for the first time, the setup screen offers the same provider, URL, connection check and model choices.',
-  before: 'The local preset expects Ollama at http://localhost:11434. If your server uses another address, enter its actual URL in the ［Endpoint URL］ field. Make sure Ollama and your model are ready before following the connection steps.',
+  intro: 'This example connects Naidan to Ollama already running on your device. Naidan does not start the Ollama process.',
+  before: 'Have at least one Ollama model available before connecting. You will choose the server address in the connection settings.',
   steps: {
     open: {
       title: '1. Open Settings and Connection',
@@ -56,5 +56,6 @@ export const strings = {
   },
   troubleTitle: 'When the model does not appear',
   trouble: 'Check that Ollama has a model available, then use Check connection again. If the page was opened from file://, the browser may send Origin: null and the Ollama service may need to allow that origin. A hosted page can also be limited by its Content Security Policy. The browser’s network error helps identify which boundary blocked the request.',
-  next: 'Compare the other ways to connect a local engine',
+  next: 'Connect Naidan to Ollama or a llama.cpp server',
+  nextDescription: 'Compare Ollama and OpenAI-compatible connections, including their URLs and model choices.',
 };

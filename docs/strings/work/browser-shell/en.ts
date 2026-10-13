@@ -103,5 +103,6 @@ export const strings = {
   ],
   "exampleTitle": "Inspect the current Chat",
   "exampleNote": "These commands read the current Chat when that scope is enabled. The metadata file describes the Chat; content-md and branches expose its messages and paths. This example does not modify data.",
-  "next": "Set file and folder access",
+  "next": "Choose which files and folders AI can read or edit",
+  nextDescription: 'Choose the folder a browser tool may read and the changes it may make.',
 };

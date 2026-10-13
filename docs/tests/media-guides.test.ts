@@ -14,6 +14,7 @@ describe('media workflow guides', () => {
   it.each([{ copy: imageEn }, { copy: imageJa }])('renders every image step and its result as static HTML', async ({ copy }) => {
     const html = await renderToString(createSSRApp(ImagePage, { s: copy }));
     using page = parsePage({ html });
+    expect(page.document.querySelector('article h1')?.textContent).toBe(copy.title);
     const steps = [...page.document.querySelectorAll('section.media-step')];
     expect(steps.map(step => step.querySelector('h2')?.textContent)).toEqual([
       copy.steps.open.title, copy.steps.model.title, copy.steps.generate.title, copy.steps.reuse.title,
@@ -36,12 +37,14 @@ describe('media workflow guides', () => {
     expect(page.document.querySelector('[data-testid="image-step-reuse"]')?.textContent).toContain(copy.demo.reuseSettings);
     expect(page.document.querySelector('[data-testid="image-step-reuse"]')?.textContent).toContain(copy.demo.download);
     expect(page.document.querySelector('article')?.textContent).toContain(visibleGuideText({ text: copy.storage }));
+    expect(page.document.querySelector('article')?.textContent).not.toContain('Naidan RPC');
     expect(page.document.querySelectorAll('figure button, figure input, figure a, figure audio')).toHaveLength(0);
   });
 
   it.each([{ copy: audioEn }, { copy: audioJa }])('renders speech generation and explicit WAV saving in both languages', async ({ copy }) => {
     const html = await renderToString(createSSRApp(AudioPage, { s: copy }));
     using page = parsePage({ html });
+    expect(page.document.querySelector('article h1')?.textContent).toBe(copy.title);
     const steps = [...page.document.querySelectorAll('section.media-step')];
     expect(steps.map(step => step.querySelector('h2')?.textContent)).toEqual([
       copy.steps.open.title, copy.steps.text.title, copy.steps.generate.title, copy.steps.save.title,
