@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { SearchPayload } from './contracts';
 import { sendSearchRequest, subscribeSearchResponses } from './transport';
 import type { SearchHit, SearchWorkerRequest } from './worker-contracts';
+import { isDocsArticleHref } from '../../site/navigation-prefetch';
 
 const props = defineProps<SearchPayload>();
 const active = ref(false);
@@ -13,6 +14,7 @@ const dialog = ref<HTMLDialogElement>();
 const input = ref<HTMLInputElement>();
 const resultList = ref<HTMLElement>();
 const displayedQuery = ref('');
+const currentPath = typeof window === 'undefined' ? undefined : window.location.pathname;
 const resultsLabel = computed(() => {
   const typed = query.value.trim();
   if (typed !== displayedQuery.value) {
@@ -212,7 +214,7 @@ function moveResult({ event, offset }: { event: KeyboardEvent; offset: number })
         <button v-if="status === 'error'" class="docs-search-retry" type="button" @click="submitSearch">{{ copy.retry }}</button>
         <ul v-show="results.length" ref="resultList" class="search-results" :aria-label="resultsLabel" data-testid="docs-search-results">
           <li v-for="result in results" :key="result.href">
-            <a :href="result.href" @keydown.down="moveResult({ event: $event, offset: 1 })" @keydown.up="moveResult({ event: $event, offset: -1 })">
+            <a :href="result.href" :data-docs-guide-prefetch="isDocsArticleHref({ href: result.href }) && result.href !== currentPath ? '' : undefined" @keydown.down="moveResult({ event: $event, offset: 1 })" @keydown.up="moveResult({ event: $event, offset: -1 })">
               <strong>{{ result.title }}</strong>
               <span>{{ result.snippet }}</span>
             </a>

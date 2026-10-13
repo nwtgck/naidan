@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import logo from '../assets/naidan.svg';
 import BrowserMock from '../site/BrowserMock.vue';
 import BoundaryDiagram from '../site/demos/BoundaryDiagram.vue';
 import StandaloneDemo from '../site/demos/StandaloneDemo.vue';
@@ -28,6 +29,10 @@ defineExpose({
   >
     <div class="wrap hero">
       <div class="hero-copy">
+        <div class="hero-brand" data-docs-hero-brand aria-hidden="true">
+          <img :src="logo" width="130" height="130" alt="">
+          <span class="brand-wordmark">Naidan</span>
+        </div>
         <h1 id="home-title"><span>{{ s.headline[0] }}</span><span class="accent">{{ s.headline[1] }}</span></h1>
         <p
           v-for="(paragraph, index) in s.intro"
@@ -72,6 +77,7 @@ defineExpose({
         </div>
       </div>
       <p class="boundary-footnote">{{ s.boundaryNote }}</p>
+      <a class="boundary-guide-link" :href="docsHref({ locale, page: 'work/app-permissions' })">{{ s.appPermissionsLink }}<span aria-hidden="true">→</span></a>
       <div class="models-section">
         <h2 class="section-title">{{ s.modelsTitle }}</h2>
         <div class="pair-grid">
@@ -204,11 +210,31 @@ defineExpose({
 }
 
 .hero h1 {
-  font-size: clamp(32px, 3.75vw, 56px);
+  font-size: clamp(24px, 2.25vw, 34px);
   line-height: 1.45;
-  letter-spacing: -.06em;
+  letter-spacing: -.045em;
   margin-top: 0;
+  margin-bottom: 24px;
   overflow-wrap: anywhere;
+}
+
+.hero-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 100%;
+  margin-bottom: 28px;
+  margin-inline-start: -20px;
+  white-space: nowrap;
+  font-size: 75px;
+}
+
+.hero-brand img {
+  display: block;
+  width: 130px;
+  height: auto;
+  aspect-ratio: 1;
+  flex: none;
 }
 
 .hero h1 span {
@@ -233,6 +259,18 @@ defineExpose({
 .models-section {
   margin-top: 64px;
 }
+
+.boundary-guide-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-top: 14px;
+  color: var(--blue);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.boundary-guide-link:hover { text-decoration: underline; }
 
 .models-section h2 {
   margin-bottom: 27px;
@@ -260,12 +298,15 @@ defineExpose({
 }
 
 @media(max-width:900px) {
+  .hero-brand { gap: 11.4px; margin-inline-start: -17px; font-size: 62.5px; }
+  .hero-brand img { width: 108px; }
+
   .hero {
     grid-template-columns: 1fr;
   }
 
   .hero h1 {
-    font-size: clamp(36px, 6vw, 52px);
+    font-size: clamp(25px, 3.6vw, 32px);
     max-width: 720px;
   }
 
@@ -281,6 +322,9 @@ defineExpose({
 }
 
 @media(max-width:620px) {
+  .hero-brand { margin-inline-start: -15px; font-size: 54.2px; }
+  .hero-brand img { width: 97px; }
+
   .hero {
     padding-top: 45px;
     padding-bottom: 48px;
@@ -288,7 +332,11 @@ defineExpose({
   }
 
   .hero h1 {
-    font-size: clamp(29px, 7.7vw, 42px);
+    font-size: clamp(22px, 5.3vw, 29px);
+  }
+
+  .hero-brand {
+    margin-bottom: 22px;
   }
 
   .hero-lead {
@@ -302,5 +350,15 @@ defineExpose({
   .panel {
     padding: 22px;
   }
+}
+
+@media(max-width:480px) {
+  .hero-brand { gap: 9px; margin-inline-start: -13.5px; font-size: 48px; }
+  .hero-brand img { width: 86px; }
+}
+
+@media(max-width:350px) {
+  .hero-brand { gap: 7px; margin-inline-start: -11px; font-size: 42px; }
+  .hero-brand img { width: 70px; }
 }
 </style>

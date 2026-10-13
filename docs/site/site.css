@@ -16,6 +16,8 @@
       --blue-strong: #3b82f6;
       --green: #90e1bd;
       --panel-shadow: 0 32px 120px rgba(0,0,0,.40);
+      --brand-wordmark-from: #fff;
+      --brand-wordmark-to: oklch(70.7% .022 261.325);
       --max: 1256px;
     }
     html:has(#docs-light-theme:checked) {
@@ -33,6 +35,8 @@
       --blue-strong: #246ddd;
       --green: #1b885c;
       --panel-shadow: 0 30px 90px rgba(35,59,105,.14);
+      --brand-wordmark-from: oklch(27.8% .033 256.848);
+      --brand-wordmark-to: oklch(55.1% .027 264.364);
     }
     *,*::before,*::after { box-sizing: border-box; }
     html { scroll-behavior: smooth; scroll-padding-top: 95px; }
@@ -52,9 +56,11 @@
     /* Global navigation */
     .topbar { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--bg) 87%, transparent); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); border-bottom: 1px solid var(--line); }
     .topbar-inner { height: 82px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
-    .brand { display:inline-flex; align-items:center; gap: 12px; flex:none; }
+    .brand-group { display:inline-flex; align-items:center; gap:12px; flex:none; }
+    .brand { display:inline-flex; align-items:center; gap: 4px; flex:none; }
     .brand-mark { width: 38px; height:38px; filter: drop-shadow(0 0 12px rgba(59,130,246,.11)); }
-    .brand-text { font-weight: 750; letter-spacing: -.045em; font-size: 22px; line-height: 1; }
+    .brand-text { font-size: 22px; }
+    .brand-wordmark { font-family:ui-sans-serif,system-ui,sans-serif; font-weight:700; letter-spacing:-.025em; line-height:1; background:linear-gradient(to bottom right,var(--brand-wordmark-from),var(--brand-wordmark-to)); background-clip:text; -webkit-background-clip:text; color:transparent; -webkit-text-fill-color:transparent; }
     .brand-sep { width:1px; height:22px; background: var(--line-strong); margin: 0 2px; }
     .brand-docs { font-size: 11px; letter-spacing: .15em; color:var(--subtle); font-weight: 800; }
     .main-nav { display:flex; align-items:center; justify-content:center; gap: 33px; margin-left:auto; }
@@ -453,6 +459,19 @@ img { max-width:100%; height:auto; }
 html[data-docs-starting] [data-docs-language-fallback] { visibility: hidden; }
 [data-docs-external-icon] { display: inline-block; width: .95em; height: .95em; margin-inline-start: .32em; flex-shrink: 0; vertical-align: -.09em; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .motion-preference { display: flex; }
+html[data-docs-home-brand-motion] [data-docs-hero-brand] { visibility:hidden; }
+html[data-docs-home-brand-motion] .brand-group .brand-sep,
+html[data-docs-home-brand-motion] .brand-group .brand-docs { opacity:var(--docs-brand-progress,1); }
+html:has(#docs-pause-motion:checked) [data-docs-hero-brand] { visibility:visible!important; }
+html:has(#docs-pause-motion:checked) { scroll-behavior:auto; }
+html:has(#docs-pause-motion:checked) [data-docs-brand-link] { transform:none!important; }
+html:has(#docs-pause-motion:checked) .brand-group .brand-sep,
+html:has(#docs-pause-motion:checked) .brand-group .brand-docs { opacity:1!important; }
+@media(max-width:480px) {
+  [data-docs-hero-brand] { visibility:visible!important; }
+  [data-docs-brand-link] { transform:none!important; }
+  .brand-group .brand-sep,.brand-group .brand-docs { opacity:1!important; }
+}
 .motion-preference-control { position: relative; cursor: pointer; color: var(--muted); width: 36px; padding: 0; font-size: 15px; }
 .motion-preference-control input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; }
 .motion-preference-control:focus-within { outline: 2px solid var(--blue); outline-offset: 5px; }
@@ -464,6 +483,9 @@ html:has(#docs-pause-motion:checked) [data-docs-animation] *,
 html:has(#docs-pause-motion:checked) [data-docs-animation] *::before,
 html:has(#docs-pause-motion:checked) [data-docs-animation] *::after { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) {
+  [data-docs-hero-brand] { visibility:visible!important; }
+  [data-docs-brand-link] { transform:none!important; }
+  .brand-group .brand-sep,.brand-group .brand-docs { opacity:1!important; }
   [data-docs-animation], [data-docs-animation] *, [data-docs-animation] *::before, [data-docs-animation] *::after { animation: none !important; transition: none !important; }
   .motion-preference { display: none; }
 }

@@ -79,3 +79,8 @@ through a helper. Exercise the compiler and renderer through their library APIs.
 Keep external HTTP(S) links visibly marked with the shared external-link icon.
 Typed `AppEntryLink` launch links are in-app actions: their static public-origin
 fallback is rebased to the current Docs origin, and they do not use that icon.
+
+For Docs-only changes, apply `eslint --fix` only to changed Docs code files,
+then run `npm run lint:docs`. This scoped fix pass is sufficient in place of the
+repository-wide `lint:fix`; still run the required root typecheck and
+`test:only-failed` before committing.

@@ -5,6 +5,7 @@ export type EntryMessages = typeof import('../strings/entry/en').strings;
 export type HomeMessages = typeof import('../strings/index/en').strings;
 export type OpenSourceMessages = typeof import('../strings/about/open-source/en').strings;
 export type FilesMessages = typeof import('../strings/files/privacy/en').strings;
+export type AppPermissionsMessages = typeof import('../strings/work/app-permissions/en').strings;
 export type BoundaryMessages = typeof import('../strings/work/boundary/en').strings;
 export type LocalOnlyMessages = typeof import('../strings/work/local-only/en').strings;
 export type BranchingMessages = typeof import('../strings/chat/branching/en').strings;

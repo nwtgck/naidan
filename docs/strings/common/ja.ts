@@ -53,6 +53,7 @@ export const strings = {
       'models/openai-compatible': 'OpenAI互換サーバー',
       'models/naidan-rpc': '別の端末のモデルを使う',
       'files/privacy': 'AIが扱うファイルを選ぶ',
+      'work/app-permissions': 'Webとネイティブアプリの権限',
       'work/boundary': 'ブラウザの権限とローカルAI',
       'work/local-only': '通信先を制限する',
       'work/browser-shell': 'ブラウザ内シェルでファイルを扱う',

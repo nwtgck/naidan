@@ -8,6 +8,7 @@ export const DOCS_PAGES = [
   { id: 'index', path: '', source: 'pages/index.vue' },
   { id: 'about/open-source', path: 'about/open-source/', source: 'pages/about/open-source.vue' },
   { id: 'files/privacy', path: 'files/privacy/', source: 'pages/files/privacy.vue' },
+  { id: 'work/app-permissions', path: 'work/app-permissions/', source: 'pages/work/app-permissions.vue' },
   { id: 'work/boundary', path: 'work/boundary/', source: 'pages/work/boundary.vue' },
   { id: 'work/local-only', path: 'work/local-only/', source: 'pages/work/local-only.vue' },
   { id: 'chat/branching', path: 'chat/branching/', source: 'pages/chat/branching.vue' },

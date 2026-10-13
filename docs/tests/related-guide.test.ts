@@ -2,11 +2,14 @@ import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
 import BranchingPage from '../pages/chat/branching.vue';
+import StandalonePage from '../pages/run/standalone.vue';
 import RelatedGuide from '../site/RelatedGuide.vue';
 import { strings as branchingEn } from '../strings/chat/branching/en';
 import { strings as branchingJa } from '../strings/chat/branching/ja';
 import { strings as english } from '../strings/common/en';
 import { strings as japanese } from '../strings/common/ja';
+import { strings as standaloneEn } from '../strings/run/standalone/en';
+import { strings as standaloneJa } from '../strings/run/standalone/ja';
 import { parsePage } from './site.test-support';
 
 describe('related guide links', () => {
@@ -48,5 +51,23 @@ describe('related guide links', () => {
     expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/chat/super-edit/`);
     expect(related?.textContent).toContain(copy.next);
     expect(related?.textContent).toContain(copy.nextDescription);
+  });
+
+  it.each([
+    { locale: 'en' as const, common: english, copy: standaloneEn },
+    { locale: 'ja' as const, common: japanese, copy: standaloneJa },
+  ])('keeps the $locale Standalone guide linked to both access comparison and Naidan boundaries', async ({ locale, common, copy }) => {
+    const html = await renderToString(createSSRApp(StandalonePage, { locale, common, s: copy }));
+    using page = parsePage({ html });
+    const related = page.document.querySelector('[data-docs-related-guide]');
+    const links = [...(related?.querySelectorAll('a') ?? [])];
+    expect(links.map(link => link.getAttribute('href'))).toEqual([
+      `/docs/${locale}/work/app-permissions/`,
+      `/docs/${locale}/work/boundary/`,
+    ]);
+    expect(links[0]?.textContent).toContain(copy.permissionsGuideTitle);
+    expect(links[0]?.textContent).toContain(copy.permissionsGuideDescription);
+    expect(links[1]?.textContent).toContain(copy.next);
+    expect(links[1]?.textContent).toContain(copy.nextDescription);
   });
 });

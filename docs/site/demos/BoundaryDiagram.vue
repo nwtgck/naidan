@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ClipboardIcon, FolderIcon, GlobeIcon, KeyRoundIcon, LaptopIcon, RotateCwIcon, ServerIcon, ShieldCheckIcon, XIcon } from 'lucide-vue-next';
+import { ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ClipboardIcon, FolderIcon, GlobeIcon, LaptopIcon, RotateCwIcon, ServerIcon, ShieldCheckIcon, WaypointsIcon, XIcon } from 'lucide-vue-next';
 import logo from '../../assets/naidan.svg';
 import type { BoundaryDiagramCopy } from '../messages';
 
@@ -28,7 +28,7 @@ defineExpose({
           <div class="naidan-app" data-testid="naidan-in-browser"><img :src="logo" alt="" width="26" height="26"><b>Naidan</b><small>{{ copy.naidanRuntime }}</small></div>
           <div class="direct-path" data-testid="direct-os-stop"><span>{{ copy.directOperation }}</span><div><ArrowRightIcon class="blocked-arrow" :size="20" /><span class="boundary-stop"><b>{{ copy.blocked }}</b><ShieldCheckIcon :size="22" /></span></div></div>
         </div>
-        <div class="api-gateway" data-testid="browser-api-gateway"><KeyRoundIcon :size="16" /><b>{{ copy.api }}</b></div>
+        <div class="api-gateway" data-testid="browser-api-gateway"><WaypointsIcon :size="16" /><b>{{ copy.api }}</b></div>
       </div>
       <div class="permitted-route"><ArrowDownIcon :size="18" /><span>{{ copy.allowed }}</span></div>
       <div class="os-resources">

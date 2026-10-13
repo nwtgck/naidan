@@ -51,4 +51,6 @@ export const strings = {
   ],
   "next": "Understand local AI processing and browser permissions",
   nextDescription: 'See where browser permissions stop and which data a local model can use.',
+  permissionsGuideTitle: 'Compare app access on your device',
+  permissionsGuideDescription: 'See how web, desktop, command-line and mobile apps differ in what they can access.',
 };

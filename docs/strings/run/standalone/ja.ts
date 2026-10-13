@@ -53,4 +53,6 @@ export const strings = {
   ],
   "next": "ブラウザ内AIの処理とアクセス権限を確認する",
   nextDescription: 'ブラウザの許可範囲と、ローカルAIが使えるデータの境界を確認します。',
+  permissionsGuideTitle: 'Webアプリとネイティブアプリの権限を比べる',
+  permissionsGuideDescription: 'ブラウザ、デスクトップ、CLI、モバイルでアクセスできる範囲を比べます。',
 } satisfies StandaloneMessages;

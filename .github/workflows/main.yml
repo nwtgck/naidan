@@ -274,6 +274,9 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           cat << EOF > dist/hosted/_headers
+          /docs/assets/*
+            Cache-Control: public, max-age=31536000, immutable
+
           /naidan-standalone.zip
             Content-Disposition: attachment; filename="naidan-standalone-v${VERSION}.zip"
           EOF
@@ -363,6 +366,9 @@ jobs:
           cat << EOF > dist/hosted/_headers
           /*
             Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:* http://127.0.0.1:*; frame-ancestors 'none'; form-action 'none';
+
+          /docs/assets/*
+            Cache-Control: public, max-age=31536000, immutable
 
           /naidan-standalone.zip
             Content-Disposition: attachment; filename="naidan-standalone-v${VERSION}.zip"
@@ -502,6 +508,9 @@ jobs:
           /assets/privacy-fetch-broker/*
             Cross-Origin-Resource-Policy: cross-origin
             Access-Control-Allow-Origin: *
+
+          /docs/assets/*
+            Cache-Control: public, max-age=31536000, immutable
 
           /naidan-standalone.zip
             Content-Disposition: attachment; filename="naidan-standalone-v${VERSION}.zip"

@@ -38,7 +38,7 @@ defineExpose({
       <p>{{ section.body }}</p>
     </section>
     <p class="network-guide"><a :href="docsHref({ locale, page: 'work/local-only' })">{{ s.localOnlyGuide }} <span aria-hidden="true">→</span></a></p>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'files/privacy', title: s.next, description: s.nextDescription }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'files/privacy', title: s.next, description: s.nextDescription }, { page: 'work/app-permissions', title: s.appPermissionsTitle, description: s.appPermissionsDescription }]" />
   </article>
 </template>
 

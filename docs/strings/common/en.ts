@@ -54,6 +54,7 @@ export const strings = {
       'models/openai-compatible': 'OpenAI-compatible servers',
       'models/naidan-rpc': 'Use models on another device',
       'files/privacy': 'Choose files AI can read or edit',
+      'work/app-permissions': 'Web and native app access',
       'work/boundary': 'Browser permissions and local AI',
       'work/local-only': 'Restrict external connections',
       'work/browser-shell': 'Work with files using a browser shell',

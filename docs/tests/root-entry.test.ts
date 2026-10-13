@@ -58,10 +58,10 @@ beforeAll(async () => {
 });
 
 describe('language-neutral entrance without navigation', () => {
-  it('uses a same-origin classic head script for locale selection and a separate search entry', () => {
+  it('uses a same-origin classic head script for locale selection and separate home clients', () => {
     using page = parsePage({ html: entry().html });
-    const scripts = page.document.querySelectorAll('script');
-    expect(scripts).toHaveLength(2);
+    const scripts = page.document.querySelectorAll('script[src]');
+    expect(scripts).toHaveLength(3);
     const script = page.document.querySelector('script:not([type])');
     expect(script?.parentElement).toBe(page.document.head);
     expect(script?.hasAttribute('type')).toBe(false);
@@ -70,6 +70,7 @@ describe('language-neutral entrance without navigation', () => {
     expect(script?.textContent).toBe('');
     expect(script?.getAttribute('src')).toMatch(/^\/docs\/assets\/locale-.+\.js$/);
     expect(page.document.querySelector('script[type="module"]')?.getAttribute('src')).toMatch(/^\/docs\/assets\/island-search-.+\.js$/);
+    expect(page.document.querySelector('script[src^="/docs/assets/home-brand-"]')).not.toBeNull();
     expect(page.document.querySelectorAll('template[data-docs-locale]')).toHaveLength(2);
   });
 

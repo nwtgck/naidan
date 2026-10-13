@@ -64,7 +64,8 @@ describe('Docs search', () => {
       for (const template of neutral.document.querySelectorAll<HTMLTemplateElement>('template[data-docs-locale]')) {
         expect(template.content.querySelectorAll('[data-docs-island="search"]')).toHaveLength(1);
       }
-      expect(neutral.document.querySelectorAll('script[type="module"]')).toHaveLength(2);
+      expect(neutral.document.querySelectorAll('script[type="module"]')).toHaveLength(3);
+      expect(neutral.document.querySelector('script[src="/docs/client/home-brand.ts"]')).not.toBeNull();
     }
     const japanese = parseSearchIndex({ value: JSON.parse(await readFile(path.join(fixture.docs, 'dist/search-ja.json'), 'utf8')) as unknown, locale: 'ja' });
     expect(searchDocs({ index: japanese, query: 'バックアップ ZIP' }).some(item => item.href === '/docs/ja/data/backup/')).toBe(true);

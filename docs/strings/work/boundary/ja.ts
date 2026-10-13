@@ -9,7 +9,7 @@ export const strings = {
     "AIに仕事を任せるために必要なのは、作業するデータへのアクセスです。PC全体を自由に扱える権限とは分けて考えられます。Naidanはブラウザのサンドボックスと権限管理を出発点にして、その中にモデルやツールを用意しています。"
   ],
   "diagramTitle": "OSとブラウザの境界をたどる",
-  "motionNote": "OSの中でブラウザが動き、そのブラウザの中でNaidanが動きます。OSへの直接操作はブラウザの境界で止まり、ファイル・クリップボード・通信は許可されたブラウザAPIを通して使います。localhostのサーバーへの接続も、その通信の一つです。",
+  "motionNote": "OSの中でブラウザが動き、そのブラウザの中でNaidanが動きます。OSへの直接操作はブラウザの境界で止まり、ファイル・クリップボード・通信は、APIごとに異なる範囲と条件でブラウザが仲介します。localhostへのHTTP接続も、その経路の一つです。",
   "sections": [
     {
       "title": "01 · 作業する入力を選ぶ",
@@ -27,4 +27,6 @@ export const strings = {
   "next": "AIが読み書きできるファイルとフォルダを選ぶ",
   localOnlyGuide: 'ローカルのみ版で外部への接続を制限する',
   nextDescription: '許可するフォルダと、AIに任せる読み書きの範囲を選びます。',
+  appPermissionsTitle: 'Webアプリとネイティブアプリ、端末のどこまでアクセスできる？',
+  appPermissionsDescription: 'ブラウザ版とインストール版を選ぶ前に、端末内へのアクセスと外部への送信を比べます。',
 } satisfies BoundaryMessages;

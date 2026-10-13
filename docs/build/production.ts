@@ -5,8 +5,8 @@ import { build, mergeConfig } from 'vite';
 import type { Plugin, UserConfig } from 'vite';
 import { DOCS_BASE, DOCS_PAGES, DOCS_LOCALES, docsHref } from '../site/routes';
 import { docsCompilerConfig } from './compiler';
-import { findIslands, hasAppEntryLinks, renderDocument, renderLocaleRoot, renderNotFound } from './html';
-import { APP_ENTRY_CLIENT, ISLAND_ENTRIES, styleEntryId, styleEntryName } from './ids';
+import { findIslands, hasAppEntryLinks, hasHomeBrand, renderProductionDocument, renderProductionLocaleRoot, renderNotFound } from './html';
+import { APP_ENTRY_CLIENT, HOME_BRAND_CLIENT, ISLAND_ENTRIES, styleEntryId, styleEntryName } from './ids';
 import { manifestEntry, parseManifest } from './assets';
 import type { DocsRenderer, RenderedPage } from './contracts';
 import type { DocsLocale } from '../site/routes';
@@ -19,6 +19,7 @@ export function docsBuildConfig({ root }: { root: string }): UserConfig {
   for (const page of DOCS_PAGES) inputs[styleEntryName({ page: page.id })] = styleEntryId({ page: page.id });
   for (const [name, file] of Object.entries(ISLAND_ENTRIES)) inputs[`island-${name}`] = path.resolve(root, file);
   inputs['app-entry'] = path.resolve(root, APP_ENTRY_CLIENT);
+  inputs['home-brand'] = path.resolve(root, HOME_BRAND_CLIENT);
   return mergeConfig(docsCompilerConfig({ root }), {
     plugins: [createDocsOutputPlugin({ root })],
     build: {
@@ -39,6 +40,11 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
     },
     // writeBundle runs only after a successful client build, including manifest.
     async writeBundle(_options, bundle) {
+      for (const fileName of Object.keys(bundle)) {
+        if (fileName.startsWith('assets/') && !/-[A-Za-z0-9_-]{8}\.[^/]+$/u.test(fileName)) {
+          throw new Error(`Docs asset cannot use immutable caching without a content hash: ${fileName}`);
+        }
+      }
       const output = path.resolve(root, 'dist');
       const cache = path.resolve(root, '.cache');
       await mkdir(cache, { recursive: true });
@@ -69,6 +75,8 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
         if (!searchAssets.script) throw new Error('Missing Docs search client entry');
         const appEntryAssets = manifestEntry({ manifest, name: 'app-entry' });
         if (!appEntryAssets.script) throw new Error('Missing Docs app entry client');
+        const homeBrandAssets = manifestEntry({ manifest, name: 'home-brand' });
+        if (!homeBrandAssets.script) throw new Error('Missing Docs home brand client');
         const renderedPages = new Map<string, RenderedPage>();
         files.set('404.html', renderNotFound({ assets: { styles: homeAssets.styles, scripts: [] } }));
         for (const locale of DOCS_LOCALES) {
@@ -87,9 +95,13 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
               scripts.push(appEntryAssets.script);
               assets.styles.push(...appEntryAssets.styles);
             }
+            if (hasHomeBrand({ body: rendered.body })) {
+              scripts.push(homeBrandAssets.script);
+              assets.styles.push(...homeBrandAssets.styles);
+            }
             if (!assets.styles.length) throw new Error(`Missing styles for ${page.id}`);
             const relative = `${docsHref({ locale, page: page.id }).slice(DOCS_BASE.length)}index.html`;
-            files.set(relative, renderDocument({ page: rendered, assets: { styles: assets.styles, scripts } }));
+            files.set(relative, renderProductionDocument({ page: rendered, assets: { styles: assets.styles, scripts } }));
           }
         }
         const home = ({ locale }: { locale: DocsLocale }): RenderedPage => {
@@ -98,7 +110,7 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
           return result;
         };
         const homes = { en: home({ locale: 'en' }), ja: home({ locale: 'ja' }) } satisfies Record<DocsLocale, RenderedPage>;
-        files.set('index.html', renderLocaleRoot({ pages: homes, bootstrap, assets: { styles: [...homeAssets.styles, ...searchAssets.styles], scripts: [searchAssets.script] } }));
+        files.set('index.html', renderProductionLocaleRoot({ pages: homes, bootstrap, assets: { styles: [...homeAssets.styles, ...searchAssets.styles, ...homeBrandAssets.styles], scripts: [searchAssets.script, homeBrandAssets.script] } }));
         files.set('sitemap.xml', createDocsSitemap());
         for (const locale of DOCS_LOCALES) {
           files.set(`search-${locale}.json`, JSON.stringify(createSearchIndex({ locale, pages: renderedPages })));

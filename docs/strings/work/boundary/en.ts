@@ -7,7 +7,7 @@ export const strings = {
     "A useful AI environment needs access to the data for a task. That does not require unrestricted access to a PC. Naidan uses the browser’s sandbox and permission model as the starting point, then implements models and tools inside it."
   ],
   "diagramTitle": "Follow the OS and browser boundaries",
-  "motionNote": "Naidan runs inside the browser, which runs on the OS. Direct OS operations stop at the browser boundary. Browser APIs provide permitted file, clipboard and network access, including an allowed connection to a localhost server.",
+  "motionNote": "Naidan runs inside the browser, which runs on the OS. Direct OS operations stop at the browser boundary. Browser APIs mediate file, clipboard and network access under different conditions. This can include an HTTP connection to a localhost server.",
   "sections": [
     {
       "title": "01 · You choose the input",
@@ -25,4 +25,6 @@ export const strings = {
   "next": "Choose which files and folders AI can read or edit",
   localOnlyGuide: 'Limit external connections with the Local-only edition',
   nextDescription: 'Grant access to a chosen folder and decide what the assistant may change.',
+  appPermissionsTitle: 'Web apps and native apps: How much of your device can they access?',
+  appPermissionsDescription: 'Compare access to your device and outgoing connections before choosing a web or installed app.',
 };

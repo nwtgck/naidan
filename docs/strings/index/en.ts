@@ -49,6 +49,7 @@ export const strings = {
     }
   ],
   "boundaryNote": "Model downloads contact their distribution service. When you choose an external engine or tool, its permissions and connections also become part of your setup.",
+  appPermissionsLink: 'Compare what web and native apps can access',
   "modelsTitle": "Choose where your model runs.",
   "models": [
     {

@@ -1,6 +1,7 @@
 import { JSDOM } from 'jsdom';
 import { EXTERNAL_LINK_PATH, EXTERNAL_LINK_LABEL, isGitHubUrl } from '../site/external-link';
-import { DOCS_BASE, DOCS_LOCALES, DOCS_LOCALE_NAMES } from '../site/routes';
+import { DOCS_BASE, DOCS_LOCALES, DOCS_LOCALE_NAMES, docsHref } from '../site/routes';
+import { DOCS_ARTICLE_PREFETCH_ATTRIBUTE, isDocsArticleHref } from '../site/navigation-prefetch';
 import type { PageAssets, RenderedPage } from './contracts';
 import { ISLAND_ENTRIES } from './ids';
 import { parseBranchingPayload } from '../islands/branching/contracts';
@@ -66,7 +67,29 @@ export function hasAppEntryLinks({ body }: { body: string }): boolean {
   return JSDOM.fragment(body).querySelector('a[data-docs-app-entry-path]') !== null;
 }
 
-export function renderDocument({ page, assets }: { page: RenderedPage; assets: PageAssets }): string {
+export function hasHomeBrand({ body }: { body: string }): boolean {
+  return JSDOM.fragment(body).querySelector('[data-docs-hero-brand]') !== null;
+}
+
+function appendGuidePrefetchRules({ document }: { document: Document }): void {
+  const rules = {
+    prefetch: [{
+      where: { selector_matches: `a[${DOCS_ARTICLE_PREFETCH_ATTRIBUTE}]` },
+      eagerness: 'moderate',
+    }],
+  } satisfies { prefetch: { where: { selector_matches: string }; eagerness: 'moderate' }[] };
+  const script = document.createElement('script');
+  script.type = 'speculationrules';
+  // JSON is fixed at build time; escape markup delimiters for the script text boundary.
+  script.textContent = JSON.stringify(rules).replaceAll('<', '\\u003c');
+  document.head.append(script);
+}
+
+function renderDocumentInternal({ page, assets, guidePrefetch }: {
+  page: RenderedPage;
+  assets: PageAssets;
+  guidePrefetch: 'enabled' | 'disabled';
+}): string {
   const { body, title, description, locale, page: pageId, ...unhandledPage } = page;
   unhandledPage satisfies Record<PropertyKey, never>;
   const dom = new JSDOM('<!doctype html><html data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body></body></html>');
@@ -85,12 +108,25 @@ export function renderDocument({ page, assets }: { page: RenderedPage; assets: P
     appendSeoLinks({ document, route: { kind: 'page', locale, page: pageId } });
     document.body.append(document.importNode(JSDOM.fragment(body), true));
     // Vue owns escaping. jsdom owns parsing/serialization; no HTML regex rewrites.
-    validateBody({ document, locale });
+    validateBody({ document, locale, page: pageId });
     appendAssets({ document, assets });
+    switch (guidePrefetch) {
+    case 'enabled': appendGuidePrefetchRules({ document }); break;
+    case 'disabled': break;
+    default: { const unreachable: never = guidePrefetch; throw new Error(`Unknown prefetch mode: ${unreachable}`); }
+    }
     return dom.serialize();
   } finally {
     dom.window.close();
   }
+}
+
+export function renderDocument({ page, assets }: { page: RenderedPage; assets: PageAssets }): string {
+  return renderDocumentInternal({ page, assets, guidePrefetch: 'disabled' });
+}
+
+export function renderProductionDocument({ page, assets }: { page: RenderedPage; assets: PageAssets }): string {
+  return renderDocumentInternal({ page, assets, guidePrefetch: 'enabled' });
 }
 
 function markExternalLink({ document, anchor, locale }: { document: Document; anchor: Element; locale: DocsLocale }): void {
@@ -119,10 +155,17 @@ function markExternalLink({ document, anchor, locale }: { document: Document; an
   anchor.append(svg, text);
 }
 
-function validateBody({ document, locale }: { document: Document; locale: DocsLocale }): void {
+function validateBody({ document, locale, page }: { document: Document; locale: DocsLocale; page: RenderedPage['page'] }): void {
   if (document.querySelectorAll('h1').length !== 1) throw new Error('A Docs page must render exactly one h1');
   if (document.body.querySelector('script, iframe, object, embed, base')) throw new Error('Active content in static Docs body');
   const origin = 'https://naidan-docs.invalid';
+  const currentHref = docsHref({ locale, page });
+  for (const marked of document.body.querySelectorAll(`[${DOCS_ARTICLE_PREFETCH_ATTRIBUTE}]`)) {
+    const href = marked.getAttribute('href');
+    if (marked.tagName !== 'A' || href === null || !isDocsArticleHref({ href }) || href === currentHref) {
+      throw new Error('Invalid Docs article prefetch target');
+    }
+  }
   for (const element of document.body.querySelectorAll('*')) {
     for (const attribute of element.attributes) {
       if (attribute.name.toLowerCase().startsWith('on')) throw new Error('Inline event attribute in Docs HTML');
@@ -138,6 +181,9 @@ function validateBody({ document, locale }: { document: Document; locale: DocsLo
         if (!appEntryPath.startsWith('/#/') || url.href !== new URL(appEntryPath, DOCS_PUBLIC_ORIGIN).href) {
           throw new Error('Invalid Docs app entry link');
         }
+      }
+      if (attribute === 'href' && element.tagName === 'A' && isDocsArticleHref({ href: value }) && value !== currentHref && !element.closest('[data-docs-island]')) {
+        element.setAttribute(DOCS_ARTICLE_PREFETCH_ATTRIBUTE, '');
       }
       if (url.protocol !== 'https:' && url.protocol !== 'http:') {
         // Media must use emitted local assets; no data-document exception.
@@ -197,10 +243,11 @@ function renderEntryDocument({ assets, kind }: { assets: PageAssets; kind: 'lang
   }
 }
 
-export function renderLocaleRoot({ assets, pages, bootstrap }: {
+function renderLocaleRootInternal({ assets, pages, bootstrap, guidePrefetch }: {
   assets: PageAssets;
   pages: Record<DocsLocale, RenderedPage>;
   bootstrap: string;
+  guidePrefetch: 'enabled' | 'disabled';
 }): string {
   const dom = new JSDOM(renderEntryDocument({ assets, kind: 'language' }));
   try {
@@ -231,10 +278,31 @@ export function renderLocaleRoot({ assets, pages, bootstrap }: {
     // This is deliberately classic and synchronous, rather than a deferred module.
     // External/self-hosted code works under the existing CSP without inline grants.
     document.head.append(script);
+    switch (guidePrefetch) {
+    case 'enabled': appendGuidePrefetchRules({ document }); break;
+    case 'disabled': break;
+    default: { const unreachable: never = guidePrefetch; throw new Error(`Unknown prefetch mode: ${unreachable}`); }
+    }
     return dom.serialize();
   } finally {
     dom.window.close();
   }
+}
+
+export function renderLocaleRoot({ assets, pages, bootstrap }: {
+  assets: PageAssets;
+  pages: Record<DocsLocale, RenderedPage>;
+  bootstrap: string;
+}): string {
+  return renderLocaleRootInternal({ assets, pages, bootstrap, guidePrefetch: 'disabled' });
+}
+
+export function renderProductionLocaleRoot({ assets, pages, bootstrap }: {
+  assets: PageAssets;
+  pages: Record<DocsLocale, RenderedPage>;
+  bootstrap: string;
+}): string {
+  return renderLocaleRootInternal({ assets, pages, bootstrap, guidePrefetch: 'enabled' });
 }
 
 export function renderNotFound({ assets }: { assets: PageAssets }): string {

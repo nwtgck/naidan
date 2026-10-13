@@ -33,20 +33,24 @@ defineExpose({
     data-testid="docs-header"
   >
     <div class="wrap topbar-inner">
-      <a
-        class="brand"
-        :href="docsHref({ locale, page: 'index' })"
-        :aria-label="s.home"
-      >
-        <img
-          :src="logo"
-          width="38"
-          height="38"
-          class="brand-mark"
-          alt=""
+      <div class="brand-group" data-docs-brand-slot>
+        <a
+          class="brand"
+          :href="docsHref({ locale, page: 'index' })"
+          :aria-label="s.home"
+          data-docs-brand-link
         >
-        <span class="brand-text">Naidan</span><span class="brand-sep" /><span class="brand-docs">DOCS</span>
-      </a>
+          <img
+            :src="logo"
+            width="38"
+            height="38"
+            class="brand-mark"
+            alt=""
+          >
+          <span class="brand-text brand-wordmark">Naidan</span>
+        </a>
+        <span class="brand-sep" aria-hidden="true" /><span class="brand-docs" aria-hidden="true">DOCS</span>
+      </div>
       <DocsGuideMenu :locale="locale" :page="page" :copy="s.navigation" />
       <div data-docs-island="search" :data-docs-props="JSON.stringify({ locale, copy: s.searchUi })">
         <SearchIsland :locale="locale" :copy="s.searchUi" />

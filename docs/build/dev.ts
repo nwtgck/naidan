@@ -3,8 +3,8 @@ import { createServer, isCSSRequest, mergeConfig } from 'vite';
 import type { ViteDevServer, ModuleNode, InlineConfig, Plugin } from 'vite';
 import { docsCompilerConfig } from './compiler';
 import { resolveDocsRoute } from './routes';
-import { findIslands, hasAppEntryLinks, renderDocument, renderLocaleRoot, renderNotFound } from './html';
-import { APP_ENTRY_CLIENT, ISLAND_ENTRIES, styleEntryId } from './ids';
+import { findIslands, hasAppEntryLinks, hasHomeBrand, renderDocument, renderLocaleRoot, renderNotFound } from './html';
+import { APP_ENTRY_CLIENT, HOME_BRAND_CLIENT, ISLAND_ENTRIES, styleEntryId } from './ids';
 import type { DocsRenderer, RenderedPage } from './contracts';
 import type { DocsLocale } from '../site/routes';
 import { compileLocaleBootstrap } from './locale-bootstrap';
@@ -109,7 +109,7 @@ function createDocsRequestPlugin(): Plugin {
               ja: await renderer.renderPage({ locale: 'ja', page: 'index' }),
             } satisfies Record<DocsLocale, RenderedPage>;
             const styles = await devStyles({ server, entry: styleEntryId({ page: 'index' }) });
-            html = renderLocaleRoot({ pages, bootstrap: '/docs/__locale.js', assets: { styles, scripts: ['/docs/@vite/client', devHref({ moduleUrl: `/${ISLAND_ENTRIES.search}` })] } });
+            html = renderLocaleRoot({ pages, bootstrap: '/docs/__locale.js', assets: { styles, scripts: ['/docs/@vite/client', devHref({ moduleUrl: `/${ISLAND_ENTRIES.search}` }), devHref({ moduleUrl: `/${HOME_BRAND_CLIENT}` })] } });
             break;
           }
           case 'page': {
@@ -118,6 +118,7 @@ function createDocsRequestPlugin(): Plugin {
             const entry = styleEntryId({ page: route.page });
             const styles = await devStyles({ server, entry });
             const scripts = findIslands({ body: rendered.body }).map(name => devHref({ moduleUrl: `/${ISLAND_ENTRIES[name]}` }));
+            if (hasHomeBrand({ body: rendered.body })) scripts.push(devHref({ moduleUrl: `/${HOME_BRAND_CLIENT}` }));
             if (hasAppEntryLinks({ body: rendered.body })) scripts.push(devHref({ moduleUrl: `/${APP_ENTRY_CLIENT}` }));
             html = renderDocument({ page: rendered, assets: { styles, scripts: ['/docs/@vite/client', ...scripts] } });
             break;

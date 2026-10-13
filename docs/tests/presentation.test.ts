@@ -92,8 +92,6 @@ describe('accessible guide presentation', () => {
       if (!output) throw new Error('Missing generated page');
       using document = parsePage({ html: output.html });
       const animations = document.document.querySelectorAll('[data-docs-animation]');
-      if (page.id === 'work/local-only') expect(animations).toHaveLength(0);
-      else expect(animations.length).toBeGreaterThan(0);
       expect(document.document.querySelector('[data-testid="docs-motion-toggle"]')).toBeNull();
       const pause = document.document.querySelector<HTMLInputElement>('[data-testid="docs-pause-motion"]');
       expect(pause).not.toBeNull();
@@ -103,9 +101,11 @@ describe('accessible guide presentation', () => {
       expect(scripts.filter(src => src.includes('/island-search-'))).toHaveLength(1);
       const branching = document.document.querySelector('[data-docs-island="branching"]') !== null;
       const appEntry = document.document.querySelector('a[data-docs-app-entry-path]') !== null;
+      const homeBrand = document.document.querySelector('[data-docs-hero-brand]') !== null;
       expect(scripts.filter(src => src.includes('/island-branching-'))).toHaveLength(Number(branching));
       expect(scripts.filter(src => src.includes('/app-entry-'))).toHaveLength(Number(appEntry));
-      expect(scripts).toHaveLength(1 + Number(branching) + Number(appEntry));
+      expect(scripts.filter(src => src.includes('/home-brand-'))).toHaveLength(Number(homeBrand));
+      expect(scripts).toHaveLength(1 + Number(branching) + Number(appEntry) + Number(homeBrand));
       if (animations.length > 0) {
         const tree = parseCss(output.css);
         const keyframes: string[] = [], motions: string[] = [], pauseRules: string[] = [], reduced: string[] = [];

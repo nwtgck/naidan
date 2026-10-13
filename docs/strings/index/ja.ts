@@ -51,6 +51,7 @@ export const strings = {
     }
   ],
   "boundaryNote": "モデルの取得時は配信元と通信します。外部のエンジンやツールを選ぶ場合は、その実行環境の権限と通信先も含めて使い方を選べます。",
+  appPermissionsLink: 'Webアプリとネイティブアプリのアクセス範囲を比べる',
   "modelsTitle": "AIモデルの実行方法を選ぶ。",
   "models": [
     {
