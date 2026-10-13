@@ -1,11 +1,26 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import logo from '../assets/naidan.svg';
 import type { CommonMessages } from './messages';
+import { DOCS_NAV_PAGES } from './navigation';
 import { docsHref, otherLocale, DOCS_LOCALE_NAMES } from './routes';
 import type { DocsLocale, DocsPageId } from './routes';
+import DocsGuideMenu from './DocsGuideMenu.vue';
 import DocsSymbols from './DocsSymbols.vue';
 
-defineProps<{ locale: DocsLocale; page: DocsPageId; s: CommonMessages }>();
+const props = defineProps<{ locale: DocsLocale; page: DocsPageId; s: CommonMessages }>();
+const breadcrumb = computed(() => {
+  const current = DOCS_NAV_PAGES[props.page];
+  const parent = current.parent;
+  return {
+    group: props.s.navigation.groups[current.group],
+    current: props.s.navigation.pages[props.page],
+    parent: parent === undefined ? undefined : {
+      href: docsHref({ locale: props.locale, page: parent }),
+      label: props.s.navigation.pages[parent],
+    },
+  };
+});
 
 
 defineExpose({
@@ -43,11 +58,11 @@ defineExpose({
         >
         <span class="brand-text">Naidan</span><span class="brand-sep" /><span class="brand-docs">DOCS</span>
       </a>
+      <DocsGuideMenu :locale="locale" :page="page" :copy="s.navigation" />
       <nav
         class="main-nav"
-        :aria-label="s.home"
+        :aria-label="s.source"
       >
-        <a :href="`${docsHref({ locale, page: 'index' })}#guides`">{{ s.guides }}</a>
         <a
           href="https://github.com/nwtgck/naidan"
           rel="noopener noreferrer"
@@ -88,6 +103,17 @@ defineExpose({
         ><span class="nav-open-text">{{ s.launch }}</span><span aria-hidden="true">→</span></a>
       </div>
     </div>
+    <nav v-if="page !== 'index'" class="docs-breadcrumb wrap" :aria-label="s.navigation.location" data-testid="docs-breadcrumb">
+      <a :href="docsHref({ locale, page: 'index' })">{{ s.navigation.pages.index }}</a>
+      <span aria-hidden="true">›</span>
+      <span>{{ breadcrumb.group }}</span>
+      <template v-if="breadcrumb.parent">
+        <span aria-hidden="true">›</span>
+        <a :href="breadcrumb.parent.href">{{ breadcrumb.parent.label }}</a>
+      </template>
+      <span aria-hidden="true">›</span>
+      <span aria-current="page">{{ breadcrumb.current }}</span>
+    </nav>
   </header>
   <main
     id="docs-main"

@@ -24,20 +24,37 @@ and previous Docs versions do not define current application behavior.
 | `StandaloneDemo.vue` | root `README.md`, Standalone package layout and download instructions |
 | `BoundaryDiagram.vue` | root `README.md`, nested OS/browser boundaries, browser API and permission paths, localhost engine connections |
 | `ConnectionSettingsStep.vue` | `src/components/Sidebar.vue`, `SettingsModal.vue`, `ConnectionTab.vue`, `ModelSelector.vue`, `ServerSetupGuide.vue`; `src/components/SettingsModal.test.ts`; `src/constants.ts` local endpoint presets |
+| `OpenAiCompatibleSettingsStep.vue` | `src/components/SettingsModal.vue`, `src/components/ConnectionTab.vue`, `src/components/ModelSelector.vue`, `src/components/ServerSetupGuide.vue`; `src/constants.ts` local endpoint presets; `src/features/lm/openai.ts` model-list request |
+| `BrowserModelSettingsStep.vue` | `src/components/SettingsModal.vue`, `src/components/ConnectionTab.vue`; `src/features/llama-cpp-browser/components/{LlamaCppBrowserManager,LlamaCppBrowserModelImport,LlamaCppBrowserHuggingFaceManager,LlamaCppBrowserDefaultModelAction}.vue`; `src/features/transformers-js/components/TransformersJsManager.vue`; `src/logic/endpoint-build-availability.ts` |
+| `BrowserProvidedSettingsStep.vue` | `src/components/SettingsModal.vue`, `src/components/ConnectionTab.vue`; `src/features/prompt-api/components/PromptApiStatus.vue`, `src/features/prompt-api/runtime.ts` |
+| `SettingsInheritanceStep.vue` | `src/components/SettingsModal.vue`, `src/components/ConnectionTab.vue`, `src/components/ChatGroupSettingsPanel.vue`, `src/components/ChatSettingsPanel.vue`, `src/components/ModelSelector.vue`; `src/logic/chat-settings-resolver.ts` |
+| `StorageSettingsStep.vue` | `src/components/SettingsModal.vue`, `src/components/StorageTab.vue`; `src/00-storage/service/index.ts`, `src/composables/useStoragePersistence.ts` |
+| `BackupSettingsStep.vue` | `src/components/StorageTab.vue`, `src/features/import-export/components/ImportExportModal.vue`, `src/features/import-export/service.ts` |
+| `CompactStep.vue` | `src/components/ChatPaneHeader.vue`, `ContextCompactMenuItem.vue`, `ContextCompactSettingsDialog.vue`, `ContextCompactProgressStrip.vue`; `src/composables/chat/chat-scoped/chat-compact-flow.ts`; `src/logic/context-compact.ts` and its tests |
+| `GroupStep.vue` | `src/components/Sidebar.vue`, `ChatPaneHeader.vue`, `ChatGroupActions.vue`; `src/components/Sidebar.test.ts`, `Sidebar.dnd.test.ts`; `src/composables/chat/useChatGroups.ts` |
+| `ImageCreationStep.vue` | `src/components/SidebarDebugControls.vue`; `src/features/image-generation/components/{ImageGenerationLab,ImageGenerationWorkspace,ImageGenerationEditor,ImageGenerationMonitor,ImageGenerationGallery,ImageGenerationAssetViewer}.vue`; `src/features/stable-diffusion-cpp-browser/components/{ImageModelLibrary,ImageModelCatalog}.vue`; `src/pages/image-generation.sessions.test.ts` |
+| `AudioCreationStep.vue` | `src/components/SidebarDebugControls.vue`; `src/features/audio-generation/{AudioGenerationView.vue,README.md,AudioGenerationView.test.ts,model-catalog.ts}`; `src/features/audio-generation/components/AudioHistoryResult.vue` |
 
 The chat chrome uses the application's gray-900/800 surfaces, gray-700 borders,
 blue action color, logo and Lucide icons. Ordinary CSS replaces Tailwind because
 Docs use their own compiler. Decorative icon buttons in static examples are not
-focusable or presented as usable actions. Actual controls are reserved for the
-branching island, the theme selector and the motion pause control.
+focusable or presented as usable actions. The shared guide and language menus,
+theme selector, motion pause control, and branching island provide the actual
+Docs interactions.
 
 ## Motion policy
 
 Motion is enabled initially and illustrates a specific operation. Streamed chat
 content accumulates in reading order. A replay may reset the complete scene
 together; do not erase individual messages from the bottom upward. Keep the
-scene’s compact document footprint stable throughout an animation. Use pauses
-where repeated movement helps explain an operation. The shared
+scene’s compact document footprint stable throughout an animation. A settings
+scene may place an app-sized UI canvas inside a fixed-height camera viewport
+and pan or zoom it with transforms. It may intentionally crop surrounding UI
+while the current instruction, active label, control, and result remain readable.
+Do not scale an entire settings screen down to fit the viewport or accidentally
+cut off the focus content. Pause and reduced motion should show the completed
+focus state for that step. Use pauses where repeated movement helps explain an
+operation. The shared
 `data-docs-animation` contract allows the global CSS pause
 control and reduced-motion preference to stop it. All explanatory content remains
 in the surrounding prose; no instruction requires tracking a moving object.

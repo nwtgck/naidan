@@ -204,6 +204,12 @@ describe('automatically animated, accessible guides', () => {
       expect(document.document.documentElement.lang).toBe(locale);
       expect(document.document.querySelector('article h1')?.textContent?.trim()).toBeTruthy();
       expect(document.document.querySelectorAll('article ol li').length).toBeGreaterThan(0);
+      const targets = page === 'models/in-browser'
+        ? ['models/llama-cpp-browser', 'models/transformers-js', 'models/browser-provided'] as const
+        : ['models/ollama', 'models/openai-compatible'] as const;
+      const links = [...document.document.querySelectorAll<HTMLAnchorElement>('.card-guide-link')];
+      expect(links.map(link => link.getAttribute('href'))).toEqual(targets.map(target => docsHref({ locale, page: target })));
+      expect(links.every(link => link.textContent?.trim())).toBe(true);
     }
   });
 });

@@ -1,0 +1,58 @@
+import { describe, expect, it } from 'vitest';
+import { createSSRApp } from 'vue';
+import { renderToString } from 'vue/server-renderer';
+import ImagePage from '../pages/images/create.vue';
+import AudioPage from '../pages/audio/speech.vue';
+import { strings as imageEn } from '../strings/images/create/en';
+import { strings as imageJa } from '../strings/images/create/ja';
+import { strings as audioEn } from '../strings/audio/speech/en';
+import { strings as audioJa } from '../strings/audio/speech/ja';
+import { parsePage } from './site.test-support';
+
+describe('media workflow guides', () => {
+  it.each([{ copy: imageEn }, { copy: imageJa }])('renders every image step and its result as static HTML', async ({ copy }) => {
+    const html = await renderToString(createSSRApp(ImagePage, { s: copy }));
+    using page = parsePage({ html });
+    const steps = [...page.document.querySelectorAll('section.media-step')];
+    expect(steps.map(step => step.querySelector('h2')?.textContent)).toEqual([
+      copy.steps.open.title, copy.steps.model.title, copy.steps.generate.title, copy.steps.reuse.title,
+    ]);
+    expect(steps.map(step => step.querySelector('[data-docs-animation]')?.getAttribute('data-docs-animation'))).toEqual([
+      'image-open', 'image-model', 'image-generate', 'image-reuse',
+    ]);
+    for (const step of steps) {
+      expect(step.querySelector('p')?.textContent?.length).toBeGreaterThan(30);
+      expect(step.querySelector('figure figcaption')?.textContent?.length).toBeGreaterThan(10);
+    }
+    expect(page.document.querySelector('[data-testid="image-step-generate"]')?.textContent).toContain(copy.demo.generating);
+    expect(page.document.querySelector('[data-testid="image-step-generate"]')?.textContent).toContain(copy.demo.completed);
+    expect(page.document.querySelectorAll('[data-testid^="image-step-"] > .canvas')).toHaveLength(4);
+    expect(page.document.querySelector('[data-testid="image-step-model"] [data-testid="image-models-screen"]')?.textContent).toContain(copy.demo.catalog);
+    expect(page.document.querySelector('[data-testid="image-step-generate"] [data-testid="image-workspace-canvas"] .columns')).not.toBeNull();
+    expect(page.document.querySelector('[data-testid="image-step-reuse"] [data-testid="image-result-viewer"]')).not.toBeNull();
+    expect(page.document.querySelector('[data-testid="image-step-reuse"]')?.textContent).toContain(copy.demo.reuseSettings);
+    expect(page.document.querySelector('[data-testid="image-step-reuse"]')?.textContent).toContain(copy.demo.download);
+    expect(page.document.querySelector('article')?.textContent).toContain(copy.storage);
+    expect(page.document.querySelectorAll('figure button, figure input, figure a, figure audio')).toHaveLength(0);
+  });
+
+  it.each([{ copy: audioEn }, { copy: audioJa }])('renders speech generation and explicit WAV saving in both languages', async ({ copy }) => {
+    const html = await renderToString(createSSRApp(AudioPage, { s: copy }));
+    using page = parsePage({ html });
+    const steps = [...page.document.querySelectorAll('section.media-step')];
+    expect(steps.map(step => step.querySelector('h2')?.textContent)).toEqual([
+      copy.steps.open.title, copy.steps.text.title, copy.steps.generate.title, copy.steps.save.title,
+    ]);
+    expect(steps.map(step => step.querySelector('[data-docs-animation]')?.getAttribute('data-docs-animation'))).toEqual([
+      'audio-open', 'audio-text', 'audio-generate', 'audio-save',
+    ]);
+    expect(page.document.querySelector('[data-testid="audio-step-generate"]')?.textContent).toContain(copy.demo.progress);
+    expect(page.document.querySelector('[data-testid="audio-step-generate"]')?.textContent).toContain(copy.demo.generated);
+    expect(page.document.querySelectorAll('[data-testid^="audio-step-"] > .canvas')).toHaveLength(4);
+    expect(page.document.querySelector('[data-testid="audio-step-text"] .textarea')?.textContent).toContain(copy.demo.textSample);
+    expect(page.document.querySelector('[data-testid="audio-step-generate"] [data-testid="audio-result-card"]')).not.toBeNull();
+    expect(page.document.querySelector('[data-testid="audio-step-save"]')?.textContent).toContain(copy.demo.saveWav);
+    expect(page.document.querySelector('article')?.textContent).toContain(copy.reading);
+    expect(page.document.querySelectorAll('figure button, figure input, figure a, figure audio')).toHaveLength(0);
+  });
+});

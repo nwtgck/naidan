@@ -1,0 +1,47 @@
+export const strings = {
+  title: 'Organize conversations with Chat Groups',
+  description: 'Create a Chat Group, move an existing Chat into it, and start another Chat in that group from the sidebar.',
+  intro: 'Use a Chat Group to keep conversations for one purpose together in the sidebar. A group is a single level of organization, so each Chat belongs either to one group or to the top level.',
+  steps: {
+    create: {
+      title: '1. Create a group for a purpose',
+      body: 'Expand the sidebar and select Create Chat Group, the folder-plus button beside Search. Type a name and press Enter or the check button. The group appears in the sidebar.',
+      caption: 'The sidebar button opens a name field, then creates the group.',
+    },
+    move: {
+      title: '2. Move an existing Chat into the group',
+      body: 'Open that Chat and select Move to Group, the folder-arrow button in its header. Choose the group name. The Chat appears beneath the group in the sidebar; Top level moves it out again.',
+      caption: 'The header menu moves the selected Chat to Research.',
+    },
+    add: {
+      title: '3. Start the next Chat inside the group',
+      body: 'Expand the group in the sidebar and choose Add Chat beneath its name. This creates a new Chat in that group. The main New Chat button at the top of the sidebar creates a top-level Chat.',
+      caption: 'Add Chat under the group creates another conversation there.',
+    },
+    tidy: {
+      title: '4. Keep the sidebar easy to scan',
+      body: 'Use the arrow beside the group name to collapse or expand its Chats. The pencil on the group row renames it. Deleting a group permanently deletes every Chat inside it, so check the confirmation carefully.',
+      caption: 'The pencil renames the group, then the arrow hides its Chat rows without deleting them.',
+    },
+  },
+  demo: {
+    newChat: 'New Chat',
+    search: 'Search',
+    createGroup: 'Create Chat Group',
+    groupName: 'Group name...',
+    group: 'Research',
+    groupRenamed: 'Source research',
+    chatOne: 'Source notes',
+    chatTwo: 'New Chat',
+    chatPrompt: 'Which sources should I compare?',
+    chatReply: 'Start with the project notes and the current reference list.',
+    inputPlaceholder: 'Type a message...',
+    addChat: 'Add Chat',
+    moveToGroup: 'Move to Group',
+    topLevel: 'Top Level',
+    renameGroup: 'Rename Group',
+    confirm: 'Create group',
+    moreActions: 'More actions',
+  },
+  related: 'Learn how Chat, group, and global settings relate',
+};

@@ -14,21 +14,23 @@ export const strings = {
     caption: 'Naidanが選んだアドレスのエンジンへChatのリクエストを送り、そのプロセスで生成した応答をブラウザに返す流れです。',
   },
   enginesTitle: 'エンジンに合うAPIプロバイダーを選ぶ',
+  openGuide: '設定手順を見る',
   engines: [
     {
       title: 'Ollama',
+      guide: 'models/ollama',
       provider: 'API プロバイダー：Ollama',
       preset: 'Ollama (local) · http://localhost:11434',
       body: 'Ollamaのサービスが通常のローカルアドレスで待ち受けている場合は、このプリセットを選びます。NaidanはOllama APIを使い、サービスから取得したモデル一覧を表示します。',
     },
     {
       title: 'llama.cppのサーバー',
+      guide: 'models/openai-compatible',
       provider: 'API プロバイダー：OpenAI 互換',
       preset: 'llama-server (local) · http://localhost:8080/v1',
       body: 'llama-serverのプリセットはOpenAI互換APIを使うため、URL末尾の /v1 も含めます。このサーバーはブラウザ内で動くllama.cppとは別です。同じAPIプロバイダーには、http://localhost:1234/v1 を使うLM Studioのプリセットもあります。',
     },
   ],
-  example: 'Ollamaへの接続を画面に沿って試す',
   stepsTitle: '初回設定で接続する',
   steps: [
     {
@@ -45,7 +47,7 @@ export const strings = {
     },
   ],
   laterTitle: '後から接続先を変える',
-  later: '［設定］→［接続］を開きます。［エンドポイント設定］で［API プロバイダー］と［エンドポイント URL］を指定し、［接続を確認］を押します。［モデル選択］で［デフォルトモデル］を選び、［変更を保存］します。デフォルトは新しい会話に使われます。既存のChatで別のモデルが使われる場合は、そのChatのモデル設定も確認してください。',
+  later: '［設定］→［接続］を開きます。［エンドポイント設定］で［API プロバイダー］と［エンドポイント URL］を指定し、［接続を確認］を押します。［モデル選択］で［デフォルトモデル］を選び、［変更を保存］します。保存した値は、グローバルの接続先またはモデルを継承する既存・新規の会話にも使われます。別の設定が使われる場合は、チャットやグループの上書きを確認してください。',
   troubleTitle: '接続を確認できないとき',
   trouble: [
     {

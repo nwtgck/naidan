@@ -1,65 +1,80 @@
 <script setup lang="ts">
-import { ActivityIcon, CheckIcon, ChevronDownIcon, GlobeIcon, Loader2Icon, MousePointer2Icon, SaveIcon, Settings2Icon } from 'lucide-vue-next';
+import { ActivityIcon, BirdIcon, BotIcon, CheckIcon, ChevronDownIcon, DatabaseIcon, GlobeIcon, Loader2Icon, MessageSquareIcon, MousePointer2Icon, PlusIcon, SaveIcon, Settings2Icon, SquarePenIcon, WrenchIcon, XIcon } from 'lucide-vue-next';
 import type { OllamaGuideMessages } from '../messages';
 
 defineProps<{ stage: 'open' | 'provider' | 'check' | 'model'; copy: OllamaGuideMessages['demo'] }>();
-
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
 
 <template>
-  <div class="settings-step" :class="`stage-${stage}`" :data-docs-animation="`ollama-${stage}`" :data-testid="`ollama-settings-${stage}`" aria-hidden="true">
-    <aside class="app-sidebar">
-      <strong class="app-brand">Naidan</strong>
-      <div class="sidebar-spacer" />
-      <div class="sidebar-settings"><Settings2Icon :size="14" /><span>{{ copy.settings }}</span><MousePointer2Icon v-if="stage === 'open'" class="pointer first-pointer" :size="19" /></div>
-    </aside>
-    <div class="app-main">
-      <div class="mini-modal">
-        <div class="modal-heading"><Settings2Icon :size="15" /><strong>{{ copy.settings }}</strong></div>
-        <div class="modal-body">
-          <div class="modal-navigation"><GlobeIcon :size="13" /><span>{{ copy.connection }}</span></div>
-          <div class="modal-content">
-            <div class="section-heading"><GlobeIcon :size="14" /><strong>{{ copy.endpointConfiguration }}</strong></div>
-            <div class="field">
-              <span class="field-label">{{ copy.apiProvider }}</span>
-              <div class="select-look provider-choice">
-                <span class="layered-value"><span class="provider-before">{{ copy.openaiCompatible }}</span><span class="provider-after">{{ copy.ollama }}</span></span>
-                <ChevronDownIcon :size="13" /><MousePointer2Icon v-if="stage === 'provider'" class="pointer first-pointer" :size="19" />
-              </div>
-            </div>
-            <div class="field">
-              <div class="url-heading"><span class="field-label">{{ copy.endpointUrl }}</span><span class="local-preset">{{ copy.localPreset }}<MousePointer2Icon v-if="stage === 'provider'" class="pointer second-pointer" :size="19" /></span></div>
-              <div class="check-row">
-                <div class="url-look"><span class="url-placeholder">http://localhost:11434</span><span class="url-filled">http://localhost:11434</span></div>
-                <div class="state-switch check-action">
-                  <span class="check-idle"><ActivityIcon :size="13" />{{ copy.checkConnection }}</span>
-                  <span class="check-loading"><Loader2Icon class="spinner" :size="13" />{{ copy.checkConnection }}</span>
-                  <span class="check-done"><CheckIcon :size="13" />{{ copy.connected }}</span>
-                  <MousePointer2Icon v-if="stage === 'check'" class="pointer first-pointer" :size="19" />
+  <div class="settings-camera" :class="`stage-${stage}`" :data-docs-animation="`ollama-${stage}`" :data-testid="`ollama-settings-${stage}`" aria-hidden="true">
+    <div class="camera-canvas">
+      <div class="app-underlay">
+        <aside class="app-sidebar">
+          <strong class="app-brand"><BirdIcon :size="20" />Naidan</strong>
+          <div class="new-chat"><SquarePenIcon :size="16" />{{ copy.newChat }}</div>
+          <div class="chat-entry"><MessageSquareIcon :size="15" />{{ copy.sampleChat }}</div>
+          <div class="sidebar-fill" />
+          <div class="sidebar-settings"><Settings2Icon :size="16" /><span>{{ copy.settings }}</span><MousePointer2Icon v-if="stage === 'open'" class="pointer open-pointer" :size="24" /></div>
+        </aside>
+        <div class="app-chat">
+          <div class="chat-top"><span class="underlay-line" /><Settings2Icon :size="15" /></div>
+          <div class="chat-message"><span class="avatar"><BirdIcon :size="16" /></span><div><span class="underlay-line" /><span class="underlay-line short" /></div></div>
+          <div class="chat-composer"><span class="underlay-line" /><span class="underlay-line short" /></div>
+        </div>
+      </div>
+
+      <div class="modal-backdrop" />
+      <div class="settings-modal">
+        <aside class="modal-rail">
+          <div class="rail-heading"><span class="rail-heading-icon"><Settings2Icon :size="20" /></span><strong>{{ copy.settings }}</strong></div>
+          <div class="rail-nav">
+            <div class="rail-item selected"><GlobeIcon :size="17" /><span>{{ copy.connection }}</span></div>
+            <div class="rail-item quiet"><WrenchIcon :size="17" /><span>{{ copy.tools }}</span></div>
+            <div class="rail-item quiet"><BotIcon :size="17" /><span>{{ copy.browserModels }}</span></div>
+            <div class="rail-item quiet"><DatabaseIcon :size="17" /><span>{{ copy.storage }}</span></div>
+          </div>
+        </aside>
+        <div class="modal-main">
+          <div class="modal-close"><XIcon :size="18" /></div>
+          <div class="modal-scroll">
+            <div class="scroll-content">
+              <section class="endpoint-section">
+                <h3 class="section-heading"><GlobeIcon :size="18" />{{ copy.endpointConfiguration }}</h3>
+                <div class="field provider-field">
+                  <span class="field-label">{{ copy.apiProvider }}</span>
+                  <div class="select-control provider-control">
+                    <span class="value-stack"><span class="provider-before">{{ copy.openaiCompatible }}</span><span class="provider-after">{{ copy.ollama }}</span></span>
+                    <ChevronDownIcon :size="17" />
+                    <MousePointer2Icon v-if="stage === 'provider'" class="pointer provider-pointer" :size="23" />
+                  </div>
+                  <div v-if="stage === 'provider'" class="provider-menu"><span>{{ copy.openaiCompatible }}</span><strong><CheckIcon :size="13" />{{ copy.ollama }}</strong></div>
                 </div>
-              </div>
-            </div>
-            <div v-if="stage === 'model'" class="model-section">
-              <div class="section-heading"><strong>{{ copy.modelSelection }}</strong></div>
-              <div class="field">
-                <span class="field-label">{{ copy.defaultModel }}</span>
-                <div class="select-look model-choice">
-                  <span class="layered-value"><span class="model-before">{{ copy.none }}</span><span class="model-after">{{ copy.exampleModel }}</span></span>
-                  <ChevronDownIcon :size="13" /><MousePointer2Icon class="pointer first-pointer" :size="19" />
+                <div class="field url-field">
+                  <div class="field-top"><span class="field-label">{{ copy.endpointUrl }}</span><span class="local-preset">{{ copy.localPreset }}<MousePointer2Icon v-if="stage === 'provider'" class="pointer preset-pointer" :size="23" /></span></div>
+                  <div class="url-row">
+                    <div class="url-control"><span class="value-stack"><span class="url-before">http://localhost:1234/v1</span><span class="url-after">http://localhost:11434</span></span></div>
+                    <div class="check-control">
+                      <span class="check-idle"><ActivityIcon :size="16" />{{ copy.checkConnection }}</span>
+                      <span class="check-loading"><Loader2Icon class="spinner" :size="16" />{{ copy.checkConnection }}</span>
+                      <span class="check-done"><CheckIcon :size="16" />{{ copy.connected }}</span>
+                      <MousePointer2Icon v-if="stage === 'check'" class="pointer check-pointer" :size="23" />
+                    </div>
+                  </div>
+                  <div class="local-help"><GlobeIcon :size="15" /><span>{{ copy.localhostHint }}</span></div>
                 </div>
-                <small>{{ copy.usedForNewConversations }}</small>
-              </div>
-              <div class="save-row">
-                <div class="state-switch save-action">
-                  <span class="save-before"><SaveIcon :size="13" />{{ copy.saveChanges }}</span>
-                  <span class="save-ready"><SaveIcon :size="13" />{{ copy.saveChanges }}</span>
-                  <span class="save-done"><CheckIcon :size="13" />{{ copy.settingsSaved }}</span>
-                  <MousePointer2Icon class="pointer second-pointer" :size="19" />
+                <div class="headers-hint"><span class="field-label">{{ copy.customHttpHeaders }}</span><span><PlusIcon :size="12" />{{ copy.addHeader }}</span></div>
+              </section>
+              <section class="model-section">
+                <h3 class="section-heading"><BotIcon :size="18" />{{ copy.modelSelection }}</h3>
+                <div class="field"><span class="field-label">{{ copy.defaultModel }}</span>
+                  <div class="select-control model-control"><span class="value-stack"><span class="model-before">{{ copy.none }}</span><span class="model-after">{{ copy.exampleModel }}</span></span><ChevronDownIcon :size="17" /><MousePointer2Icon v-if="stage === 'model'" class="pointer model-pointer" :size="23" /></div>
+                  <small>{{ copy.usedWhenInherited }}</small>
                 </div>
-              </div>
+              </section>
             </div>
           </div>
+          <div class="modal-footer"><span class="save-button"><span class="save-before"><SaveIcon :size="16" />{{ copy.saveChanges }}</span><span class="save-after"><CheckIcon :size="16" />{{ copy.settingsSaved }}</span><MousePointer2Icon v-if="stage === 'model'" class="pointer save-pointer" :size="23" /></span></div>
         </div>
       </div>
     </div>
@@ -67,102 +82,70 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </template>
 
 <style scoped>
-.settings-step { --d-panel:var(--surface);--d-field:var(--surface-2);--d-line:var(--line-strong);--d-text:var(--text);--d-muted:var(--muted);--d-blue:var(--blue);display:grid;grid-template-columns:105px minmax(0,1fr);max-width:680px;min-width:0;margin-inline:auto;border:1px solid var(--d-line);border-radius:14px;background:var(--bg);color:var(--d-text);font:11px/1.55 ui-sans-serif,system-ui,sans-serif;overflow:hidden;box-shadow:var(--panel-shadow); }
-.app-sidebar { display:flex;flex-direction:column;min-width:0;padding:10px 7px;border-right:1px solid var(--d-line);background:var(--d-panel); }
-.app-brand { font-size:13px;letter-spacing:-.04em; }
-.sidebar-spacer { flex:1;min-height:62px; }
-.sidebar-settings { position:relative;display:flex;align-items:center;gap:5px;padding:7px 5px;border:1px solid var(--d-line);border-radius:7px;color:var(--d-muted);font-weight:700; }
-.sidebar-settings svg:first-child { flex:none; }
-.stage-open .sidebar-settings { animation:tap-highlight 8s linear infinite; }
-.app-main { min-width:0;padding:10px; }
-.mini-modal { min-width:0;border:1px solid var(--d-line);border-radius:9px;background:var(--d-panel);box-shadow:0 7px 23px #0003;overflow:hidden; }
-.stage-open .mini-modal { animation:modal-open 8s linear infinite; }
-.modal-heading { display:flex;align-items:center;gap:6px;padding:7px 9px;border-bottom:1px solid var(--d-line);font-size:12px; }
-.modal-heading svg,.section-heading svg { flex:none;color:var(--d-blue); }
-.modal-body { display:grid;grid-template-columns:74px minmax(0,1fr); }
-.modal-navigation { display:flex;align-items:center;align-self:start;gap:4px;min-width:0;margin:6px 4px;padding:6px 4px;border:1px solid var(--d-line);border-radius:6px;background:var(--d-field);color:var(--d-blue);font-size:9px;font-weight:750;overflow-wrap:anywhere; }
-.modal-navigation svg { flex:none; }
-.modal-content { min-width:0;padding:8px;border-left:1px solid var(--d-line); }
-.section-heading { display:flex;align-items:center;gap:6px;padding-bottom:6px;border-bottom:1px solid var(--d-line);font-size:11px;line-height:1.5; }
-.field { display:grid;gap:4px;margin-top:8px; }
-.field-label { color:var(--d-muted);font-size:9px;letter-spacing:.04em;font-weight:800;text-transform:uppercase; }
-.select-look,.url-look { position:relative;display:flex;align-items:center;justify-content:space-between;gap:7px;min-width:0;min-height:29px;padding:5px 7px;border:1px solid var(--d-line);border-radius:6px;background:var(--d-field);color:var(--d-text);font-weight:700;overflow-wrap:anywhere; }
-.select-look > svg:not(.pointer) { flex:none;color:var(--d-muted); }
-.layered-value,.url-look { display:grid; }
-.layered-value > span,.url-look > span { grid-area:1/1;min-width:0;overflow-wrap:anywhere; }
-.stage-open .provider-after,.stage-open .url-filled,.stage-open .check-loading,.stage-open .check-done { opacity:0; }
-.stage-provider .provider-before { animation:before-choice 9s linear infinite; }
-.stage-provider .provider-after { opacity:0;animation:after-choice 9s linear infinite; }
-.stage-check .provider-before,.stage-model .provider-before { opacity:0; }
-.url-heading { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 8px; }
-.local-preset { position:relative;padding:3px 6px;border:1px solid color-mix(in srgb,var(--d-blue) 40%,transparent);border-radius:6px;color:var(--d-blue);background:color-mix(in srgb,var(--d-blue) 9%,var(--d-panel));font-size:9px;font-weight:800;white-space:nowrap; }
-.stage-provider .local-preset { animation:preset-highlight 9s linear infinite; }
-.check-row { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:stretch; }
-.url-look { font:10px/1.5 ui-monospace,SFMono-Regular,monospace; }
-.url-placeholder { color:var(--d-muted); }
-.stage-provider .url-placeholder { animation:before-url 9s linear infinite; }
-.stage-provider .url-filled { opacity:0;animation:after-url 9s linear infinite; }
-.stage-check .url-placeholder,.stage-model .url-placeholder { opacity:0; }
-.state-switch { position:relative;display:grid;min-width:0; }
-.state-switch > span { grid-area:1/1;display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;padding:5px 7px;border:1px solid var(--d-line);border-radius:6px;background:var(--d-field);color:var(--d-muted);font-size:10px;font-weight:800;text-align:center;overflow-wrap:anywhere; }
-.state-switch > span svg { flex:none; }
-.check-done,.save-done { color:var(--green)!important;border-color:color-mix(in srgb,var(--green) 45%,transparent)!important;background:color-mix(in srgb,var(--green) 10%,var(--d-panel))!important; }
-.stage-provider .check-loading,.stage-provider .check-done { opacity:0; }
-.stage-check .check-idle { animation:check-idle 9s linear infinite; }
-.stage-check .check-loading { opacity:0;animation:check-loading 9s linear infinite; }
-.stage-check .check-done { opacity:0;animation:check-done 9s linear infinite; }
-.stage-model .check-idle,.stage-model .check-loading { opacity:0; }
-.spinner { animation:spin 650ms linear infinite; }
-.model-section { margin-top:10px;padding-top:8px;border-top:1px solid var(--d-line); }
-.model-section small { color:var(--d-muted);font-size:9px;line-height:1.5; }
-.model-before { animation:model-before 10s linear infinite; }
-.model-after { opacity:0;animation:model-after 10s linear infinite; }
-.save-row { display:flex;justify-content:flex-end;margin-top:8px;padding-top:8px;border-top:1px solid var(--d-line); }
-.save-action > span { background:#2563eb;color:white;border-color:#1d4ed8; }
-.save-action .save-before { background:var(--d-field);color:var(--d-muted);border-color:var(--d-line);animation:save-before 10s linear infinite; }
-.save-action .save-ready { opacity:0;animation:save-ready 10s linear infinite; }
-.save-action .save-done { opacity:0;animation:save-done 10s linear infinite; }
-.pointer { position:absolute;z-index:3;right:0;bottom:-6px;color:var(--d-text);fill:var(--d-panel);filter:drop-shadow(0 1px 2px #0009);pointer-events:none; }
-.first-pointer { animation:first-pointer 9s linear infinite; }
-.sidebar-settings .first-pointer { animation-duration:8s; }
-.model-choice .first-pointer { animation-duration:10s; }
-.second-pointer { animation:second-pointer 9s linear infinite; }
-.save-action .second-pointer { animation-duration:10s; }
-@keyframes tap-highlight { 0%,8%,28%,100% { border-color:var(--d-line);background:transparent; } 15%,22% { border-color:var(--d-blue);background:color-mix(in srgb,var(--d-blue) 16%,var(--d-panel)); } }
-@keyframes modal-open { 0%,32% { opacity:0;transform:translateY(4px); } 43%,92% { opacity:1;transform:none; } 100% { opacity:0;transform:none; } }
-@keyframes before-choice { 0%,22%,100% { opacity:1; } 32%,91% { opacity:0; } }
-@keyframes after-choice { 0%,22%,100% { opacity:0; } 32%,91% { opacity:1; } }
-@keyframes preset-highlight { 0%,46%,65%,100% { box-shadow:none; } 52%,59% { box-shadow:0 0 0 4px color-mix(in srgb,var(--d-blue) 24%,transparent); } }
-@keyframes before-url { 0%,54%,100% { opacity:1; } 64%,91% { opacity:0; } }
-@keyframes after-url { 0%,54%,100% { opacity:0;clip-path:inset(0 100% 0 0); } 64%,91% { opacity:1;clip-path:inset(0 0 0 0); } }
-@keyframes check-idle { 0%,24%,100% { opacity:1; } 34%,86% { opacity:0; } }
-@keyframes check-loading { 0%,24%,100% { opacity:0; } 34%,58% { opacity:1; } 68% { opacity:0; } }
-@keyframes check-done { 0%,58%,100% { opacity:0; } 68%,86% { opacity:1; } }
+.settings-camera { --panel:var(--surface);--field:var(--surface-2);--line:var(--line-strong);--ink:var(--text);--muted-ink:var(--muted);--accent:var(--blue);--camera-zoom:.92;--camera-x:0px;--camera-y:-30px;position:relative;max-width:680px;height:340px;margin-inline:auto;border:1px solid var(--line);border-radius:14px;background:var(--bg);box-shadow:var(--panel-shadow);color:var(--ink);font:14px/1.45 ui-sans-serif,system-ui,sans-serif;overflow:hidden;isolation:isolate;container-type:inline-size; }
+.settings-camera * { box-sizing:border-box; }
+.camera-canvas { position:absolute;top:0;left:calc(50% - 490px);width:980px;height:720px;transform-origin:top left;transform:translate(var(--camera-x),var(--camera-y)) scale(var(--camera-zoom)); }
+.stage-open .camera-canvas { animation:camera-approach 8s ease-in-out infinite both; }
+.stage-check { --camera-y:-95px; }.stage-check .camera-canvas { animation:camera-check 9s ease-in-out infinite both; }
+.stage-model { --camera-y:-295px; }.stage-model .camera-canvas { animation:camera-model 10s ease-in-out infinite both; }.stage-model .scroll-content { animation:content-scroll 10s ease-in-out infinite both; }
+.app-underlay { display:grid;grid-template-columns:228px minmax(0,1fr);height:720px;background:var(--panel); }
+.app-sidebar { display:flex;flex-direction:column;gap:12px;padding:22px 15px;border-right:1px solid var(--line);background:var(--field); }
+.app-brand { display:flex;align-items:center;gap:8px;font-size:18px;letter-spacing:-.04em; }.app-brand svg { color:var(--accent); }
+.new-chat,.chat-entry,.sidebar-settings { display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px; }.new-chat { margin-top:10px;background:#2563eb;color:white; }.chat-entry { color:var(--muted-ink); }.sidebar-fill { flex:1; }.sidebar-settings { position:relative;border:1px solid var(--line);font-weight:750;background:var(--panel); }
+.underlay-line { display:block;width:90px;height:8px;border-radius:8px;background:color-mix(in srgb,var(--muted-ink) 28%,transparent); }.underlay-line.short { width:54px; }
+.app-chat { display:flex;flex-direction:column; }.chat-top { display:flex;align-items:center;justify-content:space-between;padding:22px;border-bottom:1px solid var(--line);color:var(--muted-ink); }.chat-message { display:flex;align-items:center;gap:12px;margin:45px 70px; }.chat-message > div { display:grid;gap:11px; }.avatar { display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:var(--field);color:var(--accent); }.chat-composer { display:grid;gap:16px;margin:auto 36px 34px;padding:19px;border:1px solid var(--line);border-radius:15px;background:var(--field); }
+.modal-backdrop { position:absolute;inset:0;background:#0008; }.settings-modal { position:absolute;left:130px;top:48px;display:grid;grid-template-columns:200px 620px;width:820px;height:630px;border:1px solid var(--line);border-radius:22px;background:var(--panel);box-shadow:0 24px 65px #0007;overflow:hidden; }
+.stage-open .modal-backdrop,.stage-open .settings-modal { animation:modal-appear 8s ease-in-out infinite both; }
+.modal-rail { min-width:0;border-right:1px solid var(--line);background:var(--field); }.rail-heading { display:flex;align-items:center;gap:11px;height:76px;padding:17px;border-bottom:1px solid var(--line);font-size:18px; }.rail-heading-icon { display:grid;place-items:center;width:34px;height:34px;border:1px solid var(--line);border-radius:11px;background:var(--panel);color:var(--accent); }.rail-nav { display:grid;gap:6px;padding:16px 11px; }.rail-item { display:flex;align-items:center;gap:10px;height:43px;padding:10px;border:1px solid transparent;border-radius:11px;font-size:13px;font-weight:750; }.rail-item.selected { border-color:var(--line);background:var(--panel);color:var(--accent);box-shadow:0 4px 10px #0001; }.rail-item.quiet { color:var(--muted-ink); }
+.modal-main { position:relative;min-width:0; }.modal-close { position:absolute;z-index:2;top:17px;right:18px;color:var(--muted-ink); }.modal-scroll { height:566px;padding:31px 78px 18px 34px;overflow:hidden; }.section-heading { display:flex;align-items:center;gap:9px;margin:0 0 22px;padding-bottom:12px;border-bottom:1px solid var(--line);font-size:20px;letter-spacing:-.025em; }.section-heading svg { flex:none;color:var(--accent); }
+.field { position:relative;display:grid;gap:8px;min-width:0; }.field-label { color:var(--muted-ink);font-size:12px;font-weight:800;letter-spacing:.07em;text-transform:uppercase; }.select-control,.url-control { display:flex;align-items:center;justify-content:space-between;min-width:0;height:47px;padding:0 14px;border:1px solid var(--line);border-radius:11px;background:var(--field);font-weight:700; }.select-control > svg:not(.pointer) { flex:none;color:var(--muted-ink); }.value-stack { display:grid;min-width:0; }.value-stack > span { grid-area:1/1;min-width:0;overflow-wrap:anywhere; }.provider-control,.model-control { position:relative; }.provider-field { margin-bottom:22px; }.provider-after,.url-after,.model-after { opacity:0; }
+.provider-menu { position:absolute;z-index:3;left:0;right:0;top:75px;display:grid;gap:2px;padding:6px;border:1px solid var(--line);border-radius:11px;background:var(--panel);box-shadow:0 10px 23px #0005;opacity:0;animation:provider-menu 9s linear infinite; }.provider-menu > * { display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:6px; }.provider-menu strong { background:color-mix(in srgb,var(--accent) 12%,var(--panel));color:var(--accent); }
+.field-top { display:flex;align-items:center;justify-content:space-between;gap:8px; }.local-preset { position:relative;padding:5px 9px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--accent);font-size:11px;font-weight:800;white-space:nowrap; }.url-row { display:grid;grid-template-columns:minmax(0,1fr) 175px;gap:8px; }.url-control { font:700 13px/1.4 ui-monospace,SFMono-Regular,monospace; }.check-control { position:relative;display:grid;min-width:0;border:1px solid var(--line);border-radius:11px;background:var(--field);color:var(--muted-ink);font-size:12px;font-weight:750; }.check-control > span { grid-area:1/1;display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;padding:4px;text-align:center; }.check-control svg { flex:none; }.check-loading,.check-done { opacity:0; }.check-done { color:var(--green); }.spinner { animation:spin 650ms linear infinite; }.local-help { display:flex;align-items:flex-start;gap:9px;margin-top:12px;padding:11px;border:1px solid color-mix(in srgb,var(--accent) 18%,var(--line));border-radius:10px;background:color-mix(in srgb,var(--accent) 7%,var(--panel));color:var(--accent);font-size:11px; }.local-help svg { flex:none; }.headers-hint { display:flex;justify-content:space-between;gap:8px;margin:23px 0 26px; }.headers-hint > span:last-child { display:flex;align-items:center;gap:4px;color:var(--accent);font-size:11px;font-weight:750; }
+.model-section { border-top:1px solid var(--line);padding-top:21px; }.model-section .section-heading { margin-bottom:17px; }.model-section small { color:var(--muted-ink);font-size:11px; }.modal-footer { display:flex;align-items:center;justify-content:flex-end;height:64px;padding:10px 70px 10px 32px;border-top:1px solid var(--line);background:var(--field); }.save-button { position:relative;display:grid;min-width:156px;min-height:39px;border-radius:11px;background:#2563eb;color:white;font-size:12px;font-weight:800; }.save-button > span { grid-area:1/1;display:flex;align-items:center;justify-content:center;gap:7px;padding:6px 10px; }.save-after { opacity:0; }.pointer { position:absolute;z-index:5;right:-7px;bottom:-8px;fill:var(--panel);color:var(--ink);filter:drop-shadow(0 2px 2px #000a);pointer-events:none; }.open-pointer { animation:open-pointer 8s linear infinite; }.provider-pointer { animation:provider-pointer 9s linear infinite; }.preset-pointer { animation:preset-pointer 9s linear infinite; }.check-pointer { animation:check-pointer 9s linear infinite; }.model-pointer { animation:model-pointer 10s linear infinite; }.save-pointer { animation:save-pointer 10s linear infinite; }
+.stage-provider .provider-before { animation:provider-before 9s linear infinite; }.stage-provider .provider-after { animation:provider-after 9s linear infinite; }.stage-provider .url-before { animation:url-before 9s linear infinite; }.stage-provider .url-after { animation:url-after 9s linear infinite; }.stage-provider .local-preset { animation:preset-select 9s linear infinite; }
+.stage-check .provider-before,.stage-model .provider-before,.stage-check .url-before,.stage-model .url-before { opacity:0; }.stage-check .provider-after,.stage-model .provider-after,.stage-check .url-after,.stage-model .url-after { opacity:1; }.stage-check .local-preset,.stage-model .local-preset { background:#2563eb;border-color:#1d4ed8;color:white; }
+.stage-check .check-idle { animation:check-idle 9s linear infinite; }.stage-check .check-loading { animation:check-loading 9s linear infinite; }.stage-check .check-done { animation:check-done 9s linear infinite; }.stage-model .check-idle { opacity:0;animation:model-check-idle 10s linear infinite; }.stage-model .check-done { opacity:1;animation:model-check-done 10s linear infinite; }
+.stage-model .model-before { animation:model-before 10s linear infinite; }.stage-model .model-after { animation:model-after 10s linear infinite; }.stage-model .save-before { animation:save-before 10s linear infinite; }.stage-model .save-after { animation:save-after 10s linear infinite; }
+@keyframes camera-approach { 0%,24% { transform:translate(190px,0) scale(.62); } 43%,91% { transform:translate(0,-30px) scale(.92); } 100% { transform:translate(190px,0) scale(.62); } }
+@keyframes camera-check { 0%,16% { transform:translate(0,-30px) scale(.92); } 30%,91% { transform:translate(0,-95px) scale(.92); } 100% { transform:translate(0,-30px) scale(.92); } }
+@keyframes camera-model { 0%,16% { transform:translate(0,-95px) scale(.92); } 32%,91% { transform:translate(0,-295px) scale(.92); } 100% { transform:translate(0,-95px) scale(.92); } }
+@keyframes content-scroll { 0%,16%,100% { transform:translateY(0); } 32%,91% { transform:translateY(-135px); } }
+@keyframes modal-appear { 0%,28%,100% { opacity:0; } 39%,92% { opacity:1; } }
+@keyframes open-pointer { 0%,7%,27%,100% { opacity:0;transform:translate(9px,8px); } 15%,21% { opacity:1;transform:none; } }
+@keyframes provider-pointer { 0%,8%,28%,100% { opacity:0;transform:translate(8px,8px); } 15%,22% { opacity:1;transform:none; } }
+@keyframes provider-menu { 0%,14%,32%,100% { opacity:0; } 20%,29% { opacity:1; } }
+@keyframes provider-before { 0%,28%,100% { opacity:1; } 38%,92% { opacity:0; } }
+@keyframes provider-after { 0%,28%,100% { opacity:0; } 38%,92% { opacity:1; } }
+@keyframes preset-pointer { 0%,44%,64%,100% { opacity:0;transform:translate(8px,8px); } 51%,58% { opacity:1;transform:none; } }
+@keyframes preset-select { 0%,58%,100% { background:var(--panel);border-color:var(--line);color:var(--accent); } 68%,92% { background:#2563eb;border-color:#1d4ed8;color:white; } }
+@keyframes url-before { 0%,58%,100% { opacity:1; } 68%,92% { opacity:0; } }
+@keyframes url-after { 0%,58%,100% { opacity:0; } 68%,92% { opacity:1; } }
+@keyframes check-pointer { 0%,8%,31%,100% { opacity:0;transform:translate(8px,8px); } 15%,23% { opacity:1;transform:none; } }
+@keyframes check-idle { 0%,28%,100% { opacity:1; } 38%,92% { opacity:0; } }
+@keyframes check-loading { 0%,28%,66%,100% { opacity:0; } 38%,56% { opacity:1; } }
+@keyframes check-done { 0%,62%,100% { opacity:0; } 72%,92% { opacity:1; } }
+@keyframes model-check-idle { 0%,20% { opacity:0; } 30%,100% { opacity:1; } }
+@keyframes model-check-done { 0%,20% { opacity:1; } 30%,100% { opacity:0; } }
+@keyframes model-pointer { 0%,32%,48%,100% { opacity:0;transform:translate(8px,8px); } 37%,44% { opacity:1;transform:none; } }
+@keyframes model-before { 0%,45%,100% { opacity:1; } 55%,92% { opacity:0; } }
+@keyframes model-after { 0%,45%,100% { opacity:0; } 55%,92% { opacity:1; } }
+@keyframes save-pointer { 0%,58%,79%,100% { opacity:0;transform:translate(8px,8px); } 65%,72% { opacity:1;transform:none; } }
+@keyframes save-before { 0%,73%,100% { opacity:1; } 83%,92% { opacity:0; } }
+@keyframes save-after { 0%,73%,100% { opacity:0; } 83%,92% { opacity:1; } }
 @keyframes spin { to { transform:rotate(360deg); } }
-@keyframes model-before { 0%,24%,100% { opacity:1; } 34%,91% { opacity:0; } }
-@keyframes model-after { 0%,24%,100% { opacity:0; } 34%,91% { opacity:1; } }
-@keyframes save-before { 0%,34%,100% { opacity:1; } 44%,91% { opacity:0; } }
-@keyframes save-ready { 0%,34%,100% { opacity:0; } 44%,62% { opacity:1; } 72% { opacity:0; } }
-@keyframes save-done { 0%,62%,100% { opacity:0; } 72%,91% { opacity:1; } }
-@keyframes first-pointer { 0%,7%,23%,100% { opacity:0;transform:translate(8px,8px); } 15%,18% { opacity:1;transform:translate(0,0) scale(.85); } }
-@keyframes second-pointer { 0%,45%,62%,100% { opacity:0;transform:translate(8px,8px); } 51%,56% { opacity:1;transform:translate(0,0) scale(.85); } }
-@media(max-width:620px) { .settings-step { grid-template-columns:72px minmax(0,1fr); } .app-sidebar { padding:8px 4px; } .app-brand { font-size:11px; } .sidebar-settings { gap:3px;padding:6px 3px;font-size:9px; } .sidebar-settings svg:first-child { width:11px; } .app-main { padding:6px; } .modal-body { grid-template-columns:59px minmax(0,1fr); } .modal-navigation { margin:5px 3px;padding:5px 3px;font-size:9px; } .modal-navigation svg { width:10px; } .modal-content { padding:6px; } .check-row { grid-template-columns:1fr; } .check-action { justify-self:start; } }
-:global(html:has(#docs-pause-motion:checked)) .settings-step *,
-:global(html:has(#docs-pause-motion:checked)) .settings-step *::before,
-:global(html:has(#docs-pause-motion:checked)) .settings-step *::after { animation:none!important; }
-:global(html:has(#docs-pause-motion:checked)) .stage-open .mini-modal { opacity:1;transform:none; }
-:global(html:has(#docs-pause-motion:checked)) .stage-provider .provider-before,
-:global(html:has(#docs-pause-motion:checked)) .stage-provider .url-placeholder,
-:global(html:has(#docs-pause-motion:checked)) .stage-check .check-idle,
-:global(html:has(#docs-pause-motion:checked)) .stage-check .check-loading,
-:global(html:has(#docs-pause-motion:checked)) .stage-model .model-before,
-:global(html:has(#docs-pause-motion:checked)) .stage-model .save-before,
-:global(html:has(#docs-pause-motion:checked)) .stage-model .save-ready { opacity:0; }
-:global(html:has(#docs-pause-motion:checked)) .stage-provider .provider-after,
-:global(html:has(#docs-pause-motion:checked)) .stage-provider .url-filled,
-:global(html:has(#docs-pause-motion:checked)) .stage-check .check-done,
-:global(html:has(#docs-pause-motion:checked)) .stage-model .model-after,
-:global(html:has(#docs-pause-motion:checked)) .stage-model .save-done { opacity:1;clip-path:none; }
-:global(html:has(#docs-pause-motion:checked)) .pointer { display:none; }
-@media(prefers-reduced-motion:reduce) { .settings-step *, .settings-step *::before, .settings-step *::after { animation:none!important; } .stage-open .mini-modal { opacity:1;transform:none; } .stage-provider .provider-before,.stage-provider .url-placeholder,.stage-check .check-idle,.stage-check .check-loading,.stage-model .model-before,.stage-model .save-before,.stage-model .save-ready { opacity:0; } .stage-provider .provider-after,.stage-provider .url-filled,.stage-check .check-done,.stage-model .model-after,.stage-model .save-done { opacity:1;clip-path:none; } .pointer { display:none; } }
+@media(max-width:600px) { .settings-camera { --camera-zoom:.85;--camera-x:-291px;--camera-y:-15px;height:310px; }.camera-canvas { left:0; }.stage-provider .camera-canvas { animation:camera-provider-narrow 9s ease-in-out infinite both; }.stage-check { --camera-x:calc(100cqw - 759px);--camera-y:-65px; }.stage-model { --camera-x:calc(100cqw - 766px);--camera-y:-270px; }.stage-open .camera-canvas { animation-name:camera-approach-narrow; }.stage-check .camera-canvas { animation-name:camera-check-narrow; }.stage-model .camera-canvas { animation-name:camera-model-narrow; } }
+@keyframes camera-approach-narrow { 0%,24% { transform:translate(-10px,0) scale(.42); } 43%,91% { transform:translate(-291px,-15px) scale(.85); } 100% { transform:translate(-10px,0) scale(.42); } }
+@keyframes camera-provider-narrow { 0%,36% { transform:translate(-291px,-15px) scale(.85); } 49%,65% { transform:translate(calc(100cqw - 759px),-15px) scale(.85); } 79%,91% { transform:translate(-291px,-15px) scale(.85); } 100% { transform:translate(-291px,-15px) scale(.85); } }
+@keyframes camera-check-narrow { 0%,16% { transform:translate(-291px,-15px) scale(.85); } 30%,91% { transform:translate(calc(100cqw - 759px),-65px) scale(.85); } 100% { transform:translate(-291px,-15px) scale(.85); } }
+@keyframes camera-model-narrow { 0%,16% { transform:translate(calc(100cqw - 759px),-65px) scale(.85); } 31%,52% { transform:translate(-291px,-270px) scale(.85); } 63%,91% { transform:translate(calc(100cqw - 766px),-270px) scale(.85); } 100% { transform:translate(calc(100cqw - 759px),-65px) scale(.85); } }
+:global(html:has(#docs-pause-motion:checked)) .settings-camera *, :global(html:has(#docs-pause-motion:checked)) .settings-camera *::before, :global(html:has(#docs-pause-motion:checked)) .settings-camera *::after { animation:none!important; }
+:global(html:has(#docs-pause-motion:checked)) .stage-open .modal-backdrop, :global(html:has(#docs-pause-motion:checked)) .stage-open .settings-modal { opacity:1; }
+:global(html:has(#docs-pause-motion:checked)) .stage-provider .provider-before, :global(html:has(#docs-pause-motion:checked)) .stage-provider .url-before, :global(html:has(#docs-pause-motion:checked)) .stage-check .check-idle, :global(html:has(#docs-pause-motion:checked)) .stage-check .check-loading, :global(html:has(#docs-pause-motion:checked)) .stage-model .model-before, :global(html:has(#docs-pause-motion:checked)) .stage-model .save-before { opacity:0; }
+:global(html:has(#docs-pause-motion:checked)) .stage-provider .provider-after, :global(html:has(#docs-pause-motion:checked)) .stage-provider .url-after, :global(html:has(#docs-pause-motion:checked)) .stage-check .check-done, :global(html:has(#docs-pause-motion:checked)) .stage-model .model-after, :global(html:has(#docs-pause-motion:checked)) .stage-model .save-after { opacity:1; }
+:global(html:has(#docs-pause-motion:checked)) .stage-model .check-idle { opacity:1; }
+:global(html:has(#docs-pause-motion:checked)) .stage-model .check-done { opacity:0; }
+:global(html:has(#docs-pause-motion:checked)) .stage-provider .local-preset { background:#2563eb;border-color:#1d4ed8;color:white; }
+:global(html:has(#docs-pause-motion:checked)) .stage-model .scroll-content { transform:translateY(-135px); }
+:global(html:has(#docs-pause-motion:checked)) .settings-camera .pointer { display:none; }
+@media(prefers-reduced-motion:reduce) { .settings-camera *, .settings-camera *::before, .settings-camera *::after { animation:none!important; } .stage-open .modal-backdrop,.stage-open .settings-modal { opacity:1; } .stage-provider .provider-before,.stage-provider .url-before,.stage-check .check-idle,.stage-check .check-loading,.stage-model .model-before,.stage-model .save-before,.stage-model .check-done { opacity:0; } .stage-provider .provider-after,.stage-provider .url-after,.stage-check .check-done,.stage-model .model-after,.stage-model .save-after,.stage-model .check-idle { opacity:1; } .stage-provider .local-preset { background:#2563eb;border-color:#1d4ed8;color:white; } .stage-model .scroll-content { transform:translateY(-135px); } .pointer { display:none; } }
 </style>

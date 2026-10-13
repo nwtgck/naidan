@@ -29,12 +29,17 @@ titles in the page language. Keep the approved homepage headline. Avoid keyword
 lists, repeated boilerplate and promises about search rankings.
 
 Motion starts automatically. Respect the shared pause control and reduced-motion
-preference, and leave a readable complete static view. Streamed examples append
-content in reading order. A replay may reset the whole scene together; do not
-erase messages one by one from the bottom. Preserve user selection in
+preference, and leave a readable completed view of the step. Streamed examples
+append content in reading order. A replay may reset the whole scene together;
+do not erase messages one by one from the bottom. Preserve user selection in
 interactive demonstrations. Keep a compact, stable footprint across animation
-phases: animate opacity or transforms without changing document height, clipping
-content or reserving a large arbitrary minimum height.
+phases. A settings walkthrough may use a fixed-height camera viewport with an
+app-sized canvas that pans or zooms by transform. Intentional cropping of
+surrounding UI is allowed; keep the current instruction, active label, control,
+and resulting state readable. Do not shrink a whole settings screen just to fit
+it into the viewport, accidentally cut off important text, change document
+height between phases, or reserve a large arbitrary minimum height. Pause and
+reduced motion should show each step's completed focus state.
 
 Prefer visible sections in normal scrolling order for explanatory alternatives.
 Use tabs when the task benefits from switching a shared working view; do not hide

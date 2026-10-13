@@ -12,19 +12,23 @@ export const strings = {
     caption: 'For this choice, the selected model generates the answer in your browser. Preparing model files can involve a separate download.',
   },
   choicesTitle: 'Choose the browser runtime that fits your setup',
+  openGuide: 'View setup guide',
   choices: [
     {
       title: 'llama.cpp in the browser',
+      guide: 'models/llama-cpp-browser' as const,
       availability: 'Hosted and Standalone',
       body: 'Choose a suggested GGUF model, inspect a Hugging Face repository, or import your own GGUF file or model folder. The model manager shows downloaded files and lets you choose browser storage or a supported device folder as the destination.',
     },
     {
       title: 'Transformers.js',
+      guide: 'models/transformers-js' as const,
       availability: 'Hosted edition only · experimental',
       body: 'Open the Transformers.js manager and download a supported ONNX model. When the download completes, Naidan starts loading it automatically; the downloaded list offers Load for a complete model or Resume for an incomplete one. Its model files are stored in the browser’s OPFS. This option is unavailable in Standalone because local-file browser restrictions affect its workers and WebAssembly.',
     },
     {
       title: 'Browser-provided model',
+      guide: 'models/browser-provided' as const,
       availability: 'Only when your browser provides one',
       body: 'Choose Browser-provided and read the availability status. If the browser offers a model that needs preparation, use Prepare browser-provided model. The browser manages that model, so its availability and download behavior depend on the browser.',
     },
@@ -41,7 +45,7 @@ export const strings = {
     },
     {
       title: 'Select it for conversation',
-      body: 'Pick the imported model in Default model during setup, or choose it in the Connection settings and Save changes. The default applies to new conversations; a conversation can have its own model selection.',
+      body: 'Pick the imported model in Default model during setup, or choose it in the Connection settings and Save changes. Existing and new conversations that inherit the global model use this default; a chat or group can choose another model.',
     },
     {
       title: 'Try a short message',

@@ -1,3 +1,6 @@
+import type { DocsNavGroup } from '../../site/navigation';
+import type { DocsPageId } from '../../site/routes';
+
 export const strings = {
   "chrome": {
     "newChat": "New Chat",
@@ -9,6 +12,43 @@ export const strings = {
   "skip": "Skip to content",
   "home": "AI in your browser: guides",
   "guides": "Guides",
+  navigation: {
+    title: 'Guides',
+    location: 'Current location',
+    groups: {
+      start: 'Start here',
+      models: 'Models and connections',
+      files: 'Files',
+      work: 'Browser and tools',
+      chat: 'Conversations',
+      run: 'Getting started',
+      settings: 'Settings',
+      data: 'Data',
+      create: 'Create',
+    } satisfies Record<DocsNavGroup, string>,
+    pages: {
+      index: 'Guide home',
+      'models/in-browser': 'Run a model in your browser',
+      'models/llama-cpp-browser': 'llama.cpp in your browser',
+      'models/transformers-js': 'Transformers.js in your browser',
+      'models/browser-provided': 'Browser-provided model',
+      'models/local-engines': 'Connect a local engine',
+      'models/ollama': 'Connect to Ollama',
+      'models/openai-compatible': 'OpenAI-compatible servers',
+      'files/privacy': 'Choose files AI can read or edit',
+      'work/boundary': 'Browser permissions and local AI',
+      'work/browser-shell': 'Work with files using a browser shell',
+      'chat/branching': 'Branch and edit conversations',
+      'chat/compact': 'Continue a long conversation with a shorter context',
+      'chat/groups': 'Organize conversations with Chat Groups',
+      'run/standalone': 'Start without an installer',
+      'settings/inheritance': 'Connection and model per chat',
+      'data/storage': 'Choose where your conversations are saved',
+      'data/backup': 'Back up and restore conversations with a ZIP',
+      'images/create': 'Create an image and reuse its settings',
+      'audio/speech': 'Turn text into speech and save a WAV',
+    } satisfies Record<DocsPageId, string>,
+  },
   "source": "Source",
   "launch": "Open Naidan",
   pauseMotion: 'Pause motion',

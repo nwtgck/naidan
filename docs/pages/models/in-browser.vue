@@ -32,6 +32,7 @@ defineExpose({
         <span class="runtime-availability">{{ choice.availability }}</span>
         <h3>{{ choice.title }}</h3>
         <p>{{ choice.body }}</p>
+        <a class="card-guide-link" :href="docsHref({ locale, page: choice.guide })">{{ s.openGuide }} <span aria-hidden="true">→</span></a>
       </section>
     </div>
 
@@ -59,6 +60,8 @@ defineExpose({
 .runtime-card { min-width:0;padding:21px; }
 .runtime-card h3 { font-size:18px;line-height:1.45;margin:14px 0 10px;overflow-wrap:anywhere; }
 .runtime-card p { font-size:13px;line-height:1.8; }
+.card-guide-link { display:inline-flex;align-items:center;gap:7px;margin-top:5px;color:var(--blue);font-size:12px;font-weight:800;overflow-wrap:anywhere; }
+.card-guide-link:hover { text-decoration:underline; }
 .runtime-availability { display:block;color:var(--blue);font-size:11px;line-height:1.6;font-weight:750; }
 .guide-notes { border-top:1px solid var(--line); }
 .guide-notes p { border-bottom:1px solid var(--line);margin:0;padding:19px 0; }

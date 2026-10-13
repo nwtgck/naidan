@@ -12,21 +12,23 @@ export const strings = {
     caption: 'Naidan sends the chat request to the selected engine address; that process generates the answer and returns it to the browser.',
   },
   enginesTitle: 'Match the engine to the API provider',
+  openGuide: 'View setup guide',
   engines: [
     {
       title: 'Ollama',
+      guide: 'models/ollama' as const,
       provider: 'API Provider: Ollama',
       preset: 'Ollama (local) · http://localhost:11434',
       body: 'Choose the Ollama preset when the Ollama service is listening at its usual local address. Naidan uses the Ollama API and lists models that the service reports.',
     },
     {
       title: 'llama.cpp server',
+      guide: 'models/openai-compatible' as const,
       provider: 'API Provider: OpenAI Compatible',
       preset: 'llama-server (local) · http://localhost:8080/v1',
       body: 'The llama-server preset uses its OpenAI-compatible API, so keep the /v1 path. This server is distinct from llama.cpp running inside the browser. Naidan also offers an LM Studio preset at http://localhost:1234/v1 under the same API provider.',
     },
   ],
-  example: 'Follow the Ollama connection walkthrough',
   stepsTitle: 'Connect during first-run setup',
   steps: [
     {
@@ -43,7 +45,7 @@ export const strings = {
     },
   ],
   laterTitle: 'Change the connection later',
-  later: 'Open Settings → Connection. Under Endpoint configuration, set API Provider and Endpoint URL, then select Check connection. Under Model selection, choose Default model and Save changes. The default is used for new conversations; check a conversation’s own model setting when an existing chat uses a different model.',
+  later: 'Open Settings → Connection. Under Endpoint configuration, set API Provider and Endpoint URL, then select Check connection. Under Model selection, choose Default model and Save changes. Existing and new conversations that inherit the global endpoint or model use those saved values; check a chat or group override when one uses a different setting.',
   troubleTitle: 'If the connection check fails',
   trouble: [
     {
