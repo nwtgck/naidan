@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiText from '../../site/UiText.vue';
 import GroupStep from '../../site/demos/GroupStep.vue';
 import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
@@ -13,41 +14,41 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-chat-groups">
     <h1>{{ s.title }}</h1>
-    <p class="lead">{{ s.intro }}</p>
+    <p class="lead"><UiText :text="s.intro" /></p>
 
     <section class="walkthrough-step" aria-labelledby="groups-create">
       <h2 id="groups-create">{{ s.steps.create.title }}</h2>
-      <p>{{ s.steps.create.body }}</p>
+      <p><UiText :text="s.steps.create.body" /></p>
       <figure class="guide-figure">
         <GroupStep stage="create" :copy="s.demo" />
-        <figcaption class="caption">{{ s.steps.create.caption }}</figcaption>
+        <figcaption class="caption"><UiText :text="s.steps.create.caption" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="groups-move">
       <h2 id="groups-move">{{ s.steps.move.title }}</h2>
-      <p>{{ s.steps.move.body }}</p>
+      <p><UiText :text="s.steps.move.body" /></p>
       <figure class="guide-figure">
         <GroupStep stage="move" :copy="s.demo" />
-        <figcaption class="caption">{{ s.steps.move.caption }}</figcaption>
+        <figcaption class="caption"><UiText :text="s.steps.move.caption" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="groups-add">
       <h2 id="groups-add">{{ s.steps.add.title }}</h2>
-      <p>{{ s.steps.add.body }}</p>
+      <p><UiText :text="s.steps.add.body" /></p>
       <figure class="guide-figure">
         <GroupStep stage="add" :copy="s.demo" />
-        <figcaption class="caption">{{ s.steps.add.caption }}</figcaption>
+        <figcaption class="caption"><UiText :text="s.steps.add.caption" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="groups-tidy">
       <h2 id="groups-tidy">{{ s.steps.tidy.title }}</h2>
-      <p>{{ s.steps.tidy.body }}</p>
+      <p><UiText :text="s.steps.tidy.body" /></p>
       <figure class="guide-figure">
         <GroupStep stage="tidy" :copy="s.demo" />
-        <figcaption class="caption">{{ s.steps.tidy.caption }}</figcaption>
+        <figcaption class="caption"><UiText :text="s.steps.tidy.caption" /></figcaption>
       </figure>
     </section>
 

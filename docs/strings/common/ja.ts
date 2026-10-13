@@ -13,6 +13,7 @@ export const strings = {
   "guides": "使い方を探す",
   navigation: {
     title: 'ガイド一覧',
+    sidebarTitle: 'ガイドを探す',
     location: '現在地',
     groups: {
       start: 'はじめに',

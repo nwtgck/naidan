@@ -6,6 +6,7 @@ import { DOCS_NAV_PAGES } from './navigation';
 import { docsHref, otherLocale, DOCS_LOCALE_NAMES } from './routes';
 import type { DocsLocale, DocsPageId } from './routes';
 import DocsGuideMenu from './DocsGuideMenu.vue';
+import DocsGuideTree from './DocsGuideTree.vue';
 import DocsSymbols from './DocsSymbols.vue';
 
 const props = defineProps<{ locale: DocsLocale; page: DocsPageId; s: CommonMessages }>();
@@ -119,7 +120,22 @@ defineExpose({
     id="docs-main"
     data-testid="docs-main"
   >
-    <slot />
+    <slot v-if="page === 'index'" />
+    <div v-else class="docs-article-shell">
+      <aside class="docs-article-sidebar" :aria-label="s.navigation.sidebarTitle" data-testid="docs-article-sidebar">
+        <DocsGuideTree
+          :locale="locale"
+          :page="page"
+          :copy="s.navigation"
+          :label="s.navigation.sidebarTitle"
+          id-prefix="sidebar"
+          group-mode="disclosure"
+        />
+      </aside>
+      <div class="docs-article-body">
+        <slot />
+      </div>
+    </div>
   </main>
   <footer class="footer">
     <div class="wrap footer-inner"><span>{{ s.footer }}</span><a

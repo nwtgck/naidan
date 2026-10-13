@@ -5,18 +5,18 @@ export const strings = {
   steps: {
     create: {
       title: '1. Create a group for a purpose',
-      body: 'Expand the sidebar and select Create Chat Group, the folder-plus button beside Search. Type a name and press Enter or the check button. The group appears in the sidebar.',
+      body: 'Expand the sidebar and select ［Create Chat Group］, the folder-plus button beside Search. Type a name and press Enter or the check button. The group appears in the sidebar.',
       caption: 'The sidebar button opens a name field, then creates the group.',
     },
     move: {
       title: '2. Move an existing Chat into the group',
-      body: 'Open that Chat and select Move to Group, the folder-arrow button in its header. Choose the group name. The Chat appears beneath the group in the sidebar; Top level moves it out again.',
+      body: 'Open that Chat and select ［Move to Group］, the folder-arrow button in its header. Choose the group name. The Chat appears beneath the group in the sidebar; ［Top level］ moves it out again.',
       caption: 'The header menu moves the selected Chat to Research.',
     },
     add: {
       title: '3. Start the next Chat inside the group',
-      body: 'Expand the group in the sidebar and choose Add Chat beneath its name. This creates a new Chat in that group. The main New Chat button at the top of the sidebar creates a top-level Chat.',
-      caption: 'Add Chat under the group creates another conversation there.',
+      body: 'Expand the group in the sidebar and choose ［Add Chat］ beneath its name. This creates a new Chat in that group. The main ［New Chat］ button at the top of the sidebar creates a top-level Chat.',
+      caption: '［Add Chat］ under the group creates another conversation there.',
     },
     tidy: {
       title: '4. Keep the sidebar easy to scan',

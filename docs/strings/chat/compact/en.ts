@@ -1,13 +1,13 @@
 export const strings = {
   title: 'Continue a long conversation with a shorter context',
   description: 'Use Compact Context to summarize older messages, keep recent messages, and continue in a new branch of the same Chat.',
-  intro: 'When a Chat becomes long, Compact Context asks your selected model to summarize its older messages. The summary and the recent messages you keep form a new path in the same Chat.',
+  intro: 'When a Chat becomes long, ［Compact Context］ asks your selected model to summarize its older messages. The summary and the recent messages you keep form a new path in the same Chat.',
   prerequisite: 'Choose a working model and endpoint first. Read the generated summary before relying on it: a model can miss or misstate details.',
   steps: {
     open: {
       title: '1. Open Compact Context from the Chat header',
-      body: 'Open More actions (the three dots) in the Chat header, then choose Compact Context. Super Edit is a separate action beside it for changing the conversation history yourself.',
-      caption: 'Compact Context is in the header’s More actions menu.',
+      body: 'Open ［More actions］ (the three dots) in the Chat header, then choose ［Compact Context］. ［Super Edit］ is a separate action beside it for changing the conversation history yourself.',
+      caption: '［Compact Context］ is in the header’s ［More actions］ menu.',
     },
     keep: {
       title: '2. Choose how many recent messages to keep',
@@ -16,8 +16,8 @@ export const strings = {
     },
     run: {
       title: '3. Check the prompt and start the summary',
-      body: 'Expand Compact Prompt if you want to edit the instruction sent with the older messages. Select Compact Now to start. The progress strip shows the request and incoming summary. While the model is generating, Abort compact stops the operation without adding a new path.',
-      caption: 'The editable instruction, Compact Now and progress strip follow the selected keep count.',
+      body: 'Expand ［Compact Prompt］ if you want to edit the instruction sent with the older messages. Select ［Compact Now］ to start. The progress strip shows the request and incoming summary. While the model is generating, ［Abort compact］ stops the operation without adding a new path.',
+      caption: 'The editable instruction, ［Compact Now］ and progress strip follow the selected keep count.',
     },
     result: {
       title: '4. Review the new path before continuing',

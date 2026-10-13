@@ -14,6 +14,7 @@ export const strings = {
   "guides": "Guides",
   navigation: {
     title: 'Guides',
+    sidebarTitle: 'Browse guides',
     location: 'Current location',
     groups: {
       start: 'Start here',

@@ -19,6 +19,12 @@ follow the page locale. Pass the required localized copy as typed build-time
 props. Preserve genuine commands, paths, filenames and technical identifiers.
 Do not load page-wide translation dictionaries in the browser.
 
+In English and Japanese guide prose and figure captions, mark names of visible
+controls with full-width brackets (`［Save］`). Render those strings through
+`site/UiText.vue`, which emits an inert, localized SSR span for each marked name.
+Do not pass commands, code, paths, technical identifiers or metadata through
+`UiText`, and do not present these labels as buttons or keyboard shortcuts.
+
 Keep complete per-language HTML at build time and shared development rendering.
 Hydrate only explicitly registered demonstrations. Maintain the independent
 `build:docs` output and the normal development server's `/docs/` entry.

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDownIcon, FolderIcon, GlobeIcon, MousePointer2Icon, SaveIcon, Settings2Icon } from 'lucide-vue-next';
+import { CheckCircle2Icon, ChevronDownIcon, FolderIcon, GlobeIcon, MousePointer2Icon, SaveIcon, Settings2Icon, SettingsIcon } from 'lucide-vue-next';
 import type { InheritanceGuideMessages } from '../messages';
 
 defineProps<{
@@ -19,7 +19,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <div class="group-item"><FolderIcon :size="17" /><span>{{ copy.groupName }}</span><MousePointer2Icon v-if="stage === 'group'" class="pointer sidebar-group-pointer" :size="23" /></div>
           <div class="chat-item">{{ copy.chatTitle }}</div>
         </div>
-        <div class="sidebar-settings"><Settings2Icon :size="17" /><span>{{ copy.settings }}</span><MousePointer2Icon v-if="stage === 'global'" class="pointer sidebar-settings-pointer" :size="23" /></div>
+        <div class="sidebar-settings"><SettingsIcon :size="17" /><span>{{ copy.settings }}</span><MousePointer2Icon v-if="stage === 'global'" class="pointer sidebar-settings-pointer" :size="23" /></div>
       </aside>
 
       <main class="app-workspace">
@@ -28,9 +28,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <div class="group-heading"><span class="heading-icon"><Settings2Icon :size="21" /></span><div><h3>{{ copy.groupSettings }}</h3><small>{{ copy.groupOverrides }}</small></div><span class="override-badge">{{ copy.localOverrides }}</span></div>
             <div class="page-content">
               <div class="presets"><span class="field-label">{{ copy.quickPresets }}</span><span class="preset-pill">Ollama</span></div>
-              <div class="field"><span class="field-label">{{ copy.endpointType }}</span><div class="field-value endpoint-control"><span class="value-stack"><span class="phase-start">{{ copy.globalOllama }}</span><span class="phase-end">{{ copy.ollama }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer endpoint-pointer" :size="23" /></div></div>
+              <div class="field"><span class="field-label">{{ copy.endpointType }}</span><div class="field-value endpoint-control"><span class="value-stack"><span class="phase-start">{{ copy.globalOllama }}</span><span class="phase-end">{{ copy.ollama }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer endpoint-pointer" :size="23" /><span class="select-menu endpoint-menu"><span class="select-option">{{ copy.globalOllama }}</span><span class="select-option target-option">{{ copy.ollama }}</span></span></div></div>
               <div class="field group-url"><span class="field-label">{{ copy.endpointUrl }}</span><div class="field-value mono"><span>http://localhost:11435</span></div></div>
-              <div class="field"><span class="field-label">{{ copy.groupModel }}</span><div class="field-value model-control"><span class="value-stack"><span class="phase-start muted">{{ copy.globalModel }}</span><span class="phase-end">{{ copy.groupValue }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer group-model-pointer" :size="23" /></div></div>
+              <div class="field"><span class="field-label">{{ copy.groupModel }}</span><div class="field-value model-control"><span class="value-stack"><span class="phase-start muted">{{ copy.globalModel }}</span><span class="phase-end">{{ copy.groupValue }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer group-model-pointer" :size="23" /><span class="select-menu model-menu"><span class="select-option">{{ copy.globalModel }}</span><span class="select-option target-option">{{ copy.groupValue }}</span></span></div></div>
             </div>
           </div>
         </template>
@@ -47,12 +47,12 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <div class="modal-heading"><span class="heading-icon"><Settings2Icon :size="20" /></span><strong>{{ copy.settings }}</strong></div>
           <div class="global-modal-body"><div class="modal-navigation"><GlobeIcon :size="17" />{{ copy.connection }}</div><div class="modal-fields">
             <h3 class="section-heading">{{ copy.globalHeading }}</h3>
-            <div class="field"><span class="field-label">{{ copy.apiProvider }}</span><div class="field-value provider-control"><span class="value-stack"><span class="phase-start">{{ copy.openai }}</span><span class="phase-end">{{ copy.ollama }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer provider-pointer" :size="23" /></div></div>
+            <div class="field"><span class="field-label">{{ copy.apiProvider }}</span><div class="field-value provider-control"><span class="value-stack"><span class="phase-start">{{ copy.openai }}</span><span class="phase-end">{{ copy.ollama }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer provider-pointer" :size="23" /><span class="select-menu provider-menu"><span class="select-option">{{ copy.openai }}</span><span class="select-option target-option">{{ copy.ollama }}</span></span></div></div>
             <div class="field"><span class="field-label">{{ copy.endpointUrl }}</span><div class="field-value mono url-control"><span class="value-stack"><span class="phase-start muted">http://localhost:1234/v1</span><span class="phase-end">http://localhost:11434</span></span><MousePointer2Icon class="pointer url-pointer" :size="23" /></div></div>
             <h3 class="section-heading model-heading">{{ copy.modelSelection }}</h3>
-            <div class="field"><span class="field-label">{{ copy.defaultModel }}</span><div class="field-value model-control"><span class="value-stack"><span class="phase-start muted">{{ copy.none }}</span><span class="phase-end">{{ copy.globalValue }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer global-model-pointer" :size="23" /></div></div>
+            <div class="field"><span class="field-label">{{ copy.defaultModel }}</span><div class="field-value model-control"><span class="value-stack"><span class="phase-start muted">{{ copy.none }}</span><span class="phase-end">{{ copy.globalValue }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer global-model-pointer" :size="23" /><span class="select-menu model-menu"><span class="select-option">{{ copy.none }}</span><span class="select-option target-option">{{ copy.globalValue }}</span></span></div></div>
           </div></div>
-          <div class="modal-footer"><div class="save-control"><SaveIcon :size="16" /><span class="value-stack"><span class="phase-start">{{ copy.save }}</span><span class="phase-end">{{ copy.saved }}</span></span><MousePointer2Icon class="pointer save-pointer" :size="23" /></div></div>
+          <div class="modal-footer"><div class="save-control"><span class="save-icon-stack"><SaveIcon class="phase-start" :size="16" /><CheckCircle2Icon class="phase-end" :size="16" /></span><span class="value-stack"><span class="phase-start">{{ copy.save }}</span><span class="phase-end">{{ copy.saved }}</span></span><MousePointer2Icon class="pointer save-pointer" :size="23" /></div></div>
         </div>
       </template>
 
@@ -62,9 +62,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <div class="modal-heading"><span class="heading-icon"><Settings2Icon :size="20" /></span><strong>{{ copy.chatSettings }}</strong><span v-if="stage !== 'inheritedChat'" class="override-badge">{{ copy.localOverrides }}</span></div>
           <div class="chat-modal-body">
             <div class="presets"><span class="field-label">{{ copy.quickPresets }}</span><span class="preset-pill">Ollama</span></div>
-            <div class="field"><span class="field-label">{{ copy.endpointType }}</span><div class="field-value endpoint-control"><span v-if="stage === 'reset'" class="value-stack reset-stack"><span class="reset-initial muted">{{ copy.groupOllama }}</span><span class="reset-local-endpoint">{{ copy.openai }}</span><span class="reset-final muted">{{ copy.groupOllama }}</span></span><span v-else class="muted">{{ copy.groupOllama }}</span><ChevronDownIcon :size="18" /><MousePointer2Icon v-if="stage === 'reset'" class="pointer reset-pointer" :size="23" /></div></div>
+            <div class="field"><span class="field-label">{{ copy.endpointType }}</span><div class="field-value endpoint-control"><span v-if="stage === 'reset'" class="value-stack reset-stack"><span class="reset-initial muted">{{ copy.groupOllama }}</span><span class="reset-local-endpoint">{{ copy.openai }}</span><span class="reset-final muted">{{ copy.groupOllama }}</span></span><span v-else class="muted">{{ copy.groupOllama }}</span><ChevronDownIcon :size="18" /><MousePointer2Icon v-if="stage === 'reset'" class="pointer reset-pointer" :size="23" /><span v-if="stage === 'reset'" class="select-menu reset-endpoint-out-menu"><span class="select-option">{{ copy.groupOllama }}</span><span class="select-option target-option">{{ copy.openai }}</span></span><span v-if="stage === 'reset'" class="select-menu reset-endpoint-back-menu"><span class="select-option">{{ copy.openai }}</span><span class="select-option target-option">{{ copy.groupOllama }}</span></span></div></div>
             <div class="field"><span class="field-label">{{ copy.endpointUrl }}</span><div class="field-value mono"><span v-if="stage === 'reset'" class="value-stack reset-stack"><span class="reset-initial muted">{{ copy.groupUrl }}</span><span class="reset-local-endpoint">http://localhost:1234/v1</span><span class="reset-final muted">{{ copy.groupUrl }}</span></span><span v-else class="muted">{{ copy.groupUrl }}</span></div></div>
-            <div class="field"><span class="field-label">{{ copy.chatModel }}</span><div class="field-value model-control"><span v-if="stage === 'chatModel'" class="value-stack"><span class="phase-start muted">{{ copy.groupModelValue }}</span><span class="phase-end">{{ copy.chatValue }}</span></span><span v-else-if="stage === 'reset'" class="value-stack reset-stack"><span class="reset-initial">{{ copy.chatValue }}</span><span class="reset-cleared muted">{{ copy.groupModelValue }}</span><span class="reset-local-model">{{ copy.otherValue }}</span><span class="reset-final muted">{{ copy.groupModelValue }}</span></span><span v-else class="muted">{{ copy.groupModelValue }}</span><ChevronDownIcon :size="18" /><MousePointer2Icon v-if="stage === 'chatModel'" class="pointer chat-model-pointer" :size="23" /><MousePointer2Icon v-if="stage === 'reset'" class="pointer reset-model-pointer" :size="23" /></div></div>
+            <div class="field"><span class="field-label">{{ copy.chatModel }}</span><div class="field-value model-control"><span v-if="stage === 'chatModel'" class="value-stack"><span class="phase-start muted">{{ copy.groupModelValue }}</span><span class="phase-end">{{ copy.chatValue }}</span></span><span v-else-if="stage === 'reset'" class="value-stack reset-stack"><span class="reset-initial">{{ copy.chatValue }}</span><span class="reset-cleared muted">{{ copy.groupModelValue }}</span><span class="reset-local-model">{{ copy.otherValue }}</span><span class="reset-final muted">{{ copy.groupModelValue }}</span></span><span v-else class="muted">{{ copy.groupModelValue }}</span><ChevronDownIcon :size="18" /><MousePointer2Icon v-if="stage === 'chatModel'" class="pointer chat-model-pointer" :size="23" /><MousePointer2Icon v-if="stage === 'reset'" class="pointer reset-model-pointer" :size="23" /><span v-if="stage === 'chatModel'" class="select-menu chat-model-menu"><span class="select-option">{{ copy.groupModelValue }}</span><span class="select-option target-option">{{ copy.chatValue }}</span></span><span v-if="stage === 'reset'" class="select-menu reset-model-menu"><span class="select-option">{{ copy.groupModelValue }}</span><span class="select-option target-option">{{ copy.otherValue }}</span></span></div></div>
           </div>
         </div>
       </template>
@@ -110,6 +110,21 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .field { display:grid;gap:8px;min-width:0; }
 .field-label { color:var(--scene-muted);font-size:14px;font-weight:800;letter-spacing:.04em;text-transform:uppercase; }
 .field-value { position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;min-height:49px;padding:12px 15px;border:1px solid var(--scene-line);border-radius:11px;background:var(--scene-field);font-size:17px;font-weight:750;overflow-wrap:anywhere; }
+.select-menu { position:absolute;z-index:12;top:calc(100% + 5px);left:0;right:0;display:grid;gap:3px;padding:6px;border:1px solid var(--scene-line);border-radius:11px;background:var(--scene-surface);box-shadow:0 13px 32px #0005;color:var(--scene-text);font-size:13px;font-weight:750;opacity:0;transform:translateY(-6px) scale(.98);pointer-events:none; }
+.select-option { display:block;min-width:0;padding:8px 9px;border-radius:7px;line-height:1.4;overflow-wrap:anywhere; }
+.select-option.target-option { animation:option-picked-late 12s linear infinite; }
+.stage-global .provider-menu { animation:menu-open-global-provider 12s linear infinite; }
+.stage-global .provider-menu .target-option { animation-name:option-picked-global-provider; }
+.stage-global .model-menu,.stage-group .model-menu { animation:menu-open-late 12s linear infinite; }
+.stage-group .endpoint-menu,.stage-chatModel .chat-model-menu { animation:menu-open-middle 12s linear infinite; }
+.stage-group .endpoint-menu .target-option,.stage-chatModel .chat-model-menu .target-option { animation-name:option-picked-middle; }
+.stage-group .model-menu,.stage-chatModel .chat-model-menu,.stage-reset .reset-model-menu { bottom:calc(100% + 5px);top:auto; }
+.stage-reset .reset-endpoint-out-menu { animation:menu-open-reset-out 16s linear infinite; }
+.stage-reset .reset-endpoint-out-menu .target-option { animation:option-picked-reset-out 16s linear infinite; }
+.stage-reset .reset-model-menu { animation:menu-open-reset-model 16s linear infinite; }
+.stage-reset .reset-model-menu .target-option { animation:option-picked-reset-model 16s linear infinite; }
+.stage-reset .reset-endpoint-back-menu { animation:menu-open-reset-back 16s linear infinite; }
+.stage-reset .reset-endpoint-back-menu .target-option { animation:option-picked-reset-back 16s linear infinite; }
 .field-value > svg:not(.pointer) { flex:none;color:var(--scene-muted); }
 .field-value > span { min-width:0; }
 .mono { font:16px/1.5 ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere; }
@@ -131,6 +146,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .model-heading { margin-top:5px; }
 .modal-footer { display:flex;justify-content:flex-end;padding:15px 20px;border-top:1px solid var(--scene-line); }
 .save-control { position:relative;display:flex;align-items:center;gap:8px;min-width:150px;padding:10px 14px;border-radius:10px;background:#2563eb;color:white;font-size:13px;font-weight:800; }
+.save-icon-stack { display:grid;place-items:center; }
+.save-icon-stack svg { grid-area:1/1; }
 .chat-modal { left:273px;top:135px;width:420px; }
 .chat-modal-body { display:grid;gap:18px;padding:23px 31px 30px; }
 .chat-modal-body .presets { min-height:34px; }
@@ -175,8 +192,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes reset-camera { 0%,14%,100% { transform:translate(-120px,-15px) scale(.85); } 24%,94% { transform:translate(-105px,-215px) scale(1.05); } }
 @keyframes modal-open { 0%,14%,100% { opacity:0; } 25%,94% { opacity:1; } }
 @keyframes chat-modal-open { 0%,25%,100% { opacity:0; } 37%,94% { opacity:1; } }
-@keyframes early-start { 0%,27%,100% { opacity:1; } 37%,94% { opacity:0; } }
-@keyframes early-end { 0%,27%,100% { opacity:0; } 37%,94% { opacity:1; } }
+@keyframes early-start { 0%,40%,100% { opacity:1; } 48%,94% { opacity:0; } }
+@keyframes early-end { 0%,40%,100% { opacity:0; } 48%,94% { opacity:1; } }
 @keyframes middle-start { 0%,46%,100% { opacity:1; } 56%,94% { opacity:0; } }
 @keyframes middle-end { 0%,46%,100% { opacity:0; } 56%,94% { opacity:1; } }
 @keyframes late-start { 0%,67%,100% { opacity:1; } 77%,94% { opacity:0; } }
@@ -186,8 +203,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes group-url-show { 0%,46%,100% { opacity:0; } 56%,94% { opacity:1; } }
 @keyframes reset-initial-value { 0%,27%,100% { opacity:1; } 36%,94% { opacity:0; } }
 @keyframes reset-cleared-value { 0%,27%,58%,100% { opacity:0; } 36%,50% { opacity:1; } }
-@keyframes reset-local-endpoint-value { 0%,27%,84%,100% { opacity:0; } 36%,75% { opacity:1; } }
-@keyframes reset-local-model-value { 0%,50%,84%,100% { opacity:0; } 58%,75% { opacity:1; } }
+@keyframes reset-local-endpoint-value { 0%,27%,84%,100% { opacity:0; } 36%,83% { opacity:1; } }
+@keyframes reset-local-model-value { 0%,50%,84%,100% { opacity:0; } 58%,83% { opacity:1; } }
 @keyframes reset-final-value { 0%,75%,100% { opacity:0; } 84%,94% { opacity:1; } }
 @keyframes reset-override-badge { 0%,75%,100% { opacity:1; } 84%,94% { opacity:0; } }
 @keyframes tap-early { 0%,5%,20%,100% { opacity:0;transform:translate(9px,9px); } 10%,15% { opacity:1;transform:none; } }
@@ -197,6 +214,18 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes tap-end { 0%,77%,91%,100% { opacity:0;transform:translate(9px,9px); } 82%,86% { opacity:1;transform:none; } }
 @keyframes tap-reset-endpoint { 0%,24%,34%,75%,85%,100% { opacity:0;transform:translate(9px,9px); } 28%,31%,78%,81% { opacity:1;transform:none; } }
 @keyframes tap-reset-model { 0%,47%,59%,100% { opacity:0;transform:translate(9px,9px); } 51%,55% { opacity:1;transform:none; } }
+@keyframes menu-open-global-provider { 0%,28%,46%,100% { opacity:0;transform:translateY(-6px) scale(.98); } 32%,43% { opacity:1;transform:none; } }
+@keyframes menu-open-middle { 0%,46%,58%,100% { opacity:0;transform:translateY(-6px) scale(.98); } 49%,55% { opacity:1;transform:none; } }
+@keyframes menu-open-late { 0%,67%,79%,100% { opacity:0;transform:translateY(-6px) scale(.98); } 70%,76% { opacity:1;transform:none; } }
+@keyframes menu-open-reset-out { 0%,26%,38%,100% { opacity:0;transform:translateY(-6px) scale(.98); } 29%,35% { opacity:1;transform:none; } }
+@keyframes menu-open-reset-model { 0%,48%,60%,100% { opacity:0;transform:translateY(-6px) scale(.98); } 51%,57% { opacity:1;transform:none; } }
+@keyframes menu-open-reset-back { 0%,75%,86%,100% { opacity:0;transform:translateY(-6px) scale(.98); } 78%,83% { opacity:1;transform:none; } }
+@keyframes option-picked-global-provider { 0%,38%,46%,100% { background:transparent;color:var(--scene-text); } 41%,44% { background:color-mix(in srgb,var(--scene-blue) 17%,var(--scene-surface));color:var(--scene-blue); } }
+@keyframes option-picked-middle { 0%,51%,59%,100% { background:transparent;color:var(--scene-text); } 53%,56% { background:color-mix(in srgb,var(--scene-blue) 17%,var(--scene-surface));color:var(--scene-blue); } }
+@keyframes option-picked-late { 0%,72%,80%,100% { background:transparent;color:var(--scene-text); } 74%,77% { background:color-mix(in srgb,var(--scene-blue) 17%,var(--scene-surface));color:var(--scene-blue); } }
+@keyframes option-picked-reset-out { 0%,31%,39%,100% { background:transparent;color:var(--scene-text); } 33%,36% { background:color-mix(in srgb,var(--scene-blue) 17%,var(--scene-surface));color:var(--scene-blue); } }
+@keyframes option-picked-reset-model { 0%,53%,61%,100% { background:transparent;color:var(--scene-text); } 55%,58% { background:color-mix(in srgb,var(--scene-blue) 17%,var(--scene-surface));color:var(--scene-blue); } }
+@keyframes option-picked-reset-back { 0%,79%,87%,100% { background:transparent;color:var(--scene-text); } 81%,84% { background:color-mix(in srgb,var(--scene-blue) 17%,var(--scene-surface));color:var(--scene-blue); } }
 @media(max-width:560px) {
   .camera-viewport { height:345px; }
   .stage-global .field-label { transform:translateX(24px);animation:global-label-shift 12s linear infinite; }
@@ -208,6 +237,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   .stage-group .field-value > span { margin-left:20px; }
   .stage-inheritedChat .field-value > span,.stage-chatModel .field-value > span,.stage-reset .field-value > span { margin-left:8px; }
   .field-value .pointer { right:16px; }
+  .stage-global .select-menu { left:20px;right:auto;width:260px; }
+  .stage-group .select-menu { left:40px;right:auto;width:260px; }
+  .stage-chatModel .select-menu,.stage-reset .select-menu { left:25px;right:auto;width:260px; }
   .stage-global .save-control { margin-right:20px; }
   .stage-global .scene-canvas { animation-name:global-camera-mobile; }
   .stage-group .scene-canvas { animation-name:group-camera-mobile; }
@@ -234,6 +266,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 :global(html:has(#docs-pause-motion:checked)) .stage-chatModel .scene-canvas { transform:translate(-120px,-15px) scale(.85); }
 :global(html:has(#docs-pause-motion:checked)) .stage-reset .scene-canvas { transform:translate(-105px,-215px) scale(1.05); }
 :global(html:has(#docs-pause-motion:checked)) .camera-viewport .pointer { display:none; }
+:global(html:has(#docs-pause-motion:checked)) .camera-viewport .select-menu { opacity:0; }
 @media(max-width:560px) {
   :global(html:has(#docs-pause-motion:checked)) .stage-global .scene-canvas { transform:translate(-342px,-190px) scale(.82); }
   :global(html:has(#docs-pause-motion:checked)) .stage-group .scene-canvas { transform:translate(-212px,-130px) scale(.82); }
@@ -249,6 +282,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   .stage-chatModel .scene-canvas { transform:translate(-120px,-15px) scale(.85); }
   .stage-reset .scene-canvas { transform:translate(-105px,-215px) scale(1.05); }
   .pointer { display:none; }
+  .select-menu { opacity:0; }
 }
 @media(max-width:560px) and (prefers-reduced-motion:reduce) {
   .stage-global .scene-canvas { transform:translate(-342px,-190px) scale(.82); }

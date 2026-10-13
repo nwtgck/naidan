@@ -13,7 +13,7 @@ const copy = { en: english, ja: japanese };
 
 async function renderLayout({ locale, page }: { locale: DocsLocale; page: DocsPageId }) {
   const body = await renderToString(createSSRApp({
-    render: () => h(DocLayout, { locale, page, s: copy[locale] }, { default: () => h('h1', 'Guide content') }),
+    render: () => h(DocLayout, { locale, page, s: copy[locale] }, { default: () => h('article', { class: 'prose' }, [h('h1', 'Guide content')]) }),
   }));
   return parsePage({ html: body });
 }
@@ -37,9 +37,30 @@ describe('all-page Docs navigation', () => {
       const breadcrumb = rendered.document.querySelector('[data-testid="docs-breadcrumb"]');
       if (route.id === 'index') {
         expect(breadcrumb).toBeNull();
+        expect(rendered.document.querySelector('[data-testid="docs-article-sidebar"]')).toBeNull();
+        expect(rendered.document.querySelector('[data-testid="docs-article-inline-nav"]')).toBeNull();
       } else {
         expect(breadcrumb?.getAttribute('aria-label')).toBe(copy[locale].navigation.location);
         expect(breadcrumb?.querySelector('[aria-current="page"]')?.textContent).toBe(copy[locale].navigation.pages[route.id]);
+        const sidebar = rendered.document.querySelector('[data-testid="docs-article-sidebar"]');
+        expect(sidebar?.tagName).toBe('ASIDE');
+        expect(sidebar?.getAttribute('aria-label')).toBe(copy[locale].navigation.sidebarTitle);
+        expect(sidebar?.firstElementChild?.getAttribute('data-testid')).toBe('docs-guide-tree');
+        expect(rendered.document.querySelector('[data-testid="docs-article-inline-nav"]')).toBeNull();
+        expect(rendered.document.querySelector('.docs-article-body > article.prose')).not.toBeNull();
+        const sidebarLinks = [...(sidebar?.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-guide-link"]') ?? [])];
+        expect(sidebarLinks).toHaveLength(DOCS_PAGES.length);
+        expect(new Set(sidebarLinks.map(link => link.getAttribute('href')))).toEqual(new Set(hrefs));
+        expect(sidebarLinks.filter(link => link.getAttribute('aria-current') === 'page').map(link => link.getAttribute('href')))
+          .toEqual([docsHref({ locale, page: route.id })]);
+        const groups = sidebar?.querySelectorAll<HTMLDetailsElement>('.docs-guide-group');
+        expect(groups?.length).toBeGreaterThan(0);
+        for (const group of groups ?? []) {
+          expect(group.querySelector('summary')).not.toBeNull();
+          expect(group.open).toBe(group.getAttribute('data-group') === DOCS_NAV_PAGES[route.id].group);
+        }
+        const groupIds = [...rendered.document.querySelectorAll('[id^="docs-guide-group-"]')].map(element => element.id);
+        expect(new Set(groupIds).size).toBe(groupIds.length);
       }
       const other = locale === 'en' ? 'ja' : 'en';
       expect(rendered.document.querySelector('[data-testid="docs-language-switch"]')?.getAttribute('href'))

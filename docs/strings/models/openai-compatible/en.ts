@@ -6,28 +6,28 @@ export const strings = {
   steps: {
     open: {
       title: '1. Open Connection settings',
-      body: 'Select Settings at the bottom of the sidebar. The Settings panel opens on Connection by default; choose Connection if another tab is active.',
-      caption: 'The sidebar Settings button opens the Connection panel.',
+      body: 'Select ［Settings］ at the bottom of the sidebar. The ［Settings］ panel opens on ［Connection］ by default; choose ［Connection］ if another tab is active.',
+      caption: 'The sidebar ［Settings］ button opens the ［Connection］ panel.',
     },
     provider: {
       title: '2. Choose the provider and URL',
-      body: 'Set API Provider to OpenAI Compatible. Choose the LM Studio (local) or llama-server (local) preset if it matches your server. Each preset sets the provider and URL together. For another compatible service, type its base URL, including a path such as /v1 when that service requires it.',
+      body: 'Set ［API Provider］ to ［OpenAI Compatible］. Choose the ［LM Studio (local)］ or ［llama-server (local)］ preset if it matches your server. Each preset sets the provider and URL together. For another compatible service, type its base URL, including a path such as /v1 when that service requires it.',
       caption: 'A local preset fills the base URL. The example shows LM Studio; use your server’s actual address.',
     },
     headers: {
       title: '3. Add headers only when your service needs them',
-      body: 'Under Custom HTTP Headers, select Add Header and enter the name and value required by your service. Naidan sends these headers with its requests. Skip this step if your server does not require headers. Keep credentials out of URLs you share.',
-      caption: 'Add Header reveals name and value fields. This local example removes the empty row before checking.',
+      body: 'Under ［Custom HTTP Headers］, select ［Add Header］ and enter the name and value required by your service. Naidan sends these headers with its requests. Skip this step if your server does not require headers. Keep credentials out of URLs you share.',
+      caption: '［Add Header］ reveals name and value fields. This local example removes the empty row before checking.',
     },
     check: {
       title: '4. Check the connection',
-      body: 'Select Check connection. Naidan requests the server’s model list and briefly displays Connected after a successful response. In Settings, changing a localhost address can also start this check automatically. A failed check may indicate a wrong URL, an unavailable server, or a browser CORS, origin or CSP restriction.',
-      caption: 'The model-list request moves from checking to Connected on success.',
+      body: 'Select ［Check connection］. Naidan requests the server’s model list and briefly displays ［Connected］ after a successful response. In ［Settings］, changing a localhost address can also start this check automatically. A failed check may indicate a wrong URL, an unavailable server, or a browser CORS, origin or CSP restriction.',
+      caption: 'The model-list request moves from checking to ［Connected］ on success.',
     },
     model: {
       title: '5. Choose a default model and save',
-      body: 'In Model Selection, choose a model returned by this server under Default Model, then select Save Changes. The example model label stands for a result from your server. The default applies to existing and new conversations that inherit it; a chat or group can override the model.',
-      caption: 'Choose a returned model and save the Connection settings.',
+      body: 'In ［Model Selection］, choose a model returned by this server under ［Default Model］, then select ［Save Changes］. The example model label stands for a result from your server. The default applies to existing and new conversations that inherit it; a chat or group can override the model.',
+      caption: 'Choose a returned model and save the ［Connection］ settings.',
     },
   },
   demo: {
@@ -55,6 +55,8 @@ export const strings = {
     modelSelection: 'Model Selection',
     defaultModel: 'Default Model',
     none: 'None',
+    filterModels: 'Filter models...',
+    refreshModelList: 'Refresh model list',
     exampleModel: 'model from server',
     usedWhenInherited: 'Used by chats that inherit this default.',
     saveChanges: 'Save Changes',

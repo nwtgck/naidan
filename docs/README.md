@@ -42,6 +42,7 @@ The following files own the pipeline.
 | File | Responsibility |
 | --- | --- |
 | `site/routes.ts` | Supported languages and explicit page IDs, paths and sources |
+| `build/seo.ts` | Public Docs URLs, language alternates and sitemap XML |
 | `site/messages.ts` | TypeScript contracts for locally authored page and demo copy |
 | `build/virtual-modules.ts` | Server-only page registry and native style collection entries |
 | `build/compiler.ts` | Shared Vue/Vite compiler configuration |
@@ -127,6 +128,24 @@ This avoids a wrong-language flash; loading the stylesheet or bootstrap can stil
 involve a short wait. It is not a guarantee of instant content on a slow network.
 Only static components are allowed in the language-neutral home; build validation
 rejects islands there until a deliberate activation contract is implemented.
+
+## Search metadata
+
+Each generated page includes a static, absolute self-canonical URL and absolute
+English/Japanese `hreflang` links. The language-neutral `/docs/` entrance has its
+own canonical URL and is the `x-default` alternate for the localized homepages.
+Guide pages link only their English and Japanese equivalents. The generated
+`/docs/sitemap.xml` lists the entrance and every localized page with the same
+language links. Development serves the same XML at that path. The Docs 404 page
+has a `noindex` directive and no canonical URL. Public URLs use the single origin
+in `build/seo.ts`; adding a route in `site/routes.ts` also adds it to the sitemap.
+The public `robots.txt` advertises both the application and Docs sitemaps.
+
+Guide prose and figure captions use full-width `［control name］` markers in both
+languages for visible app controls. Pass those strings through `site/UiText.vue`:
+it renders an inert SSR span without showing the brackets. Keep commands, code,
+paths, technical identifiers and document metadata as ordinary text; these
+markers do not denote a button or keyboard shortcut.
 
 ## Interactive demonstrations
 

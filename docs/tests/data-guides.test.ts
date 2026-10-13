@@ -10,6 +10,7 @@ import { strings as backupJa } from '../strings/data/backup/ja';
 import { strings as commonEn } from '../strings/common/en';
 import { strings as commonJa } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
+import { visibleGuideText } from './ui-label.test-support';
 
 describe('data guides', () => {
   it.each([
@@ -24,7 +25,7 @@ describe('data guides', () => {
 
     for (const stage of ['open', 'choose', 'persist'] as const) {
       const step = article?.querySelector(`#storage-${stage}`)?.closest('section');
-      expect(step?.textContent).toContain(s.steps[stage].body);
+      expect(step?.textContent).toContain(visibleGuideText({ text: s.steps[stage].body }));
       expect(step?.querySelector(`[data-docs-animation="storage-${stage}"]`)).not.toBeNull();
     }
 
@@ -52,7 +53,7 @@ describe('data guides', () => {
 
     for (const stage of ['export', 'preview', 'mode'] as const) {
       const step = article?.querySelector(`#backup-${stage}`)?.closest('section');
-      expect(step?.textContent).toContain(s.steps[stage].body);
+      expect(step?.textContent).toContain(visibleGuideText({ text: s.steps[stage].body }));
       expect(step?.querySelector(`[data-docs-animation="backup-${stage}"]`)).not.toBeNull();
     }
 
@@ -63,7 +64,7 @@ describe('data guides', () => {
     expect(mode?.querySelector('.import-window .archive-summary')?.textContent).toContain(s.demo.chosenZip);
     expect(mode?.textContent).toContain(s.demo.append);
     expect(mode?.textContent).toContain(s.demo.replace);
-    expect(article?.textContent).toContain(s.scopeBody);
+    expect(article?.textContent).toContain(visibleGuideText({ text: s.scopeBody }));
     expect(article?.textContent).toContain(s.careBody);
     expect(article?.querySelector('.next-link')?.getAttribute('href')).toBe(`/docs/${locale}/data/storage/`);
   });

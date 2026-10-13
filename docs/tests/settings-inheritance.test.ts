@@ -8,6 +8,7 @@ import { strings as ja } from '../strings/settings/inheritance/ja';
 import { strings as commonEn } from '../strings/common/en';
 import { strings as commonJa } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
+import { visibleGuideText } from './ui-label.test-support';
 
 describe('settings inheritance guide', () => {
   it.each([
@@ -24,11 +25,11 @@ describe('settings inheritance guide', () => {
     for (const [index, stage] of stages.entries()) {
       const section = sections[index];
       expect(section?.querySelector('h2')?.textContent).toBe(s.steps[stage].title);
-      expect(section?.querySelector('p')?.textContent).toBe(s.steps[stage].body);
+      expect(section?.querySelector('p')?.textContent).toBe(visibleGuideText({ text: s.steps[stage].body }));
       const scene = section?.querySelector(`[data-testid="inheritance-step-${stage}"]`);
       expect(scene?.getAttribute('data-docs-animation')).toBe(`inheritance-${stage}`);
       expect(scene?.querySelector('[data-testid="inheritance-camera-canvas"]')).not.toBeNull();
-      expect(section?.querySelector('figcaption')?.textContent).toBe(s.steps[stage].caption);
+      expect(section?.querySelector('figcaption')?.textContent).toBe(visibleGuideText({ text: s.steps[stage].caption }));
     }
     expect(article?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/models/ollama/`);
     expect(article?.querySelectorAll('script, [data-docs-island]')).toHaveLength(0);

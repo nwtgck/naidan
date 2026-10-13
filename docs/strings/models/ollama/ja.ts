@@ -7,7 +7,7 @@ export const strings = {
   before: 'ローカル用のプリセットは、Ollamaが http://localhost:11434 で待ち受けている想定です。別のアドレスで動かしている場合は、実際のURLを［エンドポイント URL］に入力します。接続操作を始める前に、Ollamaと使うモデルを準備してください。',
   steps: {
     open: {
-      title: '1. ［設定］から［接続］を開く',
+      title: '1. 設定から接続を開く',
       body: 'Naidanのサイドバー下部にある［設定］を選びます。設定画面では初期状態で［接続］が開きます。ほかのタブを表示している場合は［接続］を選んでください。図はサイドバーのボタンから始まり、［接続］の設定画面が開きます。',
       caption: 'サイドバーの［設定］から［接続］の設定画面を開きます。',
     },
@@ -49,6 +49,8 @@ export const strings = {
     modelSelection: 'モデル選択',
     defaultModel: 'デフォルトモデル',
     none: 'なし',
+    filterModels: 'モデルを絞り込む...',
+    refreshModelList: 'モデル一覧を更新',
     exampleModel: 'gemma3n:e2b',
     usedWhenInherited: 'このデフォルトを継承する会話に適用されます。',
     saveChanges: '変更を保存',

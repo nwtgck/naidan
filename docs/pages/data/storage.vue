@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiText from '../../site/UiText.vue';
 import StorageSettingsStep from '../../site/demos/StorageSettingsStep.vue';
 import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
@@ -12,20 +13,20 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-data-storage">
     <h1>{{ s.title }}</h1>
-    <p class="lead">{{ s.intro }}</p>
+    <p class="lead"><UiText :text="s.intro" /></p>
 
     <section v-for="stage in (['open', 'choose', 'persist'] as const)" :key="stage" class="walkthrough-step" :aria-labelledby="`storage-${stage}`">
       <h2 :id="`storage-${stage}`">{{ s.steps[stage].title }}</h2>
-      <p>{{ s.steps[stage].body }}</p>
+      <p><UiText :text="s.steps[stage].body" /></p>
       <figure class="guide-figure">
         <StorageSettingsStep :stage="stage" :copy="s.demo" />
-        <figcaption class="caption">{{ s.steps[stage].caption }}</figcaption>
+        <figcaption class="caption"><UiText :text="s.steps[stage].caption" /></figcaption>
       </figure>
     </section>
 
     <section class="guide-limits" aria-labelledby="storage-limits">
       <h2 id="storage-limits">{{ s.limitsTitle }}</h2>
-      <ul><li v-for="item in s.limits" :key="item">{{ item }}</li></ul>
+      <ul><li v-for="item in s.limits" :key="item"><UiText :text="item" /></li></ul>
       <a class="next-link" :href="docsHref({ locale, page: 'data/backup' })">{{ s.backupLink }} <span aria-hidden="true">→</span></a>
     </section>
   </article>

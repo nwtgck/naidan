@@ -8,6 +8,7 @@ import { strings as imageJa } from '../strings/images/create/ja';
 import { strings as audioEn } from '../strings/audio/speech/en';
 import { strings as audioJa } from '../strings/audio/speech/ja';
 import { parsePage } from './site.test-support';
+import { visibleGuideText } from './ui-label.test-support';
 
 describe('media workflow guides', () => {
   it.each([{ copy: imageEn }, { copy: imageJa }])('renders every image step and its result as static HTML', async ({ copy }) => {
@@ -28,11 +29,13 @@ describe('media workflow guides', () => {
     expect(page.document.querySelector('[data-testid="image-step-generate"]')?.textContent).toContain(copy.demo.completed);
     expect(page.document.querySelectorAll('[data-testid^="image-step-"] > .canvas')).toHaveLength(4);
     expect(page.document.querySelector('[data-testid="image-step-model"] [data-testid="image-models-screen"]')?.textContent).toContain(copy.demo.catalog);
+    expect(page.document.querySelector('[data-testid="image-step-model"] [data-testid="image-model-options"]')?.textContent).toContain(copy.demo.searchChoices);
+    expect(page.document.querySelector('[data-testid="image-step-open"] [data-testid="image-model-options"]')).toBeNull();
     expect(page.document.querySelector('[data-testid="image-step-generate"] [data-testid="image-workspace-canvas"] .columns')).not.toBeNull();
     expect(page.document.querySelector('[data-testid="image-step-reuse"] [data-testid="image-result-viewer"]')).not.toBeNull();
     expect(page.document.querySelector('[data-testid="image-step-reuse"]')?.textContent).toContain(copy.demo.reuseSettings);
     expect(page.document.querySelector('[data-testid="image-step-reuse"]')?.textContent).toContain(copy.demo.download);
-    expect(page.document.querySelector('article')?.textContent).toContain(copy.storage);
+    expect(page.document.querySelector('article')?.textContent).toContain(visibleGuideText({ text: copy.storage }));
     expect(page.document.querySelectorAll('figure button, figure input, figure a, figure audio')).toHaveLength(0);
   });
 
@@ -50,9 +53,12 @@ describe('media workflow guides', () => {
     expect(page.document.querySelector('[data-testid="audio-step-generate"]')?.textContent).toContain(copy.demo.generated);
     expect(page.document.querySelectorAll('[data-testid^="audio-step-"] > .canvas')).toHaveLength(4);
     expect(page.document.querySelector('[data-testid="audio-step-text"] .textarea')?.textContent).toContain(copy.demo.textSample);
+    expect(page.document.querySelector('[data-testid="audio-step-text"] [data-testid="audio-model-options"]')?.textContent).toContain(copy.demo.filterModels);
+    expect(page.document.querySelector('[data-testid="audio-step-text"] [data-testid="audio-language-options"]')?.textContent).toContain(copy.demo.modelDefault);
+    expect(page.document.querySelector('[data-testid="audio-step-open"] [data-testid="audio-model-options"]')).toBeNull();
     expect(page.document.querySelector('[data-testid="audio-step-generate"] [data-testid="audio-result-card"]')).not.toBeNull();
     expect(page.document.querySelector('[data-testid="audio-step-save"]')?.textContent).toContain(copy.demo.saveWav);
-    expect(page.document.querySelector('article')?.textContent).toContain(copy.reading);
+    expect(page.document.querySelector('article')?.textContent).toContain(visibleGuideText({ text: copy.reading }));
     expect(page.document.querySelectorAll('figure button, figure input, figure a, figure audio')).toHaveLength(0);
   });
 });

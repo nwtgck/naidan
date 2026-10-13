@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiText from '../../site/UiText.vue';
 import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
 import type { CommonMessages, LocalEnginesMessages } from '../../site/messages';
@@ -13,7 +14,7 @@ defineExpose({
 <template>
   <article class="prose" data-testid="docs-models-local-engines">
     <h1>{{ s.title }}</h1>
-    <p v-for="paragraph in s.intro" :key="paragraph" class="lead">{{ paragraph }}</p>
+    <p v-for="paragraph in s.intro" :key="paragraph" class="lead"><UiText :text="paragraph" /></p>
 
     <figure class="guide-figure model-flow" data-docs-animation="local-engine-flow">
       <div class="flow-track" aria-hidden="true">
@@ -23,36 +24,36 @@ defineExpose({
         <span class="flow-arrow">↔</span>
         <span class="flow-node">{{ s.flow.engine }}</span>
       </div>
-      <figcaption class="caption">{{ s.flow.caption }}</figcaption>
+      <figcaption class="caption"><UiText :text="s.flow.caption" /></figcaption>
     </figure>
 
     <h2>{{ s.enginesTitle }}</h2>
     <div class="pair-grid">
       <section v-for="engine in s.engines" :key="engine.title" class="panel engine-card">
         <h3>{{ engine.title }}</h3>
-        <p class="engine-provider">{{ engine.provider }}</p>
+        <p class="engine-provider"><UiText :text="engine.provider" /></p>
         <code class="engine-preset">{{ engine.preset }}</code>
-        <p>{{ engine.body }}</p>
+        <p><UiText :text="engine.body" /></p>
         <a class="card-guide-link" :href="docsHref({ locale, page: engine.guide })">{{ s.openGuide }} <span aria-hidden="true">→</span></a>
       </section>
     </div>
 
     <h2>{{ s.stepsTitle }}</h2>
     <ol class="guide-steps">
-      <li v-for="step in s.steps" :key="step.title"><h3>{{ step.title }}</h3><p>{{ step.body }}</p></li>
+      <li v-for="step in s.steps" :key="step.title"><h3>{{ step.title }}</h3><p><UiText :text="step.body" /></p></li>
     </ol>
 
     <h2>{{ s.laterTitle }}</h2>
-    <p>{{ s.later }}</p>
+    <p><UiText :text="s.later" /></p>
 
     <h2>{{ s.troubleTitle }}</h2>
     <div class="decision-list">
       <section v-for="(item, index) in s.trouble" :key="item.title">
         <span aria-hidden="true">0{{ index + 1 }}</span>
-        <div><h3>{{ item.title }}</h3><p>{{ item.body }}</p></div>
+        <div><h3>{{ item.title }}</h3><p><UiText :text="item.body" /></p></div>
       </section>
     </div>
-    <p class="connection-boundary">{{ s.boundary }}</p>
+    <p class="connection-boundary"><UiText :text="s.boundary" /></p>
     <a class="next-link" :href="docsHref({ locale, page: 'models/in-browser' })">{{ s.next }} <span aria-hidden="true">→</span></a>
   </article>
 </template>

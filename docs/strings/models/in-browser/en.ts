@@ -24,32 +24,32 @@ export const strings = {
       title: 'Transformers.js',
       guide: 'models/transformers-js' as const,
       availability: 'Hosted edition only · experimental',
-      body: 'Open the Transformers.js manager and download a supported ONNX model. When the download completes, Naidan starts loading it automatically; the downloaded list offers Load for a complete model or Resume for an incomplete one. Its model files are stored in the browser’s OPFS. This option is unavailable in Standalone because local-file browser restrictions affect its workers and WebAssembly.',
+      body: 'Open the Transformers.js manager and download a supported ONNX model. When the download completes, Naidan starts loading it automatically; the downloaded list offers ［Load］ for a complete model or ［Resume］ for an incomplete one. Its model files are stored in the browser’s OPFS. This option is unavailable in Standalone because local-file browser restrictions affect its workers and WebAssembly.',
     },
     {
       title: 'Browser-provided model',
       guide: 'models/browser-provided' as const,
       availability: 'Only when your browser provides one',
-      body: 'Choose Browser-provided and read the availability status. If the browser offers a model that needs preparation, use Prepare browser-provided model. The browser manages that model, so its availability and download behavior depend on the browser.',
+      body: 'Choose ［Browser-provided］ and read the availability status. If the browser offers a model that needs preparation, use ［Prepare browser-provided model］. The browser manages that model, so its availability and download behavior depend on the browser.',
     },
   ],
   stepsTitle: 'Start a chat with a GGUF model',
   steps: [
     {
       title: 'Select llama.cpp',
-      body: 'At the first-run setup, choose llama.cpp under In-Browser AI. If you have already started using Naidan, open the llama.cpp browser tab in Settings to manage models, then choose llama.cpp browser (Experimental) as the API Provider on the Connection tab.',
+      body: 'At the first-run setup, choose llama.cpp under ［In-Browser AI］. If you have already started using Naidan, open the llama.cpp browser tab in ［Settings］ to manage models, then choose ［llama.cpp browser (Experimental)］ as the ［API Provider］ on the ［Connection］ tab.',
     },
     {
       title: 'Prepare the model files',
-      body: 'Use the Model catalog to inspect a suggested model and its size before Download, or import a GGUF file or model folder you already have. For a Hugging Face repository, check the file plan and quantization before downloading. Large models take storage and memory.',
+      body: 'Use the ［Model catalog］ to inspect a suggested model and its size before ［Download］, or import a GGUF file or model folder you already have. For a Hugging Face repository, check the file plan and quantization before downloading. Large models take storage and memory.',
     },
     {
       title: 'Select it for conversation',
-      body: 'Pick the imported model in Default model during setup, or choose it in the Connection settings and Save changes. Existing and new conversations that inherit the global model use this default; a chat or group can choose another model.',
+      body: 'Pick the imported model in ［Default model］ during setup, or choose it in the ［Connection］ settings and ［Save changes］. Existing and new conversations that inherit the global model use this default; a chat or group can choose another model.',
     },
     {
       title: 'Try a short message',
-      body: 'Select Get started and send a simple text prompt. If the model is missing when you send, Naidan offers a path back to model preparation while keeping your draft.',
+      body: 'Select ［Get started］ and send a simple text prompt. If the model is missing when you send, Naidan offers a path back to model preparation while keeping your draft.',
     },
   ],
   limitsTitle: 'Before using images or other media',

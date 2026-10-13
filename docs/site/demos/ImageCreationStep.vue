@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, DownloadIcon, FolderOpenIcon, ImageIcon, MoreVerticalIcon, MousePointer2Icon, Settings2Icon, SlidersHorizontalIcon, SquarePenIcon } from 'lucide-vue-next';
+import { ArrowLeftIcon, CheckIcon, ChevronDownIcon, DownloadIcon, FolderOpenIcon, ImageIcon, MoreVerticalIcon, MousePointer2Icon, SearchIcon, SettingsIcon, SlidersHorizontalIcon, SquarePenIcon } from 'lucide-vue-next';
 import type { ImageCreateMessages } from '../messages';
 
 defineProps<{ stage: 'open' | 'model' | 'generate' | 'reuse'; copy: ImageCreateMessages['demo'] }>();
@@ -9,13 +9,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <div class="camera" :class="`stage-${stage}`" :data-docs-animation="`image-${stage}`" :data-testid="`image-step-${stage}`" aria-hidden="true">
     <div class="canvas">
-      <aside class="sidebar"><strong>{{ copy.app }}</strong><div class="sidebar-spacer" /><div class="sidebar-actions"><Settings2Icon :size="17" /><span class="more"><MoreVerticalIcon :size="18" /><MousePointer2Icon v-if="stage === 'open'" class="pointer" :size="20" /></span></div><div v-if="stage === 'open'" class="menu"><small>{{ copy.more }}</small><div><ImageIcon :size="16" />{{ copy.imageGeneration }}</div></div><div class="session-sidebar"><strong>{{ copy.app }}</strong><span class="new-session"><SquarePenIcon :size="15" />{{ copy.session }}</span><div class="session-list"><span>{{ copy.session }}</span><small>{{ copy.draftSaved }}</small></div><div class="session-nav"><span><ImageIcon :size="15" />{{ copy.generate }}</span><span><FolderOpenIcon :size="15" />{{ copy.models }}</span><span><SlidersHorizontalIcon :size="15" />{{ copy.diagnostics }}</span><span><ArrowLeftIcon :size="15" />{{ copy.backToChats }}</span></div></div></aside>
+      <aside class="sidebar"><strong>{{ copy.app }}</strong><div class="sidebar-spacer" /><div class="sidebar-actions"><SettingsIcon :size="17" /><span class="more"><MoreVerticalIcon :size="18" /><MousePointer2Icon v-if="stage === 'open'" class="pointer" :size="20" /></span></div><div v-if="stage === 'open'" class="menu"><small>{{ copy.more }}</small><div><ImageIcon :size="16" />{{ copy.imageGeneration }}</div></div><div class="session-sidebar"><strong>{{ copy.app }}</strong><span class="new-session"><SquarePenIcon :size="15" />{{ copy.session }}</span><div class="session-list"><span>{{ copy.session }}</span><small>{{ copy.draftSaved }}</small></div><div class="session-nav"><span><ImageIcon :size="15" />{{ copy.generate }}</span><span><FolderOpenIcon :size="15" />{{ copy.models }}</span><span><SlidersHorizontalIcon :size="15" />{{ copy.diagnostics }}</span><span><ArrowLeftIcon :size="15" />{{ copy.backToChats }}</span></div></div></aside>
       <main class="app">
         <div class="app-title"><ImageIcon :size="19" /><strong>{{ copy.imageGeneration }}</strong></div>
         <div class="tabs"><span class="tab active"><ImageIcon :size="15" />{{ copy.generate }}</span><span class="tab" :class="{ 'temporary-active': stage === 'model' }"><FolderOpenIcon :size="15" />{{ copy.models }}</span><span class="tab"><SlidersHorizontalIcon :size="15" />{{ copy.diagnostics }}</span></div>
         <div class="workspace" data-testid="image-workspace-canvas"><div class="session-head"><div><strong>{{ copy.session }}</strong><small>{{ copy.draftSaved }}</small></div><span><DownloadIcon :size="14" />{{ copy.exportSession }}</span></div>
           <div class="columns">
-            <div class="settings-col"><div class="count card"><strong>{{ copy.images }}</strong><span>1</span></div><div class="model card"><div class="label">{{ copy.mainModel }}</div><div class="model-row"><div class="field">{{ stage === 'open' ? copy.chooseModel : copy.modelName }}<ChevronDownIcon :size="14" /></div><span class="primary"><FolderOpenIcon :size="15" />{{ copy.prepareModel }}</span></div></div><div class="prompt card"><div class="label">{{ copy.prompt }}</div><div class="prompt-field">{{ stage === 'open' || stage === 'model' ? copy.prompt : copy.promptSample }}</div><div class="label secondary-label">{{ copy.negativePrompt }}</div><div class="negative-field" /><span class="primary generate"><ImageIcon :size="16" />{{ copy.generate }}</span></div><div class="extra card"><SlidersHorizontalIcon :size="14" />{{ copy.imageSize }}</div></div>
+            <div class="settings-col"><div class="count card"><strong>{{ copy.images }}</strong><span>1</span></div><div class="model card"><div class="label">{{ copy.mainModel }}</div><div class="model-row"><div class="field">{{ stage === 'open' ? copy.chooseModel : copy.modelName }}<ChevronDownIcon :size="14" /></div><span class="primary"><FolderOpenIcon :size="15" />{{ copy.prepareModel }}</span></div><div v-if="stage === 'model'" class="model-picker-popup" data-testid="image-model-options"><div class="picker-search"><SearchIcon :size="14" /><span>{{ copy.searchChoices }}</span></div><div class="picker-empty">{{ copy.chooseModel }}</div><div class="picker-choice"><span><strong>{{ copy.modelName }}</strong><small>{{ copy.modelFiles }}</small></span><CheckIcon :size="15" /></div></div></div><div class="prompt card"><div class="label">{{ copy.prompt }}</div><div class="prompt-field">{{ stage === 'open' || stage === 'model' ? copy.prompt : copy.promptSample }}</div><div class="label secondary-label">{{ copy.negativePrompt }}</div><div class="negative-field" /><span class="primary generate"><ImageIcon :size="16" />{{ copy.generate }}</span></div><div class="extra card"><SlidersHorizontalIcon :size="14" />{{ copy.imageSize }}</div></div>
             <div class="results-col"><div class="monitor card"><div class="panel-head"><strong>{{ copy.execution }}</strong><span>{{ copy.visualProgress }}</span></div><div class="monitor-stack"><div class="empty">{{ copy.previewEmpty }}</div><div class="progress"><div class="progress-track"><span /></div>{{ copy.generating }}</div><div class="complete"><div class="art"><i class="kite" /><i class="string" /></div><div class="success"><CheckIcon :size="14" />{{ copy.completed }}</div></div></div></div><div class="gallery card"><div class="gallery-tabs"><strong>{{ copy.runs }}</strong><span>{{ copy.gallery }}</span></div><div class="asset"><div class="thumb"><i /></div><div><strong>{{ copy.promptSample }}</strong><small>{{ copy.modelName }} · {{ copy.completed }} · 1</small></div><span>{{ copy.inspect }}</span></div></div></div>
           </div>
         </div>
@@ -79,4 +79,22 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   .stage-generate { --x0:-125px;--x1:-450px; }
   .stage-reuse { --x0:-450px;--x1:-130px; }
 }
+.stage-model .model { position:relative;z-index:4; }
+.stage-model .models-overlay { z-index:7; }
+.model-picker-popup { position:absolute;z-index:6;top:calc(100% - 9px);left:13px;width:340px;padding:5px;border:1px solid var(--l);border-radius:11px;background:var(--p);box-shadow:0 12px 26px #0004;opacity:0;transform:translateY(-7px) scaleY(.94);transform-origin:top left;animation:image-picker-open 10s linear infinite; }
+.picker-search { display:flex;align-items:center;gap:8px;padding:6px;border-bottom:1px solid var(--l);color:var(--m); }
+.picker-search span { flex:1;padding:6px;border:1px solid var(--l);border-radius:6px;background:var(--f); }
+.picker-empty { padding:8px 9px;color:var(--m); }
+.picker-choice { display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 9px;border-radius:7px;color:var(--a);animation:image-picker-choice 10s linear infinite; }
+.picker-choice span { display:flex;flex-direction:column;gap:2px; }
+.picker-choice small { color:var(--m); }
+.stage-model .model .field { animation:image-picker-focus 10s linear infinite; }
+.stage-model .model .field svg { animation:image-picker-chevron 10s linear infinite; }
+@keyframes image-picker-open { 0%,69%,90%,100% { opacity:0;transform:translateY(-7px) scaleY(.94); } 75%,85% { opacity:1;transform:none; } }
+@keyframes image-picker-choice { 0%,76% { background:transparent; } 80%,100% { background:color-mix(in srgb,var(--a) 12%,var(--p)); } }
+@keyframes image-picker-focus { 0%,69%,90%,100% { border-color:var(--l);box-shadow:none; } 75%,85% { border-color:var(--a);box-shadow:0 0 0 3px color-mix(in srgb,var(--a) 16%,transparent); } }
+@keyframes image-picker-chevron { 0%,69%,90%,100% { transform:none; } 75%,85% { transform:rotate(180deg); } }
+:global(html:has(#docs-pause-motion:checked)) .camera .model-picker-popup { opacity:0; }
+@media(prefers-reduced-motion:reduce) { .model-picker-popup { opacity:0; } }
+@media(max-width:560px) { .model-picker-popup { width:296px; } }
 </style>

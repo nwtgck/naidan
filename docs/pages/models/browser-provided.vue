@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiText from '../../site/UiText.vue';
 import BrowserProvidedSettingsStep from '../../site/demos/BrowserProvidedSettingsStep.vue';
 import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
@@ -12,35 +13,35 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-models-browser-provided">
     <h1>{{ s.title }}</h1>
-    <p class="lead">{{ s.intro }}</p>
-    <p class="before-step">{{ s.before }}</p>
+    <p class="lead"><UiText :text="s.intro" /></p>
+    <p class="before-step"><UiText :text="s.before" /></p>
 
     <section class="walkthrough-step" aria-labelledby="browser-open">
       <h2 id="browser-open">{{ s.steps.open.title }}</h2>
-      <p>{{ s.steps.open.body }}</p>
-      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="open" :copy="s.demo" /><figcaption class="caption">{{ s.steps.open.caption }}</figcaption></figure>
+      <p><UiText :text="s.steps.open.body" /></p>
+      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="open" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.open.caption" /></figcaption></figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="browser-select">
       <h2 id="browser-select">{{ s.steps.select.title }}</h2>
-      <p>{{ s.steps.select.body }}</p>
-      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="select" :copy="s.demo" /><figcaption class="caption">{{ s.steps.select.caption }}</figcaption></figure>
+      <p><UiText :text="s.steps.select.body" /></p>
+      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="select" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.select.caption" /></figcaption></figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="browser-prepare">
       <h2 id="browser-prepare">{{ s.steps.prepare.title }}</h2>
-      <p>{{ s.steps.prepare.body }}</p>
-      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="prepare" :copy="s.demo" /><figcaption class="caption">{{ s.steps.prepare.caption }}</figcaption></figure>
+      <p><UiText :text="s.steps.prepare.body" /></p>
+      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="prepare" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.prepare.caption" /></figcaption></figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="browser-save">
       <h2 id="browser-save">{{ s.steps.save.title }}</h2>
-      <p>{{ s.steps.save.body }}</p>
-      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="save" :copy="s.demo" /><figcaption class="caption">{{ s.steps.save.caption }}</figcaption></figure>
+      <p><UiText :text="s.steps.save.body" /></p>
+      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="save" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.save.caption" /></figcaption></figure>
     </section>
 
     <h2>{{ s.unavailableTitle }}</h2>
-    <p>{{ s.unavailable }}</p>
+    <p><UiText :text="s.unavailable" /></p>
     <a class="next-link" :href="docsHref({ locale, page: 'models/in-browser' })">{{ s.next }} <span aria-hidden="true">→</span></a>
   </article>
 </template>

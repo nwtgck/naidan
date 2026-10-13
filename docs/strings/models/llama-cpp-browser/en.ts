@@ -1,27 +1,27 @@
 export const strings = {
   title: 'Run a GGUF model in your browser with llama.cpp',
   description: 'Import a GGUF file or download one from Hugging Face, then choose it for browser chat in Naidan.',
-  intro: 'Naidan can run a GGUF chat model in your browser. Open Settings to prepare a model you already have or download one from a Hugging Face repository. These are two ways to reach the same imported-model list; use either one.',
-  availability: 'The llama.cpp browser option appears in both Hosted and Standalone. Inference settings checks what this browser and device support. Standalone includes WebGPU with JSPI for wasm32 or wasm64; it has no CPU or Asyncify fallback. Model compatibility and speed depend on the device and model.',
+  intro: 'Naidan can run a GGUF chat model in your browser. Open ［Settings］ to prepare a model you already have or download one from a Hugging Face repository. These are two ways to reach the same ［Imported models］ list; use either one.',
+  availability: 'The llama.cpp browser option appears in both Hosted and Standalone. ［Inference settings］ checks what this browser and device support. Standalone includes WebGPU with JSPI for wasm32 or wasm64; it has no CPU or Asyncify fallback. Model compatibility and speed depend on the device and model.',
   steps: {
     open: {
       title: '1. Open the browser model manager',
-      body: 'Select Settings in the sidebar, then the llama.cpp browser tab. Check Inference settings for browser support. Automatic chooses among available profiles; an unavailable profile cannot run just because a GGUF file was imported.',
-      caption: 'Settings opens the llama.cpp browser manager and shows runtime support.',
+      body: 'Select ［Settings］ in the sidebar, then the ［llama.cpp browser］ tab. Check ［Inference settings］ for browser support. ［Automatic］ chooses among available profiles; an unavailable profile cannot run just because a GGUF file was imported.',
+      caption: '［Settings］ opens the ［llama.cpp browser］ manager and shows runtime support.',
     },
     import: {
       title: '2. Import a GGUF you already have',
-      body: 'For a local model, choose GGUF files or a model folder in the GGUF model files area. You can also drop files or folders there. After import, the file appears under Imported models. If you are downloading from Hugging Face instead, continue to the next step.',
-      caption: 'The chosen GGUF appears in Imported models after the import finishes.',
+      body: 'For a local model, select ［Choose GGUF files］ or ［Choose model folder］ in the ［GGUF model files］ area. You can also drop files or folders there. After import, the file appears under ［Imported models］. If you are downloading from Hugging Face instead, continue to the next step.',
+      caption: 'The chosen GGUF appears in ［Imported models］ after the import finishes.',
     },
     download: {
       title: '3. Or download a GGUF from Hugging Face',
-      body: 'Enter an owner/repository name and choose Check model. Review the available quantization and, if needed, its model variant. Choose Download to: Browser storage or a linked device folder that your browser supports, then select Download. The manager adds the finished files to Imported models. For image chat, a matching mmproj file is also needed.',
+      body: 'Enter an owner/repository name and choose ［Check model］. Review the available quantization and, if needed, its model variant. Under ［Download to］, choose ［Browser storage］ or a linked device folder that your browser supports, then select ［Download］. The manager adds the finished files to ［Imported models］. For image chat, a matching mmproj file is also needed.',
       caption: 'Check the repository, choose files and destination, then download before using the model.',
     },
     default: {
       title: '4. Choose the default model for chats',
-      body: 'In Imported models, select Set as default beside the model and confirm. This saves both llama.cpp browser as the global endpoint and the selected model. Existing and new chats that inherit those values use the choice. Importing or downloading alone does not save it, and an individual chat can select another model.',
+      body: 'In ［Imported models］, select ［Set as default］ beside the model and confirm. This saves both llama.cpp browser as the global endpoint and the selected model. Existing and new chats that inherit those values use the choice. Importing or downloading alone does not save it, and an individual chat can select another model.',
       caption: 'The confirmation changes the global endpoint and default model together.',
     },
   },
@@ -58,6 +58,6 @@ export const strings = {
     inUse: 'In use',
   },
   noteTitle: 'If your model does not run',
-  note: 'Check the runtime panel first, then confirm that the GGUF and any companion mmproj match the model you intend to use. A completed download only means the files are available; it does not prove that this browser can run the model.',
+  note: 'Check ［Inference settings］ first, then confirm that the GGUF and any companion mmproj match the model you intend to use. A completed download only means the files are available; it does not prove that this browser can run the model.',
   next: 'Compare browser model options',
 };

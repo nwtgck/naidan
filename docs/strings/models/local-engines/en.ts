@@ -37,20 +37,20 @@ export const strings = {
     },
     {
       title: 'Choose the matching provider and URL',
-      body: 'In Naidan’s first-run setup, choose Ollama or OpenAI Compatible, then select the matching local preset. You can also enter an existing server URL. Add Custom HTTP Headers only if your endpoint needs them.',
+      body: 'In Naidan’s first-run setup, choose ［Ollama］ or ［OpenAI Compatible］, then select the matching local preset. You can also enter an existing server URL. Add ［Custom HTTP Headers］ only if your endpoint needs them.',
     },
     {
       title: 'Check, select, and start',
-      body: 'Select Check connection. When Naidan reports a successful connection, choose a Default model from the server’s list and select Get started. If no model appears, check that the engine has one available before retrying.',
+      body: 'Select ［Check connection］. When Naidan reports a successful connection, choose a ［Default model］ from the server’s list and select ［Get started］. If no model appears, check that the engine has one available before retrying.',
     },
   ],
   laterTitle: 'Change the connection later',
-  later: 'Open Settings → Connection. Under Endpoint configuration, set API Provider and Endpoint URL, then select Check connection. Under Model selection, choose Default model and Save changes. Existing and new conversations that inherit the global endpoint or model use those saved values; check a chat or group override when one uses a different setting.',
+  later: 'Open ［Settings］ → ［Connection］. Under ［Endpoint Configuration］, set ［API Provider］ and ［Endpoint URL］, then select ［Check connection］. Under ［Model Selection］, choose ［Default Model］ and ［Save Changes］. Existing and new conversations that inherit the global endpoint or model use those saved values; check a chat or group override when one uses a different setting.',
   troubleTitle: 'If the connection check fails',
   trouble: [
     {
       title: 'The address or API does not match',
-      body: 'Verify that the engine is running, the port matches its listener, and you selected Ollama for Ollama or OpenAI Compatible for llama-server. Keep /v1 on the llama-server preset. A server can respond at its base URL but still lack the model-list API Naidan needs.',
+      body: 'Verify that the engine is running, the port matches its listener, and you selected ［Ollama］ for Ollama or ［OpenAI Compatible］ for llama-server. Keep /v1 on the llama-server preset. A server can respond at its base URL but still lack the model-list API Naidan needs.',
     },
     {
       title: 'The browser blocks the request',
@@ -58,7 +58,7 @@ export const strings = {
     },
     {
       title: 'The model list is empty',
-      body: 'Check that your engine has a model and that its API returns a list. Naidan automatically checks only localhost URLs in the Connection settings; use Check connection manually for other addresses. After switching endpoints, refresh and select the model from the new server.',
+      body: 'Check that your engine has a model and that its API returns a list. Naidan automatically checks only localhost URLs in the ［Connection］ settings; use ［Check connection］ manually for other addresses. After switching endpoints, refresh and select the model from the new server.',
     },
   ],
   boundary: 'A local URL sends chat requests to that engine process. If you use an engine on another machine or an external endpoint, prompts and selected conversation context travel to that address. Its model behavior, file access and network connections are determined by the engine and its configuration.',

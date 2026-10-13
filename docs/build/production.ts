@@ -11,6 +11,7 @@ import { manifestEntry, parseManifest } from './assets';
 import type { DocsRenderer, RenderedPage } from './contracts';
 import type { DocsLocale } from '../site/routes';
 import { compileLocaleBootstrap } from './locale-bootstrap';
+import { createDocsSitemap } from './seo';
 
 export function docsBuildConfig({ root }: { root: string }): UserConfig {
   const inputs: Record<string, string> = {};
@@ -88,6 +89,7 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
         };
         const homes = { en: home({ locale: 'en' }), ja: home({ locale: 'ja' }) } satisfies Record<DocsLocale, RenderedPage>;
         files.set('index.html', renderLocaleRoot({ pages: homes, bootstrap, assets: { styles: homeAssets.styles, scripts: [] } }));
+        files.set('sitemap.xml', createDocsSitemap());
         // Render/validate every page before publishing any HTML.
         for (const [file, html] of files) {
           const target = path.resolve(output, file);

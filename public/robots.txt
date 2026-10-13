@@ -2,3 +2,4 @@ User-agent: *
 Allow: /
 
 Sitemap: https://naidan.nwtgck.org/sitemap.xml
+Sitemap: https://naidan.nwtgck.org/docs/sitemap.xml

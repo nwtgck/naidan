@@ -87,7 +87,8 @@ describe('HTML composition and locale contracts', () => {
     expect(parsed.document.querySelector('meta[name="description"]')?.getAttribute('content')).toBe('" onload=bad');
     expect(parsed.document.querySelector('script')).toBeNull();
     expect(parsed.document.querySelector('p')?.textContent).toBe('<script>not executed</script>');
-    expect(parsed.document.querySelectorAll('link[rel="alternate"]')).toHaveLength(2);
+    expect(parsed.document.querySelectorAll('link[rel="alternate"]')).toHaveLength(3);
+    expect(parsed.document.querySelector('link[hreflang="x-default"]')?.getAttribute('href')).toBe('https://naidan.nwtgck.org/docs/');
   });
 
   it.each([

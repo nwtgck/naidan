@@ -1,12 +1,29 @@
 import { JSDOM } from 'jsdom';
 import { EXTERNAL_LINK_PATH, EXTERNAL_LINK_LABEL } from '../site/external-link';
-import { DOCS_BASE, DOCS_LOCALES, DOCS_LOCALE_NAMES, docsHref } from '../site/routes';
+import { DOCS_BASE, DOCS_LOCALES, DOCS_LOCALE_NAMES } from '../site/routes';
 import type { PageAssets, RenderedPage } from './contracts';
 import { ISLAND_ENTRIES } from './ids';
 import { parseBranchingPayload } from '../islands/branching/contracts';
 import { strings as entryEn } from '../strings/entry/en';
 import { strings as entryJa } from '../strings/entry/ja';
 import type { DocsLocale } from '../site/routes';
+import { docsSeoLinks } from './seo';
+import type { DocsSeoRoute } from './seo';
+
+function appendSeoLinks({ document, route }: { document: Document; route: DocsSeoRoute }): void {
+  const { canonical, alternates } = docsSeoLinks({ route });
+  const canonicalLink = document.createElement('link');
+  canonicalLink.rel = 'canonical';
+  canonicalLink.setAttribute('href', canonical);
+  document.head.append(canonicalLink);
+  for (const { language, href } of alternates) {
+    const link = document.createElement('link');
+    link.rel = 'alternate';
+    link.hreflang = language;
+    link.setAttribute('href', href);
+    document.head.append(link);
+  }
+}
 
 function appendAssets({ document, assets }: { document: Document; assets: PageAssets }): void {
   for (const href of new Set(assets.styles)) {
@@ -60,13 +77,7 @@ export function renderDocument({ page, assets }: { page: RenderedPage; assets: P
     color.name = 'color-scheme';
     color.content = 'dark light';
     document.head.append(color);
-    for (const lang of DOCS_LOCALES) {
-      const link = document.createElement('link');
-      link.rel = 'alternate';
-      link.hreflang = lang;
-      link.setAttribute('href', docsHref({ locale: lang, page: pageId }));
-      document.head.append(link);
-    }
+    appendSeoLinks({ document, route: { kind: 'page', locale, page: pageId } });
     document.body.append(document.importNode(JSDOM.fragment(body), true));
     // Vue owns escaping. jsdom owns parsing/serialization; no HTML regex rewrites.
     validateBody({ document, locale });
@@ -141,7 +152,14 @@ function renderEntryDocument({ assets, kind }: { assets: PageAssets; kind: 'lang
     if (!nav) throw new Error('Missing language navigation');
     switch (kind) {
     case 'language': document.title = 'Naidan Docs'; break;
-    case 'missing': document.title = '404 | Naidan Docs'; break;
+    case 'missing': {
+      document.title = '404 | Naidan Docs';
+      const robots = document.createElement('meta');
+      robots.name = 'robots';
+      robots.content = 'noindex';
+      document.head.append(robots);
+      break;
+    }
     default: { const unreachable: never = kind; throw new Error(`Unknown entry: ${unreachable}`); }
     }
     for (const locale of DOCS_LOCALES) {
@@ -175,6 +193,7 @@ export function renderLocaleRoot({ assets, pages, bootstrap }: {
   const dom = new JSDOM(renderEntryDocument({ assets, kind: 'language' }));
   try {
     const document = dom.window.document;
+    appendSeoLinks({ document, route: { kind: 'root' } });
     document.querySelector('main')?.setAttribute('data-docs-language-fallback', '');
     const meta = document.createElement('meta');
     meta.name = 'description';

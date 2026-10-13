@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiText from '../../site/UiText.vue';
 import BrowserModelSettingsStep from '../../site/demos/BrowserModelSettingsStep.vue';
 import { docsHref, type DocsLocale } from '../../site/routes';
 import type { CommonMessages } from '../../site/messages';
@@ -12,47 +13,47 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-models-transformers-js">
     <h1>{{ s.title }}</h1>
-    <p class="lead">{{ s.intro }}</p>
-    <p class="guide-context">{{ s.availability }}</p>
+    <p class="lead"><UiText :text="s.intro" /></p>
+    <p class="guide-context"><UiText :text="s.availability" /></p>
 
     <section class="walkthrough-step" aria-labelledby="transformers-guide-open">
       <h2 id="transformers-guide-open">{{ s.steps.open.title }}</h2>
-      <p>{{ s.steps.open.body }}</p>
+      <p><UiText :text="s.steps.open.body" /></p>
       <figure class="guide-figure">
         <BrowserModelSettingsStep mode="transformers" stage="open" :copy="s.demo" />
-        <figcaption class="caption">{{ s.steps.open.caption }}</figcaption>
+        <figcaption class="caption"><UiText :text="s.steps.open.caption" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="transformers-guide-download">
       <h2 id="transformers-guide-download">{{ s.steps.download.title }}</h2>
-      <p>{{ s.steps.download.body }}</p>
+      <p><UiText :text="s.steps.download.body" /></p>
       <figure class="guide-figure">
         <BrowserModelSettingsStep mode="transformers" stage="download" :copy="s.demo" />
-        <figcaption class="caption">{{ s.steps.download.caption }}</figcaption>
+        <figcaption class="caption"><UiText :text="s.steps.download.caption" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="transformers-guide-resume">
       <h2 id="transformers-guide-resume">{{ s.steps.resume.title }}</h2>
-      <p>{{ s.steps.resume.body }}</p>
+      <p><UiText :text="s.steps.resume.body" /></p>
       <figure class="guide-figure">
         <BrowserModelSettingsStep mode="transformers" stage="resume" :copy="s.demo" />
-        <figcaption class="caption">{{ s.steps.resume.caption }}</figcaption>
+        <figcaption class="caption"><UiText :text="s.steps.resume.caption" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="transformers-guide-save">
       <h2 id="transformers-guide-save">{{ s.steps.save.title }}</h2>
-      <p>{{ s.steps.save.body }}</p>
+      <p><UiText :text="s.steps.save.body" /></p>
       <figure class="guide-figure">
         <BrowserModelSettingsStep mode="transformers" stage="save" :copy="s.demo" />
-        <figcaption class="caption">{{ s.steps.save.caption }}</figcaption>
+        <figcaption class="caption"><UiText :text="s.steps.save.caption" /></figcaption>
       </figure>
     </section>
 
     <h2>{{ s.noteTitle }}</h2>
-    <p>{{ s.note }}</p>
+    <p><UiText :text="s.note" /></p>
     <a class="next-link" :href="docsHref({ locale, page: 'models/in-browser' })">{{ s.next }} <span aria-hidden="true">→</span></a>
   </article>
 </template>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { BrainCircuitIcon, CheckIcon, ChevronDownIcon, DownloadIcon, FileUpIcon, FolderOpenIcon, GlobeIcon, HardDriveIcon, MousePointer2Icon, SearchIcon, Settings2Icon } from 'lucide-vue-next';
+import { BrainCircuitIcon, CheckIcon, ChevronDownIcon, DownloadIcon, FileUpIcon, FolderOpenIcon, GlobeIcon, HardDriveIcon, MousePointer2Icon, SearchIcon, Settings2Icon, SettingsIcon } from 'lucide-vue-next';
 import type { strings as llamaEnglish } from '../../strings/models/llama-cpp-browser/en';
 import type { strings as transformersEnglish } from '../../strings/models/transformers-js/en';
 
@@ -34,7 +34,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <aside class="app-sidebar">
         <strong class="brand">Naidan</strong>
         <div class="sidebar-space" />
-        <div class="settings-entry"><Settings2Icon :size="18" /><span>{{ copy.settings }}</span><MousePointer2Icon v-if="stage === 'open'" class="pointer settings-pointer" :size="24" /></div>
+        <div class="settings-entry"><SettingsIcon :size="18" /><span>{{ copy.settings }}</span><MousePointer2Icon v-if="stage === 'open'" class="pointer settings-pointer" :size="24" /></div>
       </aside>
       <div class="work-area">
         <div class="settings-panel">
@@ -66,7 +66,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               <div v-else-if="stage === 'download'" class="compact-stack">
                 <div class="section-title"><DownloadIcon :size="18" />{{ llama.huggingFace }}</div>
                 <div class="field"><span class="label">{{ llama.repository }}</span><div class="entry-row"><div class="input-look code animated-input"><span class="input-placeholder">{{ llama.sampleRepository }}</span><span class="input-value">{{ llama.enteredRepository }}</span></div><span class="secondary-action check-model"><SearchIcon :size="16" />{{ llama.checkModel }}<MousePointer2Icon class="pointer check-pointer" :size="23" /></span></div></div>
-                <div class="choice-row wrap model-options"><span class="label">{{ llama.quantization }}</span><span class="input-look small-input quantization-choice"><span class="switch-label before">{{ llama.chooseModelFiles }}</span><span class="switch-label after">{{ llama.sampleQuantization }}</span><ChevronDownIcon :size="16" /></span><span class="label">{{ llama.downloadTo }}</span><span class="input-look small-input">{{ llama.browserStorage }}<ChevronDownIcon :size="16" /></span></div>
+                <div class="choice-row wrap model-options"><span class="label">{{ llama.quantization }}</span><span class="input-look small-input quantization-choice"><span class="switch-label before">{{ llama.chooseModelFiles }}</span><span class="switch-label after">{{ llama.sampleQuantization }}</span><ChevronDownIcon :size="16" /><span class="choice-menu quantization-menu"><span class="menu-option">{{ llama.chooseModelFiles }}</span><span class="menu-option target-option">{{ llama.sampleQuantization }}<MousePointer2Icon class="pointer menu-pointer" :size="21" /></span></span></span><span class="label">{{ llama.downloadTo }}</span><span class="input-look small-input">{{ llama.browserStorage }}<ChevronDownIcon :size="16" /></span></div>
                 <div class="choice-row end"><span class="action download-action"><DownloadIcon :size="16" />{{ llama.download }}<MousePointer2Icon class="pointer action-pointer" :size="23" /></span></div>
                 <div class="operation-status downloading-status"><span>{{ llama.downloading }}</span><span class="progress-track"><span /></span></div>
                 <div class="section-title downloaded-result"><HardDriveIcon :size="18" />{{ llama.importedModels }}</div>
@@ -91,7 +91,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               <div v-else-if="stage === 'download'" class="compact-stack">
                 <div class="section-title"><DownloadIcon :size="18" />{{ transformers.addModels }}</div>
                 <span class="label">{{ transformers.downloadFromHuggingFace }}</span>
-                <div class="entry-row"><div class="input-look code animated-input"><span class="input-placeholder">{{ transformers.modelPath }}</span><span class="input-value">{{ transformers.sampleModel }}</span><ChevronDownIcon class="input-menu-caret" :size="16" /></div><span class="action download-action"><DownloadIcon :size="16" />{{ transformers.downloadModel }}<MousePointer2Icon class="pointer action-pointer" :size="23" /></span></div>
+                <div class="entry-row"><div class="input-look code animated-input"><span class="input-placeholder">{{ transformers.modelPath }}</span><span class="input-value">{{ transformers.sampleModel }}</span><ChevronDownIcon class="input-menu-caret" :size="16" /><span class="choice-menu preset-menu"><span class="menu-option target-option">{{ transformers.sampleModel }}<MousePointer2Icon class="pointer menu-pointer" :size="21" /></span></span></div><span class="action download-action"><DownloadIcon :size="16" />{{ transformers.downloadModel }}<MousePointer2Icon class="pointer action-pointer" :size="23" /></span></div>
                 <div class="progress-scene"><div class="phase-stack"><span class="phase phase-preparing">{{ transformers.preparing }}</span><span class="phase phase-loading">{{ transformers.loadingLocal }}</span><span class="phase phase-ready"><CheckIcon :size="12" />{{ transformers.engineReady }}</span></div><div class="progress-track"><span /></div></div>
                 <div class="section-title"><BrainCircuitIcon :size="18" />{{ transformers.engineControl }}</div>
               </div>
@@ -115,8 +115,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
               <div v-if="stage === 'save'" class="compact-stack connection-content">
                 <div class="section-title"><GlobeIcon :size="18" />{{ transformers.endpointConfiguration }}</div>
-                <div class="field"><span class="label">{{ transformers.apiProvider }}</span><div class="input-look provider-field"><span class="switch-label before">{{ transformers.openaiCompatible }}</span><span class="switch-label after">{{ transformers.managerTab }}</span><ChevronDownIcon :size="17" /><MousePointer2Icon class="pointer field-pointer" :size="23" /></div></div>
-                <div class="field"><span class="label">{{ transformers.defaultModel }}</span><div class="input-look model-field"><span class="switch-label before">{{ transformers.none }}</span><span class="switch-label after code">{{ transformers.completeModel }}</span><ChevronDownIcon :size="17" /><MousePointer2Icon class="pointer field-pointer" :size="23" /></div></div>
+                <div class="field"><span class="label">{{ transformers.apiProvider }}</span><div class="input-look provider-field"><span class="switch-label before">{{ transformers.openaiCompatible }}</span><span class="switch-label after">{{ transformers.managerTab }}</span><ChevronDownIcon :size="17" /><MousePointer2Icon class="pointer field-pointer" :size="23" /><span class="choice-menu provider-menu"><span class="menu-option">{{ transformers.openaiCompatible }}</span><span class="menu-option target-option">{{ transformers.managerTab }}</span></span></div></div>
+                <div class="field"><span class="label">{{ transformers.defaultModel }}</span><div class="input-look model-field"><span class="switch-label before">{{ transformers.none }}</span><span class="switch-label after code">{{ transformers.completeModel }}</span><ChevronDownIcon :size="17" /><MousePointer2Icon class="pointer field-pointer" :size="23" /><span class="choice-menu model-menu"><span class="menu-option">{{ transformers.none }}</span><span class="menu-option target-option code">{{ transformers.completeModel }}</span></span></div></div>
                 <div class="choice-row end"><span class="action save-action"><span class="switch-label before">{{ transformers.saveChanges }}</span><span class="switch-label after">{{ transformers.settingsSaved }}</span><MousePointer2Icon class="pointer action-pointer" :size="23" /></span></div>
               </div>
             </template>
@@ -132,7 +132,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .mode-transformers { --accent:#8b5cf6;--action-ink:#fff; }
 :global(html:has(#docs-light-theme:checked)) .browser-model-camera { --action-ink:#fff; }
 .camera-canvas { position:absolute;top:0;left:0;display:flex;width:980px;height:720px;transform-origin:top left;transform:translate(var(--camera-end-x),var(--camera-end-y)) scale(var(--camera-end-z));animation:camera-move 11s ease-in-out infinite; }
-.stage-open { --camera-start-x:10px;--camera-start-y:12px;--camera-start-z:.9;--camera-focus-x:-115px;--camera-focus-y:-6px;--camera-focus-z:.9;--camera-end-x:-234px;--camera-end-y:-20px;--camera-end-z:.92; }
+.stage-open { --camera-start-x:10px;--camera-start-y:-430px;--camera-start-z:.9;--camera-focus-x:-115px;--camera-focus-y:-6px;--camera-focus-z:.9;--camera-end-x:-234px;--camera-end-y:-20px;--camera-end-z:.92; }
 .mode-llama.stage-import { --camera-start-x:-234px;--camera-start-y:-20px;--camera-start-z:.92;--camera-focus-x:-275px;--camera-focus-y:-35px;--camera-focus-z:1;--camera-end-x:-275px;--camera-end-y:-97px;--camera-end-z:1; }
 .mode-llama.stage-download { --camera-start-x:-275px;--camera-start-y:-97px;--camera-start-z:1;--camera-focus-x:-275px;--camera-focus-y:-18px;--camera-focus-z:1;--camera-end-x:-275px;--camera-end-y:-160px;--camera-end-z:1; }
 .mode-llama.stage-default { --camera-start-x:-275px;--camera-start-y:-160px;--camera-start-z:1;--camera-focus-x:-275px;--camera-focus-y:-32px;--camera-focus-z:1;--camera-end-x:-275px;--camera-end-y:-32px;--camera-end-z:1; }
@@ -140,6 +140,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .mode-transformers.stage-resume { --camera-start-x:-275px;--camera-start-y:-72px;--camera-start-z:1;--camera-focus-x:-275px;--camera-focus-y:-72px;--camera-focus-z:1;--camera-end-x:-275px;--camera-end-y:-102px;--camera-end-z:1; }
 .mode-transformers.stage-save { --camera-start-x:-275px;--camera-start-y:-102px;--camera-start-z:1;--camera-focus-x:-115px;--camera-focus-y:-8px;--camera-focus-z:.9;--camera-end-x:-275px;--camera-end-y:-22px;--camera-end-z:1; }
 @keyframes camera-move { 0%,8% { transform:translate(var(--camera-start-x),var(--camera-start-y)) scale(var(--camera-start-z)); } 30%,67% { transform:translate(var(--camera-focus-x),var(--camera-focus-y)) scale(var(--camera-focus-z)); } 83%,96% { transform:translate(var(--camera-end-x),var(--camera-end-y)) scale(var(--camera-end-z)); } 100% { transform:translate(var(--camera-start-x),var(--camera-start-y)) scale(var(--camera-start-z)); } }
+.stage-open .camera-canvas { animation-name:open-camera-move; }
+@keyframes open-camera-move { 0%,19% { transform:translate(var(--camera-start-x),var(--camera-start-y)) scale(var(--camera-start-z)); } 30%,67% { transform:translate(var(--camera-focus-x),var(--camera-focus-y)) scale(var(--camera-focus-z)); } 83%,96% { transform:translate(var(--camera-end-x),var(--camera-end-y)) scale(var(--camera-end-z)); } 100% { transform:translate(var(--camera-start-x),var(--camera-start-y)) scale(var(--camera-start-z)); } }
 .stage-save .camera-canvas { animation-name:save-camera-move; }
 @keyframes save-camera-move { 0%,17% { transform:translate(var(--camera-start-x),var(--camera-start-y)) scale(var(--camera-start-z)); } 28%,37% { transform:translate(var(--camera-focus-x),var(--camera-focus-y)) scale(var(--camera-focus-z)); } 45%,96% { transform:translate(var(--camera-end-x),var(--camera-end-y)) scale(var(--camera-end-z)); } 100% { transform:translate(var(--camera-start-x),var(--camera-start-y)) scale(var(--camera-start-z)); } }
 .app-sidebar { display:flex;flex:0 0 128px;flex-direction:column;padding:20px 15px;border-right:1px solid var(--line);background:var(--panel); }
@@ -172,6 +174,18 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .input-look,.model-row,.drop-area,.confirm-panel,.progress-scene,.status-card,.operation-status { border:1px solid var(--line);border-radius:11px;background:var(--field); }
 .input-look { position:relative;display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;min-height:40px;padding:9px 12px;font-weight:700;overflow-wrap:anywhere; }
 .input-look svg { flex:none;color:var(--soft); }
+.choice-menu { position:absolute;z-index:12;top:calc(100% + 5px);left:0;right:0;display:grid;gap:2px;min-width:0;padding:5px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 12px 30px #0005;color:var(--ink);opacity:0;transform:translateY(-6px) scale(.98);pointer-events:none; }
+.menu-option { position:relative;display:block;min-width:0;padding:7px 9px;border-radius:6px;font-size:12px;font-weight:750;line-height:1.35;overflow-wrap:anywhere; }
+.menu-option.target-option { animation:menu-option-picked 11s linear infinite; }
+.quantization-menu { min-width:190px;animation:quantization-menu-open 11s linear infinite; }
+.preset-menu { animation:preset-menu-open 11s linear infinite; }
+.provider-menu { animation:provider-menu-open 11s linear infinite; }
+.model-menu { animation:model-menu-open 11s linear infinite; }
+.preset-menu .target-option { animation-name:preset-option-picked; }
+.provider-menu .target-option { animation-name:provider-option-picked; }
+.model-menu .target-option { animation-name:model-option-picked; }
+.quantization-menu .menu-pointer { animation:quantization-menu-pointer 11s linear infinite; }
+.preset-menu .menu-pointer { animation:preset-menu-pointer 11s linear infinite; }
 .code { font-family:ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere; }
 .muted { color:var(--soft); }
 .entry-row,.choice-row { display:flex;align-items:center;gap:9px;min-width:0; }
@@ -266,7 +280,17 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .phase-loading { animation:phase-loading 11s linear infinite; }
 .phase-ready { color:var(--green);animation:phase-ready 11s linear infinite; }
 .progress-scene { display:grid;gap:10px;padding:13px; }
-@keyframes modal-appear { 0%,12% { opacity:.12;transform:translateY(6px); } 27%,96% { opacity:1;transform:none; } 100% { opacity:.12; } }
+@keyframes modal-appear { 0%,19% { opacity:0;transform:translateY(6px); } 27%,96% { opacity:1;transform:none; } 100% { opacity:0;transform:translateY(6px); } }
+@keyframes quantization-menu-open { 0%,45%,58%,100% { opacity:0;transform:translateY(-6px) scale(.98); } 49%,54% { opacity:1;transform:none; } }
+@keyframes preset-menu-open { 0%,19%,33%,100% { opacity:0;transform:translateY(-6px) scale(.98); } 23%,30% { opacity:1;transform:none; } }
+@keyframes provider-menu-open { 0%,41%,57%,100% { opacity:0;transform:translateY(-6px) scale(.98); } 45%,53% { opacity:1;transform:none; } }
+@keyframes model-menu-open { 0%,60%,76%,100% { opacity:0;transform:translateY(-6px) scale(.98); } 64%,72% { opacity:1;transform:none; } }
+@keyframes menu-option-picked { 0%,49%,57%,100% { background:transparent;color:var(--ink); } 52%,55% { background:color-mix(in srgb,var(--accent) 17%,var(--panel));color:var(--accent); } }
+@keyframes preset-option-picked { 0%,25%,33%,100% { background:transparent;color:var(--ink); } 28%,30% { background:color-mix(in srgb,var(--accent) 17%,var(--panel));color:var(--accent); } }
+@keyframes provider-option-picked { 0%,47%,57%,100% { background:transparent;color:var(--ink); } 50%,53% { background:color-mix(in srgb,var(--accent) 17%,var(--panel));color:var(--accent); } }
+@keyframes model-option-picked { 0%,66%,76%,100% { background:transparent;color:var(--ink); } 69%,72% { background:color-mix(in srgb,var(--accent) 17%,var(--panel));color:var(--accent); } }
+@keyframes quantization-menu-pointer { 0%,47%,57%,100% { opacity:0;transform:translate(9px,9px); } 51%,54% { opacity:1;transform:none; } }
+@keyframes preset-menu-pointer { 0%,23%,32%,100% { opacity:0;transform:translate(9px,9px); } 27%,30% { opacity:1;transform:none; } }
 @keyframes control-press { 0%,7%,22%,100% { background:transparent;border-color:var(--line); } 12%,17% { background:color-mix(in srgb,var(--accent) 14%,var(--panel));border-color:var(--accent); } }
 @keyframes nav-select { 0%,21%,100% { box-shadow:none; } 28%,39% { box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 18%,transparent); } }
 @keyframes connection-tab-select { 0%,22% { border-color:transparent;background:transparent;color:var(--soft);box-shadow:none; } 28%,36% { border-color:var(--accent);background:color-mix(in srgb,var(--accent) 15%,var(--panel));color:var(--accent);box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 18%,transparent); } 44%,96% { border-color:var(--line);background:var(--panel);color:var(--accent);box-shadow:0 3px 10px #0001; } 100% { border-color:transparent;background:transparent;color:var(--soft);box-shadow:none; } }
@@ -276,7 +300,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes pointer-action { 0%,18%,43%,100% { opacity:0;transform:translate(9px,9px); } 26%,36% { opacity:1;transform:none; } }
 @keyframes input-placeholder { 0%,18%,100% { opacity:1; } 30%,94% { opacity:0; } }
 @keyframes input-value { 0%,18%,100% { opacity:0;clip-path:inset(0 100% 0 0); } 30%,94% { opacity:1;clip-path:inset(0 0 0 0); } }
-@keyframes options-appear { 0%,40% { opacity:.15; } 52%,95% { opacity:1; } 100% { opacity:.15; } }
+@keyframes options-appear { 0%,38% { opacity:.15; } 44%,95% { opacity:1; } 100% { opacity:.15; } }
 @keyframes quant-before { 0%,43%,100% { opacity:1; } 55%,94% { opacity:0; } }
 @keyframes quant-after { 0%,43%,100% { opacity:0; } 55%,94% { opacity:1; } }
 @keyframes check-press { 0%,32%,56%,100% { box-shadow:none; } 39%,49% { box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 22%,transparent); } }
@@ -332,6 +356,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   .browser-model-camera { height:320px; }
   .camera-canvas { width:820px; }
   .app-sidebar { flex-basis:100px;padding:15px 10px; }
+  .settings-entry { gap:4px;padding:8px 4px;font-size:12px; }
   .brand { font-size:17px; }
   .work-area { padding:18px; }
   .settings-panel { grid-template-columns:180px 390px;width:570px; }
@@ -345,7 +370,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   .entry-row > .input-look { flex-basis:100%; }
   .model-row { flex-wrap:wrap; }
   .confirm-panel { width:300px;max-width:calc(100% - 40px);left:20px;padding:15px; }
-  .stage-open { --camera-start-x:4px;--camera-start-y:9px;--camera-start-z:.85;--camera-focus-x:-90px;--camera-focus-y:-4px;--camera-focus-z:.85;--camera-end-x:-255px;--camera-end-y:-20px;--camera-end-z:.85; }
+  .stage-open { --camera-start-x:4px;--camera-start-y:-420px;--camera-start-z:.85;--camera-focus-x:-90px;--camera-focus-y:-4px;--camera-focus-z:.85;--camera-end-x:-255px;--camera-end-y:-20px;--camera-end-z:.85; }
   .mode-llama.stage-import { --camera-start-x:-255px;--camera-start-y:-20px;--camera-start-z:.85;--camera-focus-x:-255px;--camera-focus-y:-45px;--camera-focus-z:.85;--camera-end-x:-255px;--camera-end-y:-100px;--camera-end-z:.85; }
   .mode-llama.stage-download { --camera-start-x:-255px;--camera-start-y:-100px;--camera-start-z:.85;--camera-focus-x:-255px;--camera-focus-y:-20px;--camera-focus-z:.85;--camera-end-x:-255px;--camera-end-y:-175px;--camera-end-z:.85; }
   .mode-llama.stage-default { --camera-start-x:-255px;--camera-start-y:-175px;--camera-start-z:.85;--camera-focus-x:-255px;--camera-focus-y:-30px;--camera-focus-z:.85;--camera-end-x:-255px;--camera-end-y:-30px;--camera-end-z:.85; }
@@ -368,6 +393,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 :global(html:has(#docs-pause-motion:checked)) .browser-model-camera .confirm-panel,
 :global(html:has(#docs-pause-motion:checked)) .browser-model-camera .manager-before-save,
 :global(html:has(#docs-pause-motion:checked)) .browser-model-camera .previous-download-result,
+:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .choice-menu,
 :global(html:has(#docs-pause-motion:checked)) .browser-model-camera .input-placeholder,
 :global(html:has(#docs-pause-motion:checked)) .browser-model-camera .switch-label.before,
 :global(html:has(#docs-pause-motion:checked)) .browser-model-camera .phase-preparing,
@@ -385,7 +411,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   .browser-model-camera *, .browser-model-camera *::before, .browser-model-camera *::after { animation:none!important; }
   .camera-canvas { transform:translate(var(--camera-end-x),var(--camera-end-y)) scale(var(--camera-end-z)); }
   .settings-panel,.imported-result,.downloaded-result,.progress-scene,.connection-content,.input-value,.switch-label.after,.phase-ready,.model-options { opacity:1;clip-path:none;transform:none; }
-  .importing-status,.downloading-status,.resume-status,.confirm-panel,.manager-before-save,.previous-download-result,.input-placeholder,.switch-label.before,.phase-preparing,.phase-loading,.incomplete-tag { opacity:0; }
+  .importing-status,.downloading-status,.resume-status,.confirm-panel,.manager-before-save,.previous-download-result,.choice-menu,.input-placeholder,.switch-label.before,.phase-preparing,.phase-loading,.incomplete-tag { opacity:0; }
   .load-action .before { opacity:1; }
   .load-action .after { opacity:0; }
   .progress-track > span { transform:scaleX(1); }

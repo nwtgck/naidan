@@ -7,7 +7,7 @@ export const strings = {
   before: 'ローカル用のプリセットには、LM Studioの http://localhost:1234/v1 と llama-serverの http://localhost:8080/v1 があります。実際の接続先に合うものを選ぶか、ベースURLを入力してください。外部APIではHTTPヘッダーが必要な場合があります。認証方法、CORSの設定、利用できるモデルは接続先ごとに異なります。',
   steps: {
     open: {
-      title: '1. ［接続］設定を開く',
+      title: '1. 接続設定を開く',
       body: 'サイドバー下部の［設定］を選びます。設定画面では初期状態で［接続］が開きます。ほかのタブを表示している場合は［接続］を選んでください。',
       caption: 'サイドバーの［設定］から［接続］画面を開きます。',
     },
@@ -57,6 +57,8 @@ export const strings = {
     modelSelection: 'モデル選択',
     defaultModel: 'デフォルトモデル',
     none: 'なし',
+    filterModels: 'モデルを絞り込む...',
+    refreshModelList: 'モデル一覧を更新',
     exampleModel: 'サーバーから取得したモデル',
     usedWhenInherited: 'このデフォルトを継承する会話に適用されます。',
     saveChanges: '変更を保存',

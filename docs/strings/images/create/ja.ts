@@ -40,6 +40,7 @@ export const strings = {
     exportSession: 'セッションを書き出す',
     mainModel: '画像モデル本体',
     chooseModel: 'モデルを選択',
+    searchChoices: '候補を検索',
     prepareModel: 'モデルを用意',
     models: 'モデル',
     catalog: 'モデルカタログ',

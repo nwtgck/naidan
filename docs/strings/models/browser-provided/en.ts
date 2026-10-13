@@ -6,22 +6,22 @@ export const strings = {
   steps: {
     open: {
       title: '1. Open Connection settings',
-      body: 'Select Settings at the bottom of the sidebar. The Settings panel opens on Connection by default; choose Connection if you were viewing another tab.',
-      caption: 'Open the Connection panel from the sidebar Settings button.',
+      body: 'Select ［Settings］ at the bottom of the sidebar. The ［Settings］ panel opens on ［Connection］ by default; choose ［Connection］ if you were viewing another tab.',
+      caption: 'Open the ［Connection］ panel from the sidebar ［Settings］ button.',
     },
     select: {
       title: '2. Choose Browser-provided and read its status',
-      body: 'Under API Provider, choose Browser-provided. The status panel checks whether the browser exposes a usable LanguageModel API and whether it can offer a model. The option remains visible when unavailable so you can read the reason.',
+      body: 'Under ［API Provider］, choose ［Browser-provided］. The status panel checks whether the browser exposes a usable LanguageModel API and whether it can offer a model. The option remains visible when unavailable so you can read the reason.',
       caption: 'The provider changes and the browser-managed model status appears below it.',
     },
     prepare: {
       title: '3. Prepare the model if offered',
-      body: 'If the panel offers Prepare browser-provided model, select it. The browser may download and prepare its model; Naidan shows the progress or an error reported by the browser. If it already says the model is ready, you can skip this step.',
+      body: 'If the panel offers ［Prepare browser-provided model］, select it. The browser may download and prepare its model; Naidan shows the progress or an error reported by the browser. If it already says the model is ready, you can skip this step.',
       caption: 'The preparation action changes to download and preparation progress, then a ready state.',
     },
     save: {
       title: '4. Save the connection',
-      body: 'In Model Selection, the browser-provided model is set automatically and Default Model cannot be changed. Select Save Changes to use this connection in existing and new chats that inherit the global endpoint. A ready model is required before it can answer.',
+      body: 'In ［Model Selection］, the browser-provided model is set automatically and ［Default Model］ cannot be changed. Select ［Save Changes］ to use this connection in existing and new chats that inherit the global endpoint. A ready model is required before it can answer.',
       caption: 'The model selection is fixed for this provider; save the selected connection.',
     },
   },

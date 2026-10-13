@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AudioLinesIcon, ChevronDownIcon, DownloadIcon, FolderOpenIcon, HeadphonesIcon, Loader2Icon, MicIcon, MoreVerticalIcon, MousePointer2Icon, PlayIcon, Settings2Icon, Trash2Icon } from 'lucide-vue-next';
+import { AudioLinesIcon, CheckIcon, ChevronDownIcon, DownloadIcon, FolderOpenIcon, HeadphonesIcon, Loader2Icon, MicIcon, MoreVerticalIcon, MousePointer2Icon, PlayIcon, RefreshCwIcon, SearchIcon, SettingsIcon, Trash2Icon } from 'lucide-vue-next';
 import type { AudioSpeechMessages } from '../messages';
 
 defineProps<{ stage: 'open' | 'text' | 'generate' | 'save'; copy: AudioSpeechMessages['demo'] }>();
@@ -9,19 +9,19 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <div class="camera" :class="`stage-${stage}`" :data-docs-animation="`audio-${stage}`" :data-testid="`audio-step-${stage}`" aria-hidden="true">
     <div class="canvas">
-      <aside class="sidebar"><strong>{{ copy.app }}</strong><div class="sidebar-spacer" /><div class="sidebar-actions"><Settings2Icon :size="17" /><span class="more"><MoreVerticalIcon :size="18" /><MousePointer2Icon v-if="stage === 'open'" class="pointer" :size="20" /></span></div><div v-if="stage === 'open'" class="menu"><small>{{ copy.more }}</small><div><AudioLinesIcon :size="16" />{{ copy.audioGeneration }}</div></div></aside>
+      <aside class="sidebar"><strong>{{ copy.app }}</strong><div class="sidebar-spacer" /><div class="sidebar-actions"><SettingsIcon :size="17" /><span class="more"><MoreVerticalIcon :size="18" /><MousePointer2Icon v-if="stage === 'open'" class="pointer" :size="20" /></span></div><div v-if="stage === 'open'" class="menu"><small>{{ copy.more }}</small><div><AudioLinesIcon :size="16" />{{ copy.audioGeneration }}</div></div></aside>
       <main class="audio-app" data-testid="audio-workspace-canvas">
         <header class="page-head"><h3><AudioLinesIcon :size="24" />{{ copy.audioGeneration }}</h3><p>{{ copy.workspaceLead }}</p></header>
         <div class="suggestion"><div class="suggestion-icon"><HeadphonesIcon :size="20" /></div><div><strong>{{ copy.modelName }}</strong><small>{{ copy.modelFiles }}</small></div><span class="suggestion-action">{{ copy.selectModel }}</span></div>
         <div class="manager"><FolderOpenIcon :size="16" /><strong>{{ copy.manageModels }}</strong><ChevronDownIcon :size="16" /></div>
-        <div class="form-field"><div class="label">{{ copy.model }}</div><div class="select-field"><span class="model-choice"><span class="model-before">{{ copy.chooseModel }}</span><span class="model-after">{{ copy.modelName }}</span></span><ChevronDownIcon :size="16" /></div></div>
+        <div class="form-field model-field"><div class="label">{{ copy.model }}</div><div class="select-field"><span class="model-choice"><span class="model-before">{{ copy.chooseModel }}</span><span class="model-after">{{ copy.modelName }}</span></span><ChevronDownIcon :size="16" /></div><div v-if="stage === 'text'" class="model-popup" data-testid="audio-model-options"><div class="popup-search"><SearchIcon :size="14" /><span>{{ copy.filterModels }}</span><RefreshCwIcon :size="14" /></div><div class="popup-model"><span>{{ copy.modelName }}</span><CheckIcon :size="15" /></div></div></div>
         <div class="form-field"><div class="label">{{ copy.inputText }}</div><div class="textarea"><span class="text-before">{{ copy.textPlaceholder }}</span><span class="text-after">{{ copy.textSample }}</span></div></div>
-        <div class="form-field language-field"><div class="label">{{ copy.language }}</div><div class="select-field"><span>{{ copy.english }}</span><ChevronDownIcon :size="16" /></div></div>
+        <div class="form-field language-field"><div class="label">{{ copy.language }}</div><div class="select-field"><span>{{ copy.english }}</span><ChevronDownIcon :size="16" /></div><div v-if="stage === 'text'" class="language-popup" data-testid="audio-language-options"><span>{{ copy.modelDefault }}</span><strong>{{ copy.english }}<CheckIcon :size="14" /></strong><span>{{ copy.otherLanguage }}</span></div></div>
         <div class="reference"><div><MicIcon :size="16" /><strong>{{ copy.referenceVoice }}</strong></div><span>{{ copy.addReference }}</span></div>
-        <div class="manager settings"><Settings2Icon :size="16" /><strong>{{ copy.advancedSettings }}</strong><ChevronDownIcon :size="16" /></div>
+        <div class="manager settings"><strong>{{ copy.advancedSettings }}</strong><ChevronDownIcon :size="16" /></div>
         <div class="generation-controls"><span class="primary generate"><AudioLinesIcon :size="17" />{{ copy.generate }}</span><div class="busy-actions"><span>{{ copy.preview }}</span><span>{{ copy.finish }}</span><span>{{ copy.cancel }}</span></div></div>
         <div class="progress"><Loader2Icon :size="16" /><strong>{{ copy.progress }}</strong><div class="progress-track"><span /></div></div>
-        <section class="history" data-testid="audio-result-card"><div class="history-head"><h4>{{ copy.generated }}</h4><span><Trash2Icon :size="14" />{{ copy.deleteAudio }}</span></div><div class="result-card"><div class="result-heading"><div><strong>{{ copy.modelName }}</strong><small>WAV · 24,000 Hz</small></div><span><Trash2Icon :size="14" />{{ copy.deleteAudio }}</span></div><p>{{ copy.textSample }}</p><div class="player"><span class="play"><PlayIcon :size="16" fill="currentColor" /></span><div class="track"><span /></div><small>0:00 / 0:04</small><span class="download"><DownloadIcon :size="16" />{{ copy.saveWav }}</span></div><div class="settings-summary"><Settings2Icon :size="14" />{{ copy.resultSettings }}<ChevronDownIcon :size="14" /></div></div></section>
+        <section class="history" data-testid="audio-result-card"><div class="history-head"><h4>{{ copy.generated }}</h4><span>{{ copy.deleteAllAudio }}</span></div><div class="result-card"><div class="result-heading"><div><strong>{{ copy.modelName }}</strong><small>WAV · 24,000 Hz</small></div><span><Trash2Icon :size="14" />{{ copy.deleteAudio }}</span></div><p>{{ copy.textSample }}</p><div class="player"><span class="play"><PlayIcon :size="16" fill="currentColor" /></span><div class="track"><span /></div><small>0:00 / 0:04</small><span class="download"><DownloadIcon :size="16" />{{ copy.saveWav }}</span></div><div class="settings-summary">{{ copy.resultSettings }}<ChevronDownIcon :size="14" /></div></div></section>
       </main>
     </div>
   </div>
@@ -74,4 +74,33 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   .stage-generate { --x0:-125px;--x1:-125px; }
   .stage-save { --x0:-125px;--x1:-550px; }
 }
+.stage-text .canvas { --ym:-145px;--yl:-360px;animation:text-camera 10s ease-in-out infinite; }
+.model-field,.language-field { position:relative; }
+.model-field { z-index:3; }
+.language-field { z-index:2; }
+.model-popup,.language-popup { position:absolute;top:100%;left:0;z-index:5;border:1px solid var(--l);border-radius:11px;background:var(--p);box-shadow:0 12px 26px #0004;opacity:0;transform:translateY(-7px) scaleY(.94);transform-origin:top left; }
+.model-popup { width:340px;padding:5px;animation:audio-model-popup 10s linear infinite; }
+.popup-search { display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--l);color:var(--m);font-size:11px; }
+.popup-search span { flex:1;padding:6px;border:1px solid var(--l);border-radius:6px;background:var(--f); }
+.popup-model { display:flex;align-items:center;justify-content:space-between;gap:9px;padding:11px 8px;border-radius:6px;color:var(--a);font-weight:700;animation:audio-model-highlight 10s linear infinite; }
+.language-popup { display:grid;width:280px;padding:5px;animation:audio-language-popup 10s linear infinite; }
+.language-popup > * { display:flex;align-items:center;justify-content:space-between;min-height:31px;padding:6px 9px;border-radius:6px;font-weight:500; }
+.language-popup strong { color:var(--a);font-weight:750;animation:audio-language-highlight 10s linear infinite; }
+.stage-text .model-field .select-field { animation:audio-model-focus 10s linear infinite; }
+.stage-text .language-field .select-field { animation:audio-language-focus 10s linear infinite; }
+.stage-text .model-field .select-field > svg { animation:audio-model-chevron 10s linear infinite; }
+.stage-text .language-field .select-field > svg { animation:audio-language-chevron 10s linear infinite; }
+@keyframes text-camera { 0%,11% { transform:translate(var(--x0),var(--y0)) scale(var(--z0)); } 22%,38% { transform:translate(var(--x1),var(--ym)) scale(var(--z1)); } 52%,70% { transform:translate(var(--x1),var(--yl)) scale(var(--z1)); } 80%,90% { transform:translate(var(--x1),var(--y1)) scale(var(--z1)); } 100% { transform:translate(var(--x0),var(--y0)) scale(var(--z0)); } }
+@keyframes audio-model-popup { 0%,18%,41%,100% { opacity:0;transform:translateY(-7px) scaleY(.94); } 24%,36% { opacity:1;transform:none; } }
+@keyframes audio-language-popup { 0%,48%,76%,100% { opacity:0;transform:translateY(-7px) scaleY(.94); } 55%,70% { opacity:1;transform:none; } }
+@keyframes audio-model-highlight { 0%,26% { background:transparent; } 31%,100% { background:color-mix(in srgb,var(--a) 12%,var(--p)); } }
+@keyframes audio-language-highlight { 0%,61% { background:transparent; } 66%,100% { background:color-mix(in srgb,var(--a) 12%,var(--p)); } }
+@keyframes audio-model-focus { 0%,17%,42%,100% { border-color:var(--l);box-shadow:none; } 22%,37% { border-color:var(--a);box-shadow:0 0 0 3px color-mix(in srgb,var(--a) 16%,transparent); } }
+@keyframes audio-language-focus { 0%,49%,76%,100% { border-color:var(--l);box-shadow:none; } 54%,71% { border-color:var(--a);box-shadow:0 0 0 3px color-mix(in srgb,var(--a) 16%,transparent); } }
+@keyframes audio-model-chevron { 0%,18%,41%,100% { transform:none; } 24%,36% { transform:rotate(180deg); } }
+@keyframes audio-language-chevron { 0%,48%,76%,100% { transform:none; } 55%,70% { transform:rotate(180deg); } }
+:global(html:has(#docs-pause-motion:checked)) .camera .model-popup,
+:global(html:has(#docs-pause-motion:checked)) .camera .language-popup { opacity:0; }
+@media(prefers-reduced-motion:reduce) { .model-popup,.language-popup { opacity:0; } }
+@media(max-width:560px) { .model-popup { width:296px; } }
 </style>

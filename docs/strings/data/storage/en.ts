@@ -1,22 +1,22 @@
 export const strings = {
   title: 'Choose where your conversations are saved',
   description: 'Compare browser storage and temporary memory, switch the place used for conversations, and request stronger protection from browser cleanup.',
-  intro: 'Naidan keeps conversations in this browser. The Storage settings distinguish where conversation data is kept from the separate request for persistent browser storage. Pick a place that fits your data, then keep a ZIP copy if you need to recover it later.',
+  intro: 'Naidan keeps conversations in this browser. The ［Storage］ settings distinguish where conversation data is kept from the separate request for persistent browser storage. Pick a place that fits your data, then keep a ZIP copy if you need to recover it later.',
   steps: {
     open: {
       title: '1. Open Storage settings',
-      body: 'Select Settings at the bottom of the sidebar, then Storage. The active storage provider appears under Storage Management. Persistent Storage has its own status and Enable action higher in the same panel.',
-      caption: 'Settings opens first; select Storage in its side navigation.',
+      body: 'Select ［Settings］ at the bottom of the sidebar, then ［Storage］. The active storage provider appears under ［Storage Management］. ［Persistent Storage］ has its own status and ［Enable］ action higher in the same panel.',
+      caption: '［Settings］ opens first; select ［Storage］ in its side navigation.',
     },
     choose: {
       title: '2. Choose a storage provider',
-      body: 'Choose OPFS for larger browser data and attachments when the browser supports it. Local Storage has a smaller capacity and cannot keep sent images permanently. Memory keeps conversation data only for this page session; a reload or closing the tab loses it. Selecting another provider opens a confirmation, then Naidan copies chats, groups, and settings into the new provider.',
+      body: 'Choose OPFS for larger browser data and attachments when the browser supports it. ［Local Storage］ has a smaller capacity and cannot keep sent images permanently. Memory keeps conversation data only for this page session; a reload or closing the tab loses it. Selecting another provider opens a confirmation, then Naidan copies chats, groups, and settings into the new provider.',
       caption: 'The example switches from OPFS to Memory and confirms the migration.',
     },
     persist: {
       title: '3. Ask the browser to keep saved data',
-      body: 'If Persistent Storage shows Best Effort, select Enable. A Protected result means the browser accepted the request to protect this site’s data from automatic cleanup under storage pressure. The browser can decline it. This request is separate from choosing OPFS or Local Storage.',
-      caption: 'Enable asks the browser for persistent storage and then updates the status.',
+      body: 'If ［Persistent Storage］ shows ［Best Effort］, select ［Enable］. A ［Protected］ result means the browser accepted the request to protect this site’s data from automatic cleanup under storage pressure. The browser can decline it. This request is separate from choosing OPFS or ［Local Storage］.',
+      caption: '［Enable］ asks the browser for persistent storage and then updates the status.',
     },
   },
   limitsTitle: 'Before you rely on one browser copy',
@@ -51,7 +51,6 @@ export const strings = {
     confirmBody: 'Switch to Ephemeral? Your chats, groups, and settings will be migrated.',
     switchAndMigrate: 'Switch & Migrate',
     cancel: 'Cancel',
-    switchComplete: 'Storage changed to Ephemeral',
     selected: 'Selected',
     persistentStorage: 'Persistent Storage',
     persistentHelp: 'Ask the browser to protect saved data from automatic cleanup.',

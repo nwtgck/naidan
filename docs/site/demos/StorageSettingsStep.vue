@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckIcon, DatabaseIcon, FileArchiveIcon, GhostIcon, HardDriveIcon, MousePointer2Icon, Settings2Icon, ShieldCheckIcon, XIcon } from 'lucide-vue-next';
+import { CheckCircle2Icon, DatabaseIcon, FileArchiveIcon, GhostIcon, HardDriveIcon, MousePointer2Icon, Settings2Icon, SettingsIcon, ShieldCheckIcon, XIcon } from 'lucide-vue-next';
 import type { StorageGuideMessages } from '../messages';
 
 defineProps<{ stage: 'open' | 'choose' | 'persist'; copy: StorageGuideMessages['demo'] }>();
@@ -14,7 +14,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <aside class="app-sidebar">
           <strong class="brand">Naidan</strong>
           <div class="app-chat-line" /><div class="app-chat-line short" /><div class="app-chat-line" />
-          <div class="app-sidebar-bottom"><Settings2Icon :size="18" />{{ copy.settings }}<MousePointer2Icon v-if="stage === 'open'" class="pointer app-pointer" :size="24" /></div>
+          <div class="app-sidebar-bottom"><SettingsIcon :size="18" />{{ copy.settings }}<MousePointer2Icon v-if="stage === 'open'" class="pointer app-pointer" :size="24" /></div>
         </aside>
         <div class="app-background"><div class="app-toolbar" /><div class="app-empty-chat" /></div>
 
@@ -33,9 +33,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               <section class="durability-section">
                 <h3><ShieldCheckIcon :size="19" />{{ copy.dataDurability }}</h3>
                 <div class="durability-card">
-                  <div class="durability-copy"><strong>{{ copy.persistentStorage }}</strong><span>{{ copy.persistentHelp }}</span><span class="persistence-result"><CheckIcon :size="14" />{{ copy.protected }}</span></div>
+                  <div class="durability-copy"><strong>{{ copy.persistentStorage }}</strong><span>{{ copy.persistentHelp }}</span><span class="persistence-result"><CheckCircle2Icon :size="14" />{{ copy.protected }}</span></div>
                   <div class="durability-status"><span class="status-before">{{ copy.bestEffort }}</span><span class="status-after">{{ copy.active }}</span></div>
-                  <div class="enable-action"><span class="enable-before">{{ copy.enable }}</span><span class="enable-after"><CheckIcon :size="15" />{{ copy.protected }}</span><MousePointer2Icon v-if="stage === 'persist'" class="pointer enable-pointer" :size="23" /></div>
+                  <div class="enable-action"><span class="enable-before">{{ copy.enable }}</span><span class="enable-after"><CheckCircle2Icon :size="15" />{{ copy.protected }}</span><MousePointer2Icon v-if="stage === 'persist'" class="pointer enable-pointer" :size="23" /></div>
                 </div>
               </section>
 
@@ -47,10 +47,9 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
                 <div class="provider-grid">
                   <div class="provider-card opfs-card"><div class="provider-top"><HardDriveIcon :size="20" /><em>{{ copy.recommended }}</em></div><strong>{{ copy.opfs }}</strong><p>{{ copy.opfsShort }}</p></div>
                   <div class="provider-card local-card"><div class="provider-top"><HardDriveIcon :size="20" /></div><strong>{{ copy.local }}</strong><p>{{ copy.localShort }}</p></div>
-                  <div class="provider-card memory-card"><div class="provider-top"><GhostIcon :size="20" /></div><strong>{{ copy.memory }}</strong><p>{{ copy.memoryShort }}</p><span class="switch-done-mobile"><CheckIcon :size="14" />{{ copy.switchComplete }}</span><MousePointer2Icon v-if="stage === 'choose'" class="pointer choice-pointer" :size="23" /></div>
+                  <div class="provider-card memory-card"><div class="provider-top"><GhostIcon :size="20" /></div><strong>{{ copy.memory }}</strong><p>{{ copy.memoryShort }}</p><MousePointer2Icon v-if="stage === 'choose'" class="pointer choice-pointer" :size="23" /></div>
                 </div>
                 <div class="storage-note">{{ copy.confirmBody }}</div>
-                <div class="switch-done"><CheckIcon :size="16" />{{ copy.switchComplete }}</div>
               </section>
             </div>
           </main>
@@ -128,10 +127,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .stage-persist .opfs-card { border-color:var(--demo-line);background:var(--demo-panel); }
 .stage-persist .memory-card { border-color:#a855f7;background:color-mix(in srgb,#a855f7 11%,var(--demo-panel)); }
 .storage-note { margin-top:12px;padding:11px 14px;border:1px solid color-mix(in srgb,var(--demo-blue) 25%,var(--demo-line));border-radius:11px;background:color-mix(in srgb,var(--demo-blue) 7%,var(--demo-panel));color:var(--muted);font-size:11px; }
-.switch-done { display:flex;align-items:center;gap:7px;margin-top:10px;color:var(--green);font-size:12px;font-weight:800;opacity:0; }
-.switch-done-mobile { display:none; }
-.stage-choose .switch-done { animation:switch-result 11s linear infinite; }
-.stage-persist .switch-done { opacity:1; }
 .window-close { position:absolute;right:17px;top:17px;color:var(--muted); }
 .confirm-layer { position:absolute;inset:0;display:grid;place-items:center;background:#0008;opacity:0;pointer-events:none; }
 .stage-choose .confirm-layer { animation:confirm-appear 11s linear infinite; }
@@ -154,7 +149,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes unselect-opfs { 0%,31% { border-color:var(--demo-blue);background:color-mix(in srgb,var(--demo-blue) 10%,var(--demo-panel)); } 39%,100% { border-color:var(--demo-line);background:var(--demo-panel); } }
 @keyframes select-memory { 0%,31% { border-color:var(--demo-line);background:var(--demo-panel); } 39%,100% { border-color:#a855f7;background:color-mix(in srgb,#a855f7 11%,var(--demo-panel)); } }
 @keyframes confirm-appear { 0%,43%,76%,100% { opacity:0; } 50%,69% { opacity:1; } }
-@keyframes switch-result { 0%,74% { opacity:0; } 84%,100% { opacity:1; } }
 @keyframes old-persistence { 0%,48% { opacity:1; } 62%,100% { opacity:0; } }
 @keyframes new-persistence { 0%,48% { opacity:0; } 62%,100% { opacity:1; } }
 @keyframes app-pointer { 0%,8%,25%,100% { opacity:0;transform:translate(10px,10px); } 13%,20% { opacity:1;transform:none; } }
@@ -172,10 +166,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   .confirm-dialog p { font-size:12px; }
   .confirm-actions { gap:5px;margin-top:10px;font-size:11px; }
   .confirm-actions > span { padding:7px 9px; }
-  .switch-done { display:none; }
-  .switch-done-mobile { display:flex;align-items:center;gap:4px;margin-top:auto;padding-top:5px;color:var(--green);font-size:11px;font-weight:800;opacity:0; }
-  .stage-choose .switch-done-mobile { animation:switch-result 11s linear infinite; }
-  .stage-persist .switch-done-mobile { opacity:1; }
   .durability-copy .persistence-result { display:flex;opacity:0; }
   .stage-persist .persistence-result { animation:persistence-result 9s linear infinite; }
   @keyframes camera-open-mobile { 0%,21% { transform:translate(0px,-430px) scale(.9); } 37%,100% { transform:translate(-130px,-100px) scale(.9); } }
@@ -189,9 +179,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 :global(html:has(#docs-pause-motion:checked)) .stage-open .settings-window { opacity:1;transform:none; }
 :global(html:has(#docs-pause-motion:checked)) .stage-choose .opfs-card { border-color:var(--demo-line);background:var(--demo-panel); }
 :global(html:has(#docs-pause-motion:checked)) .stage-choose .memory-card { border-color:#a855f7;background:color-mix(in srgb,#a855f7 11%,var(--demo-panel)); }
-:global(html:has(#docs-pause-motion:checked)) .stage-choose .switch-done,:global(html:has(#docs-pause-motion:checked)) .stage-persist .status-after,:global(html:has(#docs-pause-motion:checked)) .stage-persist .enable-after { opacity:1; }
-:global(html:has(#docs-pause-motion:checked)) .stage-choose .switch-done-mobile,:global(html:has(#docs-pause-motion:checked)) .stage-persist .persistence-result { opacity:1; }
+:global(html:has(#docs-pause-motion:checked)) .stage-persist .status-after,:global(html:has(#docs-pause-motion:checked)) .stage-persist .enable-after,:global(html:has(#docs-pause-motion:checked)) .stage-persist .persistence-result { opacity:1; }
 :global(html:has(#docs-pause-motion:checked)) .stage-persist .status-before,:global(html:has(#docs-pause-motion:checked)) .stage-persist .enable-before { opacity:0; }
 :global(html:has(#docs-pause-motion:checked)) .pointer { display:none; }
-@media(prefers-reduced-motion:reduce) { .storage-viewport *, .storage-viewport *::before, .storage-viewport *::after { animation:none!important; } .stage-open .settings-window { opacity:1;transform:none; } .stage-choose .opfs-card { border-color:var(--demo-line);background:var(--demo-panel); } .stage-choose .memory-card { border-color:#a855f7;background:color-mix(in srgb,#a855f7 11%,var(--demo-panel)); } .stage-choose .switch-done,.stage-choose .switch-done-mobile,.stage-persist .status-after,.stage-persist .enable-after,.stage-persist .persistence-result { opacity:1; } .stage-persist .status-before,.stage-persist .enable-before { opacity:0; } .pointer { display:none; } }
+@media(prefers-reduced-motion:reduce) { .storage-viewport *, .storage-viewport *::before, .storage-viewport *::after { animation:none!important; } .stage-open .settings-window { opacity:1;transform:none; } .stage-choose .opfs-card { border-color:var(--demo-line);background:var(--demo-panel); } .stage-choose .memory-card { border-color:#a855f7;background:color-mix(in srgb,#a855f7 11%,var(--demo-panel)); } .stage-persist .status-after,.stage-persist .enable-after,.stage-persist .persistence-result { opacity:1; } .stage-persist .status-before,.stage-persist .enable-before { opacity:0; } .pointer { display:none; } }
 </style>

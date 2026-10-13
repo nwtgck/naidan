@@ -5,27 +5,27 @@ export const strings = {
   steps: {
     open: {
       title: '1. Open the image workspace',
-      body: 'Open More actions in the sidebar and choose Image generation. The workspace opens on a session, with settings on the left and execution, previews and results on the right. This is separate from generating an image inside an Ollama chat.',
+      body: 'Open ［More actions］ in the sidebar and choose ［Image generation］. The workspace opens on a session, with settings on the left and execution, previews and results on the right. This is separate from generating an image inside an Ollama chat.',
       caption: 'The sidebar menu opens the session workspace.',
     },
     model: {
       title: '2. Prepare and select an image model',
-      body: 'Choose Prepare a model beside Image model. In Models, choose an available model or download the files for a catalog entry to a supported destination, then select it for the workspace. Check the model’s file size and required components before downloading. Catalog entries do not guarantee that every device or input will work.',
-      caption: 'Prepare a model, then return to the workspace with it selected.',
+      body: 'Choose ［Prepare a model］ beside ［Image model］. In ［Models］, choose an available model or download the files for a catalog entry to a supported destination, then select it for the workspace. Check the model’s file size and required components before downloading. Catalog entries do not guarantee that every device or input will work.',
+      caption: '［Prepare a model］, then return to the workspace with it selected.',
     },
     generate: {
       title: '3. Enter a prompt and generate one image',
-      body: 'Leave Images per run at 1, enter a Prompt, and choose Generate. The Execution, previews and temporary results panel shows progress, then a preview. The result also appears under Runs and Gallery when the session can save it. You can change the prompt during a run; those edits apply to the next generation.',
+      body: 'Leave ［Images per run］ at 1, enter a ［Prompt］, and choose ［Generate］. The ［Execution, previews and temporary results］ panel shows progress, then a preview. The result also appears under ［Runs］ and ［Gallery］ when the session can save it. You can change the prompt during a run; those edits apply to the next generation.',
       caption: 'A prompt starts a run; progress gives way to a preview and saved result.',
     },
     reuse: {
       title: '4. Inspect the result and try another version',
-      body: 'Open the result card to inspect its prompt and settings. Choose Reuse prompt only to bring only its text back to the editor, or Reuse saved settings for the full saved setup. Use the viewer’s download menu to save an image as a regular file. Export session is a separate ZIP action for the session.',
+      body: 'Open the result card to inspect its prompt and settings. Choose ［Reuse prompt only］ to bring only its text back to the editor, or ［Reuse saved settings］ for the full saved setup. Use the viewer’s download menu to save an image as a regular file. ［Export session］ is a separate ZIP action for the session.',
       caption: 'The result viewer offers prompt and settings reuse for the next attempt.',
     },
   },
   storageTitle: 'Keep the work you want to return to',
-  storage: 'The session draft and results need browser storage (OPFS) and Web Locks. When session storage is unavailable, the workspace may offer Generate without saving; that result is not a saved session. Image sessions use an experimental data format that may change without migration. Save important images, prompts and settings outside Naidan. Session ZIP exports include inputs and outputs and local model paths, but not the model weights; a regular chat backup does not preserve the whole image session.',
+  storage: 'The session draft and results need browser storage (OPFS) and Web Locks. When session storage is unavailable, the workspace may offer ［Generate without saving］; that result is not a saved session. Image sessions use an experimental data format that may change without migration. Save important images, prompts and settings outside Naidan. Session ZIP exports include inputs and outputs and local model paths, but not the model weights; a regular chat backup does not preserve the whole image session.',
   nextTitle: 'After your first image',
   next: 'The same workspace can generate several images, search a gallery, mark favorites, compare two saved images, and reuse an image as an initial or reference image. An initial image and a reference image serve different purposes and are optional for a first text prompt.',
   demo: {
@@ -38,6 +38,7 @@ export const strings = {
     exportSession: 'Export session',
     mainModel: 'Image model',
     chooseModel: 'Choose a model',
+    searchChoices: 'Search choices',
     prepareModel: 'Prepare a model',
     models: 'Models',
     catalog: 'Model catalog',

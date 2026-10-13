@@ -8,6 +8,7 @@ import { ISLAND_ENTRIES, styleEntryId } from './ids';
 import type { DocsRenderer, RenderedPage } from './contracts';
 import type { DocsLocale } from '../site/routes';
 import { compileLocaleBootstrap } from './locale-bootstrap';
+import { createDocsSitemap } from './seo';
 
 function devHref({ moduleUrl }: { moduleUrl: string }): string {
   return moduleUrl.startsWith('/docs/') ? moduleUrl : `/docs${moduleUrl}`;
@@ -69,6 +70,10 @@ function createDocsRequestPlugin(): Plugin {
             response.setHeader('Content-Type', 'text/javascript; charset=utf-8');
             sendBody({ body: await bootstrap });
             return;
+          case 'sitemap':
+            response.setHeader('Content-Type', 'application/xml; charset=utf-8');
+            sendBody({ body: createDocsSitemap() });
+            return;
           case 'outside':
           case 'asset':
             return next();
@@ -116,6 +121,7 @@ function createDocsRequestPlugin(): Plugin {
             switch (route.kind) {
             case 'page': return `${route.locale}/${route.page}`;
             case 'bootstrap':
+            case 'sitemap':
             case 'outside':
             case 'asset':
             case 'redirect':

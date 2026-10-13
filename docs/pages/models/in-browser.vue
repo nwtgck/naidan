@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiText from '../../site/UiText.vue';
 import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
 import type { CommonMessages, InBrowserModelsMessages } from '../../site/messages';
@@ -13,7 +14,7 @@ defineExpose({
 <template>
   <article class="prose" data-testid="docs-models-in-browser">
     <h1>{{ s.title }}</h1>
-    <p v-for="paragraph in s.intro" :key="paragraph" class="lead">{{ paragraph }}</p>
+    <p v-for="paragraph in s.intro" :key="paragraph" class="lead"><UiText :text="paragraph" /></p>
 
     <figure class="guide-figure model-flow" data-docs-animation="browser-model-flow">
       <div class="flow-track" aria-hidden="true">
@@ -23,7 +24,7 @@ defineExpose({
         <span class="flow-arrow">→</span>
         <span class="flow-node">{{ s.flow.output }}</span>
       </div>
-      <figcaption class="caption">{{ s.flow.caption }}</figcaption>
+      <figcaption class="caption"><UiText :text="s.flow.caption" /></figcaption>
     </figure>
 
     <h2>{{ s.choicesTitle }}</h2>
@@ -31,19 +32,19 @@ defineExpose({
       <section v-for="choice in s.choices" :key="choice.title" class="panel runtime-card">
         <span class="runtime-availability">{{ choice.availability }}</span>
         <h3>{{ choice.title }}</h3>
-        <p>{{ choice.body }}</p>
+        <p><UiText :text="choice.body" /></p>
         <a class="card-guide-link" :href="docsHref({ locale, page: choice.guide })">{{ s.openGuide }} <span aria-hidden="true">→</span></a>
       </section>
     </div>
 
     <h2>{{ s.stepsTitle }}</h2>
     <ol class="guide-steps">
-      <li v-for="step in s.steps" :key="step.title"><h3>{{ step.title }}</h3><p>{{ step.body }}</p></li>
+      <li v-for="step in s.steps" :key="step.title"><h3>{{ step.title }}</h3><p><UiText :text="step.body" /></p></li>
     </ol>
 
     <h2>{{ s.limitsTitle }}</h2>
     <div class="guide-notes">
-      <p v-for="paragraph in s.limits" :key="paragraph">{{ paragraph }}</p>
+      <p v-for="paragraph in s.limits" :key="paragraph"><UiText :text="paragraph" /></p>
     </div>
     <a class="next-link" :href="docsHref({ locale, page: 'models/local-engines' })">{{ s.next }} <span aria-hidden="true">→</span></a>
   </article>

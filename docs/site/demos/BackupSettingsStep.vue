@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckIcon, CopyPlusIcon, DatabaseIcon, DownloadIcon, FileArchiveIcon, FolderInputIcon, HardDriveIcon, MousePointer2Icon, RefreshCwIcon, Settings2Icon, ShieldCheckIcon, UploadIcon, XIcon } from 'lucide-vue-next';
+import { CheckCircle2Icon, CheckIcon, CopyPlusIcon, DatabaseIcon, DownloadIcon, FileArchiveIcon, FolderInputIcon, HardDriveIcon, MousePointer2Icon, RefreshCwIcon, Settings2Icon, SettingsIcon, ShieldCheckIcon, UploadIcon, XIcon } from 'lucide-vue-next';
 import type { BackupGuideMessages } from '../messages';
 
 defineProps<{ stage: 'export' | 'preview' | 'mode'; copy: BackupGuideMessages['demo'] }>();
@@ -11,7 +11,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <div class="backup-viewport" :class="`stage-${stage}`" :data-docs-animation="`backup-${stage}`" :data-testid="`backup-step-${stage}`" aria-hidden="true">
     <div class="camera">
       <div class="app-canvas">
-        <aside class="app-sidebar"><strong>Naidan</strong><div class="app-chat-line" /><div class="app-chat-line short" /><div class="app-sidebar-bottom"><Settings2Icon :size="18" />{{ copy.settings }}</div></aside>
+        <aside class="app-sidebar"><strong>Naidan</strong><div class="app-chat-line" /><div class="app-chat-line short" /><div class="app-sidebar-bottom"><SettingsIcon :size="18" />{{ copy.settings }}</div></aside>
         <div class="app-background" />
         <div class="settings-window">
           <aside class="settings-sidebar">
@@ -55,7 +55,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
               <div class="mode-grid"><div class="mode-card append-card"><CopyPlusIcon :size="19" /><span><strong>{{ copy.append }}</strong><small>{{ copy.appendHelp }}</small></span><span class="radio-mark"><CheckIcon :size="13" /></span><MousePointer2Icon class="pointer append-pointer" :size="23" /></div><div class="mode-card"><RefreshCwIcon :size="19" /><span><strong>{{ copy.replace }}</strong><small>{{ copy.replaceHelp }}</small></span><span class="radio-mark" /></div></div>
               <p class="replace-warning">{{ copy.replaceWarning }}</p>
               <div class="settings-fields"><strong>{{ copy.settingsAndProfiles }}</strong><div><span>{{ copy.urlAndHeaders }}</span><em>{{ copy.keepCurrent }}</em></div><div><span>{{ copy.profiles }}</span><em>{{ copy.addNew }}</em></div></div>
-              <div class="action-row"><span class="import-progress"><span class="verify">{{ copy.verify }}</span><span class="import-done"><CheckIcon :size="17" />{{ copy.importDone }}</span></span><span class="primary-action"><CheckIcon :size="17" />{{ copy.importNow }}<MousePointer2Icon class="pointer import-pointer" :size="23" /></span></div>
+              <div class="action-row"><span class="import-progress"><span class="verify">{{ copy.verify }}</span><span class="import-done"><CheckIcon :size="17" />{{ copy.importDone }}</span></span><span class="primary-action"><CheckCircle2Icon :size="17" />{{ copy.importNow }}<MousePointer2Icon class="pointer import-pointer" :size="23" /></span></div>
             </div>
           </div>
         </div>

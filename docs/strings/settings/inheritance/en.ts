@@ -6,31 +6,31 @@ export const strings = {
   steps: {
     global: {
       title: '1. Set the global starting point',
-      body: 'Open Settings at the bottom of the sidebar, then Connection. Choose an API Provider and Endpoint URL, select a Default Model, and save. This example uses Ollama. These values supply the fallback for chats without a more specific setting.',
-      caption: 'Global Settings → Connection sets the endpoint and default model.',
+      body: 'Open ［Settings］ at the bottom of the sidebar, then ［Connection］. Choose an ［API Provider］ and ［Endpoint URL］, select a ［Default Model］, and save. This example uses Ollama. These values supply the fallback for chats without a more specific setting.',
+      caption: 'Global ［Settings］ → ［Connection］ sets the endpoint and default model.',
     },
     group: {
       title: '2. Give a chat group its own endpoint and model',
-      body: 'Select a chat group’s name in the sidebar to open its settings page. Choose its Endpoint Type and URL, then select a model returned by that endpoint in Model ID Override. The group endpoint is a complete setting: its URL and HTTP headers do not come from Global after this override.',
+      body: 'Select a chat group’s name in the sidebar to open its settings page. Choose its ［Endpoint Type］ and URL, then select a model returned by that endpoint in ［Model ID Override］. The group endpoint is a complete setting: its URL and HTTP headers do not come from Global after this override.',
       caption: 'The group settings page stores its own endpoint and model. The URL field appears when an HTTP endpoint is selected locally.',
     },
     inheritedChat: {
       title: '3. Read what a chat inherits',
-      body: 'Open a chat in the group and select the model name and gear in its header. In the chat settings dialog, the Endpoint Type choice and the empty URL and Model Override controls show the effective group values as inherited labels. Empty local controls still use those values.',
+      body: 'Open a chat in the group and select the model name and gear in its header. In the chat settings dialog, the ［Endpoint Type］ choice and the empty URL and ［Model Override］ controls show the effective group values as inherited labels. Empty local controls still use those values.',
       caption: 'The chat dialog shows the parent’s effective values and their source while local overrides are empty.',
     },
     chatModel: {
       title: '4. Change only this chat’s model',
-      body: 'Choose a different available model in Model Override. It becomes this chat’s local model, while its endpoint still comes from the group. Chat changes save from this dialog without a separate global Save Changes button.',
+      body: 'Choose a different available model in ［Model Override］. It becomes this chat’s local model, while its endpoint still comes from the group. Chat changes save from this dialog without a separate global ［Save Changes］ button.',
       caption: 'Selecting a model creates a Chat override for the model field only.',
     },
     reset: {
       title: '5. Change a chat endpoint, then inherit again',
-      body: 'A local Endpoint Type or URL creates a complete chat endpoint override. If that change points to a different model namespace, Naidan clears this chat’s local model choice; select a model from the new endpoint. To return to the group setting, choose the parent value in Endpoint Type. A namespace change also clears a local model choice; if a model override remains, choose the inherited entry at the top of Model Override. Clearing the URL text alone does not remove an endpoint override.',
-      caption: 'The inherited Endpoint Type choice removes the chat endpoint override. A remaining model override can be cleared from its selector.',
+      body: 'A local ［Endpoint Type］ or URL creates a complete chat endpoint override. If that change points to a different model namespace, Naidan clears this chat’s local model choice; select a model from the new endpoint. To return to the group setting, choose the parent value in ［Endpoint Type］. A namespace change also clears a local model choice; if a model override remains, choose the inherited entry at the top of ［Model Override］. Clearing the URL text alone does not remove an endpoint override.',
+      caption: 'The inherited ［Endpoint Type］ choice removes the chat endpoint override. A remaining model override can be cleared from its selector.',
     },
   },
-  after: 'Use Restore Defaults in the chat or group settings only when you want to remove all local settings there. Automatic title generation has separate settings, so changing the normal chat endpoint or model does not by itself replace an inherited title-generation target.',
+  after: 'Use ［Restore Defaults］ in the chat or group settings only when you want to remove all local settings there. Automatic title generation has separate settings, so changing the normal chat endpoint or model does not by itself replace an inherited title-generation target.',
   ollamaLink: 'Follow the Ollama connection setup',
   demo: {
     app: 'Naidan',

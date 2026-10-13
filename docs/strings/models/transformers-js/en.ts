@@ -6,23 +6,23 @@ export const strings = {
   steps: {
     open: {
       title: '1. Open the Transformers.js manager',
-      body: 'Select Settings in the sidebar, then Transformers.js. In the Hosted edition, check that the manager offers Add New Models. If OPFS is unavailable, the manager explains the restriction and disables model actions.',
+      body: 'Select ［Settings］ in the sidebar, then ［Transformers.js］. In the Hosted edition, check that the manager offers ［Add New Models］. If OPFS is unavailable, the manager explains the restriction and disables model actions.',
       caption: 'The Hosted manager opens with model actions available when OPFS works.',
     },
     download: {
       title: '2. Download a model and let it load',
-      body: 'Choose one of the preset model paths or enter a Hugging Face model ID, then select Download Model. Naidan explicitly downloads and saves the required files. When that succeeds, the same action continues into a separate load from the local cache. The Engine Control panel shows when the model is ready. A listed model is only an example; choose one your setup supports.',
-      caption: 'Download Model completes file preparation, then starts a local cache-only load.',
+      body: 'Choose one of the preset model paths or enter a Hugging Face model ID, then select ［Download Model］. Naidan explicitly downloads and saves the required files. When that succeeds, the same action continues into a separate load from the local cache. The ［Engine Control］ panel shows when the model is ready. A listed model is only an example; choose one your setup supports.',
+      caption: '［Download Model］ completes file preparation, then starts a local cache-only load.',
     },
     resume: {
       title: '3. Reuse a downloaded model later',
-      body: 'Under Downloaded Models, select Load for a complete model to load its local files again. An Incomplete entry offers Resume, which explicitly continues its download and then loads it. You can also import a folder of ONNX model files, after which it appears in the local list. Loading a complete model does not repair missing files by contacting Hugging Face.',
-      caption: 'The list distinguishes a complete model’s Load from an incomplete model’s Resume.',
+      body: 'Under ［Downloaded Models］, select ［Load］ for a complete model to load its local files again. An ［Incomplete］ entry offers ［Resume］, which explicitly continues its download and then loads it. You can also import a folder of ONNX model files, after which it appears in the local list. Loading a complete model does not repair missing files by contacting Hugging Face.',
+      caption: 'The list distinguishes a complete model’s ［Load］ from an incomplete model’s ［Resume］.',
     },
     save: {
       title: '4. Save it as the chat default',
-      body: 'Return to Connection in Settings. Set API Provider to Transformers.js, choose the downloaded model in Default Model, and select Save Changes. This saves the chat default; the manager’s Ready status by itself does not change the saved endpoint or model. This browser provider has no Endpoint URL field.',
-      caption: 'The saved Connection choice supplies the model to chats that inherit the global default.',
+      body: 'Return to ［Connection］ in ［Settings］. Set ［API Provider］ to ［Transformers.js］, choose the downloaded model in ［Default Model］, and select ［Save Changes］. This saves the chat default; the manager’s Ready status by itself does not change the saved endpoint or model. This browser provider has no ［Endpoint URL］ field.',
+      caption: 'The saved ［Connection］ choice supplies the model to chats that inherit the global default.',
     },
   },
   demo: {
@@ -54,6 +54,6 @@ export const strings = {
     settingsSaved: 'Settings Saved',
   },
   noteTitle: 'When loading fails',
-  note: 'Use the model manager to inspect the downloaded entry and any error. Load reads local model files; a missing required file is a load error. Resume is the explicit download path for an incomplete entry. The OPFS availability message can also explain why model actions are disabled.',
+  note: 'Use the model manager to inspect the downloaded entry and any error. ［Load］ reads local model files; a missing required file is a load error. ［Resume］ is the explicit download path for an incomplete entry. The OPFS availability message can also explain why model actions are disabled.',
   next: 'Compare browser model options',
 };

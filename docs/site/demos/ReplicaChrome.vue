@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import logo from '../../assets/naidan.svg';
-import { PanelLeftIcon, PlusIcon, Settings2Icon, FolderIcon, MessageSquareIcon, SearchIcon } from 'lucide-vue-next';
+import { PanelLeftIcon, Settings2Icon, SettingsIcon, FolderIcon, MessageSquareIcon, SearchIcon, SquarePenIcon } from 'lucide-vue-next';
 import type { ReplicaChromeCopy } from '../messages';
 
 // Deliberately independent of app stores and inference imports. See docs/README.md
@@ -24,14 +24,14 @@ defineExpose({
     <div class="replica-body" :class="{ 'with-sidebar': sidebar === 'visible' }">
       <aside v-if="sidebar === 'visible'" class="replica-sidebar">
         <div class="replica-brand"><img :src="logo" alt="" width="21" height="21"><b>Naidan</b></div>
-        <div class="replica-new"><PlusIcon :size="13" /><span>{{ copy.newChat }}</span></div>
+        <div class="replica-new"><SquarePenIcon :size="13" /><span>{{ copy.newChat }}</span></div>
         <div class="replica-search"><SearchIcon :size="12" /><span>{{ copy.search }}</span></div>
         <div class="replica-group"><FolderIcon :size="13" /><span>{{ copy.chatGroup }}</span></div>
         <slot name="chats">
           <div class="replica-chat active"><MessageSquareIcon :size="12" /><span>{{ title }}</span></div>
           <div class="replica-chat"><MessageSquareIcon :size="12" /><span>{{ copy.otherChat }}</span></div>
         </slot>
-        <div class="replica-bottom"><Settings2Icon :size="14" /><span>{{ copy.settings }}</span></div>
+        <div class="replica-bottom"><SettingsIcon :size="14" /><span>{{ copy.settings }}</span></div>
       </aside>
       <div class="replica-main">
         <div class="replica-header"><PanelLeftIcon :size="15" /><strong><slot name="title">{{ title }}</slot></strong><Settings2Icon :size="15" /></div>

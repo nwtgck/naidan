@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BookmarkPlusIcon, GlobeIcon, MessageSquareIcon, MousePointer2Icon, Settings2Icon, WrenchIcon, XIcon } from 'lucide-vue-next';
+import { BookmarkPlusIcon, GlobeIcon, MousePointer2Icon, Settings2Icon, SettingsIcon, SquarePenIcon, WrenchIcon, XIcon } from 'lucide-vue-next';
 
 defineProps<{
   focus: 'open' | 'provider' | 'headers' | 'check' | 'model' | 'select' | 'prepare' | 'save',
@@ -22,8 +22,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <div class="camera-canvas">
       <aside class="app-rail">
         <strong>Naidan</strong>
-        <div class="app-new-chat"><MessageSquareIcon :size="16" />{{ copy.newChat }}</div>
-        <div class="app-settings"><Settings2Icon :size="17" />{{ copy.settings }}<MousePointer2Icon v-if="focus === 'open'" class="app-pointer" :size="25" /></div>
+        <div class="app-new-chat"><SquarePenIcon :size="16" />{{ copy.newChat }}</div>
+        <div class="app-settings"><SettingsIcon :size="17" />{{ copy.settings }}<MousePointer2Icon v-if="focus === 'open'" class="app-pointer" :size="25" /></div>
       </aside>
       <div class="app-backdrop" />
       <div class="settings-modal">
@@ -63,7 +63,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .focus-model .camera-canvas{animation:camera-model 10s ease-in-out infinite}
 .focus-prepare .camera-canvas{animation:camera-prepare 10s ease-in-out infinite}
 .focus-save .camera-canvas{animation:camera-save 9s ease-in-out infinite}
-@keyframes camera-open{0%,17%{transform:translate(0,0) scale(.85)}58%,92%{transform:translate(-140px,-7px) scale(.92)}100%{transform:translate(0,0) scale(.85)}}
+@keyframes camera-open{0%,24%{transform:translate(15px,-480px) scale(.85)}58%,92%{transform:translate(-140px,-7px) scale(.92)}100%{transform:translate(15px,-480px) scale(.85)}}
 @keyframes camera-provider{0%,7%{transform:translate(-140px,-7px) scale(.92)}15%,92%{transform:translate(-360px,-50px) scale(1)}100%{transform:translate(-140px,-7px) scale(.92)}}
 @keyframes camera-headers{0%,7%{transform:translate(-360px,-50px) scale(1)}17%,92%{transform:translate(-360px,-280px) scale(1)}100%{transform:translate(-360px,-50px) scale(1)}}
 @keyframes camera-check{0%,7%{transform:translate(-360px,-280px) scale(1)}13%,92%{transform:translate(-360px,-170px) scale(1)}100%{transform:translate(-360px,-280px) scale(1)}}
@@ -87,7 +87,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   .focus-save .camera-canvas{animation-name:camera-save-mobile}
 }
 /* Narrow viewports follow the control across the larger modal instead of fitting the whole form. */
-@keyframes camera-open-mobile{0%,17%{transform:translate(-5px,0) scale(.7)}58%,92%{transform:translate(-275px,-5px) scale(.85)}100%{transform:translate(-5px,0) scale(.7)}}
+@keyframes camera-open-mobile{0%,24%{transform:translate(12px,-480px) scale(.85)}58%,92%{transform:translate(-275px,-5px) scale(.85)}100%{transform:translate(12px,-480px) scale(.85)}}
 @keyframes camera-provider-mobile{0%,7%{transform:translate(-275px,-5px) scale(.85)}16%,23%{transform:translate(var(--right-field),-5px) scale(.85)}26%,44%{transform:translate(-275px,-5px) scale(.85)}55%,70%{transform:translate(var(--right-field),-85px) scale(.85)}86%,92%{transform:translate(-275px,-85px) scale(.85)}100%{transform:translate(-275px,-5px) scale(.85)}}
 @keyframes camera-headers-mobile{0%,7%{transform:translate(-275px,-85px) scale(.85)}17%,27%{transform:translate(var(--right-field),-210px) scale(.85)}41%,55%{transform:translate(-275px,-210px) scale(.85)}67%,74%{transform:translate(var(--right-field),-210px) scale(.85)}82%,92%{transform:translate(-275px,-210px) scale(.85)}100%{transform:translate(-275px,-85px) scale(.85)}}
 @keyframes camera-check-mobile{0%,7%{transform:translate(-275px,-210px) scale(.85)}13%,92%{transform:translate(var(--right-field),-120px) scale(.85)}100%{transform:translate(-275px,-210px) scale(.85)}}
