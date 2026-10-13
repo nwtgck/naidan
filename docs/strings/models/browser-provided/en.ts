@@ -1,13 +1,15 @@
 export const strings = {
-  title: 'Use Chrome’s built-in AI language model',
+  title: 'Chat with Chrome’s built-in AI language model',
   description: 'Use Chrome’s on-device model for chat in Naidan: check the Chrome 148+ requirements, prepare the model, and save the connection.',
   intro: 'On desktop Chrome 148 or later, Naidan can use Chrome’s built-in AI language model for chat through the Prompt API. You do not enter a server URL or choose a model file.',
+  launch: { before: 'First, open ', after: ' to set up the model in Naidan.' },
+  onboarding: 'If first-run setup appears, close it with the × at the top right. The linked ［Connection］ settings stay open for the steps below.',
   before: 'Chrome requires Windows 10/11, macOS 13+, Linux, or a Chromebook Plus with ChromeOS platform 16389.0.0+; at least 22 GB free on the drive with your Chrome profile; and either a GPU with more than 4 GB VRAM or at least 16 GB RAM and four CPU cores. The first model download needs an unmetered or unlimited connection. Chrome on Android or iOS and other Chromebooks are not supported.',
   requirementsSource: 'Chrome’s official Prompt API requirements',
   steps: {
     open: {
       title: '1. Open Connection settings',
-      body: 'Select ［Settings］ at the bottom of the sidebar. The ［Settings］ panel opens on ［Connection］ by default; choose ［Connection］ if you were viewing another tab.',
+      body: 'The link above opens ［Settings］ on the ［Connection］ tab. You can also select ［Settings］ at the bottom of the sidebar and choose ［Connection］ if another tab is open.',
       caption: 'Open the ［Connection］ panel from the sidebar ［Settings］ button.',
     },
     select: {
@@ -56,6 +58,7 @@ export const strings = {
   },
   unavailableTitle: 'If Chrome says the model is unavailable',
   unavailable: 'If Chrome meets the requirements but the status panel still says unavailable, read the reason shown there and retry if offered. Naidan cannot enable a missing LanguageModel API or install Chrome’s managed model independently.',
+  startChat: 'After saving, close ［Settings］, choose ［New Chat］ in the sidebar, type a message, and send it. Chrome’s model can answer once it is ready.',
   next: 'Run an AI model in your browser',
   nextDescription: 'Compare browser-managed models with llama.cpp and Transformers.js on your device.',
 };

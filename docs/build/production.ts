@@ -5,8 +5,8 @@ import { build, mergeConfig } from 'vite';
 import type { Plugin, UserConfig } from 'vite';
 import { DOCS_BASE, DOCS_PAGES, DOCS_LOCALES, docsHref } from '../site/routes';
 import { docsCompilerConfig } from './compiler';
-import { findIslands, renderDocument, renderLocaleRoot, renderNotFound } from './html';
-import { ISLAND_ENTRIES, styleEntryId, styleEntryName } from './ids';
+import { findIslands, hasAppEntryLinks, renderDocument, renderLocaleRoot, renderNotFound } from './html';
+import { APP_ENTRY_CLIENT, ISLAND_ENTRIES, styleEntryId, styleEntryName } from './ids';
 import { manifestEntry, parseManifest } from './assets';
 import type { DocsRenderer, RenderedPage } from './contracts';
 import type { DocsLocale } from '../site/routes';
@@ -18,6 +18,7 @@ export function docsBuildConfig({ root }: { root: string }): UserConfig {
   const inputs: Record<string, string> = {};
   for (const page of DOCS_PAGES) inputs[styleEntryName({ page: page.id })] = styleEntryId({ page: page.id });
   for (const [name, file] of Object.entries(ISLAND_ENTRIES)) inputs[`island-${name}`] = path.resolve(root, file);
+  inputs['app-entry'] = path.resolve(root, APP_ENTRY_CLIENT);
   return mergeConfig(docsCompilerConfig({ root }), {
     plugins: [createDocsOutputPlugin({ root })],
     build: {
@@ -66,6 +67,8 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
         const homeAssets = manifestEntry({ manifest, name: styleEntryName({ page: 'index' }) });
         const searchAssets = manifestEntry({ manifest, name: 'island-search' });
         if (!searchAssets.script) throw new Error('Missing Docs search client entry');
+        const appEntryAssets = manifestEntry({ manifest, name: 'app-entry' });
+        if (!appEntryAssets.script) throw new Error('Missing Docs app entry client');
         const renderedPages = new Map<string, RenderedPage>();
         files.set('404.html', renderNotFound({ assets: { styles: homeAssets.styles, scripts: [] } }));
         for (const locale of DOCS_LOCALES) {
@@ -79,6 +82,10 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
               if (!entry.script) throw new Error(`Missing client entry for ${island}`);
               scripts.push(entry.script);
               assets.styles.push(...entry.styles);
+            }
+            if (hasAppEntryLinks({ body: rendered.body })) {
+              scripts.push(appEntryAssets.script);
+              assets.styles.push(...appEntryAssets.styles);
             }
             if (!assets.styles.length) throw new Error(`Missing styles for ${page.id}`);
             const relative = `${docsHref({ locale, page: page.id }).slice(DOCS_BASE.length)}index.html`;

@@ -1,12 +1,21 @@
 export const strings = {
   title: 'Run a GGUF model in your browser with llama.cpp',
-  description: 'Import a GGUF file or download one from Hugging Face, then choose it for browser chat in Naidan.',
-  intro: 'Naidan can run a GGUF chat model in your browser. Open ［Settings］ to prepare a model you already have or download one from a Hugging Face repository. These are two ways to reach the same ［Imported models］ list; use either one.',
+  description: 'Choose a GGUF model to try in a browser chat, or import your own file or download another from Hugging Face.',
+  intro: 'Naidan can run GGUF chat models in your browser. Choose from the models below. To use a different GGUF, open ［Settings］ to import a file from your device or download one from Hugging Face.',
+  quickModels: {
+    title: 'Choose a model to try in your browser',
+    body: 'Choose a model to open its chat. If it has not been downloaded, select ［Start with this model］ there; once it is ready, enter your message.',
+  },
   availability: 'The llama.cpp browser option appears in both Hosted and Standalone. ［Inference settings］ checks what this browser and device support. Model compatibility and speed depend on the device and model.',
+  manager: {
+    before: 'To import your own GGUF or download another model, open ',
+    after: ' to reach the model manager.',
+    onboarding: 'If first-run setup appears, close it with the × at the top right. The linked ［llama.cpp browser］ settings tab stays open for the steps below.',
+  },
   steps: {
     open: {
       title: '1. Open the browser model manager',
-      body: 'Select ［Settings］ in the sidebar, then the ［llama.cpp browser］ tab. Check ［Inference settings］ for browser support. ［Automatic］ chooses among available profiles; an unavailable profile cannot run just because a GGUF file was imported.',
+      body: 'The link above opens the ［llama.cpp browser］ tab directly. You can also open it from ［Settings］ in the sidebar. Check ［Inference settings］ for browser support. ［Automatic］ chooses among available profiles; importing a GGUF cannot make an unavailable profile run.',
       caption: '［Settings］ opens the ［llama.cpp browser］ manager and shows runtime support.',
     },
     import: {
@@ -62,6 +71,7 @@ export const strings = {
     body: 'You do not need to split a large GGUF before using it with Naidan. Even a single file tens of gigabytes in size can be imported from your device or selected from its Hugging Face repository. For a repository file, Naidan downloads it to the chosen storage, then reads the saved GGUF in bounded chunks.',
   },
   noteTitle: 'If your model does not run',
+  startChat: 'After setting a default model, close ［Settings］, choose ［New Chat］ in the sidebar, type a message, and send it.',
   note: 'Check ［Inference settings］ first, then confirm that the GGUF and any companion mmproj match the model you intend to use. A completed download only means the files are available; it does not prove that this browser can run the model. Standalone includes WebGPU with JSPI for wasm32 or wasm64, without a CPU or Asyncify fallback.',
   next: 'Run an AI model in your browser',
   nextDescription: 'Compare llama.cpp, Transformers.js and browser-provided models and their availability.',

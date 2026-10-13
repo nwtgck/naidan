@@ -1,7 +1,7 @@
 export const strings = {
-  title: 'Download and run a Transformers.js model in your browser',
-  description: 'Use the Hosted edition to download a model, let it load from the local cache, and save Transformers.js for browser chat.',
-  intro: 'Transformers.js is an experimental browser model option in the Hosted edition. Standalone shows the option but disables its model actions.',
+  title: 'Run ONNX language models in your browser',
+  description: 'Download or import a supported ONNX language model, run it locally in the browser with the Hosted edition, and set it as the chat default.',
+  intro: 'Use a supported ONNX language model for chat directly in your browser. Naidan’s Transformers.js manager downloads or imports its files and loads them from browser storage. This option is experimental and available in the Hosted edition; Standalone shows it but disables model actions.',
   availability: 'A browser that does not support or allow OPFS also disables model actions. Model support and performance depend on the model, browser and device.',
   steps: {
     open: {

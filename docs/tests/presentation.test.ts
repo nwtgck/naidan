@@ -85,40 +85,54 @@ beforeAll(async () => {
   }
 });
 
-describe('automatically animated, accessible guides', () => {
-  it.each(DOCS_PAGES)('ships native animated CSS for $id alongside the small search island', page => {
+describe('accessible guide presentation', () => {
+  it.each(DOCS_PAGES)('ships the scripts and motion support used by $id', page => {
     for (const locale of DOCS_LOCALES) {
       const output = pages.get(docsHref({ locale, page: page.id }));
       if (!output) throw new Error('Missing generated page');
       using document = parsePage({ html: output.html });
-      expect(document.document.querySelectorAll('[data-docs-animation]').length).toBeGreaterThan(0);
+      const animations = document.document.querySelectorAll('[data-docs-animation]');
+      if (page.id === 'work/local-only') expect(animations).toHaveLength(0);
+      else expect(animations.length).toBeGreaterThan(0);
       expect(document.document.querySelector('[data-testid="docs-motion-toggle"]')).toBeNull();
       const pause = document.document.querySelector<HTMLInputElement>('[data-testid="docs-pause-motion"]');
       expect(pause).not.toBeNull();
       expect(pause?.checked).toBe(false);
       expect(pause?.getAttribute('aria-label')).toBeTruthy();
-      expect(document.document.querySelectorAll('script')).toHaveLength(page.id === 'chat/branching' ? 2 : 1);
-      const tree = parseCss(output.css);
-      const keyframes: string[] = [], motions: string[] = [], pauseRules: string[] = [], reduced: string[] = [];
-      tree.walkAtRules('keyframes', rule => {
-        keyframes.push(rule.params);
-      });
-      tree.walkDecls('animation', declaration => {
-        if (declaration.value !== 'none') motions.push(declaration.value);
-      });
-      tree.walkDecls('animation-play-state', declaration => {
-        pauseRules.push(declaration.parent?.toString() ?? '');
-      });
-      tree.walkAtRules('media', rule => {
-        if (rule.params.includes('prefers-reduced-motion')) reduced.push(rule.toString());
-      });
-      expect(keyframes.length).toBeGreaterThan(0);
-      expect(motions.length).toBeGreaterThan(0);
-      expect(pauseRules.some(rule => rule.includes('#docs-pause-motion:checked') && rule.includes('paused'))).toBe(true);
-      expect(reduced.some(rule => rule.includes('animation:none') || rule.includes('animation: none'))).toBe(true);
+      const scripts = [...document.document.querySelectorAll<HTMLScriptElement>('script[src]')].map(script => script.getAttribute('src') ?? '');
+      expect(scripts.filter(src => src.includes('/island-search-'))).toHaveLength(1);
+      const branching = document.document.querySelector('[data-docs-island="branching"]') !== null;
+      const appEntry = document.document.querySelector('a[data-docs-app-entry-path]') !== null;
+      expect(scripts.filter(src => src.includes('/island-branching-'))).toHaveLength(Number(branching));
+      expect(scripts.filter(src => src.includes('/app-entry-'))).toHaveLength(Number(appEntry));
+      expect(scripts).toHaveLength(1 + Number(branching) + Number(appEntry));
+      if (animations.length > 0) {
+        const tree = parseCss(output.css);
+        const keyframes: string[] = [], motions: string[] = [], pauseRules: string[] = [], reduced: string[] = [];
+        tree.walkAtRules('keyframes', rule => {
+          keyframes.push(rule.params);
+        });
+        tree.walkDecls('animation', declaration => {
+          if (declaration.value !== 'none') motions.push(declaration.value);
+        });
+        tree.walkDecls('animation-play-state', declaration => {
+          pauseRules.push(declaration.parent?.toString() ?? '');
+        });
+        tree.walkAtRules('media', rule => {
+          if (rule.params.includes('prefers-reduced-motion')) reduced.push(rule.toString());
+        });
+        expect(keyframes.length).toBeGreaterThan(0);
+        expect(motions.length).toBeGreaterThan(0);
+        expect(pauseRules.some(rule => rule.includes('#docs-pause-motion:checked') && rule.includes('paused'))).toBe(true);
+        expect(reduced.some(rule => rule.includes('animation:none') || rule.includes('animation: none'))).toBe(true);
+      }
       for (const link of document.document.querySelectorAll('a[href]')) {
         const href = link.getAttribute('href') ?? '';
         if (!href.startsWith('https://')) continue;
+        if (link.hasAttribute('data-docs-app-entry-path')) {
+          expect(link.querySelector('[data-docs-external-icon]')).toBeNull();
+          continue;
+        }
         expect(link.querySelectorAll('[data-docs-external-icon]'), href).toHaveLength(1);
       }
     }
@@ -145,8 +159,8 @@ describe('automatically animated, accessible guides', () => {
 
   it.each(DOCS_LOCALES)('localizes diagrams and keeps authentic technical labels in %s', locale => {
     const expected = locale === 'ja'
-      ? { os: 'このPCのOS', browser: 'ブラウザ', blocked: 'ブラウザの境界で止まる', folder: 'フォルダ（コピー）', access: '読み取り専用', open: 'ブラウザで開く', newChat: '新しいチャット' }
-      : { os: 'The OS on this PC', browser: 'Browser', blocked: 'Stops at the browser boundary', folder: 'Folder (copy)', access: 'READ ONLY', open: 'Open in your browser', newChat: 'New Chat' };
+      ? { os: 'このPCのOS', browser: 'ブラウザ', blocked: '直接操作を防止', folder: 'フォルダ（コピー）', access: '読み取り専用', open: 'ブラウザで開く', newChat: '新しいチャット' }
+      : { os: 'The OS on this PC', browser: 'Browser', blocked: 'Direct access prevented', folder: 'Folder (copy)', access: 'READ ONLY', open: 'Open in your browser', newChat: 'New Chat' };
     for (const page of ['index', 'work/boundary', 'files/privacy', 'run/standalone'] as const) {
       const output = pages.get(docsHref({ locale, page }));
       if (!output) throw new Error('Missing localized demonstration page');

@@ -84,7 +84,7 @@ const broken = ;`);
     expect(brokenPage).not.toBe(pageSource);
     await writeFile(pageFile, brokenPage);
 
-    const parent = await createServer({ configFile: path.join(fixture, 'docs/vite.config.ts'), server: { middlewareMode: true }, logLevel: 'silent' });
+    const parent = await createServer({ configFile: path.join(fixture, 'docs/vite.config.ts'), server: { middlewareMode: true, hmr: false, ws: false }, logLevel: 'silent' });
     await using _parent = {
       async [Symbol.asyncDispose]() {
         await parent.close();

@@ -5,7 +5,7 @@ export const boundaryComparisonJa = {
   browser: 'ブラウザ',
   naidanRuntime: 'ブラウザの中で動く',
   directOperation: 'OSを直接操作しようとする',
-  blocked: 'ブラウザの境界で止まる',
+  blocked: '直接操作を防止',
   api: 'ブラウザのAPIと許可',
   allowed: '許可された経路を通して使う',
   files: '選んだファイルやフォルダ',

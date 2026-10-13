@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
+import AppEntryLink from '../../site/AppEntryLink.vue';
 import AudioCreationStep from '../../site/demos/AudioCreationStep.vue';
 import type { AudioSpeechMessages } from '../../site/messages';
+import type { DocsLocale } from '../../site/routes';
 
-defineProps<{ s: AudioSpeechMessages }>();
+defineProps<{ s: AudioSpeechMessages; locale: DocsLocale }>();
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -12,6 +14,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article class="prose" data-testid="docs-audio-speech">
     <h1>{{ s.title }}</h1>
     <p class="lead"><UiText :text="s.intro" /></p>
+    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'audio-generation' }" :locale="locale" display="url" />{{ s.launch.after }}</p>
 
     <section class="media-step" aria-labelledby="audio-open">
       <h2 id="audio-open">{{ s.steps.open.title }}</h2>

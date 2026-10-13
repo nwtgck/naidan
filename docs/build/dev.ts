@@ -3,8 +3,8 @@ import { createServer, isCSSRequest, mergeConfig } from 'vite';
 import type { ViteDevServer, ModuleNode, InlineConfig, Plugin } from 'vite';
 import { docsCompilerConfig } from './compiler';
 import { resolveDocsRoute } from './routes';
-import { findIslands, renderDocument, renderLocaleRoot, renderNotFound } from './html';
-import { ISLAND_ENTRIES, styleEntryId } from './ids';
+import { findIslands, hasAppEntryLinks, renderDocument, renderLocaleRoot, renderNotFound } from './html';
+import { APP_ENTRY_CLIENT, ISLAND_ENTRIES, styleEntryId } from './ids';
 import type { DocsRenderer, RenderedPage } from './contracts';
 import type { DocsLocale } from '../site/routes';
 import { compileLocaleBootstrap } from './locale-bootstrap';
@@ -118,6 +118,7 @@ function createDocsRequestPlugin(): Plugin {
             const entry = styleEntryId({ page: route.page });
             const styles = await devStyles({ server, entry });
             const scripts = findIslands({ body: rendered.body }).map(name => devHref({ moduleUrl: `/${ISLAND_ENTRIES[name]}` }));
+            if (hasAppEntryLinks({ body: rendered.body })) scripts.push(devHref({ moduleUrl: `/${APP_ENTRY_CLIENT}` }));
             html = renderDocument({ page: rendered, assets: { styles, scripts: ['/docs/@vite/client', ...scripts] } });
             break;
           }
@@ -171,13 +172,15 @@ function createDocsRequestPlugin(): Plugin {
 }
 
 export async function createDocsDevServer({ root, parentServer }: { root: string; parentServer: ViteDevServer }): Promise<ViteDevServer> {
+  const parentHttpServer = parentServer.httpServer?.listening ? parentServer.httpServer : undefined;
   return createServer(mergeConfig(docsCompilerConfig({ root }), {
     configFile: false,
     cacheDir: path.resolve(root, '.cache/vite'),
     plugins: [createDocsRequestPlugin()],
     server: {
       middlewareMode: true,
-      hmr: parentServer.httpServer?.listening ? { server: parentServer.httpServer, path: '__hmr' } : false,
+      hmr: Boolean(parentHttpServer),
+      ws: parentHttpServer ? { server: parentHttpServer, path: '__hmr' } : false,
     },
   } satisfies InlineConfig));
 }

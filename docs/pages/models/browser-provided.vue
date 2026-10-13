@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
 import ExternalLink from '../../site/ExternalLink.vue';
+import AppEntryLink from '../../site/AppEntryLink.vue';
 import BrowserProvidedSettingsStep from '../../site/demos/BrowserProvidedSettingsStep.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
 import type { DocsLocale } from '../../site/routes';
@@ -15,6 +16,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article class="prose" data-testid="docs-models-browser-provided">
     <h1>{{ s.title }}</h1>
     <p class="lead"><UiText :text="s.intro" /></p>
+    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'connection' }" :locale="locale" display="url" />{{ s.launch.after }}</p>
+    <p class="app-entry-onboarding"><UiText :text="s.onboarding" /></p>
     <p class="before-step"><UiText :text="s.before" /><span class="requirements-source"><ExternalLink href="https://developer.chrome.com/docs/ai/prompt-api" :locale="locale">{{ s.requirementsSource }}</ExternalLink></span></p>
 
     <section class="walkthrough-step" aria-labelledby="browser-open">
@@ -40,6 +43,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <p><UiText :text="s.steps.save.body" /></p>
       <figure class="guide-figure"><BrowserProvidedSettingsStep stage="save" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.save.caption" /></figcaption></figure>
     </section>
+
+    <p><UiText :text="s.startChat" /></p>
 
     <h2>{{ s.unavailableTitle }}</h2>
     <p><UiText :text="s.unavailable" /></p>

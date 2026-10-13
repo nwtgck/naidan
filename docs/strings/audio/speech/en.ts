@@ -2,10 +2,11 @@ export const strings = {
   title: 'Generate speech on your device without sending text to a server',
   description: 'Use a local speech model to generate audio without sending text or reference voice to an inference server, then save the finished WAV.',
   intro: '［Audio generation］ uses a local speech model to turn your text into a WAV on this device. The text you enter, and any optional reference audio, stay on your device during generation. Once the app, runtime and model files are available, no inference-server connection is needed; downloading missing files or updates still uses the network.',
+  launch: { before: 'First, open ', after: ' to start in the audio workspace.' },
   steps: {
     open: {
       title: '1. Open Audio generation and prepare a model',
-      body: 'Open ［More actions］ in the sidebar and choose ［Audio generation］. Pick a detected speech model, or open ［Models and runtime］ to import a matching backbone GGUF and audio mmproj together or obtain the pair from a repository. Detection reads local metadata; it does not download or load a model, and it does not prove compatibility.',
+      body: 'The link above opens ［Audio generation］ directly. You can also open ［More actions］ in the sidebar and choose ［Audio generation］. Pick a detected speech model, or open ［Models and runtime］ to import a matching backbone GGUF and audio mmproj together or obtain the pair from a repository. Detection reads local metadata; it does not download or load a model, and it does not prove compatibility.',
       caption: 'Open the separate audio workspace and select a compatible local model pair.',
     },
     text: {

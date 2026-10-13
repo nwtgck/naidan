@@ -8,7 +8,7 @@ import { parseSearchPayload } from '../islands/search/contracts';
 import { strings as entryEn } from '../strings/entry/en';
 import { strings as entryJa } from '../strings/entry/ja';
 import type { DocsLocale } from '../site/routes';
-import { docsSeoLinks } from './seo';
+import { DOCS_PUBLIC_ORIGIN, docsSeoLinks } from './seo';
 import type { DocsSeoRoute } from './seo';
 
 function appendSeoLinks({ document, route }: { document: Document; route: DocsSeoRoute }): void {
@@ -60,6 +60,10 @@ export function findIslands({ body }: { body: string }): Array<keyof typeof ISLA
     result.add(name);
   }
   return [...result];
+}
+
+export function hasAppEntryLinks({ body }: { body: string }): boolean {
+  return JSDOM.fragment(body).querySelector('a[data-docs-app-entry-path]') !== null;
 }
 
 export function renderDocument({ page, assets }: { page: RenderedPage; assets: PageAssets }): string {
@@ -129,6 +133,12 @@ function validateBody({ document, locale }: { document: Document; locale: DocsLo
       const value = element.getAttribute(attribute);
       if (value === null) continue;
       const url = new URL(value, origin);
+      const appEntryPath = element.tagName === 'A' ? element.getAttribute('data-docs-app-entry-path') : null;
+      if (attribute === 'href' && appEntryPath !== null) {
+        if (!appEntryPath.startsWith('/#/') || url.href !== new URL(appEntryPath, DOCS_PUBLIC_ORIGIN).href) {
+          throw new Error('Invalid Docs app entry link');
+        }
+      }
       if (url.protocol !== 'https:' && url.protocol !== 'http:') {
         // Media must use emitted local assets; no data-document exception.
         throw new Error(`Unsupported Docs URL protocol: ${url.protocol}`);
@@ -138,7 +148,7 @@ function validateBody({ document, locale }: { document: Document; locale: DocsLo
         element.setAttribute('rel', 'noopener noreferrer');
         element.setAttribute('referrerpolicy', 'no-referrer');
         if (isGitHubUrl({ href: url.href })) element.setAttribute('target', '_blank');
-        markExternalLink({ document, anchor: element, locale });
+        if (appEntryPath === null) markExternalLink({ document, anchor: element, locale });
       }
     }
   }

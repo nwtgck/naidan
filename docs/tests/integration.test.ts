@@ -35,7 +35,9 @@ describe('Docs development and static output', () => {
         expect(normalize({ document: development.document }), href).toBe(normalize({ document: production.document }));
         expect(production.document.documentElement.lang).toBe(locale);
         const scripts = production.document.querySelectorAll('script');
-        expect(scripts.length).toBe(page.id === 'chat/branching' ? 2 : 1);
+        const islands = new Set(Array.from(production.document.querySelectorAll('[data-docs-island]'), element => element.getAttribute('data-docs-island')));
+        const appEntryClient = production.document.querySelector('[data-docs-app-entry-path]') ? 1 : 0;
+        expect(scripts.length).toBe(islands.size + appEntryClient);
         for (const element of development.document.querySelectorAll('link[rel="stylesheet"]')) {
           const asset = element.getAttribute('href');
           const css = await dev.request({ url: asset ?? '' });

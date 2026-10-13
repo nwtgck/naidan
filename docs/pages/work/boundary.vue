@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import BoundaryDiagram from '../../site/demos/BoundaryDiagram.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
-import type { DocsLocale } from '../../site/routes';
+import { docsHref, type DocsLocale } from '../../site/routes';
 import type { BoundaryMessages, CommonMessages } from '../../site/messages';
 
 defineProps<{ s: BoundaryMessages; locale: DocsLocale; common: CommonMessages }>();
@@ -37,6 +37,11 @@ defineExpose({
       <h2>{{ section.title }}</h2>
       <p>{{ section.body }}</p>
     </section>
+    <p class="network-guide"><a :href="docsHref({ locale, page: 'work/local-only' })">{{ s.localOnlyGuide }} <span aria-hidden="true">→</span></a></p>
     <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'files/privacy', title: s.next, description: s.nextDescription }]" />
   </article>
 </template>
+
+<style scoped>
+.network-guide { margin-top: 12px; font-size: 13px; }
+</style>

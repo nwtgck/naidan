@@ -1,15 +1,17 @@
 import type { BrowserProvidedGuideMessages } from '../../../site/messages';
 
 export const strings = {
-  title: 'Chrome組み込みのAI言語モデルを使う',
+  title: 'Chrome組み込みのAI言語モデルでチャットをする',
   description: 'Chrome 148以降の端末内モデルをNaidanのチャットで使うために、利用条件を確認し、必要なら準備して接続設定を保存します。',
   intro: 'デスクトップ版Chrome 148以降では、Prompt API経由でChrome組み込みのAI言語モデルをNaidanのチャットに使えます。サーバーURLやモデルファイルの指定は不要です。',
+  launch: { before: 'まず ', after: ' を開き、Naidanでモデルを設定します。' },
+  onboarding: '初回設定が表示されたら、右上の × で閉じます。リンク先の［接続］画面が残るので、以下の手順を進めてください。',
   before: '対応端末はWindows 10/11、macOS 13以降、Linux、またはChromeOSプラットフォーム16389.0.0以降のChromebook Plusです。Chromeのプロファイルがあるドライブに22 GB以上の空き容量と、VRAM 4 GB超のGPU、またはメモリ16 GB以上かつ4コア以上のCPUが必要です。初回のモデルダウンロードには通信量無制限、または従量制ではない回線が必要です。Android・iOS版ChromeとChromebook Plus以外のChromeOS端末には対応していません。',
   requirementsSource: 'Chrome公式のPrompt API利用条件',
   steps: {
     open: {
       title: '1. 接続設定を開く',
-      body: 'サイドバー下部の［設定］を選びます。設定画面では初期状態で［接続］が開きます。ほかのタブを表示している場合は［接続］を選んでください。',
+      body: '上のリンクから［設定］の［接続］タブを直接開けます。サイドバー下部の［設定］から開く場合は、ほかのタブを表示していたら［接続］を選んでください。',
       caption: 'サイドバーの［設定］から［接続］画面を開きます。',
     },
     select: {
@@ -58,6 +60,7 @@ export const strings = {
   },
   unavailableTitle: 'Chromeで利用不可と表示された場合',
   unavailable: '利用条件を満たすChromeでも状態欄に利用不可と表示されたら、示された理由を読み、再確認の操作があれば試してください。NaidanからLanguageModel APIを有効化したり、Chrome管理のモデルを直接インストールしたりはできません。',
+  startChat: '保存したら［設定］を閉じ、サイドバーの［新しいチャット］を選びます。メッセージを入力して送信すると、準備済みのChromeのモデルが回答します。',
   next: 'ブラウザ内でAIモデルを動かす',
   nextDescription: 'ブラウザ管理のモデルとllama.cppやTransformers.jsの違いを比べます。',
 } satisfies BrowserProvidedGuideMessages;

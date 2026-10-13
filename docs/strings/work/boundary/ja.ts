@@ -25,5 +25,6 @@ export const strings = {
     }
   ],
   "next": "AIが読み書きできるファイルとフォルダを選ぶ",
+  localOnlyGuide: 'ローカルのみ版で外部への接続を制限する',
   nextDescription: '許可するフォルダと、AIに任せる読み書きの範囲を選びます。',
 } satisfies BoundaryMessages;

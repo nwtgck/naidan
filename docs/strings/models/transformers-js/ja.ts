@@ -1,9 +1,9 @@
 import type { strings as english } from './en';
 
 export const strings = {
-  title: 'Transformers.jsのモデルをブラウザで使う',
-  description: 'Hosted版でモデルをダウンロードし、ローカルキャッシュから読み込んで、ブラウザ内チャットの既定モデルに設定します。',
-  intro: 'Transformers.jsは、Hosted版の試験的なブラウザ内モデル方式です。スタンドアロン版にも選択肢は表示されますが、モデル操作は無効です。',
+  title: 'ONNX形式の言語モデルをブラウザで実行する',
+  description: '対応するONNX形式の言語モデルをHosted版でダウンロードまたは取り込み、ブラウザ内で実行してチャットのデフォルトに設定します。',
+  intro: '対応するONNX形式の言語モデルをブラウザ内で実行し、チャットに使えます。NaidanのTransformers.js管理画面でモデルファイルをダウンロードまたは取り込み、ブラウザの保存領域から読み込みます。この方式はHosted版の試験的な機能です。スタンドアロン版にも選択肢は表示されますが、モデル操作は無効です。',
   availability: 'Hosted版でも、ブラウザがOPFSに対応していない場合やアクセスを許可しない場合は、モデル操作が無効になります。モデルの対応状況や速度は、モデル・ブラウザ・端末によって変わります。',
   steps: {
     open: {

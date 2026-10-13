@@ -11,8 +11,8 @@ import { parsePage } from './site.test-support';
 import { visibleGuideText } from './ui-label.test-support';
 
 describe('media workflow guides', () => {
-  it.each([{ copy: imageEn }, { copy: imageJa }])('renders every image step and its result as static HTML', async ({ copy }) => {
-    const html = await renderToString(createSSRApp(ImagePage, { s: copy }));
+  it.each([{ copy: imageEn, locale: 'en' }, { copy: imageJa, locale: 'ja' }] as const)('renders every image step and its result as static HTML', async ({ copy, locale }) => {
+    const html = await renderToString(createSSRApp(ImagePage, { s: copy, locale }));
     using page = parsePage({ html });
     expect(page.document.querySelector('article h1')?.textContent).toBe(copy.title);
     const steps = [...page.document.querySelectorAll('section.media-step')];
@@ -41,8 +41,8 @@ describe('media workflow guides', () => {
     expect(page.document.querySelectorAll('figure button, figure input, figure a, figure audio')).toHaveLength(0);
   });
 
-  it.each([{ copy: audioEn }, { copy: audioJa }])('renders speech generation and explicit WAV saving in both languages', async ({ copy }) => {
-    const html = await renderToString(createSSRApp(AudioPage, { s: copy }));
+  it.each([{ copy: audioEn, locale: 'en' }, { copy: audioJa, locale: 'ja' }] as const)('renders speech generation and explicit WAV saving in both languages', async ({ copy, locale }) => {
+    const html = await renderToString(createSSRApp(AudioPage, { s: copy, locale }));
     using page = parsePage({ html });
     expect(page.document.querySelector('article h1')?.textContent).toBe(copy.title);
     const steps = [...page.document.querySelectorAll('section.media-step')];

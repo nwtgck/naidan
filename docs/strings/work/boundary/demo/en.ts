@@ -3,7 +3,7 @@ export const boundaryComparisonEn = {
   browser: 'Browser',
   naidanRuntime: 'Runs inside the browser',
   directOperation: 'Attempt a direct OS operation',
-  blocked: 'Stops at the browser boundary',
+  blocked: 'Direct access prevented',
   api: 'Browser APIs and permissions',
   allowed: 'Use the permitted access path',
   files: 'Selected files and folders',

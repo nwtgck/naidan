@@ -2,10 +2,11 @@ export const strings = {
   title: 'Generate AI images on your device without sending prompts to a server',
   description: 'Use a local image model to generate without sending prompts to an inference server, then inspect the result and reuse its settings.',
   intro: 'The image workspace uses a model on your device to generate from your prompt. Prepare the model files, make your first image, then reuse its settings for another attempt.',
+  launch: { before: 'First, open ', after: ' to start in the image workspace.' },
   steps: {
     open: {
       title: '1. Open the image workspace',
-      body: 'Open ［More actions］ in the sidebar and choose ［Image generation］. The workspace opens on a session, with settings on the left and execution, previews and results on the right. This is separate from generating an image inside an Ollama chat.',
+      body: 'The link above opens ［Image generation］ directly. You can also open ［More actions］ in the sidebar and choose ［Image generation］. The workspace opens on a session, with settings on the left and execution, previews and results on the right. This is separate from generating an image inside an Ollama chat.',
       caption: 'The sidebar menu opens the session workspace.',
     },
     model: {

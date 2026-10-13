@@ -11,6 +11,21 @@ import { strings as commonEnglish } from '../strings/common/en';
 import { strings as commonJapanese } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
 
+// README's Text Generation model links are the source of this guide's shortlist.
+const readmeTextModels = [
+  ['Gemma 4 E2B it', 'hf.co/google/gemma-4-E2B-it-qat-q4_0-gguf:Q4_0'],
+  ['Gemma 4 E4B it', 'hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:Q4_0'],
+  ['Gemma 4 26B-A4B it', 'hf.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf:Q4_0'],
+  ['gpt-oss-20b', 'hf.co/ggml-org/gpt-oss-20b-GGUF:MXFP4'],
+  ['Qwen3.5 9B', 'hf.co/lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M'],
+  ['Qwen3.6 35B-A3B', 'hf.co/ggml-org/Qwen3.6-35B-A3B-GGUF:Q4_K_M'],
+  ['Qwen3.8 27B', 'hf.co/ggml-org/Qwen3.8-27B-GGUF:Q4_K_M'],
+  ['LFM2.5 230M', 'hf.co/LiquidAI/LFM2.5-230M-GGUF:Q4_K_M'],
+  ['LFM2.5 2.6B', 'hf.co/LiquidAI/LFM2.5-2.6B-GGUF:Q4_K_M'],
+  ['Muse-Glimmer 30B', 'hf.co/meta-models/Muse-Glimmer-30B-GGUF:Q4_K_M'],
+  ['SmolLM2 135M Instruct', 'hf.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF:Q4_K_M'],
+] as const;
+
 describe('browser model guides', () => {
   it.each([
     { locale: 'en', s: llamaEnglish, common: commonEnglish },
@@ -19,6 +34,13 @@ describe('browser model guides', () => {
     const html = await renderToString(createSSRApp({ render: () => h(LlamaGuide, { s, locale, common }) }));
     using page = parsePage({ html });
     const article = page.document.querySelector('[data-testid="docs-models-llama-cpp-browser"]');
+    const modelLinks = [...(article?.querySelectorAll('.quick-model-list a') ?? [])];
+    expect(modelLinks.map(link => {
+      const hash = new URL(link.getAttribute('href') ?? '').hash;
+      expect(hash.startsWith('#/?llama-cpp-browser-model=')).toBe(true);
+      expect(link.querySelector('[data-docs-external-icon], .sr-only')).toBeNull();
+      return [link.textContent?.trim(), new URLSearchParams(hash.slice(3)).get('llama-cpp-browser-model')];
+    })).toEqual(readmeTextModels);
     expect(article?.querySelectorAll('section.walkthrough-step')).toHaveLength(4);
     for (const stage of ['open', 'import', 'download', 'default']) {
       const scene = article?.querySelector(`[data-testid="llama-settings-${stage}"]`);

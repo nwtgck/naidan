@@ -74,7 +74,7 @@ export async function startSiteDev({ root }: { root: string }) {
     root,
     logLevel: 'error',
     plugins: [createDocsDevBridge()],
-    server: { middlewareMode: true, hmr: false },
+    server: { middlewareMode: true, hmr: false, ws: false },
     optimizeDeps: { noDiscovery: true, include: [] },
     css: { postcss: { plugins: [] } },
   });

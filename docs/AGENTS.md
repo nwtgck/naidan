@@ -52,6 +52,11 @@ changes the operation at hand; do not front-load warnings about unrelated
 features. A first-time reader's review can reveal unclear prose; source review
 still checks technical accuracy.
 
+Assume a reader may arrive directly at any guide from search. Near the start,
+show the first useful action and a route into the app when the task needs it.
+Keep links for special editions tied to their actual published edition; do not
+silently send a reader to a different build.
+
 Motion starts automatically. Respect the shared pause control and reduced-motion
 preference, and leave a readable completed view of the step. Streamed examples
 append content in reading order. A replay may reset the whole scene together;
@@ -72,3 +77,5 @@ independent guide content or the ways to use a feature behind tabs.
 Docs tests must not execute external commands or child processes, directly or
 through a helper. Exercise the compiler and renderer through their library APIs.
 Keep external HTTP(S) links visibly marked with the shared external-link icon.
+Typed `AppEntryLink` launch links are in-app actions: their static public-origin
+fallback is rebased to the current Docs origin, and they do not use that icon.
