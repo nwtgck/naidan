@@ -4,7 +4,6 @@ import { validateStaticComponent } from '../build/source-policy';
 import { findIslands, renderDocument, renderLocaleRoot } from '../build/html';
 import { manifestEntry, parseManifest, publicAssetHref } from '../build/assets';
 import { selectDocsLocale } from '../site/locale';
-import { homeMessagesSchema, pageMessageSchemas } from '../site/messages';
 import { strings as homeEn } from '../strings/index/en';
 import { strings as homeJa } from '../strings/index/ja';
 import { isDocsUrl } from '../../pwa/docs-routing';
@@ -127,13 +126,9 @@ describe('HTML composition and locale contracts', () => {
     expect(selectDocsLocale({ languages })).toBe(expected);
   });
 
-  it('preserves approved headlines and rejects missing, extra or structurally invalid translations', () => {
-    expect(homeMessagesSchema.parse(homeJa).title).toBe('安全性を徹底追求した、簡単に使えるAI環境。');
-    expect(homeMessagesSchema.parse(homeEn).title).toBe('An easy-to-use AI environment, built around privacy.');
-    const { mock: _mock, ...missing } = homeJa;
-    expect(() => pageMessageSchemas.index.parse(missing)).toThrow();
-    expect(() => pageMessageSchemas.index.parse({ ...homeJa, unknown: 'typo' })).toThrow();
-    expect(() => pageMessageSchemas.index.parse({ ...homeJa, mechanisms: [] })).toThrow();
+  it('preserves approved headlines', () => {
+    expect(homeJa.headline.join('')).toBe('安全性を徹底追求した、簡単に使えるAI環境。');
+    expect(homeEn.headline.join('')).toBe('An easy-to-use AI environment, built around privacy.');
   });
 });
 

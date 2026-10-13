@@ -1,19 +1,41 @@
+import { boundaryComparisonJa } from '../work/boundary/demo/ja';
+import { standaloneDemoJa } from '../run/standalone/demo/ja';
+import { storageChoiceDemoJa } from './storage-demo/ja';
 import type { HomeMessages } from '../../site/messages';
 
 export const strings = {
-  "title": "安全性を徹底追求した、簡単に使えるAI環境。",
-  "mock": "Naidanの画面構成を再現した会話例です。表示内容はサンプルです。",
+  standaloneDemo: standaloneDemoJa,
+  storageDemo: storageChoiceDemoJa,
+  "demo": {
+    "title": "プロジェクトの要約",
+    "user": "あなた",
+    "prompt": "明日の予定を箇条書きにして。試作品の確認、残りの作業の確認、次の改善の準備。",
+    "answerIntro": "明日の予定をまとめます。",
+    "answerItems": [
+      "試作品を確認する。",
+      "残りの作業を確認する。",
+      "次の改善に向けて準備する。"
+    ],
+    "placeholder": "メッセージを入力...",
+    "capabilities": [
+      "テキスト生成",
+      "画像生成",
+      "音声生成"
+    ],
+  },
+  boundary: boundaryComparisonJa,
+  "title": "ブラウザで使うAI環境と、データを守る仕組み",
   "headline": [
     "安全性を徹底追求した、",
     "簡単に使えるAI環境。"
   ],
-  "description": "ブラウザ内でテキスト・画像・音声を生成。Naidanの仕組みと、データや権限を自分で選べる使い方を紹介します。",
+  "description": "Naidanはブラウザで会話・画像生成・音声生成ができるAI環境です。端末内で動くモデル、ファイルの権限、会話の保存方法を選ぶ使い方を紹介します。",
   "intro": [
     "AIに資料を渡す際、外部へ送ってよいかをその都度判断する。安全に使い続けるための負担を、使う人の注意深さだけに任せたくありません。",
     "目指したのは、危険な操作が起こりにくい環境を、誰もが簡単に使えること。その考えから生まれたのがNaidanです。"
   ],
   "howTitle": "ブラウザが持つ境界を、そのまま活かす。",
-  "howLead": "ブラウザを遠くのAIにつながる画面としてだけでなく、AIが動く環境として利用しています。",
+  "howLead": "普段のブラウザを、AIやツールを動かすための制限付きの実行環境として使います。ファイル、クリップボード、通信へのアクセスには、ブラウザのAPIと許可の仕組みを通ります。",
   "mechanisms": [
     {
       "title": "アクセスできる範囲をブラウザが制御",
@@ -40,6 +62,7 @@ export const strings = {
       "body": "Naidanと独立して動くOllamaやllama.cpp serverにもAPIで接続できます。モデルの対応範囲や速度を重視したいときの選択肢です。これらはネイティブプロセスの権限で動作します。",
     }
   ],
+  storageCaption: 'Local StorageはOPFSを使えない場合の選択肢です。容量と送信画像の保存に制限があります。',
   "storageTitle": "会話を保存するか、メモリだけで扱うか。",
   "storageLead": "会話データをブラウザの保存領域へ記録するかを選べます。",
   "storage": [
@@ -53,26 +76,26 @@ export const strings = {
     }
   ],
   "storageNote": "この設定はNaidanの会話データの保持方法を選ぶものです。モデルのキャッシュ、書き出したファイル、OSのメモリ管理は別に扱われます。",
-  "standalone": { "title": "ページを開くだけ。配信用サーバーも用意しない。", "body": "Standalone版をダウンロードして展開すると、index.htmlをfile://で開いて使えます。アプリを配信するためのローカルサーバーやインストーラーを用意する代わりに、普段のブラウザで起動します。モデルの取得や接続先は、選んだ使い方で決まります。" },
-  "standaloneLink": "Standalone\u7248\u3092file://\u3067\u4f7f\u3046",
+  "standalone": { "title": "ダブルクリックで、AIを使い始める。", "body": "Standalone版のZIPを展開したら、PCでindex.htmlをダブルクリック。インストーラーや画面を配信するサーバーを用意せず、ブラウザで開けます。その後、使うモデルやローカルエンジンを選びます。" },
+  "standaloneLink": "インストーラーや配信用サーバーなしで使う",
   "guidesTitle": "知りたい機能から探す",
   "guidesLead": "関心のあるガイドから読み始められます。使い方と、選ぶ際に知っておきたい点を一緒に説明します。",
   "guides": {
     "files": {
-      "title": "ファイルやフォルダをAIに渡す",
+      "title": "AIが読み書きできるファイルを選ぶ",
       "body": "フォルダのリンクとコピー、読み取り・書き込み権限の違いを説明します。",
     },
     "boundary": {
-      "title": "ブラウザの権限境界を知る",
+      "title": "ブラウザ内AIの処理とアクセス権限を確認する",
       "body": "ブラウザの権限制限と端末内の処理を図で確認します。",
     },
     "branching": {
-      "title": "会話を途中から分岐する",
-      "body": "元の会話を残したまま、別の指示を試せます。",
+      "title": "AIとの会話を自由に分岐・編集する",
+      "body": "元の会話を残しながら、前のメッセージの編集、別の回答、別のチャットへの分岐を試せます。",
     },
     "shell": {
-      "title": "ブラウザ内でシェルを使う",
-      "body": "使い慣れたコマンドでファイルや会話の内容を調べられます。",
+      "title": "ブラウザ内のシェルでAIにファイル操作を任せる",
+      "body": "選んだファイルの検索をAIに頼み、使ったコマンドと結果を確認できます。",
     },
   },
 } satisfies HomeMessages;

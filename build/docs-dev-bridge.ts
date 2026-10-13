@@ -5,11 +5,41 @@ import type { Plugin, ViteDevServer } from 'vite';
 // until a /docs request arrives. The child has its own Vue/CSS/plugin graph.
 export function createDocsDevBridge(): Plugin {
   let pending: Promise<ViteDevServer> | undefined;
+  let retirement: Promise<void> = Promise.resolve();
   let closing = false;
+  let parent: ViteDevServer | undefined;
+  const retire = (): void => {
+    const previous = pending;
+    pending = undefined;
+    if (!previous) return;
+    retirement = retirement.then(async () => {
+      await (await previous).close();
+    }).catch(error => {
+      parent?.config.logger.error(`Docs dev restart failed: ${String(error)}`);
+    });
+  };
   return {
     name: 'naidan-docs-dev-bridge',
     apply: 'serve',
     configureServer(server) {
+      parent = server;
+      const docsRoot = path.resolve(server.config.root, 'docs');
+      server.watcher.add([
+        path.resolve(docsRoot, 'build'),
+        path.resolve(docsRoot, 'site/routes.ts'),
+        path.resolve(docsRoot, 'site/external-link.ts'),
+        path.resolve(docsRoot, 'strings/entry/en.ts'),
+        path.resolve(docsRoot, 'strings/entry/ja.ts'),
+      ]);
+      server.watcher.on('all', (event, file) => {
+        if (event !== 'change' && event !== 'add' && event !== 'unlink') return;
+        const relative = path.relative(docsRoot, file);
+        if (relative.startsWith(`build${path.sep}`) && relative.endsWith('.ts')
+          || relative === path.join('site', 'routes.ts')
+          || relative === path.join('site', 'external-link.ts')
+          || relative === path.join('strings', 'entry', 'en.ts')
+          || relative === path.join('strings', 'entry', 'ja.ts')) retire();
+      });
       server.middlewares.use(async (request, response, next) => {
         let url: URL;
         try {
@@ -22,14 +52,23 @@ export function createDocsDevBridge(): Plugin {
           response.statusCode = 503; response.end(); return;
         }
         try {
-          pending ??= (async () => {
-            const factory = await server.ssrLoadModule('/docs/build/dev.ts') as { createDocsDevServer: ({ root, parentServer }: { root: string; parentServer: ViteDevServer }) => Promise<ViteDevServer> };
-            if (typeof factory.createDocsDevServer !== 'function') throw new Error('Invalid Docs development module');
-            return factory.createDocsDevServer({ root: path.resolve(server.config.root, 'docs'), parentServer: server });
-          })().catch(error => {
-            pending = undefined; throw error;
-          });
-          const docs = await pending;
+          let docs: ViteDevServer;
+          for (;;) {
+            if (!pending) {
+              const attempt: Promise<ViteDevServer> = retirement.then(async () => {
+                const factory = await server.ssrLoadModule('/docs/build/dev.ts') as { createDocsDevServer: ({ root, parentServer }: { root: string; parentServer: ViteDevServer }) => Promise<ViteDevServer> };
+                if (typeof factory.createDocsDevServer !== 'function') throw new Error('Invalid Docs development module');
+                return factory.createDocsDevServer({ root: docsRoot, parentServer: server });
+              }).catch(error => {
+                if (pending === attempt) pending = undefined;
+                throw error;
+              });
+              pending = attempt;
+            }
+            const current = pending;
+            docs = await current;
+            if (current === pending) break;
+          }
           if (closing) {
             response.statusCode = 503; response.end(); return;
           }
@@ -45,15 +84,8 @@ export function createDocsDevBridge(): Plugin {
     },
     async closeBundle() {
       closing = true;
-      const current = pending;
-      pending = undefined;
-      if (current) {
-        try {
-          await (await current).close();
-        } catch (error) {
-          this.warn(`Docs dev shutdown: ${String(error)}`);
-        }
-      }
+      retire();
+      await retirement;
     },
   };
 }

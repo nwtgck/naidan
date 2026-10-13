@@ -1,10 +1,22 @@
 <script setup lang="ts">
-import { PaperclipIcon, SendIcon, ChevronDownIcon, CopyIcon, PencilIcon, GitForkIcon, RefreshCwIcon } from 'lucide-vue-next';
-import logo from '../assets/naidan.svg';
+import { computed } from 'vue';
+import { BirdIcon, UserIcon, PaperclipIcon, SendIcon, SquareIcon, ChevronDownIcon, CopyIcon, PencilIcon, RefreshCwIcon, MoreHorizontalIcon, MoreVerticalIcon, Volume2Icon, Settings2Icon, FileEditIcon } from 'lucide-vue-next';
 import ReplicaChrome from './demos/ReplicaChrome.vue';
+import type { HomeDemoCopy, ReplicaChromeCopy } from './messages';
 
-// Copy the visual composition, not the application runtime. No model, account,
-// file handles, clipboard operations or network connections are created here.
+const props = defineProps<{ copy: HomeDemoCopy; chrome: ReplicaChromeCopy }>();
+
+// Every chunk is present in static HTML; CSS reveals it in reading order.
+function chunksOf({ text }: { text: string }): string[] {
+  const graphemes = Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text), part => part.segment);
+  return Array.from({ length: 3 }, (_, index) => graphemes.slice(
+    Math.floor(graphemes.length * index / 3),
+    Math.floor(graphemes.length * (index + 1) / 3),
+  ).join(''));
+}
+
+const introChunks = computed(() => chunksOf({ text: props.copy.answerIntro }));
+const itemChunks = computed(() => props.copy.answerItems.map(text => chunksOf({ text })));
 
 
 defineExpose({
@@ -19,181 +31,110 @@ defineExpose({
 
 <template>
   <div class="home-demonstration" data-docs-animation="chat-response" aria-hidden="true">
-    <ReplicaChrome title="Project summary" address="Naidan" sidebar="visible">
-      <div class="demo-thread">
-        <div class="demo-user"><span class="demo-role">YOU</span><p>Summarize the notes for tomorrow.</p><span class="demo-file"><PaperclipIcon :size="11" /> notes.txt</span></div>
-        <div class="demo-assistant"><img :src="logo" width="23" height="23" alt=""><div><b>Naidan</b><div class="demo-answer"><p>Here is the plan:</p><ul><li>Review the prototype.</li><li>Check the remaining tasks.</li><li>Prepare the next iteration.</li></ul></div><div class="demo-message-actions"><CopyIcon :size="12" /><PencilIcon :size="12" /><RefreshCwIcon :size="12" /><GitForkIcon :size="12" /></div></div></div>
+    <ReplicaChrome :copy="chrome" :title="copy.title" address="Naidan" sidebar="visible">
+      <div class="demo-scene" data-testid="docs-home-chat-scene">
+        <div class="demo-thread">
+          <div class="demo-message demo-user">
+            <div class="demo-message-header"><span class="demo-avatar"><UserIcon :size="13" /></span><b class="demo-user-role">{{ copy.user }}</b></div>
+            <p data-testid="docs-home-prompt">{{ copy.prompt }}</p>
+            <div class="demo-message-actions"><MoreHorizontalIcon :size="12" /><Volume2Icon :size="12" /><SendIcon :size="12" /><CopyIcon :size="12" /><PencilIcon :size="12" /><MoreVerticalIcon :size="12" /></div>
+          </div>
+          <div class="demo-message demo-assistant">
+            <div class="demo-message-header"><span class="demo-avatar demo-avatar-assistant"><BirdIcon :size="13" /></span><b>Gemma</b><span class="demo-header-tools"><Volume2Icon :size="11" /><span class="demo-generating-control"><SquareIcon :size="10" /></span><MoreHorizontalIcon :size="12" /></span></div>
+            <div class="demo-answer" data-testid="docs-home-response">
+              <p data-testid="docs-home-response-intro"><span v-for="(chunk, index) in introChunks" :key="index" class="demo-chunk" :class="`demo-chunk-${index}`" :data-chunk-index="index" data-testid="docs-home-response-chunk">{{ chunk }}</span></p>
+              <ul>
+                <li v-for="(chunks, itemIndex) in itemChunks" :key="itemIndex" class="demo-item" :class="`demo-item-${itemIndex}`" data-testid="docs-home-response-item"><span v-for="(chunk, index) in chunks" :key="index" class="demo-chunk" :class="`demo-chunk-${3 + itemIndex * 3 + index}`" :data-chunk-index="3 + itemIndex * 3 + index" data-testid="docs-home-response-chunk">{{ chunk }}</span></li>
+              </ul>
+            </div>
+            <div class="demo-message-actions"><MoreHorizontalIcon :size="12" /><Volume2Icon :size="12" /><RefreshCwIcon :size="12" /><CopyIcon :size="12" /><PencilIcon :size="12" /><MoreVerticalIcon :size="12" /></div>
+          </div>
+        </div>
+        <div class="demo-input"><div class="demo-placeholder">{{ copy.placeholder }}</div><div class="demo-input-editor"><ChevronDownIcon :size="11" /><FileEditIcon :size="11" /></div><div class="demo-input-controls"><span class="demo-model">Gemma <ChevronDownIcon :size="10" /></span><PaperclipIcon :size="13" /><Settings2Icon :size="13" /><span class="demo-send"><span class="demo-send-ready"><SendIcon :size="13" /></span><span class="demo-send-stop"><span>Esc</span><SquareIcon :size="11" /></span></span></div></div>
       </div>
-      <div class="demo-input"><div class="demo-placeholder">Type a message...</div><div class="demo-input-controls"><span class="demo-model">Gemma <ChevronDownIcon :size="10" /></span><PaperclipIcon :size="13" /><span class="demo-send"><SendIcon :size="13" /></span></div></div>
     </ReplicaChrome>
-    <div class="demo-capabilities"><span>Text generation</span><span>Image generation</span><span>Speech generation</span></div>
+    <div class="demo-capabilities"><span v-for="capability in copy.capabilities" :key="capability">{{ capability }}</span></div>
   </div>
 </template>
 
 <style scoped>
-.home-demonstration {
-  position: relative;
-  min-width: 0;
-}
+.home-demonstration { min-width: 0; }
+.demo-scene { display: flex; flex-direction: column; font: 11px/1.7 ui-sans-serif,system-ui,sans-serif; }
+.demo-thread { flex: 1; min-width: 0; }
+.demo-message { padding: 16px 19px 13px; }
+.demo-assistant { background: #1f293733; border-block: 1px solid #1f293780; }
+.demo-message-header { display: flex; align-items: center; gap: 9px; height: 25px; color: #9ca3af; font-size: 10px; font-weight: 700; }
+.demo-message-header b { font-size: 10px; font-weight: 700; }
+.demo-user-role { color: #e5e7eb; text-transform: uppercase; letter-spacing: .1em; }
+.demo-avatar { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 25px; flex: none; background: #1f2937; border: 1px solid #374151; border-radius: 8px; color: #9ca3af; }
+.demo-avatar-assistant { color: #60a5fa; }
+.demo-header-tools { display: inline-flex; align-items: center; gap: 8px; color: #9ca3af; }
+.demo-user p,.demo-answer p { margin: 5px 0 0; color: #e5e7eb; }
+.demo-message-actions { display: flex; align-items: center; justify-content: flex-end; gap: 11px; margin-top: 8px; color: #9ca3af; }
+.demo-message-actions svg:first-child { color: #60a5fa66; }
+.demo-answer { color: #d1d5db; animation: docs-response-cycle 12s linear infinite both; }
+.demo-answer ul { margin: 3px 0 0; padding-left: 17px; }
+.demo-answer li { padding: 0; }
+.demo-chunk,.demo-item { animation-duration: 12s; animation-timing-function: steps(1,end); animation-iteration-count: infinite; animation-fill-mode: both; }
+.demo-chunk-0 { animation-name: docs-chunk-0; }
+.demo-chunk-1 { animation-name: docs-chunk-1; }
+.demo-chunk-2 { animation-name: docs-chunk-2; }
+.demo-chunk-3,.demo-item-0 { animation-name: docs-chunk-3; }
+.demo-chunk-4 { animation-name: docs-chunk-4; }
+.demo-chunk-5 { animation-name: docs-chunk-5; }
+.demo-chunk-6,.demo-item-1 { animation-name: docs-chunk-6; }
+.demo-chunk-7 { animation-name: docs-chunk-7; }
+.demo-chunk-8 { animation-name: docs-chunk-8; }
+.demo-chunk-9,.demo-item-2 { animation-name: docs-chunk-9; }
+.demo-chunk-10 { animation-name: docs-chunk-10; }
+.demo-chunk-11 { animation-name: docs-chunk-11; }
+.demo-generating-control,.demo-send-stop { animation: docs-generating 12s steps(1,end) infinite both; }
+.demo-send-ready { animation: docs-send-disabled 12s steps(1,end) infinite both; }
+.demo-input { position: relative; background: #1f2937; border: 1px solid #374151; border-radius: 12px; margin: 9px 12px 14px; padding: 12px; box-shadow: 0 6px 18px #0003; }
+.demo-placeholder { color: #8492a6; font: 10px/1.6 ui-sans-serif,system-ui,sans-serif; padding-bottom: 14px; }
+.demo-input-editor { position: absolute; top: 10px; right: 12px; display: flex; flex-direction: column; gap: 5px; color: #9ca3af; }
+.demo-input-controls { display: flex; align-items: center; gap: 10px; color: #a3b2c9; }
+.demo-model { display: flex; align-items: center; gap: 5px; font-size: 9px; margin-right: auto; }
+.demo-send { display: grid; align-items: center; justify-items: center; min-width: 39px; min-height: 28px; background: #2563eb; color: white; border-radius: 8px; box-shadow: 0 3px 9px #2563eb4d; }
+.demo-send-ready,.demo-send-stop { grid-area: 1 / 1; display: inline-flex; align-items: center; gap: 4px; padding: 0 5px; }
+.demo-send-ready { opacity: .5; }
+.demo-send-stop { font-size: 8px; }
+.demo-capabilities { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; font: 10px/1.4 ui-sans-serif,system-ui,sans-serif; color: var(--muted); }
+.demo-capabilities span { border: 1px solid var(--line-strong); border-radius: 6px; padding: 5px 8px; }
 
-.demo-thread {
-  padding: 19px 19px 14px;
-  flex: 1;
-  font: 11px/1.8 ui-sans-serif, system-ui, sans-serif;
-}
+/* The entire response fades together before replay. The chunks only appear;
+   completed lines never disappear in reverse reading order. */
+@keyframes docs-response-cycle { 0%,6% { opacity: 0; } 8%,92% { opacity: 1; } 98%,100% { opacity: 0; } }
+@keyframes docs-chunk-0 { 0%,11.9% { visibility: hidden; } 12%,100% { visibility: visible; } }
+@keyframes docs-chunk-1 { 0%,14.9% { visibility: hidden; } 15%,100% { visibility: visible; } }
+@keyframes docs-chunk-2 { 0%,17.9% { visibility: hidden; } 18%,100% { visibility: visible; } }
+@keyframes docs-chunk-3 { 0%,20.9% { visibility: hidden; } 21%,100% { visibility: visible; } }
+@keyframes docs-chunk-4 { 0%,23.9% { visibility: hidden; } 24%,100% { visibility: visible; } }
+@keyframes docs-chunk-5 { 0%,26.9% { visibility: hidden; } 27%,100% { visibility: visible; } }
+@keyframes docs-chunk-6 { 0%,29.9% { visibility: hidden; } 30%,100% { visibility: visible; } }
+@keyframes docs-chunk-7 { 0%,32.9% { visibility: hidden; } 33%,100% { visibility: visible; } }
+@keyframes docs-chunk-8 { 0%,35.9% { visibility: hidden; } 36%,100% { visibility: visible; } }
+@keyframes docs-chunk-9 { 0%,38.9% { visibility: hidden; } 39%,100% { visibility: visible; } }
+@keyframes docs-chunk-10 { 0%,41.9% { visibility: hidden; } 42%,100% { visibility: visible; } }
+@keyframes docs-chunk-11 { 0%,44.9% { visibility: hidden; } 45%,100% { visibility: visible; } }
+@keyframes docs-generating { 0%,7.9%,51%,100% { visibility: hidden; } 8%,50% { visibility: visible; } }
+@keyframes docs-send-disabled { 0%,7.9%,51%,100% { visibility: visible; } 8%,50% { visibility: hidden; } }
 
-.demo-user {
-  margin-left: auto;
-  width: fit-content;
-  max-width: 96%;
-  border: 1px solid #374151;
-  background: #1f2937;
-  padding: 12px 15px;
-  border-radius: 15px 15px 4px 15px;
+:global(html:has(#docs-pause-motion:checked)) .demo-answer,
+:global(html:has(#docs-pause-motion:checked)) .demo-chunk,
+:global(html:has(#docs-pause-motion:checked)) .demo-item { animation: none !important; opacity: 1 !important; visibility: visible !important; }
+:global(html:has(#docs-pause-motion:checked)) .demo-send-ready { animation: none !important; visibility: visible !important; }
+:global(html:has(#docs-pause-motion:checked)) .demo-generating-control,
+:global(html:has(#docs-pause-motion:checked)) .demo-send-stop { animation: none !important; visibility: hidden !important; }
+@media (prefers-reduced-motion: reduce) {
+  .demo-answer,.demo-chunk,.demo-item { animation: none !important; opacity: 1 !important; visibility: visible !important; }
+  .demo-send-ready { animation: none !important; visibility: visible !important; }
+  .demo-generating-control,.demo-send-stop { animation: none !important; visibility: hidden !important; }
 }
-
-.demo-role {
-  color: #8b9bb1;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: .1em;
-}
-
-.demo-user p {
-  margin: 4px 0 8px;
-  color: #e5e7eb;
-}
-
-.demo-file {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: #111827;
-  border: 1px solid #364152;
-  border-radius: 5px;
-  padding: 1px 5px;
-  color: #93c5fd;
-  font-size: 9px;
-}
-
-.demo-assistant {
-  display: flex;
-  gap: 10px;
-  margin-top: 24px;
-}
-
-.demo-assistant img {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.demo-assistant b {
-  display: block;
-  color: #e5e7eb;
-  font-size: 10px;
-}
-
-.demo-answer {
-  color: #cad5e5;
-  clip-path: inset(0 0 0 0);
-  animation: docs-response-reveal 12s ease-in-out infinite;
-}
-
-.demo-answer p {
-  margin: 5px 0;
-}
-
-.demo-answer ul {
-  padding-left: 14px;
-  margin: 0;
-}
-
-.demo-message-actions {
-  display: flex;
-  gap: 12px;
-  margin-top: 10px;
-  color: #9ca3af;
-}
-
-.demo-input {
-  background: #1f2937;
-  border: 1px solid #374151;
-  border-radius: 12px;
-  margin: 10px 12px 14px;
-  padding: 12px;
-}
-
-.demo-placeholder {
-  color: #8492a6;
-  font: 10px/1.6 ui-sans-serif, system-ui, sans-serif;
-  padding-bottom: 14px;
-}
-
-.demo-input-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #a3b2c9;
-}
-
-.demo-model {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 9px;
-  margin-right: auto;
-}
-
-.demo-send {
-  display: flex;
-  align-items: center;
-  padding: 8px 10px;
-  background: #2563eb;
-  color: white;
-  border-radius: 8px;
-}
-
-.demo-capabilities {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 14px;
-  font: 10px/1.4 ui-sans-serif, system-ui, sans-serif;
-  color: var(--muted);
-}
-
-.demo-capabilities span {
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
-  padding: 5px 8px;
-}
-
-@keyframes docs-response-reveal {
-  0%,8% {
-    clip-path: inset(0 0 100% 0);
-  }
-  42%,94% {
-    clip-path: inset(0 0 0 0);
-  }
-  100% {
-    clip-path: inset(0 0 100% 0);
-  }
-}
-
-@media(max-width:600px) {
-  .demo-thread {
-    font-size: 9px;
-    padding: 15px 11px;
-  }
-  .demo-user {
-    padding: 9px 10px;
-  }
-  .demo-assistant {
-    gap: 7px;
-  }
-  .demo-input {
-    padding: 9px;
-    margin: 6px 9px 12px;
-  }
+@media (max-width: 600px) {
+  .demo-scene { font-size: 9px; }
+  .demo-message { padding: 12px 10px; }
+  .demo-message-actions { gap: 8px; }
+  .demo-input { padding: 9px; margin: 6px 9px 12px; }
 }
 </style>

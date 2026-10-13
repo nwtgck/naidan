@@ -1,9 +1,16 @@
 import type { CommonMessages } from '../../site/messages';
 
 export const strings = {
+  "chrome": {
+    "newChat": "新しいチャット",
+    "search": "検索",
+    "chatGroup": "プロジェクトのメモ",
+    "otherChat": "アイデア",
+    "settings": "設定",
+  },
   "skip": "本文へ移動",
-  "home": "ドキュメント",
-  "guides": "機能を探す",
+  "home": "ブラウザで使うAIのガイド",
+  "guides": "使い方を探す",
   "source": "ソースコード",
   "launch": "Naidanを開く",
   pauseMotion: '動きを止める',

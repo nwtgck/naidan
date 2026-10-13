@@ -1,13 +1,13 @@
-import type { StandaloneMessages } from '../../../site/messages';
-
+import { standaloneDemoEn } from './demo/en';
 export const strings = {
-  "title": "Open Naidan directly with file://",
-  "description": "Download the Standalone edition, extract it and open index.html in your browser.",
+  demo: standaloneDemoEn,
+  "title": "Start AI in your browser without an installer or app server",
+  "description": "Download Naidan Standalone and open index.html with file:// to start AI in your browser. No installer or HTTP app server is needed; choose your model or local engine separately.",
   "intro": [
     "Using AI should not require giving an application more access to your PC just to start it. Naidan’s Standalone edition runs from local files in the browser, keeping the browser’s boundaries without a separate application server.",
     "Keep the application as a folder you can open. Model preparation, saved conversations and any local inference engine are separate parts of the setup."
   ],
-  "diagramCaption": "From the extracted Standalone folder to a browser tab. The address begins with file:// because the browser is opening the local index.html directly.",
+  "diagramCaption": "Double-click index.html in the extracted folder to open Naidan in your browser. The file:// address shows that the browser opened a local file. Choose a model or engine after opening it.",
   "download": "Download the Standalone ZIP",
   "stepsTitle": "Start from the downloaded folder",
   "steps": [
@@ -49,5 +49,5 @@ export const strings = {
       "body": "Export your data before switching browsers, moving between hosted and file-based use, or replacing your installation. Download and extract a fresh Standalone folder for an update, keeping its own assets together.",
     }
   ],
-  "next": "Understand the browser’s access boundaries",
-} satisfies StandaloneMessages;
+  "next": "Understand local AI processing and browser permissions",
+};

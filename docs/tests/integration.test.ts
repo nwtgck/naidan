@@ -12,14 +12,14 @@ describe('Docs development and static output', () => {
   it('renders the same localized Vue body and scoped styles in development and production', async () => {
     await using fixture = await createSiteFixture();
     await using dev = await startSiteDev({ root: fixture.root });
-    const app = await fetch(`${dev.origin}/`);
+    const app = await dev.request({ url: '/' });
     expect(await app.text()).toContain('APP-ONLY');
     expect(await readdir(path.join(fixture.docs, '.cache')).catch(() => [])).toEqual([]);
     await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'error' });
     for (const locale of DOCS_LOCALES) {
       for (const page of DOCS_PAGES) {
         const href = docsHref({ locale, page: page.id });
-        const response = await fetch(dev.origin + href);
+        const response = await dev.request({ url: href });
         expect(response.status, href).toBe(200);
         using development = parsePage({ html: await response.text() });
         const relative = `${locale}/${page.id === 'index' ? '' : `${page.id}/`}index.html`;
@@ -38,7 +38,7 @@ describe('Docs development and static output', () => {
         expect(scripts.length).toBe(page.id === 'chat/branching' ? 1 : 0);
         for (const element of development.document.querySelectorAll('link[rel="stylesheet"]')) {
           const asset = element.getAttribute('href');
-          const css = await fetch(new URL(asset ?? '', dev.origin));
+          const css = await dev.request({ url: asset ?? '' });
           expect(css.status, asset ?? '').toBe(200);
           expect(css.headers.get('content-type'), asset ?? '').toContain('text/css');
         }
@@ -64,15 +64,15 @@ describe('Docs adversarial lifecycle behavior', () => {
       ['/docs/fr/', 404], ['/docs/en/missing/', 404], ['/docs/%ZZ', 400],
       ['/docs/assets/missing.svg', 404],
     ] as const) {
-      const response = await fetch(dev.origin + pathname, { redirect: 'manual' });
+      const response = await dev.request({ url: pathname });
       expect(response.status, pathname).toBe(status);
       expect(await response.text()).not.toContain('APP-ONLY');
       if (status === 308) expect(response.headers.get('location')).toMatch(/^\/docs\//);
     }
-    const head = await fetch(`${dev.origin}/docs/ja/`, { method: 'HEAD' });
+    const head = await dev.request({ url: '/docs/ja/', method: 'HEAD' });
     expect(head.status).toBe(200);
     expect(await head.text()).toBe('');
-    const post = await fetch(`${dev.origin}/docs/ja/`, { method: 'POST' });
+    const post = await dev.request({ url: '/docs/ja/', method: 'POST' });
     expect(post.status).toBe(405);
     expect(post.headers.get('allow')).toBe('GET, HEAD');
   });
@@ -82,7 +82,7 @@ describe('Docs adversarial lifecycle behavior', () => {
     await using dev = await startSiteDev({ root: fixture.root });
     await Promise.all(Array.from({ length: 40 }, async (_, index) => {
       const locale = index % 2 === 0 ? 'en' : 'ja';
-      const response = await fetch(`${dev.origin}/docs/${locale}/`);
+      const response = await dev.request({ url: `/docs/${locale}/` });
       expect(response.status).toBe(200);
       using parsed = parsePage({ html: await response.text() });
       expect(parsed.document.documentElement.lang).toBe(locale);
@@ -94,10 +94,10 @@ describe('Docs adversarial lifecycle behavior', () => {
     const source = await readFile(file, 'utf8');
     await writeFile(file, source.replace('知りたい機能から探す', 'Updated Japanese guide heading'));
     await vi.waitFor(async () => {
-      const response = await fetch(`${dev.origin}/docs/ja/`);
+      const response = await dev.request({ url: '/docs/ja/' });
       expect(await response.text()).toContain('Updated Japanese guide heading');
     }, { timeout: 8000, interval: 100 });
-    expect(await (await fetch(`${dev.origin}/docs/en/`)).text()).not.toContain('Updated Japanese guide heading');
+    expect(await (await dev.request({ url: '/docs/en/' })).text()).not.toContain('Updated Japanese guide heading');
   });
 
   it('uses fresh render modules, removes obsolete output and keeps server dictionaries out of client assets', async () => {
@@ -151,7 +151,7 @@ const NestedNative = defineAsyncComponent(() => import('../../site/NestedNative.
 ${declaration}`).replace('<template>', '<template><NestedNative />'));
     await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' });
     await using dev = await startSiteDev({ root: fixture.root });
-    using development = parsePage({ html: await (await fetch(`${dev.origin}/docs/en/files/privacy/`)).text() });
+    using development = parsePage({ html: await (await dev.request({ url: '/docs/en/files/privacy/' })).text() });
     using production = parsePage({ html: await readFile(path.join(fixture.docs, 'dist/en/files/privacy/index.html'), 'utf8') });
     expect(development.document.querySelector('[data-testid="nested-native"]')?.outerHTML).toBe(production.document.querySelector('[data-testid="nested-native"]')?.outerHTML);
     let productionCss = '', developmentCss = '';
@@ -159,7 +159,7 @@ ${declaration}`).replace('<template>', '<template><NestedNative />'));
       productionCss += await readFile(path.join(fixture.docs, 'dist', new URL(link.getAttribute('href') ?? '', 'https://example.test').pathname.slice('/docs/'.length)), 'utf8');
     }
     for (const link of development.document.querySelectorAll('link[rel="stylesheet"]')) {
-      developmentCss += await (await fetch(new URL(link.getAttribute('href') ?? '', dev.origin))).text();
+      developmentCss += await (await dev.request({ url: link.getAttribute('href') ?? '' })).text();
     }
     for (const css of [productionCss, developmentCss]) {
       const values: string[] = [];
@@ -197,15 +197,18 @@ console.log(pages);
   it('isolates accidental component mutations from subsequent and concurrent renders', async () => {
     await using fixture = await createSiteFixture();
     const file = path.join(fixture.docs, 'pages/index.vue');
-    await writeFile(file, (await readFile(file, 'utf8')).replace(
-      'defineProps<{ s: HomeMessages; locale: DocsLocale }>();',
+    const original = await readFile(file, 'utf8');
+    const mutated = original.replace(
+      'defineProps<{ s: HomeMessages; locale: DocsLocale; common: CommonMessages }>();',
       `\
-const props = defineProps<{ s: HomeMessages; locale: DocsLocale }>();
+const props = defineProps<{ s: HomeMessages; locale: DocsLocale; common: CommonMessages }>();
 props.s.intro[0] += ' One isolated render.';`,
-    ));
+    );
+    expect(mutated).not.toBe(original);
+    await writeFile(file, mutated);
     await using dev = await startSiteDev({ root: fixture.root });
     const assertCopy = async ({ locale }: { locale: 'en' | 'ja' }) => {
-      const response = await fetch(`${dev.origin}/docs/${locale}/`);
+      const response = await dev.request({ url: `/docs/${locale}/` });
       expect(response.status).toBe(200);
       using page = parsePage({ html: await response.text() });
       expect(page.document.querySelector('[data-testid="docs-hero"]')?.textContent?.split('One isolated render.')).toHaveLength(2);
@@ -221,7 +224,7 @@ describe('Docs missing-page document', () => {
     await using fixture = await createSiteFixture();
     await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' });
     await using dev = await startSiteDev({ root: fixture.root });
-    const response = await fetch(`${dev.origin}/docs/ja/missing/`);
+    const response = await dev.request({ url: '/docs/ja/missing/' });
     expect(response.status).toBe(404);
     using development = parsePage({ html: await response.text() });
     using production = parsePage({ html: await readFile(path.join(fixture.docs, 'dist/404.html'), 'utf8') });

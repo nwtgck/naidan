@@ -2,9 +2,9 @@
 import FolderAccessDemo from '../../site/demos/FolderAccessDemo.vue';
 import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
-import type { FilesMessages } from '../../site/messages';
+import type { FilesMessages, CommonMessages } from '../../site/messages';
 
-defineProps<{ s: FilesMessages; locale: DocsLocale }>();
+defineProps<{ s: FilesMessages; locale: DocsLocale; common: CommonMessages }>();
 
 
 defineExpose({
@@ -28,7 +28,7 @@ defineExpose({
       :key="paragraph"
       class="lead"
     >{{ paragraph }}</p>
-    <figure class="guide-figure"><FolderAccessDemo /><figcaption class="caption">{{ s.diagramCaption }}</figcaption></figure>
+    <figure class="guide-figure"><FolderAccessDemo :copy="s.demo" /><figcaption class="caption">{{ s.diagramCaption }}</figcaption></figure>
     <div class="pair-grid methods">
       <section
         v-for="method in s.methods"

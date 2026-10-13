@@ -2,9 +2,9 @@
 import BoundaryDiagram from '../../site/demos/BoundaryDiagram.vue';
 import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
-import type { BoundaryMessages } from '../../site/messages';
+import type { BoundaryMessages, CommonMessages } from '../../site/messages';
 
-defineProps<{ s: BoundaryMessages; locale: DocsLocale }>();
+defineProps<{ s: BoundaryMessages; locale: DocsLocale; common: CommonMessages }>();
 
 
 defineExpose({
@@ -29,7 +29,7 @@ defineExpose({
       class="lead"
     >{{ paragraph }}</p>
     <h2>{{ s.diagramTitle }}</h2>
-    <figure class="guide-figure"><BoundaryDiagram /><figcaption class="caption">{{ s.motionNote }}</figcaption></figure>
+    <figure class="guide-figure"><BoundaryDiagram :copy="s.demo" /><figcaption class="caption">{{ s.motionNote }}</figcaption></figure>
     <section
       v-for="section in s.sections"
       :key="section.title"

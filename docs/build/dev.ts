@@ -112,19 +112,41 @@ function createDocsRequestPlugin(): Plugin {
           response.setHeader('Content-Type', 'text/html; charset=utf-8');
           sendBody({ body: html });
         } catch (error) {
-          if (error instanceof Error) server.ssrFixStacktrace(error);
-          server.config.logger.error(String(error));
+          const context = (() => {
+            switch (route.kind) {
+            case 'page': return `${route.locale}/${route.page}`;
+            case 'bootstrap':
+            case 'outside':
+            case 'asset':
+            case 'redirect':
+            case 'invalid':
+            case 'missing':
+            case 'root': return route.kind;
+            default: {
+              const unreachable: never = route;
+              throw new Error(`Unsupported Docs route: ${String(unreachable)}`);
+            }
+            }
+          })();
+          const causes: string[] = [];
+          let current: unknown = error;
+          while (current instanceof Error) {
+            server.ssrFixStacktrace(current);
+            causes.push(current.stack ?? current.message);
+            current = current.cause;
+          }
+          if (current !== undefined) causes.push(String(current));
+          server.config.logger.error(`[Docs ${context}] ${causes.join('\nCaused by: ')}`);
           response.statusCode = 500;
-          sendBody({ body: 'Docs rendering failed; see the development console.' });
+          sendBody({ body: `Docs ${context} failed; see the development console.` });
         }
       });
     },
     handleHotUpdate(context) {
       // A page includes build-time strings; reload the Docs document, not the app.
-      // Vite invalidates imported SSR modules before the next render.
+      // Keep Vite's affected modules so its SSR graph is invalidated as well.
       bootstrap = undefined;
       context.server.ws.send({ type: 'full-reload', path: '*' });
-      return [];
     },
   };
 }
@@ -136,7 +158,7 @@ export async function createDocsDevServer({ root, parentServer }: { root: string
     plugins: [createDocsRequestPlugin()],
     server: {
       middlewareMode: true,
-      hmr: parentServer.httpServer ? { server: parentServer.httpServer, path: '__hmr' } : false,
+      hmr: parentServer.httpServer?.listening ? { server: parentServer.httpServer, path: '__hmr' } : false,
     },
   } satisfies InlineConfig));
 }

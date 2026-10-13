@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { FolderIcon, FileTextIcon, LockKeyholeIcon, CopyIcon } from 'lucide-vue-next';
+import type { FolderAccessCopy } from '../messages';
+
+defineProps<{ copy: FolderAccessCopy }>();
 
 
 defineExpose({
@@ -13,10 +16,10 @@ defineExpose({
 </script>
 
 <template>
-  <div class="folder-demo" data-docs-animation="folder-copy" lang="en" aria-hidden="true">
-    <section class="folder-source"><div class="folder-heading"><FolderIcon :size="19" /><b>On your device</b></div><div class="directory-name">project/</div><div class="file-row"><FileTextIcon :size="14" /><span>notes.txt</span><span class="file-selected">✓</span></div><div class="file-row"><FileTextIcon :size="14" /><span>plan.md</span><span class="file-selected">✓</span></div><div class="unselected-folder"><FolderIcon :size="13" /><span>Other folders</span><LockKeyholeIcon :size="13" /></div></section>
-    <div class="copy-bridge"><CopyIcon :size="18" /><span>Folder Copy</span><div class="copy-track"><i /></div></div>
-    <section class="folder-target"><div class="folder-heading"><FolderIcon :size="19" /><b>Naidan</b></div><div class="folder-access"><span>Mounted folder</span><strong>READ ONLY</strong></div><div class="copied-file"><FileTextIcon :size="14" /><span>notes.txt</span><small>copy</small></div><div class="copied-file"><FileTextIcon :size="14" /><span>plan.md</span><small>copy</small></div><div class="access-key"><LockKeyholeIcon :size="12" />Reading allowed · Writing disabled</div></section>
+  <div class="folder-demo" data-testid="folder-access-demo" data-docs-animation="folder-copy" aria-hidden="true">
+    <section class="folder-source"><div class="folder-heading"><FolderIcon :size="19" /><b>{{ copy.device }}</b></div><div class="directory-name">project/</div><div class="file-row"><FileTextIcon :size="14" /><span>notes.txt</span><span class="file-selected">✓</span></div><div class="file-row"><FileTextIcon :size="14" /><span>plan.md</span><span class="file-selected">✓</span></div><div class="unselected-folder"><FolderIcon :size="13" /><span>{{ copy.otherFolders }}</span><LockKeyholeIcon :size="13" /></div></section>
+    <div class="copy-bridge"><CopyIcon :size="18" /><span>{{ copy.folderCopy }}</span><div class="copy-track"><i /></div></div>
+    <section class="folder-target"><div class="folder-heading"><FolderIcon :size="19" /><b>Naidan</b></div><div class="folder-access"><span>{{ copy.mountedFolder }}</span><strong>{{ copy.readOnly }}</strong></div><div class="copied-file"><FileTextIcon :size="14" /><span>notes.txt</span><small>{{ copy.copy }}</small></div><div class="copied-file"><FileTextIcon :size="14" /><span>plan.md</span><small>{{ copy.copy }}</small></div><div class="access-key"><LockKeyholeIcon :size="12" />{{ copy.access }}</div></section>
   </div>
 </template>
 

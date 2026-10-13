@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { FileCodeIcon, FolderOpenIcon, MousePointer2Icon, ArchiveIcon } from 'lucide-vue-next';
+import { ArrowLeftIcon, ArrowRightIcon, ChevronRightIcon, FileCodeIcon, FolderIcon, FolderOpenIcon, MinusIcon, MoreHorizontalIcon, MousePointer2Icon, RotateCwIcon, SendIcon, SquareIcon, XIcon } from 'lucide-vue-next';
 import logo from '../../assets/naidan.svg';
+import type { StandaloneDemoCopy } from '../messages';
 
+defineProps<{ copy: StandaloneDemoCopy }>();
 
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {
@@ -14,255 +16,82 @@ defineExpose({
 </script>
 
 <template>
-  <div class="standalone-demo" data-docs-animation="open-local-html" lang="en" aria-hidden="true">
-    <div class="standalone-files"><div class="file-window-title"><FolderOpenIcon :size="15" /><b>naidan-standalone</b></div><div class="standalone-file-row open-file"><FileCodeIcon :size="21" /><span>index.html<small>Open in your browser</small></span><MousePointer2Icon :size="18" class="open-pointer" /></div><div class="standalone-file-row"><FolderOpenIcon :size="21" /><span>assets/<small>Keep the extracted files together</small></span></div><div class="standalone-archive"><ArchiveIcon :size="12" />Extract the ZIP first</div></div>
-    <div class="open-path"><span>Open</span><i /></div>
-    <div class="standalone-window"><div class="file-address"><span>◇</span><code>file:///…/naidan/index.html</code></div><div class="standalone-app"><img :src="logo" width="39" height="39" alt=""><b>Naidan</b><p>New Chat</p><div class="standalone-composer">Type a message...<span>↑</span></div></div><div class="standalone-status"><i />Browser session <span>No app server</span></div></div>
+  <div class="standalone-demo" data-testid="standalone-demo" data-docs-animation="open-local-html" aria-hidden="true">
+    <div class="launch-heading"><b>{{ copy.doubleClick }}</b><span><ArrowRightIcon :size="13" />{{ copy.openInBrowser }}</span></div>
+    <div class="standalone-stage">
+      <div class="explorer-window" data-testid="standalone-explorer">
+        <div class="window-title"><span><FolderOpenIcon :size="13" />{{ copy.explorer }}</span><span class="window-controls"><MinusIcon :size="11" /><SquareIcon :size="10" /><XIcon :size="11" /></span></div>
+        <div class="explorer-toolbar"><ArrowLeftIcon :size="13" /><ArrowRightIcon :size="13" /><div class="folder-path"><FolderIcon :size="13" /><code>naidan-standalone</code><ChevronRightIcon :size="12" /></div><MoreHorizontalIcon :size="14" /></div>
+        <div class="file-table">
+          <div class="file-table-head"><span>{{ copy.name }}</span><span>{{ copy.type }}</span></div>
+          <div class="file-row"><span><FolderIcon :size="16" /><code>assets/</code></span><small>{{ copy.folderType }}</small></div>
+          <div class="file-row index-row" data-testid="standalone-index-file"><span><FileCodeIcon :size="16" /><code>index.html</code></span><small>{{ copy.htmlType }}</small><MousePointer2Icon class="open-pointer" :size="20" /></div>
+        </div>
+        <div class="explorer-note">{{ copy.keepFiles }}</div>
+      </div>
+      <div class="browser-window" data-testid="standalone-browser">
+        <div class="browser-tabs"><span><img :src="logo" alt="" width="12" height="12">Naidan<XIcon :size="10" /></span><span class="window-controls"><MinusIcon :size="11" /><SquareIcon :size="10" /><XIcon :size="11" /></span></div>
+        <div class="browser-address"><RotateCwIcon :size="12" /><code>file:///…/naidan-standalone/index.html</code></div>
+        <div class="standalone-app"><img :src="logo" width="29" height="29" alt=""><b>Naidan</b><p>{{ copy.newChat }}</p><div class="model-preparation">{{ copy.prepareModel }}</div><div class="standalone-composer"><span>{{ copy.placeholder }}</span><SendIcon :size="13" /></div></div>
+        <div class="browser-status"><span>{{ copy.browserSession }}</span><span>{{ copy.noAppServer }}</span></div>
+      </div>
+    </div>
+    <p class="standalone-note">{{ copy.extract }}</p>
   </div>
 </template>
 
 <style scoped>
-.standalone-demo {
-  display: grid;
-  grid-template-columns: 1fr 48px 1.2fr;
-  align-items: center;
-  padding: 32px;
-  background: linear-gradient(130deg,var(--surface),var(--bg));
-  border: 1px solid var(--line-strong);
-  border-radius: 20px;
-  font: 12px/1.7 ui-sans-serif,system-ui,sans-serif;
-}
-
-.standalone-files {
-  border: 1px solid var(--line-strong);
-  background: var(--surface-2);
-  border-radius: 11px;
-  overflow: hidden;
-}
-
-.file-window-title {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
-}
-
-.file-window-title b {
-  font-size: 10px;
-  font-weight: 500;
-}
-
-.standalone-file-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 12px 13px;
-  color: var(--muted);
-}
-
-.standalone-file-row svg {
-  color: var(--blue);
-  flex-shrink: 0;
-}
-
-.standalone-file-row small {
-  display: block;
-  font-size: 8px;
-  color: var(--subtle);
-}
-
-.open-file {
-  background: #3b82f617;
-  color: var(--text);
-}
-
-.open-pointer {
-  position: absolute;
-  right: 17px;
-  bottom: 9px;
-  filter: drop-shadow(0 2px 2px #0003);
-  animation: docs-file-click 10s ease-in-out infinite;
-}
-
-.standalone-archive {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 9px 13px;
-  border-top: 1px solid var(--line);
-  color: var(--subtle);
-  font-size: 9px;
-}
-
-.open-path {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  color: var(--subtle);
-  font-size: 9px;
-  gap: 6px;
-}
-
-.open-path i {
-  height: 1px;
-  width: 26px;
-  background: var(--blue);
-  position: relative;
-}
-
-.open-path i::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  top: -2px;
-  width: 5px;
-  height: 5px;
-  border-top: 1px solid var(--blue);
-  border-right: 1px solid var(--blue);
-  transform: rotate(45deg);
-}
-
-.standalone-window {
-  background: #111827;
-  border: 1px solid #435370;
-  border-radius: 13px;
-  overflow: hidden;
-  color: #e5e7eb;
-  transform-origin: left center;
-  animation: docs-local-open 10s ease-in-out infinite;
-}
-
-.file-address {
-  padding: 11px;
-  background: #1b2638;
-  color: #8fb6f6;
-  display: flex;
-  gap: 8px;
-}
-
-.file-address code {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font: 9px/1.8 ui-monospace,monospace;
-  color: #c2d0e3;
-}
-
-.standalone-app {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 32px 18px 20px;
-}
-
-.standalone-app b {
-  font-size: 21px;
-  letter-spacing: -.05em;
-  margin-top: 8px;
-}
-
-.standalone-app p {
-  font-size: 10px;
-  color: #8093b0;
-  margin: 2px 0 22px;
-}
-
-.standalone-composer {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 12px;
-  border: 1px solid #374151;
-  background: #1f2937;
-  color: #8c9db7;
-  border-radius: 11px;
-  font-size: 9px;
-}
-
-.standalone-composer span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 21px;
-  height: 21px;
-  border-radius: 6px;
-  background: #2563eb;
-  color: white;
-  font-size: 13px;
-}
-
-.standalone-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border-top: 1px solid #29364b;
-  padding: 9px 12px;
-  color: #91a4bf;
-  font-size: 8px;
-}
-
-.standalone-status i {
-  height: 4px;
-  width: 4px;
-  border-radius: 100%;
-  background: #8addb8;
-}
-
-.standalone-status span {
-  margin-left: auto;
-}
-
-@keyframes docs-file-click {
-  0%,10% {
-    transform: translate(8px,12px);
-    opacity: .35;
-  }
-  22%,28% {
-    transform: translate(0,0);
-    opacity: 1;
-  }
-  25% {
-    transform: translate(0,0) scale(.82);
-  }
-  45%,100% {
-    transform: translate(0,0);
-    opacity: .35;
-  }
-}
-
-@keyframes docs-local-open {
-  0%,20% {
-    transform: translateX(7px) scale(.98);
-    border-color: #435370;
-  }
-  34%,60% {
-    transform: translateX(0) scale(1);
-    border-color: #79b9ff;
-  }
-  75%,100% {
-    transform: translateX(0) scale(1);
-    border-color: #435370;
-  }
-}
-
-@media(max-width:640px) {
-  .standalone-demo {
-    grid-template-columns: 1fr;
-    padding: 20px;
-    gap: 18px;
-  }
-  .open-path {
-    display: none;
-  }
-  .standalone-file-row {
-    padding: 9px 13px;
-  }
-  .standalone-app {
-    padding-top: 24px;
-  }
+.standalone-demo { min-width: 0; max-width: 680px; padding: 17px; border: 1px solid var(--line-strong); border-radius: 15px; background: var(--surface); font: 11px/1.6 ui-sans-serif, system-ui, sans-serif; }
+.launch-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 14px; margin-bottom: 13px; color: var(--text); }
+.launch-heading b { font-size: 12px; font-weight: 600; }
+.launch-heading > span { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
+.launch-heading svg { flex-shrink: 0; }
+.standalone-stage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; padding-bottom: 5px; }
+.explorer-window { grid-column: 1; grid-row: 1; min-width: 0; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface-2); }
+.window-title, .browser-tabs { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.window-title > span:first-child { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); }
+.window-controls { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; color: var(--subtle); }
+.explorer-toolbar { display: flex; align-items: center; gap: 8px; padding: 9px; color: var(--muted); }
+.explorer-toolbar > svg { flex-shrink: 0; }
+.folder-path { display: flex; align-items: center; gap: 5px; min-width: 0; flex: 1; padding: 4px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
+.folder-path code { min-width: 0; font: 9px/1.6 ui-monospace, monospace; overflow-wrap: anywhere; }
+.folder-path svg { flex-shrink: 0; }
+.file-table { padding: 0 8px 8px; }
+.file-table-head, .file-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .85fr); gap: 6px; padding: 7px 8px; }
+.file-table-head { padding-block: 3px 7px; color: var(--subtle); font-size: 9px; }
+.file-row { position: relative; align-items: center; border: 1px solid transparent; border-radius: 4px; color: var(--muted); }
+.file-row > span { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.file-row svg { flex-shrink: 0; color: var(--blue); }
+.file-row code { font: 10px/1.6 ui-monospace, monospace; overflow-wrap: anywhere; }
+.file-row small { font-size: 8px; overflow-wrap: anywhere; padding-right: 10px; }
+.index-row { background: color-mix(in srgb, var(--blue) 10%, transparent); border-color: color-mix(in srgb, var(--blue) 25%, transparent); }
+.open-pointer { position: absolute; right: 22%; top: 20px; z-index: 2; color: var(--text) !important; fill: var(--surface); filter: drop-shadow(0 1px 2px #0005); opacity: 0; animation: docs-index-double-click 8s linear infinite; }
+.explorer-note { padding: 8px 12px; border-top: 1px solid var(--line); color: var(--subtle); font-size: 8px; overflow-wrap: anywhere; }
+.browser-window { grid-column: 2; grid-row: 1; min-width: 0; border: 1px solid #435370; border-radius: 9px; background: #111827; color: #e5e7eb; box-shadow: 0 10px 25px #0003; transform-origin: center; animation: docs-open-browser 8s ease-out infinite; }
+.browser-tabs { border-color: #303d50; background: #182233; border-radius: 8px 8px 0 0; padding: 6px 8px; }
+.browser-tabs > span:first-child { display: flex; align-items: center; gap: 6px; padding: 3px 6px; background: #253247; border-radius: 5px 5px 0 0; font-size: 9px; }
+.browser-tabs > span:first-child svg { margin-left: 15px; }
+.browser-address { display: flex; align-items: flex-start; gap: 7px; padding: 6px 8px; background: #182233; border-bottom: 1px solid #303d50; color: #aebcd2; }
+.browser-address svg { flex-shrink: 0; margin-top: 3px; }
+.browser-address code { flex: 1; min-width: 0; border-radius: 4px; background: #111827; padding: 3px 6px; font: 8px/1.6 ui-monospace, monospace; overflow-wrap: anywhere; white-space: normal; }
+.standalone-app { display: flex; flex-direction: column; align-items: center; padding: 16px 12px 12px; }
+.standalone-app b { font-size: 16px; letter-spacing: -.04em; margin-top: 4px; }
+.standalone-app p { font-size: 9px; line-height: 1.5; color: #a6b5cc; margin: 1px 0 8px; }
+.model-preparation { align-self: stretch; padding: 6px 8px; border: 1px solid #374151; border-radius: 5px; font-size: 8px; line-height: 1.6; color: #a6b5cc; }
+.standalone-composer { display: flex; align-items: center; align-self: stretch; gap: 8px; padding: 8px; margin-top: 8px; border: 1px solid #374151; border-radius: 8px; background: #1f2937; color: #94a3b8; }
+.standalone-composer span { min-width: 0; flex: 1; font-size: 8px; overflow-wrap: anywhere; }
+.standalone-composer svg { flex-shrink: 0; color: #93c5fd; }
+.browser-status { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; border-top: 1px solid #29364b; padding: 6px 9px; font-size: 8px; color: #a6b5cc; }
+.standalone-note { color: var(--subtle); font-size: 9px; margin: 6px 0 0; }
+@keyframes docs-index-double-click { 0%, 8% { opacity: 0; transform: translate(20px, 12px); } 16% { opacity: 1; transform: translate(0, 0); } 19%, 23% { opacity: 1; transform: scale(.78); } 21%, 25%, 32% { opacity: 1; transform: scale(1); } 40%, 100% { opacity: 0; transform: scale(1); } }
+@keyframes docs-open-browser { 0%, 31% { opacity: 0; transform: translateY(10px) scale(.97); } 42%, 88% { opacity: 1; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(0) scale(1); } }
+:global(html:has(#docs-pause-motion:checked)) .browser-window { animation: none; }
+:global(html:has(#docs-pause-motion:checked)) .open-pointer { animation: none; }
+@media(max-width: 520px) {
+  .standalone-demo { padding: 13px; }
+  .standalone-stage { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .explorer-window { grid-column: 1; grid-row: 1; }
+  .browser-window { grid-column: 1; grid-row: 2; margin-top: 0; }
+  .file-row small { font-size: 9px; }
 }
 </style>

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import logo from '../../assets/naidan.svg';
 import { PanelLeftIcon, PlusIcon, Settings2Icon, FolderIcon, MessageSquareIcon, SearchIcon } from 'lucide-vue-next';
+import type { ReplicaChromeCopy } from '../messages';
 
 // Deliberately independent of app stores and inference imports. See docs/README.md
-// for the app components whose layout and English labels this replica follows.
-defineProps<{ title: string; address: string; sidebar: 'visible' | 'hidden' }>();
+// for the current app components and tests whose presentation this replica follows.
+defineProps<{ title: string; address: string; sidebar: 'visible' | 'hidden'; copy: ReplicaChromeCopy }>();
 
 
 defineExpose({
@@ -18,20 +19,22 @@ defineExpose({
 </script>
 
 <template>
-  <div class="replica" lang="en">
+  <div class="replica" data-testid="replica-chrome">
     <div class="replica-address"><span class="replica-dots"><i /><i /><i /></span><code>{{ address }}</code><span class="replica-security">◇</span></div>
     <div class="replica-body" :class="{ 'with-sidebar': sidebar === 'visible' }">
-      <aside v-if="sidebar === 'visible'" class="replica-sidebar" aria-hidden="true">
+      <aside v-if="sidebar === 'visible'" class="replica-sidebar">
         <div class="replica-brand"><img :src="logo" alt="" width="21" height="21"><b>Naidan</b></div>
-        <div class="replica-new"><PlusIcon :size="13" /><span>New Chat</span></div>
-        <div class="replica-search"><SearchIcon :size="12" /><span>Search</span></div>
-        <div class="replica-group"><FolderIcon :size="13" /><span>Project notes</span></div>
-        <div class="replica-chat active"><MessageSquareIcon :size="12" /><span>{{ title }}</span></div>
-        <div class="replica-chat"><MessageSquareIcon :size="12" /><span>Ideas</span></div>
-        <div class="replica-bottom"><Settings2Icon :size="14" /><span>Settings</span></div>
+        <div class="replica-new"><PlusIcon :size="13" /><span>{{ copy.newChat }}</span></div>
+        <div class="replica-search"><SearchIcon :size="12" /><span>{{ copy.search }}</span></div>
+        <div class="replica-group"><FolderIcon :size="13" /><span>{{ copy.chatGroup }}</span></div>
+        <slot name="chats">
+          <div class="replica-chat active"><MessageSquareIcon :size="12" /><span>{{ title }}</span></div>
+          <div class="replica-chat"><MessageSquareIcon :size="12" /><span>{{ copy.otherChat }}</span></div>
+        </slot>
+        <div class="replica-bottom"><Settings2Icon :size="14" /><span>{{ copy.settings }}</span></div>
       </aside>
       <div class="replica-main">
-        <div class="replica-header"><PanelLeftIcon :size="15" /><strong>{{ title }}</strong><Settings2Icon :size="15" /></div>
+        <div class="replica-header"><PanelLeftIcon :size="15" /><strong><slot name="title">{{ title }}</slot></strong><Settings2Icon :size="15" /></div>
         <slot />
       </div>
     </div>
@@ -67,9 +70,8 @@ defineExpose({
   display: block;
   min-width: 0;
   width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   background: #111827;
   border-radius: 6px;
   padding: 4px 8px;
@@ -95,7 +97,6 @@ defineExpose({
 
 .replica-body {
   display: grid;
-  min-height: 330px;
 }
 
 .with-sidebar {
@@ -144,14 +145,13 @@ defineExpose({
 }
 
 .replica-chat {
-  overflow: hidden;
-  white-space: nowrap;
+  align-items: flex-start;
   color: #a4b2c7;
 }
 
-.replica-chat span {
-  text-overflow: ellipsis;
-  overflow: hidden;
+.replica-chat span,.replica-group span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .replica-chat.active {
@@ -183,6 +183,8 @@ defineExpose({
 
 .replica-header strong {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: #e5e7eb;
   font-weight: 600;
 }

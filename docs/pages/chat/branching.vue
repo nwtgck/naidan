@@ -2,9 +2,9 @@
 import BranchingDemo from '../../islands/branching/BranchingDemo.vue';
 import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
-import type { BranchingMessages } from '../../site/messages';
+import type { BranchingMessages, CommonMessages } from '../../site/messages';
 
-defineProps<{ s: BranchingMessages; locale: DocsLocale }>();
+defineProps<{ s: BranchingMessages; locale: DocsLocale; common: CommonMessages }>();
 
 
 defineExpose({
@@ -38,9 +38,9 @@ defineExpose({
     <h2>{{ s.demoTitle }}</h2>
     <div
       data-docs-island="branching"
-      :data-docs-props="JSON.stringify({ copy: s.demo })"
+      :data-docs-props="JSON.stringify({ copy: s.demo, chrome: common.chrome })"
     >
-      <BranchingDemo :copy="s.demo" />
+      <BranchingDemo :copy="s.demo" :chrome="common.chrome" />
     </div>
     <h2>{{ s.detail.title }}</h2>
     <p>{{ s.detail.body }}</p>

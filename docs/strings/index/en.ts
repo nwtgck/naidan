@@ -1,19 +1,39 @@
-import type { HomeMessages } from '../../site/messages';
-
+import { boundaryComparisonEn } from '../work/boundary/demo/en';
+import { standaloneDemoEn } from '../run/standalone/demo/en';
+import { storageChoiceDemoEn } from './storage-demo/en';
 export const strings = {
-  "title": "An easy-to-use AI environment, built around privacy.",
-  "mock": "A sample conversation using Naidan’s chat layout and controls.",
+  standaloneDemo: standaloneDemoEn,
+  storageDemo: storageChoiceDemoEn,
+  "demo": {
+    "title": "Project summary",
+    "user": "You",
+    "prompt": "Make a plan for tomorrow: review the prototype, check the remaining tasks, and prepare the next iteration.",
+    "answerIntro": "Here is the plan:",
+    "answerItems": [
+      "Review the prototype.",
+      "Check the remaining tasks.",
+      "Prepare the next iteration."
+    ],
+    "placeholder": "Type a message...",
+    "capabilities": [
+      "Text generation",
+      "Image generation",
+      "Speech generation"
+    ],
+  },
+  boundary: boundaryComparisonEn,
+  "title": "AI in your browser, with control over your data",
   "headline": [
     "An easy-to-use AI environment, ",
     "built around privacy."
   ],
-  "description": "Text, image and speech generation in your browser, with control over your data and the tools you choose.",
+  "description": "Use Naidan for AI chat, image and speech generation in your browser. Choose local models, file permissions and how conversations are saved.",
   "intro": [
     "Using AI should not depend on getting every privacy decision right, every time. The goal was to make an environment that limits what can go wrong and is easy to use.",
     "That idea led to Naidan: a place to work with AI that puts privacy first."
   ],
   "howTitle": "The browser sets the boundaries.",
-  "howLead": "Naidan uses the browser as an execution environment, not just a window onto a remote AI service.",
+  "howLead": "Your everyday browser provides a constrained place to run AI and tools. Its APIs and permissions mediate access to files, the clipboard and connections.",
   "mechanisms": [
     {
       "title": "Access is mediated by the browser",
@@ -40,6 +60,7 @@ export const strings = {
       "body": "Ollama and llama.cpp server run independently of Naidan. Connect through their APIs when their model support or performance better fits your work. These engines use the permissions of their native process.",
     }
   ],
+  storageCaption: 'Local Storage is an alternative when OPFS is unavailable. Its capacity and support for saving sent images are limited.',
   "storageTitle": "Save your conversations, or keep them in memory.",
   "storageLead": "Choose whether Naidan writes conversation data to persistent browser storage.",
   "storage": [
@@ -53,26 +74,26 @@ export const strings = {
     }
   ],
   "storageNote": "This choice concerns Naidan’s conversation storage. Model caches, exported files and operating-system memory management have separate lifetimes.",
-  "standalone": { "title": "Open a file. Keep the app server out of the setup.", "body": "Download and extract the Standalone edition, then open index.html with file://. The application runs in your usual browser, without a local server or installer to serve it. Model downloads and engine connections depend on the setup you choose." },
-  "standaloneLink": "Use the Standalone edition with file://",
+  "standalone": { "title": "Double-click to start using AI.", "body": "Extract the Standalone ZIP, then double-click index.html on your PC. Naidan opens in your browser without an installer or a server to serve the app. Then choose a model or local engine for your work." },
+  "standaloneLink": "Start without an installer or app server",
   "guidesTitle": "Find what you want to do.",
   "guidesLead": "Open the guide you need. Each page includes its own context, examples and important choices.",
   "guides": {
     "files": {
-      "title": "Work with files and folders",
+      "title": "Choose which files AI can read or edit",
       "body": "Choose between a linked folder and a separate copy, and decide which files AI can edit.",
     },
     "boundary": {
-      "title": "Understand the browser boundary",
+      "title": "Understand local AI and browser permissions",
       "body": "See how browser permissions and local processing fit together.",
     },
     "branching": {
-      "title": "Branch a conversation",
-      "body": "Try a different instruction while keeping the original conversation.",
+      "title": "Branch and edit AI conversations",
+      "body": "Keep the original conversation while editing an earlier message, trying another answer, or opening a separate Chat.",
     },
     "shell": {
-      "title": "Use a shell in your browser",
-      "body": "Explore files and conversation context with familiar commands.",
+      "title": "Let AI work with files using a browser shell",
+      "body": "Ask AI to search selected files with shell tools, then inspect the commands and results.",
     },
   },
-} satisfies HomeMessages;
+};

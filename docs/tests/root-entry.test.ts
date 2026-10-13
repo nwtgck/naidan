@@ -129,11 +129,12 @@ describe('language-neutral entrance without navigation', () => {
   it('serves the same compiled bootstrap and templates in development', async () => {
     await using fixture = await createSiteFixture();
     await using dev = await startSiteDev({ root: fixture.root });
-    const response = await fetch(`${dev.origin}/docs/`);
+    const response = await dev.request({ url: '/docs/' });
     using page = parsePage({ html: await response.text() });
     const bootstrap = page.document.querySelector('script:not([type])[src]')?.getAttribute('src');
     expect(bootstrap).toBe('/docs/__locale.js');
-    const asset = await fetch(dev.origin + bootstrap);
+    if (!bootstrap) throw new Error('Missing development locale bootstrap');
+    const asset = await dev.request({ url: bootstrap });
     expect(asset.status).toBe(200);
     expect(asset.headers.get('content-type')).toContain('text/javascript');
     expect(await asset.text()).toBe(entry().script);
@@ -142,10 +143,10 @@ describe('language-neutral entrance without navigation', () => {
       expect(template?.content.querySelectorAll('[data-docs-animation]').length).toBeGreaterThan(0);
       expect(template?.content.querySelector('h1')?.textContent).toBe(locale === 'en' ? 'An easy-to-use AI environment, built around privacy.' : '安全性を徹底追求した、簡単に使えるAI環境。');
     }
-    const head = await fetch(`${dev.origin}/docs/__locale.js`, { method: 'HEAD' });
+    const head = await dev.request({ url: '/docs/__locale.js', method: 'HEAD' });
     expect(head.status).toBe(200);
     expect(await head.text()).toBe('');
-    const post = await fetch(`${dev.origin}/docs/__locale.js`, { method: 'POST' });
+    const post = await dev.request({ url: '/docs/__locale.js', method: 'POST' });
     expect(post.status).toBe(405);
   });
 });

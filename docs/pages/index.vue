@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import BrowserMock from '../site/BrowserMock.vue';
 import BoundaryDiagram from '../site/demos/BoundaryDiagram.vue';
-import type { HomeMessages } from '../site/messages';
+import StandaloneDemo from '../site/demos/StandaloneDemo.vue';
+import StorageChoiceDemo from '../site/demos/StorageChoiceDemo.vue';
+import type { HomeMessages, CommonMessages } from '../site/messages';
 import { docsHref } from '../site/routes';
 import type { DocsLocale } from '../site/routes';
 
-defineProps<{ s: HomeMessages; locale: DocsLocale }>();
+defineProps<{ s: HomeMessages; locale: DocsLocale; common: CommonMessages }>();
 
 
 defineExpose({
@@ -34,8 +36,7 @@ defineExpose({
         ><strong v-if="index === 1">{{ paragraph }}</strong><template v-else>{{ paragraph }}</template></p>
       </div>
       <figure class="home-mock">
-        <BrowserMock />
-        <figcaption class="caption">{{ s.mock }}</figcaption>
+        <BrowserMock :copy="s.demo" :chrome="common.chrome" />
       </figure>
     </div>
   </section>
@@ -53,7 +54,7 @@ defineExpose({
         <p class="section-description">{{ s.howLead }}</p>
       </div>
       <div class="how-grid">
-        <BoundaryDiagram />
+        <BoundaryDiagram :copy="s.boundary" />
         <div class="mechanism-list">
           <section
             v-for="(item, index) in s.mechanisms"
@@ -74,23 +75,25 @@ defineExpose({
       <div class="models-section">
         <h2 class="section-title">{{ s.modelsTitle }}</h2>
         <div class="pair-grid">
-          <section
-            v-for="model in s.models"
+          <a
+            v-for="(model, index) in s.models"
             :key="model.title"
-            class="panel"
+            :href="docsHref({ locale, page: index === 0 ? 'models/in-browser' : 'models/local-engines' })"
+            class="model-card panel"
+            data-testid="docs-model-guide"
           >
-            <h3>{{ model.title }}</h3>
+            <h3><span>{{ model.title }}</span><span aria-hidden="true">→</span></h3>
             <p>{{ model.body }}</p>
-          </section>
+          </a>
         </div>
       </div>
     </div>
   </section>
-  <section class="standalone-section wrap" data-testid="docs-home-standalone">
-    <div class="local-file-badge" aria-hidden="true"><span>index.html</span><code>file://</code></div>
-    <div><h2 class="section-title">{{ s.standalone.title }}</h2><p>{{ s.standalone.body }}</p>
+  <section class="standalone-section wrap" aria-labelledby="standalone-title" data-testid="docs-home-standalone">
+    <div><h2 id="standalone-title" class="section-title">{{ s.standalone.title }}</h2><p>{{ s.standalone.body }}</p>
       <a class="next-link" :href="docsHref({ locale, page: 'run/standalone' })">{{ s.standaloneLink }} <span aria-hidden="true">→</span></a>
     </div>
+    <figure class="standalone-preview"><StandaloneDemo :copy="s.standaloneDemo" /></figure>
   </section>
   <section
     class="storage-section"
@@ -104,18 +107,10 @@ defineExpose({
           class="section-title"
         >{{ s.storageTitle }}</h2>
         <p class="section-description">{{ s.storageLead }}</p>
+        <div class="storage-explanation"><section v-for="item in s.storage" :key="item.title"><h3>{{ item.title }}</h3><p>{{ item.body }}</p></section></div>
         <p class="storage-detail-hint">{{ s.storageNote }}</p>
       </div>
-      <div class="storage-options">
-        <section
-          v-for="(item, index) in s.storage"
-          :key="item.title"
-          class="storage-option-card panel"
-        ><span class="storage-state">{{ index === 0 ? 'OPFS' : 'Memory' }}</span>
-          <h3>{{ item.title }}</h3>
-          <p>{{ item.body }}</p>
-        </section>
-      </div>
+      <figure class="storage-preview"><StorageChoiceDemo :copy="s.storageDemo" /><figcaption class="caption">{{ s.storageCaption }}</figcaption></figure>
     </div>
   </section>
   <section
@@ -189,14 +184,20 @@ defineExpose({
 </template>
 
 <style scoped>
-.standalone-section { display: grid; grid-template-columns: 160px 1fr; gap: 36px; align-items: center; padding-block: 64px; }
+.standalone-section { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 32px; align-items: center; padding-block: 52px; }
 .standalone-section p { color: var(--muted); max-width: 760px; line-height: 1.95; }
-.local-file-badge { border: 1px solid var(--line-strong); border-radius: 22px; aspect-ratio: 1; display: grid; place-content: center; gap: 15px; text-align: center; background: linear-gradient(145deg,var(--surface),var(--bg)); }
-.local-file-badge span { font-size: 13px; color: var(--muted); }
-.local-file-badge code { color: var(--blue); font-size: 28px; }
-@media(max-width:620px) { .standalone-section { grid-template-columns: 1fr; gap: 20px; padding-block: 40px; } .local-file-badge { aspect-ratio: auto; display:flex; align-items:center; padding:18px; justify-content:space-between; } }
+.standalone-preview { margin: 0; min-width: 0; }
+.storage-preview { margin: 0; min-width: 0; }
+.storage-preview figcaption { margin-top: 10px; font-size: 11px; }
+.storage-layout { gap: 36px; align-items: start; }
+.storage-explanation section { margin-top: 20px; }
+.storage-explanation h3 { margin: 0 0 6px; font-size: 14px; line-height: 1.6; }
+.storage-explanation p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.85; }
+@media(max-width:900px) { .standalone-section { grid-template-columns: minmax(0, 1fr); gap: 22px; } .standalone-preview { max-width: 680px; } }
+@media(max-width:620px) { .standalone-section { padding-block: 40px; } }
 
 .hero {
+  min-height: 0;
   gap: 45px;
   padding-top: 70px;
   padding-bottom: 76px;
@@ -229,11 +230,6 @@ defineExpose({
   min-width: 0;
 }
 
-.home-mock figcaption {
-  margin-top: 19px;
-  font-size: 10px;
-}
-
 .models-section {
   margin-top: 64px;
 }
@@ -242,19 +238,17 @@ defineExpose({
   margin-bottom: 27px;
 }
 
+.model-card { display: block; min-width: 0; color: var(--text); text-decoration: none; }
+.model-card h3 { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; line-height: 1.6; }
+.model-card h3 > span:first-child { min-width: 0; }
+.model-card h3 > span:last-child { color: var(--blue); }
+.model-card:hover { border-color: var(--blue); }
+.model-card:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
+
 .panel p {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.95;
-}
-
-.storage-options {
-  display: grid;
-  gap: 17px;
-}
-
-.storage-option-card h3 {
-  margin-top: 12px;
 }
 
 .article-grid {

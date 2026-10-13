@@ -1,7 +1,10 @@
 import { cp, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { IncomingMessage, ServerResponse } from 'node:http';
+import type { Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Duplex } from 'node:stream';
 import { createServer } from 'vite';
 import { JSDOM } from 'jsdom';
 import { createDocsDevBridge } from '../../build/docs-dev-bridge';
@@ -32,29 +35,72 @@ export async function createSiteFixture() {
   }
 }
 
+class MemorySocket extends Duplex {
+  readonly chunks: Buffer[] = [];
+
+  override _read(): void {}
+
+  override _write(...[chunk, , done]: Parameters<Duplex['_write']>): void {
+    this.chunks.push(Buffer.from(chunk));
+    done();
+  }
+}
+
+function responseBody({ wire }: { wire: Buffer }): Buffer {
+  const separator = wire.indexOf('\r\n\r\n');
+  if (separator < 0) throw new Error('Incomplete in-process HTTP response');
+  const head = wire.subarray(0, separator).toString('latin1');
+  const content = wire.subarray(separator + 4);
+  if (!/\r\ntransfer-encoding: chunked\r\n/i.test(`\r\n${head}\r\n`)) return content;
+  const chunks: Buffer[] = [];
+  let offset = 0;
+  for (;;) {
+    const line = content.indexOf('\r\n', offset);
+    if (line < 0) throw new Error('Incomplete chunked response');
+    const size = Number.parseInt(content.subarray(offset, line).toString('ascii'), 16);
+    if (!Number.isFinite(size)) throw new Error('Invalid chunked response');
+    if (size === 0) return Buffer.concat(chunks);
+    const start = line + 2;
+    const end = start + size;
+    if (end + 2 > content.length) throw new Error('Incomplete chunked response');
+    chunks.push(content.subarray(start, end));
+    offset = end + 2;
+  }
+}
+
 export async function startSiteDev({ root }: { root: string }) {
   const server = await createServer({
     configFile: false,
     root,
     logLevel: 'error',
     plugins: [createDocsDevBridge()],
-    server: { host: '127.0.0.1', port: 0, hmr: false },
+    server: { middlewareMode: true, hmr: false },
     optimizeDeps: { noDiscovery: true, include: [] },
     css: { postcss: { plugins: [] } },
   });
-  try {
-    await server.listen();
-    const address = server.httpServer?.address();
-    if (!address || typeof address === 'string') throw new Error('Missing dev server address');
-    return {
-      server,
-      origin: `http://127.0.0.1:${address.port}`,
-      [Symbol.asyncDispose]: () => server.close(),
-    };
-  } catch (error) {
-    await server.close();
-    throw error;
-  }
+  return {
+    server,
+    async request({ url, method = 'GET' }: { url: string; method?: string }): Promise<Response> {
+      const socket = new MemorySocket();
+      const incoming = new IncomingMessage(socket as unknown as Socket);
+      incoming.url = url;
+      incoming.method = method;
+      incoming.headers.host = 'localhost';
+      const outgoing = new ServerResponse(incoming);
+      outgoing.assignSocket(socket as unknown as Socket);
+      await new Promise<void>((resolve, reject) => {
+        outgoing.once('finish', resolve);
+        outgoing.once('error', reject);
+        server.middlewares(incoming, outgoing, reject);
+      });
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(outgoing.getHeaders())) {
+        if (value !== undefined) headers.set(name, String(value));
+      }
+      return new Response(responseBody({ wire: Buffer.concat(socket.chunks) }).toString('utf8'), { status: outgoing.statusCode, headers });
+    },
+    [Symbol.asyncDispose]: () => server.close(),
+  };
 }
 
 export function parsePage({ html }: { html: string }) {

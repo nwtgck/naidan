@@ -2,8 +2,8 @@
 import StandaloneDemo from '../../site/demos/StandaloneDemo.vue';
 import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
-import type { StandaloneMessages } from '../../site/messages';
-defineProps<{ s: StandaloneMessages; locale: DocsLocale }>();
+import type { StandaloneMessages, CommonMessages } from '../../site/messages';
+defineProps<{ s: StandaloneMessages; locale: DocsLocale; common: CommonMessages }>();
 
 
 defineExpose({
@@ -19,7 +19,7 @@ defineExpose({
   <article class="prose" data-testid="docs-standalone">
     <h1>{{ s.title }}</h1>
     <p v-for="paragraph in s.intro" :key="paragraph" class="lead">{{ paragraph }}</p>
-    <figure class="guide-figure"><StandaloneDemo /><figcaption class="caption">{{ s.diagramCaption }}</figcaption></figure>
+    <figure class="guide-figure"><StandaloneDemo :copy="s.demo" /><figcaption class="caption">{{ s.diagramCaption }}</figcaption></figure>
     <a class="download-link" href="https://naidan.pages.dev/naidan-standalone.zip">{{ s.download }}</a>
     <h2>{{ s.stepsTitle }}</h2>
     <ol class="guide-steps"><li v-for="step in s.steps" :key="step.title"><h3>{{ step.title }}</h3><p>{{ step.body }}</p></li></ol>

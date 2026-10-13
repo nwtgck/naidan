@@ -10,6 +10,9 @@ export const DOCS_PAGES = [
   { id: 'work/boundary', path: 'work/boundary/', source: 'pages/work/boundary.vue' },
   { id: 'chat/branching', path: 'chat/branching/', source: 'pages/chat/branching.vue' },
   { id: 'run/standalone', path: 'run/standalone/', source: 'pages/run/standalone.vue' },
+  { id: 'models/in-browser', path: 'models/in-browser/', source: 'pages/models/in-browser.vue' },
+  { id: 'models/local-engines', path: 'models/local-engines/', source: 'pages/models/local-engines.vue' },
+  { id: 'models/ollama', path: 'models/ollama/', source: 'pages/models/ollama.vue' },
   { id: 'work/browser-shell', path: 'work/browser-shell/', source: 'pages/work/browser-shell.vue' },
 ] as const;
 export type DocsPageId = typeof DOCS_PAGES[number]['id'];

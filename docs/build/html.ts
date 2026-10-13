@@ -1,10 +1,9 @@
 import { JSDOM } from 'jsdom';
 import { EXTERNAL_LINK_PATH, EXTERNAL_LINK_LABEL } from '../site/external-link';
-import type { z } from 'zod';
 import { DOCS_BASE, DOCS_LOCALES, DOCS_LOCALE_NAMES, docsHref } from '../site/routes';
 import type { PageAssets, RenderedPage } from './contracts';
 import { ISLAND_ENTRIES } from './ids';
-import { branchingPayloadSchema, entryMessagesSchema } from '../site/messages';
+import { parseBranchingPayload } from '../islands/branching/contracts';
 import { strings as entryEn } from '../strings/entry/en';
 import { strings as entryJa } from '../strings/entry/ja';
 import type { DocsLocale } from '../site/routes';
@@ -24,7 +23,7 @@ function appendAssets({ document, assets }: { document: Document; assets: PageAs
   }
 }
 
-const islandPayloadSchemas = { branching: branchingPayloadSchema } satisfies Record<keyof typeof ISLAND_ENTRIES, z.ZodType>;
+const islandPayloadParsers = { branching: parseBranchingPayload } satisfies Record<keyof typeof ISLAND_ENTRIES, ({ serialized }: { serialized: string }) => unknown>;
 
 function isIslandName(name: string): name is keyof typeof ISLAND_ENTRIES {
   return Object.hasOwn(ISLAND_ENTRIES, name);
@@ -39,8 +38,7 @@ export function findIslands({ body }: { body: string }): Array<keyof typeof ISLA
     if (element.parentElement?.closest('[data-docs-island]')) throw new Error('Nested Docs islands are not supported');
     const serialized = element.getAttribute('data-docs-props');
     if (!serialized) throw new Error(`Missing props for Docs island ${name}`);
-    const payload: unknown = JSON.parse(serialized);
-    islandPayloadSchemas[name].parse(payload);
+    islandPayloadParsers[name]({ serialized });
     result.add(name);
   }
   return [...result];
@@ -133,7 +131,7 @@ function validateBody({ document, locale }: { document: Document; locale: DocsLo
   }
 }
 
-const entryMessages = { en: entryMessagesSchema.parse(entryEn), ja: entryMessagesSchema.parse(entryJa) };
+const entryMessages = { en: entryEn, ja: entryJa };
 
 function renderEntryDocument({ assets, kind }: { assets: PageAssets; kind: 'language' | 'missing' }): string {
   const dom = new JSDOM('<!doctype html><html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><main class="language-page"><h1>Naidan Docs</h1><nav aria-label="Language"></nav></main></body></html>');

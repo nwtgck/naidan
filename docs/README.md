@@ -3,8 +3,11 @@
 Docs live beside the application source but have an independent build. The
 production output is complete static HTML, not a second single-page application.
 The homepage follows the documentation prototype: an explanation of the design
-intent, implementation details, and links to concrete features. Its English demonstrations reproduce the application’s layout, colors and controls.
-They use sample data, rather than importing the application stores or inference runtime.
+intent, implementation details, and links to concrete features. Its demonstrations
+reproduce the current application’s layout, colors and important interactions.
+Docs owns these independent presentation replicas: intentional duplication keeps
+them separate from application UI components, stores and inference runtimes.
+Their interface labels and sample content follow the page language.
 See `site/demos/README.md` for their source counterparts and maintenance rules.
 
 ## Commands and ownership
@@ -28,10 +31,9 @@ The normal test run excludes the Docs suite. `test:docs` runs plain `vitest run`
 It exercises actual Vite builds and development requests without loading model
 artifacts or building the application. Docs are included by the normal `eslint .` invocation, with the independent Docs
 TypeScript project. `lint:docs` runs the same rules for Docs and the development
-bridge only. CI partitions application files, string catalogs and Docs into three
-lint jobs to avoid retaining their compiler graphs in one process, and records
-heap configuration, peak RSS and exit status. The existing `lint` status remains a gate on all three scopes. This partition preserves coverage;
-increasing the heap limit alone is not a substitute for investigating memory use.
+bridge only. CI runs the same `npm run lint` command with a 6 GiB Node heap
+limit. Docs, string catalogs and the development bridge remain part of the normal
+lint target.
 
 ## Shared development and production rendering
 
@@ -40,7 +42,7 @@ The following files own the pipeline.
 | File | Responsibility |
 | --- | --- |
 | `site/routes.ts` | Supported languages and explicit page IDs, paths and sources |
-| `site/messages.ts` | Strict domain schemas and inferred copy types |
+| `site/messages.ts` | TypeScript contracts for locally authored page and demo copy |
 | `build/virtual-modules.ts` | Server-only page registry and native style collection entries |
 | `build/compiler.ts` | Shared Vue/Vite compiler configuration |
 | `server.ts` | Fresh Vue application and isolated language data for each render |
@@ -54,18 +56,25 @@ Both environments compile the same Vue sources and use the same `renderPage` and
 source URLs and the Vite reload client; production has hashed assets. HTML byte
 identity is not promised. Integration tests compare document bodies and scoped
 style IDs while accounting for hashed image URLs, and request each development
-stylesheet to verify that it is served as CSS rather than JavaScript.
+stylesheet through Vite's middleware in memory to verify that it is served as
+CSS rather than JavaScript. They do not open an HTTP port.
 
 The bridge has a separate middleware-mode Vite module graph but uses the existing
 HTTP server. It does not reuse the app's inference or Tailwind plugins. A missing
-Docs page or asset returns a Docs error, not the app's HTML fallback.
+Docs page or asset returns a Docs error, not the app's HTML fallback. The bridge
+recreates its child after Docs compiler or route edits; an edit to the bridge
+plugin itself requires restarting the app development server.
 
 ## Why there are virtual modules
 
-`virtual:naidan-docs/registry` validates and imports the page components and the
-English/Japanese dictionaries. It is server-only; importing it from a client
-entry fails the build. Each render gets its own copy of the validated messages.
-A missing translation is an error, not an implicit fallback into another language.
+`virtual:naidan-docs/registry` loads only the requested page component and
+language's locally authored strings during a render. An error in another guide
+does not stop the current page in development; the static build renders every
+page and still fails if any page is broken. The registry is server-only; importing
+it from a client entry fails the build. English objects define the TypeScript
+copy shapes; other locales use `satisfies` against those derived types. Local
+strings do not need runtime Zod validation. Each render gets its own copy of the
+messages, with no fallback to another language.
 
 `virtual:naidan-docs/styles/<page-id>` uses ordinary imports and exports to keep
 that page's layout and nested Vue dependencies in Vite's native client graph.
@@ -83,9 +92,10 @@ only explicitly discovered runtime entries are attached to a document.
 ## Adding a page
 
 Use one Vue component for both languages. Add a route in `site/routes.ts`, a
-matching copy schema in `site/messages.ts`, and `strings/<page-id>/en.ts` and
-`ja.ts` implementations checked with `satisfies`. Add matching copy props to the
-page component and link it from the relevant navigation or feature list.
+canonical English copy object in `strings/<page-id>/en.ts`, derive its type in
+`site/messages.ts`, and check `ja.ts` with `satisfies` against that type. Add matching
+copy props to the page component and link it from the relevant navigation or
+feature list.
 
 The existing examples exercise different delivery requirements.
 
@@ -93,10 +103,10 @@ The existing examples exercise different delivery requirements.
 | --- | --- |
 | `index` | Static homepage, native checkbox-based theme choice |
 | `files/privacy` | Static text and CSS |
-| `work/boundary` | Automatic local-inference diagram with reduced-motion support |
+| `work/boundary` | Nested OS/browser/Naidan boundaries and permitted localhost API path |
 | `chat/branching` | Static text plus one hydrated Vue demonstration |
 | `work/browser-shell` | Source-derived shell demonstration and permission guide |
-| `run/standalone` | Animated file:// walkthrough, download and setup guide |
+| `run/standalone` | Explorer double-click to browser walkthrough, download and setup guide |
 
 Use normal CSS classes in Docs; do not copy app Tailwind class names into this
 isolated compiler. Page-specific `<style scoped>`, imported styles and local
@@ -121,7 +131,8 @@ rejects islands there until a deliberate activation contract is implemented.
 ## Interactive demonstrations
 
 Put interactive components under `islands/`, give the data passed to the browser
-a strict schema, and register the client entry in `build/ids.ts`. The current
+an island-owned parser at its serialization boundary, and register the client
+entry in `build/ids.ts`. The current
 branching example uses `data-docs-island` and escaped `data-docs-props` attributes.
 The HTML compositor discovers and validates these with jsdom. Extend that
 registry and validation together when adding a new demonstration type.
@@ -153,21 +164,20 @@ to the browser, including queries and assets, before app fallback/cache logic.
 It does not make Docs an offline app. An already installed older app worker may
 need its ordinary update lifecycle before the new exclusion takes effect.
 
-Never weaken browser administrator policies to test Docs. A normal localhost
-browser preview needs a browser environment that permits that navigation.
-
 ## Verification boundaries
 
 The integration suite covers localized rendering, language isolation, native
-nested/scoped CSS and image assets, hydration, navigation, malformed dictionaries,
-server-only imports, stale outputs, lifecycle cleanup and publication wiring.
+nested/scoped CSS and image assets, hydration, navigation, malformed island
+payloads, server-only imports, stale outputs and lifecycle cleanup.
 Tests create disposable site fixtures; production code uses ordinary explicit
-resource cleanup. There are no resource-management polyfills.
+resource cleanup. Tests call library APIs directly and must not execute external
+commands or start child processes, including through helpers. There are no
+resource-management polyfills.
 
 These initial pages are a base for adding features, not a complete guide catalog.
-Search indexing, real app screenshots and offline Docs support are not implemented
-here. Screenshot generation should remain a separate explicit operation when it
-is added, not a prerequisite for every Docs build.
+Site search, real app screenshots and offline Docs support are not implemented
+here. Inspect current application source and tests to maintain the replicas;
+screenshot capture is not a prerequisite for Docs work or builds.
 
 ## Link and motion contracts
 

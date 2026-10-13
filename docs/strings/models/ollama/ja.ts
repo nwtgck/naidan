@@ -1,0 +1,52 @@
+import type { OllamaGuideMessages } from '../../../site/messages';
+
+export const strings = {
+  title: 'OllamaのローカルAIにブラウザから接続する',
+  description: 'Naidanの設定画面を使い、端末上のOllamaに接続します。Ollamaを選び、ローカルURLで接続を確認して、Chat用モデルを指定する手順です。',
+  intro: 'この例では、端末上でOllamaが起動していて、少なくとも1つのモデルを利用できる状態から始めます。NaidanはOllamaのHTTP APIを使ってChatしますが、Ollamaのプロセス自体は起動しません。Naidanの初回設定にも、同じプロバイダー、URL、接続確認、モデル選択があります。',
+  before: 'ローカル用のプリセットは、Ollamaが http://localhost:11434 で待ち受けている想定です。別のアドレスで動かしている場合は、実際のURLを［エンドポイント URL］に入力します。接続操作を始める前に、Ollamaと使うモデルを準備してください。',
+  steps: {
+    open: {
+      title: '1. ［設定］から［接続］を開く',
+      body: 'Naidanのサイドバー下部にある［設定］を選びます。設定画面では初期状態で［接続］が開きます。ほかのタブを表示している場合は［接続］を選んでください。図はサイドバーのボタンから始まり、［接続］の設定画面が開きます。',
+      caption: 'サイドバーの［設定］から［接続］の設定画面を開きます。',
+    },
+    provider: {
+      title: '2. Ollamaとローカルアドレスを選ぶ',
+      body: '開いた［接続］画面の［エンドポイント設定］で、［API プロバイダー］を［Ollama］にします。［エンドポイント URL］の横にある［Ollama (local)］を選ぶと、http://localhost:11434 が入力されます。サーバーが別のアドレスなら、実際のURLを入力してください。プリセットはプロバイダーとURLを一緒に切り替えます。',
+      caption: '同じ設定画面でプロバイダーをOllamaに切り替え、プリセットからURLを設定します。',
+    },
+    check: {
+      title: '3. 接続とモデル一覧を確認する',
+      body: '設定したOllamaのURLで［接続を確認］を選びます。モデル一覧を取得している間はボタンに読み込み表示が出て、成功すると短時間［接続済み］と表示されます。設定画面でlocalhostの接続先を変更したときは自動確認も行われます。失敗した場合は、サービスの起動状態とURL、ブラウザのCORSやオリジンのエラーを確かめてください。',
+      caption: 'Ollamaのモデル一覧を取得し、成功すると短時間［接続済み］と表示します。',
+    },
+    model: {
+      title: '4. デフォルトモデルを選んで保存する',
+      body: '接続に成功したら、画面を下へ進み、［モデル選択］の［デフォルトモデル］からOllamaが返したモデルを選んで［変更を保存］を押します。個別の設定で上書きしない限り、新しい会話に適用されます。図の gemma3n:e2b はNaidanのサーバー設定ガイドでも使われるモデル名の例です。実際には自分のOllamaにあるモデルを選んでください。',
+      caption: '接続済みの画面からモデルを選んで保存します。モデル名は例です。',
+    },
+  },
+  demo: {
+    settings: '設定',
+    connection: '接続',
+    endpointConfiguration: 'エンドポイント設定',
+    apiProvider: 'API プロバイダー',
+    openaiCompatible: 'OpenAI 互換',
+    ollama: 'Ollama',
+    endpointUrl: 'エンドポイント URL',
+    localPreset: 'Ollama (local)',
+    checkConnection: '接続を確認',
+    connected: '接続済み',
+    modelSelection: 'モデル選択',
+    defaultModel: 'デフォルトモデル',
+    none: 'なし',
+    exampleModel: 'gemma3n:e2b',
+    usedForNewConversations: '個別に上書きしない限り、すべての新しい会話に適用されます。',
+    saveChanges: '変更を保存',
+    settingsSaved: '設定を保存しました',
+  },
+  troubleTitle: 'モデルが表示されないとき',
+  trouble: 'Ollamaでモデルを利用できるか確認して、もう一度［接続を確認］を押します。file:// で開いたページでは、ブラウザが Origin: null を送信し、Ollama側でそのオリジンの許可が必要になる場合があります。Hosted版のページには、CSPによる接続先の制限もあります。ブラウザの通信エラーを確認すると、どこで止められたかを絞り込めます。',
+  next: 'ほかのローカルエンジンへの接続方法を見る',
+} satisfies OllamaGuideMessages;

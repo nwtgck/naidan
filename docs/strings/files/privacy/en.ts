@@ -1,19 +1,26 @@
-import type { FilesMessages } from '../../../site/messages';
-
 export const strings = {
-  "title": "Choose which files the AI can work with",
-  "description": "Link a selected folder or work on a private copy, and choose read or write access.",
+  "demo": {
+    "device": "On your device",
+    "otherFolders": "Other folders",
+    "folderCopy": "Folder (copy)",
+    "mountedFolder": "Mounted folder",
+    "readOnly": "READ ONLY",
+    "copy": "copy",
+    "access": "Reading allowed · Writing disabled",
+  },
+  "title": "Choose which files and folders AI can read or edit",
+  "description": "Give AI access to selected files and folders in Naidan. Compare folder copies and links, choose read or write access, and check where changes are saved.",
   "intro": [
     "Give the AI the files needed for a task, rather than access to the whole PC. Naidan lets you choose a working copy or a linked folder, then decide whether the AI can make changes."
   ],
-  "diagramCaption": "Folder Copy creates a separate working copy. This example exposes that copy as read-only; the original folder stays on your device.",
+  "diagramCaption": "Folder (copy) creates a separate working copy. This example exposes that copy as read-only; the original folder stays on your device.",
   "methods": [
     {
-      "title": "Folder Copy: try changes separately",
+      "title": "Folder (copy): try changes separately",
       "body": "Naidan imports the selected folder into browser storage. Edits affect that copy, not the original directory. Download the results when you are ready to use them elsewhere. Later edits to the original and the copy are independent.",
     },
     {
-      "title": "Folder Link: work on the actual folder",
+      "title": "Folder (link): work on the actual folder",
       "body": "A supporting browser lets you choose a real folder. Reads reflect its current contents. With both browser write permission and a writable mount, changes affect the original files. Use this when you deliberately want to work in place.",
     }
   ],
@@ -38,9 +45,9 @@ export const strings = {
   "stepsTitle": "Add a working folder",
   "steps": [
     "Open the attachment menu beside the Chat input.",
-    "Choose Folder Copy or Folder Link and select a folder. The choices available depend on browser capabilities.",
+    "Choose Folder (copy) or Folder (link) and select a folder. The choices available depend on browser capabilities.",
     "Check its mount path and access mode. Enable the Shell tool for the Chat when asking the AI to inspect or edit mounted files.",
     "Ask for a small inspection first, such as listing filenames. Review the result before permitting a larger edit."
   ],
-  "next": "See how the browser controls access",
-} satisfies FilesMessages;
+  "next": "Understand local AI processing and browser permissions",
+};

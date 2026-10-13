@@ -1,4 +1,4 @@
-import { readFile, lstat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Plugin } from 'vite';
 import { DOCS_PAGES } from '../site/routes';
@@ -20,25 +20,25 @@ export function createDocsModulesPlugin({ root }: { root: string }): Plugin {
       if (name === REGISTRY_ID) {
         if (!options?.ssr) throw new Error('The Docs page and translation registry is server-only');
         const lines = [
-          'import { pageMessageSchemas, commonMessagesSchema } from "/site/messages.ts";',
-          'import { strings as commonEn } from "/strings/common/en.ts";',
-          'import { strings as commonJa } from "/strings/common/ja.ts";',
-          'export const common = { en: commonMessagesSchema.parse(commonEn), ja: commonMessagesSchema.parse(commonJa) };',
+          'import { lstat } from "node:fs/promises";',
+          'import path from "node:path";',
+          `const root = ${JSON.stringify(root)};`,
+          'async function checked({ source, load }) { const stat = await lstat(path.resolve(root, source)); if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`Docs source must be a regular file: ${source}`); return load(); }',
+          'export const common = {',
+          '  en: () => checked({ source: "strings/common/en.ts", load: () => import("/strings/common/en.ts") }),',
+          '  ja: () => checked({ source: "strings/common/ja.ts", load: () => import("/strings/common/ja.ts") }),',
+          '};',
         ];
         const records: string[] = [];
         for (const page of DOCS_PAGES) {
-          const symbol = page.id.replaceAll('/', '_').replaceAll('-', '_');
           for (const source of [page.source, `strings/${page.id}/en.ts`, `strings/${page.id}/ja.ts`]) {
             const file = path.resolve(root, source);
-            const stat = await lstat(file);
-            if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`Docs source must be a regular file: ${source}`);
             this.addWatchFile(file);
           }
-          lines.push(`import ${symbol}Page from ${JSON.stringify(`/${page.source}`)};`);
-          for (const locale of ['en', 'ja']) {
-            lines.push(`import { strings as ${symbol}_${locale} } from ${JSON.stringify(`/strings/${page.id}/${locale}.ts`)};`);
-          }
-          records.push(`${JSON.stringify(page.id)}: { component: ${symbol}Page, messages: { en: pageMessageSchemas[${JSON.stringify(page.id)}].parse(${symbol}_en), ja: pageMessageSchemas[${JSON.stringify(page.id)}].parse(${symbol}_ja) } }`);
+          const component = `() => checked({ source: ${JSON.stringify(page.source)}, load: () => import(${JSON.stringify(`/${page.source}`)}) })`;
+          const en = `() => checked({ source: ${JSON.stringify(`strings/${page.id}/en.ts`)}, load: () => import(${JSON.stringify(`/strings/${page.id}/en.ts`)}) })`;
+          const ja = `() => checked({ source: ${JSON.stringify(`strings/${page.id}/ja.ts`)}, load: () => import(${JSON.stringify(`/strings/${page.id}/ja.ts`)}) })`;
+          records.push(`${JSON.stringify(page.id)}: { component: ${component}, messages: { en: ${en}, ja: ${ja} } }`);
         }
         lines.push(`export const pages = { ${records.join(',')} };`);
         return lines.join('\n');

@@ -130,4 +130,80 @@ describe('automatically animated, accessible guides', () => {
       expect(article?.querySelector('a[href="https://naidan.pages.dev/naidan-standalone.zip"]')).not.toBeNull();
     }
   });
+
+  it.each(DOCS_LOCALES)('localizes diagrams and keeps authentic technical labels in %s', locale => {
+    const expected = locale === 'ja'
+      ? { os: 'このPCのOS', browser: 'ブラウザ', blocked: 'ブラウザの境界で止まる', folder: 'フォルダ（コピー）', access: '読み取り専用', open: 'ブラウザで開く', newChat: '新しいチャット' }
+      : { os: 'The OS on this PC', browser: 'Browser', blocked: 'Stops at the browser boundary', folder: 'Folder (copy)', access: 'READ ONLY', open: 'Open in your browser', newChat: 'New Chat' };
+    for (const page of ['index', 'work/boundary', 'files/privacy', 'run/standalone'] as const) {
+      const output = pages.get(docsHref({ locale, page }));
+      if (!output) throw new Error('Missing localized demonstration page');
+      using document = parsePage({ html: output.html });
+      expect(document.document.documentElement.lang).toBe(locale);
+      const diagram = document.document.querySelector('[data-testid="boundary-diagram"]');
+      if (page === 'index' || page === 'work/boundary') expect(diagram).not.toBeNull();
+      if (diagram) {
+        const os = diagram.querySelector('[data-testid="os-boundary"]');
+        const browser = diagram.querySelector('[data-testid="browser-boundary"]');
+        const app = diagram.querySelector('[data-testid="naidan-in-browser"]');
+        expect(os?.textContent).toContain(expected.os);
+        expect(browser?.closest('[data-testid="os-boundary"]')).toBe(os);
+        expect(browser?.textContent).toContain(expected.browser);
+        expect(app?.closest('[data-testid="browser-boundary"]')).toBe(browser);
+        expect(browser?.querySelector('[data-testid="direct-os-stop"]')?.textContent).toContain(expected.blocked);
+        expect(browser?.querySelector('[data-testid="browser-api-gateway"]')).not.toBeNull();
+        expect(os?.querySelector('[data-testid="permitted-files"]')).not.toBeNull();
+        expect(os?.querySelector('[data-testid="permitted-clipboard"]')).not.toBeNull();
+        expect(diagram.querySelector('[data-testid="localhost-api-path"]')?.textContent).toContain('HTTP API');
+        expect(diagram.querySelector('[data-testid="localhost-api-path"]')?.textContent).toContain('localhost');
+        expect(diagram.hasAttribute('lang')).toBe(false);
+      }
+      const folder = document.document.querySelector('[data-testid="folder-access-demo"]');
+      if (page === 'files/privacy') expect(folder).not.toBeNull();
+      if (folder) {
+        expect(folder.textContent).toContain(expected.folder);
+        expect(folder.textContent).toContain(expected.access);
+        expect(folder.textContent).toContain('notes.txt');
+        expect(folder.textContent).toContain('plan.md');
+        expect(folder.hasAttribute('lang')).toBe(false);
+      }
+      const standalone = document.document.querySelector('[data-testid="standalone-demo"]');
+      if (page === 'run/standalone') expect(standalone).not.toBeNull();
+      if (standalone) {
+        expect(standalone.textContent).toContain(expected.open);
+        expect(standalone.textContent).toContain(expected.newChat);
+        expect(standalone.textContent).toContain('index.html');
+        expect(standalone.textContent).toContain('assets/');
+        expect(standalone.querySelector('[data-testid="standalone-explorer"]')).not.toBeNull();
+        expect(standalone.querySelector('[data-testid="standalone-index-file"]')?.textContent).toContain('index.html');
+        expect(standalone.querySelector('[data-testid="standalone-browser"]')).not.toBeNull();
+        expect(standalone.hasAttribute('lang')).toBe(false);
+      }
+      const chrome = document.document.querySelector('[data-testid="replica-chrome"]');
+      if (page === 'index') expect(chrome).not.toBeNull();
+      if (chrome) {
+        expect(chrome.textContent).toContain(expected.newChat);
+        expect(chrome.hasAttribute('lang')).toBe(false);
+      }
+    }
+  });
+
+  it.each(DOCS_LOCALES)('links model choices to complete localized guides in %s', locale => {
+    const output = pages.get(docsHref({ locale, page: 'index' }));
+    if (!output) throw new Error('Missing homepage');
+    using document = parsePage({ html: output.html });
+    const links = [...document.document.querySelectorAll('[data-testid="docs-model-guide"]')];
+    expect(links.map(link => link.getAttribute('href'))).toEqual([
+      docsHref({ locale, page: 'models/in-browser' }),
+      docsHref({ locale, page: 'models/local-engines' }),
+    ]);
+    for (const page of ['models/in-browser', 'models/local-engines'] as const) {
+      const guide = pages.get(docsHref({ locale, page }));
+      if (!guide) throw new Error('Missing model guide');
+      using document = parsePage({ html: guide.html });
+      expect(document.document.documentElement.lang).toBe(locale);
+      expect(document.document.querySelector('article h1')?.textContent?.trim()).toBeTruthy();
+      expect(document.document.querySelectorAll('article ol li').length).toBeGreaterThan(0);
+    }
+  });
 });

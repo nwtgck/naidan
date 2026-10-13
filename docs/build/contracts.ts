@@ -1,11 +1,11 @@
 import type { Component } from 'vue';
 import type { DocsLocale, DocsPageId } from '../site/routes';
-import type { CommonMessages } from '../site/messages';
+import type { CommonMessages, HomeMessages } from '../site/messages';
 
-export type PageMessages = { title: string; description: string; intro: string[] };
+export type PageMessages = Pick<HomeMessages, 'title' | 'description'>;
 export type RegisteredPage = {
-  component: Component;
-  messages: Record<DocsLocale, PageMessages>;
+  component: () => Promise<{ default: Component }>;
+  messages: Record<DocsLocale, () => Promise<{ strings: PageMessages }>>;
 };
 export type RenderedPage = {
   body: string;
@@ -19,6 +19,6 @@ export type DocsRenderer = {
 };
 export type PageRegistry = {
   pages: Record<DocsPageId, RegisteredPage>;
-  common: Record<DocsLocale, CommonMessages>;
+  common: Record<DocsLocale, () => Promise<{ strings: CommonMessages }>>;
 };
 export type PageAssets = { styles: string[]; scripts: string[] };

@@ -1,13 +1,15 @@
+import { standaloneDemoJa } from './demo/ja';
 import type { StandaloneMessages } from '../../../site/messages';
 
 export const strings = {
-  "title": "file://でNaidanを直接開く",
-  "description": "Standalone版をダウンロードして展開し、index.htmlをブラウザで開いて使います。",
+  demo: standaloneDemoJa,
+  "title": "インストーラーや配信用サーバーなしで、ブラウザでAIを使う",
+  "description": "NaidanのStandalone版を展開し、index.htmlをfile://で開けばブラウザでAIを使い始められます。インストーラーや画面を配信するHTTPサーバーは不要で、モデルやローカルエンジンは別に選べます。",
   "intro": [
     "AIを使い始めるためだけに、アプリへPC上の広い権限を渡す必要はあるのか。NaidanのStandalone版は、ブラウザの制限を保ったまま、手元のファイルから直接起動する方法です。アプリを配信するためのサーバーも別途用意しません。",
     "アプリをフォルダとして持ち、必要なときに開く。モデルの準備、会話の保存、外部の推論エンジンへの接続は、それぞれ選んだ使い方に合わせて設定します。"
   ],
-  "diagramCaption": "展開したStandaloneフォルダからブラウザを開く流れです。ローカルのindex.htmlを直接開くため、アドレスはfile://で始まります。",
+  "diagramCaption": "展開したフォルダのindex.htmlをダブルクリックすると、ブラウザでNaidanが開きます。file://のアドレスは、手元のファイルを直接開いたことを示します。起動した後にモデルやエンジンを選びます。",
   "download": "Standalone版のZIPをダウンロード",
   "stepsTitle": "ダウンロードしたフォルダから使い始める",
   "steps": [
@@ -49,5 +51,5 @@ export const strings = {
       "body": "別のブラウザへ移るとき、Hosted版とfile://版を切り替えるとき、インストールを置き換えるときは、データを書き出しておきます。更新する場合は新しいStandalone版を別フォルダへ展開し、その版の補助ファイルと一緒に使います。",
     }
   ],
-  "next": "ブラウザのアクセス制限を確認する",
+  "next": "ブラウザ内AIの処理とアクセス権限を確認する",
 } satisfies StandaloneMessages;

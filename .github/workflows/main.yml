@@ -8,29 +8,8 @@ on:
       - 'v*'
 
 jobs:
-  # Preserve the existing required-check name while checking scopes separately.
   lint:
     runs-on: ubuntu-latest
-    needs: lint_scopes
-    if: ${{ always() && !cancelled() }}
-    steps:
-      - name: Require every lint scope to pass
-        run: test "${{ needs.lint_scopes.result }}" = success
-
-  lint_scopes:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Keep type-aware app, large string catalogs and Docs in separate processes.
-          # The union is the normal lint target; this does not exempt any owned code.
-          - scope: application
-            command: npm run lint -- --ignore-pattern 'docs/**' --ignore-pattern 'build/docs-dev-bridge.ts' --ignore-pattern 'src/strings/**'
-          - scope: strings
-            command: npm exec -- eslint src/strings --max-warnings 0
-          - scope: docs
-            command: npm run lint:docs
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -45,28 +24,9 @@ jobs:
         uses: ./.github/actions/retry-npm-ci
 
       - name: Run lint
-        shell: bash
-        # Partitioning reduces retained compiler graphs; leave measured app graphs
-        # headroom as well. The logs identify the failing scope on future regressions.
         env:
           NODE_OPTIONS: --max-old-space-size=6144
-          LINT_COMMAND: ${{ matrix.command }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/lint-logs"
-          set -o pipefail
-          {
-            node --version
-            node -e "console.log('heap limit (MiB):', require('node:v8').getHeapStatistics().heap_size_limit / 1024 / 1024)"
-            /usr/bin/time -v bash -c "$LINT_COMMAND"
-          } 2>&1 | tee "$RUNNER_TEMP/lint-logs/${{ matrix.scope }}.log"
-
-      - name: Upload lint diagnostics
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: lint-diagnostics-${{ matrix.scope }}
-          path: ${{ runner.temp }}/lint-logs/
-          if-no-files-found: warn
+        run: npm run lint
 
   test:
     runs-on: ubuntu-latest
