@@ -480,9 +480,11 @@ html[data-docs-home-brand-startup="pending"] .nav-controls { order:2; }
 html[data-docs-home-brand-startup="pending"] .brand-group:focus-within { opacity:1; }
 html[data-docs-home-brand-startup="pending"]:has(#docs-pause-motion:checked) .brand-group { opacity:1; order:0; }
 html[data-docs-home-brand-startup="pending"]:has(#docs-pause-motion:checked) .nav-controls { order:0; }
-html[data-docs-home-brand-motion] [data-docs-hero-brand] { visibility:hidden; }
+html[data-docs-home-brand-motion]:not([data-docs-home-brand-resting]) [data-docs-hero-brand] { visibility:hidden; }
 html[data-docs-home-brand-motion] .brand-group { position:relative; }
 html[data-docs-home-brand-motion] [data-docs-brand-link] { position:absolute; z-index:1; width:max-content; }
+/* Paint the resting hero in normal flow; keep the link and its focus outline active. */
+html[data-docs-home-brand-resting] [data-docs-brand-link] > * { opacity:0; }
 html[data-docs-home-brand-motion] .brand-spacer { display:block; flex:none; visibility:hidden; }
 html[data-docs-home-brand-motion] .topbar:not(.docs-article-page) .docs-guide-trigger,
 html[data-docs-home-brand-motion] .topbar:not(.docs-article-page) .docs-search-trigger { position:relative; left:var(--docs-home-leading-shift,0px); }

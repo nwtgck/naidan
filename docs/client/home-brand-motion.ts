@@ -29,6 +29,7 @@ export function startHomeBrandMotion({ document, window }: { document: Document;
     if (!slot || !link || !spacer || !mark || !wordmark) return;
     if (document.documentElement.dataset.docsHomeBrandStartup === 'pending') document.documentElement.dataset.docsHomeBrandStartup = 'ready';
     document.documentElement.removeAttribute('data-docs-home-brand-motion');
+    document.documentElement.removeAttribute('data-docs-home-brand-resting');
     link.style.removeProperty('left');
     link.style.removeProperty('top');
     link.style.removeProperty('gap');
@@ -104,6 +105,7 @@ export function startHomeBrandMotion({ document, window }: { document: Document;
     wordmark.style.fontSize = `${fontSize}px`;
     slot.style.setProperty('--docs-brand-progress', String(progress));
     header?.style.setProperty('--docs-home-leading-shift', `${-leadingOffset * (1 - progress)}px`);
+    document.documentElement.toggleAttribute('data-docs-home-brand-resting', progress === 0);
     document.documentElement.setAttribute('data-docs-home-brand-motion', '');
   }
 

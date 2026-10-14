@@ -84,6 +84,8 @@ describe('Docs home brand', () => {
     expect(source?.querySelector('[data-docs-external-icon]')).not.toBeNull();
     expect(home.document.querySelectorAll('[data-docs-brand-link]')).toHaveLength(1);
     expect(home.document.querySelector('[data-docs-brand-link]')?.getAttribute('href')).toBe(docsHref({ locale, page: 'index' }));
+    expect(home.document.querySelector('[data-docs-brand-link]')?.getAttribute('aria-label')).toBeTruthy();
+    expect(home.document.querySelector('[data-docs-hero-brand]')?.getAttribute('aria-hidden')).toBe('true');
     expect(home.document.querySelector('[data-docs-brand-spacer]')?.getAttribute('aria-hidden')).toBe('true');
     expect(home.document.querySelector('[data-docs-brand-slot] .brand-docs')?.closest('a')).toBeNull();
     const homeMenu = home.document.querySelector('[data-testid="docs-header"] [data-testid="docs-guide-menu"]');
@@ -157,8 +159,9 @@ describe('Docs home brand', () => {
   it('uses actual SVG and font sizes for the Safari hero instead of scaling header pixels', () => {
     const headerOuterLeft = 24;
     let headerPadding = 31;
+    const siteCss = readFileSync(new URL('../site/site.css', import.meta.url), 'utf8');
     const dom = new JSDOM(`\
-<!doctype html><html><head><style>
+<!doctype html><html><head><style>${siteCss}</style><style>
 .topbar-inner { padding-left: ${headerPadding}px; }
 [data-docs-brand-link] { display: inline-flex; column-gap: 4px; }
 [data-docs-brand-link] .brand-wordmark { font-size: 22px; }
@@ -166,12 +169,12 @@ describe('Docs home brand', () => {
 [data-docs-hero-brand] .brand-wordmark { font-size: 75px; }
 </style></head><body>
 <header class="topbar" data-testid="docs-header"><div class="topbar-inner">
-<div data-docs-brand-slot><a data-docs-brand-link href="/docs/en/"><img><span class="brand-wordmark">Naidan</span></a><span data-docs-brand-spacer aria-hidden="true"></span></div>
+<div data-docs-brand-slot><a data-docs-brand-link href="/docs/en/" aria-label="Home"><img><span class="brand-wordmark">Naidan</span></a><span data-docs-brand-spacer aria-hidden="true"></span></div>
 <details class="docs-guide-menu"><summary class="docs-guide-trigger">Guides</summary><div class="docs-guide-panel"><a href="/docs/en/in-browser-models/">Models</a></div></details>
 <div class="docs-search"><button class="docs-search-trigger" type="button">Search</button></div>
 </div></header>
 <input id="docs-pause-motion" type="checkbox">
-<div data-docs-hero-brand><img><span class="brand-wordmark">Naidan</span></div>
+<div data-docs-hero-brand aria-hidden="true"><img><span class="brand-wordmark">Naidan</span></div>
 </body></html>`);
     using _page = { [Symbol.dispose]: () => dom.window.close() };
     const { document } = dom.window;
@@ -182,11 +185,12 @@ describe('Docs home brand', () => {
     const link = document.querySelector<HTMLAnchorElement>('[data-docs-brand-link]');
     const spacer = document.querySelector<HTMLElement>('[data-docs-brand-spacer]');
     const hero = document.querySelector<HTMLElement>('[data-docs-hero-brand]');
+    const heroWordmark = hero?.querySelector<HTMLElement>('.brand-wordmark');
     const mark = link?.querySelector<HTMLImageElement>('img');
     const wordmark = link?.querySelector<HTMLElement>('.brand-wordmark');
     const heroMark = hero?.querySelector<HTMLImageElement>('img');
     const pause = document.querySelector<HTMLInputElement>('#docs-pause-motion');
-    if (!slot || !header || !headerInner || !guideTrigger || !link || !spacer || !hero || !mark || !wordmark || !heroMark || !pause) throw new Error('Missing brand fixture');
+    if (!slot || !header || !headerInner || !guideTrigger || !link || !spacer || !hero || !heroWordmark || !mark || !wordmark || !heroMark || !pause) throw new Error('Missing brand fixture');
     const queued: FrameRequestCallback[] = [];
     const media = new Map<string, { matches: boolean; addEventListener: () => void }>([
       ['(prefers-reduced-motion: reduce)', { matches: false, addEventListener: () => undefined }],
@@ -203,8 +207,9 @@ describe('Docs home brand', () => {
     let sourceTop = 180;
     let targetWidth = 120;
     let targetMarkWidth = 38;
+    let sourceMarkWidth = 130;
     Object.defineProperty(hero, 'getBoundingClientRect', { value: () => ({ left: sourceLeft, top: sourceTop, width: 360, height: 130 }) });
-    Object.defineProperty(heroMark, 'getBoundingClientRect', { value: () => ({ width: 130, height: 130 }) });
+    Object.defineProperty(heroMark, 'getBoundingClientRect', { value: () => ({ width: sourceMarkWidth, height: sourceMarkWidth }) });
     Object.defineProperty(link, 'getBoundingClientRect', {
       value: () => ({
         left: 24,
@@ -227,6 +232,10 @@ describe('Docs home brand', () => {
     const leadingShift = () => Number.parseFloat(header.style.getPropertyValue('--docs-home-leading-shift'));
     const expectRestored = () => {
       expect(document.documentElement.hasAttribute('data-docs-home-brand-motion')).toBe(false);
+      expect(document.documentElement.hasAttribute('data-docs-home-brand-resting')).toBe(false);
+      expect(dom.window.getComputedStyle(hero).visibility).toBe('visible');
+      expect(dom.window.getComputedStyle(mark).opacity).not.toBe('0');
+      expect(dom.window.getComputedStyle(wordmark).opacity).not.toBe('0');
       expect(document.documentElement.dataset.docsHomeBrandStartup).toBe('ready');
       expect(link.style.left).toBe('');
       expect(link.style.top).toBe('');
@@ -244,6 +253,11 @@ describe('Docs home brand', () => {
     document.documentElement.dataset.docsHomeBrandStartup = 'pending';
     startHomeBrandMotion({ document, window: dom.window as unknown as Window });
     expect(document.documentElement.hasAttribute('data-docs-home-brand-motion')).toBe(true);
+    expect(document.documentElement.hasAttribute('data-docs-home-brand-resting')).toBe(true);
+    expect(dom.window.getComputedStyle(hero).visibility).toBe('visible');
+    expect(dom.window.getComputedStyle(link).opacity).not.toBe('0');
+    expect(dom.window.getComputedStyle(mark).opacity).toBe('0');
+    expect(dom.window.getComputedStyle(wordmark).opacity).toBe('0');
     expect(document.documentElement.dataset.docsHomeBrandStartup).toBe('ready');
     expect(link.style.left).toBe('76px');
     expect(link.style.top).toBe('160px');
@@ -257,7 +271,58 @@ describe('Docs home brand', () => {
     expect(dom.window.getComputedStyle(headerInner).paddingLeft).toBe(`${headerPadding}px`);
     expect(48 + targetWidth + leadingShift()).toBe(headerOuterLeft + headerPadding);
     expect(link.getAttribute('href')).toBe('/docs/en/');
+    expect(link.getAttribute('aria-label')).toBe('Home');
+    expect(hero.getAttribute('aria-hidden')).toBe('true');
+    expect(link.textContent?.trim()).toBe('Naidan');
     expect(document.querySelectorAll('[data-docs-brand-link]')).toHaveLength(1);
+
+    link.focus();
+    expect(document.activeElement).toBe(link);
+    expect(dom.window.getComputedStyle(link).opacity).not.toBe('0');
+    expect(dom.window.getComputedStyle(hero).visibility).toBe('visible');
+    link.blur();
+    expect(dom.window.getComputedStyle(hero).visibility).toBe('visible');
+    expect(dom.window.getComputedStyle(mark).opacity).toBe('0');
+
+    sourceMarkWidth = 107.5;
+    heroWordmark.style.fontSize = '62.25px';
+    hero.style.columnGap = '11.25px';
+    sourceLeft = 101.5;
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    flush();
+    expect(link.style.left).toBe('77.5px');
+    expect(mark.style.width).toBe('107.5px');
+    expect(mark.style.height).toBe('107.5px');
+    expect(wordmark.style.fontSize).toBe('62.25px');
+    expect(link.style.gap).toBe('11.25px');
+    expect(document.documentElement.hasAttribute('data-docs-home-brand-resting')).toBe(true);
+    expect(dom.window.getComputedStyle(hero).visibility).toBe('visible');
+    expect(dom.window.getComputedStyle(mark).opacity).toBe('0');
+    expect(dom.window.getComputedStyle(wordmark).opacity).toBe('0');
+    sourceMarkWidth = 130;
+    heroWordmark.style.fontSize = '75px';
+    hero.style.columnGap = '14px';
+    sourceLeft = 100;
+    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    flush();
+
+    Object.defineProperty(dom.window, 'scrollY', { value: 0.01, writable: true });
+    sourceTop = 179.99;
+    dom.window.dispatchEvent(new dom.window.Event('scroll'));
+    flush();
+    expect(document.documentElement.hasAttribute('data-docs-home-brand-resting')).toBe(false);
+    expect(dom.window.getComputedStyle(hero).visibility).toBe('hidden');
+    expect(dom.window.getComputedStyle(mark).opacity).not.toBe('0');
+    expect(Number.parseFloat(link.style.left)).toBeCloseTo(76, 1);
+    expect(Number.parseFloat(link.style.top)).toBeCloseTo(160, 1);
+    expect(Number.parseFloat(mark.style.width)).toBeCloseTo(130, 1);
+    Object.defineProperty(dom.window, 'scrollY', { value: 0, writable: true });
+    sourceTop = 180;
+    dom.window.dispatchEvent(new dom.window.Event('scroll'));
+    flush();
+    expect(document.documentElement.hasAttribute('data-docs-home-brand-resting')).toBe(true);
+    expect(dom.window.getComputedStyle(hero).visibility).toBe('visible');
+    expect(dom.window.getComputedStyle(mark).opacity).toBe('0');
 
     Object.defineProperty(dom.window, 'scrollY', { value: 80, writable: true });
     sourceTop = 100;
@@ -266,6 +331,10 @@ describe('Docs home brand', () => {
     expect(queued).toHaveLength(1);
     flush();
     expect(link.style.left).toBe('38px');
+    expect(document.documentElement.hasAttribute('data-docs-home-brand-resting')).toBe(false);
+    expect(dom.window.getComputedStyle(hero).visibility).toBe('hidden');
+    expect(dom.window.getComputedStyle(mark).opacity).not.toBe('0');
+    expect(dom.window.getComputedStyle(wordmark).opacity).not.toBe('0');
     expect(link.style.top).toBe('80px');
     expect(link.style.transform).toBe('');
     expect(mark.style.width).toBe('84px');
@@ -307,6 +376,10 @@ describe('Docs home brand', () => {
     dom.window.dispatchEvent(new dom.window.Event('scroll'));
     flush();
     expect(mark.style.width).toBe('130px');
+    expect(document.documentElement.hasAttribute('data-docs-home-brand-resting')).toBe(true);
+    expect(dom.window.getComputedStyle(hero).visibility).toBe('visible');
+    expect(dom.window.getComputedStyle(mark).opacity).toBe('0');
+    expect(dom.window.getComputedStyle(wordmark).opacity).toBe('0');
     expect(spacer.style.width).toBe('130px');
     expect(48 + targetWidth + leadingShift()).toBe(headerOuterLeft + headerPadding);
 
