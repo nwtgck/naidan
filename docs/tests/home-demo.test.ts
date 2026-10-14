@@ -20,7 +20,12 @@ describe('homepage chat replica', () => {
     expect(scene?.querySelector('[data-testid="docs-home-prompt"]')?.textContent).toBe(home.demo.prompt);
     expect(scene?.querySelector('[data-testid="docs-home-response-intro"]')?.textContent).toBe(home.demo.answerIntro);
     expect(Array.from(scene?.querySelectorAll('[data-testid="docs-home-response-item"]') ?? [], item => item.textContent)).toEqual(home.demo.answerItems);
-    expect(Array.from(scene?.querySelectorAll('[data-testid="docs-home-response-chunk"]') ?? [], chunk => Number(chunk.getAttribute('data-chunk-index')))).toEqual(Array.from({ length: 12 }, (_, index) => index));
+    expect(home.demo.answerIntroChunks.join('')).toBe(home.demo.answerIntro);
+    expect(home.demo.answerItemChunks.map(chunks => chunks.join(''))).toEqual(home.demo.answerItems);
+    const chunks = Array.from(scene?.querySelectorAll('[data-testid="docs-home-response-chunk"]') ?? []);
+    expect(chunks.map(chunk => Number(chunk.getAttribute('data-chunk-index')))).toEqual(Array.from({ length: chunks.length }, (_, index) => index));
+    expect(chunks.length).toBeGreaterThan(1 + home.demo.answerItems.length);
+    expect(chunks.every(chunk => Boolean(chunk.textContent?.trim()))).toBe(true);
     expect(scene?.querySelectorAll('.demo-message')).toHaveLength(2);
     expect(scene?.textContent).toContain(home.demo.placeholder);
     expect(scene?.textContent).toContain('Gemma');

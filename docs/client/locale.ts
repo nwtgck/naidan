@@ -1,21 +1,39 @@
-import { DOCS_BASE } from '../site/routes';
+import { DOCS_BASE, DOCS_LOCALES } from '../site/routes';
 import { selectDocsLocale } from '../site/locale';
 import { startDocsPreferences } from './preferences';
 
 // Every Docs page restores its native display controls before the body is painted.
 // Only the language-neutral entrance mounts a pre-rendered language template.
-startDocsPreferences({ document, window });
+const motionPreference = startDocsPreferences({ document, window });
 const url = new URL(window.location.href);
-if (url.pathname === DOCS_BASE || url.pathname === `${DOCS_BASE}index.html` || url.pathname === DOCS_BASE.slice(0, -1)) {
-  const html = document.documentElement;
+const neutralHome = url.pathname === DOCS_BASE || url.pathname === `${DOCS_BASE}index.html` || url.pathname === DOCS_BASE.slice(0, -1);
+const localizedHome = DOCS_LOCALES.some(locale => url.pathname === `${DOCS_BASE}${locale}/` || url.pathname === `${DOCS_BASE}${locale}/index.html`);
+const html = document.documentElement;
+let brandPending = false;
+if ((neutralHome || localizedHome) && motionPreference === 'auto' && typeof window.matchMedia === 'function') {
+  try {
+    brandPending = !window.matchMedia('(max-width: 480px)').matches
+      && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch { /* Keep the complete static home if media queries are unavailable. */ }
+}
+if (neutralHome || localizedHome) html.dataset.docsHomeBrandStartup = brandPending ? 'pending' : 'ready';
+if (neutralHome) html.dataset.docsStarting = '';
+
+// One bounded recovery covers a blocked home client and the neutral entrance.
+const watchdog = neutralHome || brandPending ? window.setTimeout(() => {
+  delete html.dataset.docsStarting;
+  if (html.dataset.docsHomeBrandStartup === 'pending') html.dataset.docsHomeBrandStartup = 'aborted';
+}, 3000) : undefined;
+if (brandPending) window.addEventListener('load', () => {
+  if (html.dataset.docsHomeBrandStartup === 'pending') html.dataset.docsHomeBrandStartup = 'aborted';
+  if (watchdog !== undefined) window.clearTimeout(watchdog);
+}, { once: true });
+
+if (neutralHome) {
   const locale = selectDocsLocale({ languages: navigator.languages.length ? navigator.languages : [navigator.language] });
   html.lang = locale;
-  html.dataset.docsStarting = '';
   // A blocked script leaves the manual language links visible. This watchdog
   // also recovers that fallback if an unexpected initialization failure occurs.
-  const watchdog = window.setTimeout(() => {
-    delete html.dataset.docsStarting;
-  }, 3000);
   const mount = (): void => {
     try {
       const template = document.querySelector<HTMLTemplateElement>(`template[data-docs-locale="${locale}"]`);
@@ -34,7 +52,7 @@ if (url.pathname === DOCS_BASE || url.pathname === `${DOCS_BASE}index.html` || u
       console.error('[Docs] Could not initialize the language-neutral home.', error);
     } finally {
       delete html.dataset.docsStarting;
-      window.clearTimeout(watchdog);
+      if (html.dataset.docsHomeBrandStartup !== 'pending' && watchdog !== undefined) window.clearTimeout(watchdog);
     }
   };
   switch (document.readyState) {

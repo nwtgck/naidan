@@ -112,7 +112,8 @@ function createDocsRequestPlugin(): Plugin {
               ja: await renderer.renderPage({ locale: 'ja', page: 'index' }),
             } satisfies Record<DocsLocale, RenderedPage>;
             const styles = await devStyles({ server, entry: styleEntryId({ page: 'index' }) });
-            html = renderLocaleRoot({ pages, bootstrap: '/docs/__locale.js', assets: { styles, scripts: ['/docs/@vite/client', devHref({ moduleUrl: `/${ISLAND_ENTRIES.search}` }), devHref({ moduleUrl: `/${HOME_BRAND_CLIENT}` })], favicon } });
+            const appEntryStyles = await devStyles({ server, entry: `/${APP_ENTRY_CLIENT}` });
+            html = renderLocaleRoot({ pages, bootstrap: '/docs/__locale.js', assets: { styles: [...styles, ...appEntryStyles], scripts: ['/docs/@vite/client', devHref({ moduleUrl: `/${ISLAND_ENTRIES.search}` }), devHref({ moduleUrl: `/${HOME_BRAND_CLIENT}` }), devHref({ moduleUrl: `/${APP_ENTRY_CLIENT}` })], favicon } });
             break;
           }
           case 'page': {

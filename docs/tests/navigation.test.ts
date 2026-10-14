@@ -3,7 +3,7 @@ import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
 import DocLayout from '../site/DocLayout.vue';
 import { DOCS_NAV_PAGES } from '../site/navigation';
-import { DOCS_LOCALES, DOCS_PAGES, docsHref } from '../site/routes';
+import { DOCS_LOCALES, DOCS_LOCALE_NAMES, DOCS_PAGES, docsHref } from '../site/routes';
 import type { DocsLocale, DocsPageId } from '../site/routes';
 import { strings as english } from '../strings/common/en';
 import { strings as japanese } from '../strings/common/ja';
@@ -26,6 +26,7 @@ describe('all-page Docs navigation', () => {
       expect(header?.classList.contains('docs-article-page')).toBe(route.id !== 'index');
       const menu = rendered.document.querySelector('[data-testid="docs-guide-menu"]');
       expect(menu?.tagName).toBe('DETAILS');
+      expect(menu?.getAttribute('name')).toBe('docs-header-menu');
       expect(menu?.querySelector('summary')?.textContent?.trim()).toContain(copy[locale].navigation.title);
       const links = [...(menu?.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-guide-link"]') ?? [])];
       const hrefs = links.map(link => link.getAttribute('href'));
@@ -61,9 +62,23 @@ describe('all-page Docs navigation', () => {
         const groupIds = [...rendered.document.querySelectorAll('[id^="docs-guide-group-"]')].map(element => element.id);
         expect(new Set(groupIds).size).toBe(groupIds.length);
       }
-      const other = locale === 'en' ? 'ja' : 'en';
-      expect(rendered.document.querySelector('[data-testid="docs-language-switch"]')?.getAttribute('href'))
-        .toBe(docsHref({ locale: other, page: route.id }));
+      const languageMenu = header?.querySelector('[data-testid="docs-language-menu"]');
+      expect(languageMenu?.tagName).toBe('DETAILS');
+      expect(languageMenu?.getAttribute('name')).toBe(menu?.getAttribute('name'));
+      expect(languageMenu?.querySelector('summary')?.getAttribute('aria-label'))
+        .toBe(`${copy[locale].languageMenu}: ${DOCS_LOCALE_NAMES[locale]}`);
+      expect(languageMenu?.querySelector('summary')?.textContent?.trim()).toBe(locale.toUpperCase());
+      const languageLinks = [...(languageMenu?.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-language-link"]') ?? [])];
+      expect(languageLinks).toHaveLength(DOCS_LOCALES.length);
+      for (const option of DOCS_LOCALES) {
+        const link = languageLinks.find(link => link.lang === option);
+        expect(link?.getAttribute('href')).toBe(docsHref({ locale: option, page: route.id }));
+        expect(link?.getAttribute('hreflang')).toBe(option);
+        expect(link?.getAttribute('aria-current')).toBe(option === locale ? 'page' : null);
+        expect(link?.textContent).toContain(DOCS_LOCALE_NAMES[option]);
+        if (option === locale) expect(link?.textContent).toContain(copy[locale].currentLanguage);
+      }
+      expect(header?.querySelector('a[href="https://github.com/nwtgck/naidan"]')).toBeNull();
     }
   });
 

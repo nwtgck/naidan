@@ -1,7 +1,7 @@
 export const strings = {
-  title: 'Search Wikipedia from a chat',
-  description: 'Learn how to turn on Wikipedia in a chat, review search and page requests, and see what information reaches Wikipedia.',
-  intro: 'Ask a tool-capable language model to look up a topic on Wikipedia and read the relevant page while you chat. Naidan uses Wikipedia’s official API for searches and page text, so you do not need to set up a Wikipedia API key or access token. Choose one-time approval to review each search and page request before it is sent.',
+  title: 'Use Wikipedia to help your local AI answer questions',
+  description: 'A tool-capable chat model on your device can consult Wikipedia articles as a source for answers. Learn how to enable the tool without an API key and what information reaches Wikipedia.',
+  intro: 'If you use a local LLM to research a topic, a model that supports tool calls can search Wikipedia and read a relevant article during your chat. It can use the article to inform its answer. Naidan uses Wikipedia’s official API for searches and page text, so you do not need to set up a Wikipedia API key or access token. Choose one-time approval to review each search and page request before it is sent.',
   launch: { before: 'Open ', after: ' and choose a chat with a model that supports tool calls.' },
   steps: {
     open: {

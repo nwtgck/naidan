@@ -820,6 +820,13 @@ defineExpose({
 @keyframes shell-spin {
   to { transform: rotate(360deg); }
 }
+/* Pausing resolves the scene to the completed review call instead of freezing a replay frame. */
+:global(html:has(#docs-pause-motion:checked) [data-docs-animation="shell-tool-call"] *) { animation: none !important; }
+:global(html:has(#docs-pause-motion:checked) [data-docs-animation="shell-tool-call"] .demo-pointer) { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .shell-chat * { animation: none !important; }
+  .demo-pointer { display: none; }
+}
 @media(max-width:620px) {
   .shell-user,.shell-assistant { padding: 12px; }
   .shell-chat { font-size: 11px; }

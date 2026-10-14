@@ -1,7 +1,7 @@
 export const strings = {
   title: 'Connect your browser chat to a local Ollama model',
   description: 'Follow the Settings controls in Naidan to connect to Ollama on your device: choose the Ollama provider, use its local URL, check the connection, and select a model.',
-  intro: 'This example connects Naidan to Ollama already running on your device. Naidan does not start the Ollama process.',
+  intro: 'If you already run a local LLM with Ollama, you can use that model in Naidan’s chat. This example connects to Ollama already running on your device. Naidan does not start the Ollama process.',
   launch: { before: 'First, open ', after: '. If first-run setup appears, close it with the × at the top right, then follow step 1.' },
   before: 'Have at least one Ollama model available before connecting. You will choose the server address in the connection settings.',
   steps: {

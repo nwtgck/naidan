@@ -6,7 +6,7 @@ export const strings = {
     "The commands run in the browser’s shell, with access to the workspace and folders made available to the Chat. You choose the folder mounts and write access in advance."
   ],
   "launch": { "before": "Open ", "after": " and choose a chat with a model that supports tool calls." },
-  "diagramCaption": "A sample task in a writable local project: the AI checks Git, searches with grep, reads with sed, creates task-summary.md with cat <<EOF and checks the saved file and Git state. Each command is a separate shell_execute call. Completed call headers stay in the conversation; the current call shows its script and result. The scene replays together, and the full transcript remains available to read. No model, command or file operation runs in this demonstration.",
+  "diagramCaption": "A sample task in a writable local project: the AI checks Git, searches with grep, reads with sed, creates task-summary.md with cat <<EOF and checks the saved file and Git state. The AI calls shell_execute repeatedly as the task progresses. Completed call headers stay in the conversation; the current call shows its script and result. The scene replays together, and the full transcript remains available to read. No model, command or file operation runs in this demonstration.",
   "demo": {
     "title": "Project tasks",
     "address": "Naidan / Project tasks",
@@ -130,7 +130,7 @@ export const strings = {
   "next": "Choose which files and folders AI can read or edit",
   nextDescription: 'Choose the folder a browser tool may read and the changes it may make.',
   relatedWikipedia: {
-    title: 'Search Wikipedia from a chat',
+    title: 'Use Wikipedia to help your local AI answer questions',
     description: 'Enable a web lookup tool and review search and page requests when using one-time approval.',
   },
 };

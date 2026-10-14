@@ -14,6 +14,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <h1>{{ s.title }}</h1>
     <p class="lead">{{ s.intro }}</p>
 
+    <section class="open-source-section" aria-labelledby="open-source-repository">
+      <h2 id="open-source-repository">{{ s.repository.title }}</h2>
+      <ExternalLink href="https://github.com/nwtgck/naidan" :locale="locale">https://github.com/nwtgck/naidan</ExternalLink>
+    </section>
+
     <section class="open-source-section" aria-labelledby="open-source-license">
       <h2 id="open-source-license">{{ s.license.title }}</h2>
       <p>{{ s.license.body }}</p>

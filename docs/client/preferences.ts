@@ -30,7 +30,7 @@ function writePreferences({ window, preferences }: { window: Window; preferences
   }
 }
 
-export function startDocsPreferences({ document, window }: { document: Document; window: Window }): void {
+export function startDocsPreferences({ document, window }: { document: Document; window: Window }): Preferences['motion'] {
   const initial = readPreferences({ window }) ?? defaults;
   const html = document.documentElement;
   let restoring = false;
@@ -90,4 +90,5 @@ export function startDocsPreferences({ document, window }: { document: Document;
     if (stored) apply({ preferences: stored, notification: 'changed' });
   });
   window.addEventListener('load', () => observer.disconnect(), { once: true });
+  return initial.motion;
 }

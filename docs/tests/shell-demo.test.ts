@@ -139,6 +139,76 @@ describe('shell guide tool-call demonstration', () => {
     expect(transcript?.textContent).toContain(unbrokenNote);
   });
 
+  it.each(['pause', 'reduced'] as const)('shows the completed review and answer when motion is %s', async mode => {
+    const html = await renderToString(createSSRApp({ render: () => h(ShellWorkspaceDemo, { copy: english.demo, chrome: englishCommon.chrome }) }));
+    const source = await readFile(new URL('../site/demos/ShellWorkspaceDemo.vue', import.meta.url), 'utf8');
+    const { descriptor } = parseSfc(source);
+    const style = descriptor.styles[0];
+    if (!style) throw new Error('Missing Shell demo style');
+    const scopeId = 'data-v-shell-motion-test';
+    const compiled = compileStyle({ source: style.content, filename: 'ShellWorkspaceDemo.vue', id: scopeId, scoped: true });
+    expect(compiled.errors).toEqual([]);
+    const reducedRules: string[] = [];
+    parseCss(compiled.code).walkAtRules('media', rule => {
+      if (rule.params.includes('prefers-reduced-motion')) reducedRules.push(...(rule.nodes?.map(node => node.toString()) ?? []));
+    });
+    using page = {
+      window: new JSDOM(`<!doctype html><html><head></head><body><input id="docs-pause-motion" type="checkbox">${html}</body></html>`).window,
+      [Symbol.dispose]() {
+        this.window.close();
+      },
+    };
+    const { document } = page.window;
+    const demo = document.querySelector('[data-testid="docs-shell-demo"]');
+    if (!demo) throw new Error('Missing Shell demo');
+    for (const element of [demo, ...demo.querySelectorAll('*')]) element.setAttribute(scopeId, '');
+    const sheet = document.createElement('style');
+    sheet.textContent = compiled.code + (mode === 'reduced' ? `\n${reducedRules.join('\n')}` : '');
+    document.head.append(sheet);
+    if (mode === 'pause') document.querySelector<HTMLInputElement>('#docs-pause-motion')!.checked = true;
+
+    const isVisible = ({ selector }: { selector: string }): boolean => {
+      const element = demo.querySelector(selector);
+      if (!element) throw new Error(`Missing Shell demo element: ${selector}`);
+      for (let current: Element | null = element; current && current !== demo.parentElement; current = current.parentElement) {
+        const computed = page.window.getComputedStyle(current);
+        if (computed.display === 'none' || computed.visibility === 'hidden' || computed.opacity === '0') return false;
+      }
+      return true;
+    };
+
+    for (const selector of [
+      '.shell-stage-grid',
+      '[data-shell-step="review"]',
+      '[data-shell-step="review"] .draft-variant',
+      '[data-shell-step="review"] .execution-variant',
+      '[data-shell-step="review"] [data-testid="docs-shell-result"]',
+      '[data-testid="docs-shell-response"]',
+    ]) {
+      const element = demo.querySelector(selector);
+      if (!element) throw new Error(`Missing Shell demo element: ${selector}`);
+      expect(page.window.getComputedStyle(element).animation, selector).toBe('none');
+    }
+
+    for (const selector of [
+      '[data-shell-step="review"]',
+      '[data-shell-step="review"] .execution-variant',
+      '[data-shell-step="review"] .tool-complete',
+      '[data-shell-step="review"] [data-testid="docs-shell-result"]',
+      '[data-testid="docs-shell-response"]',
+    ]) expect(isVisible({ selector }), selector).toBe(true);
+    for (const selector of [
+      '[data-shell-step="git"]',
+      '[data-shell-step="review"] .draft-variant',
+      '[data-shell-step="review"] .tool-executing',
+      '[data-shell-step="review"] .live-output',
+      '.initial-summary',
+      '.demo-pointer',
+    ]) expect(isVisible({ selector }), selector).toBe(false);
+    expect(demo.querySelector('[data-shell-step="review"] [data-testid="docs-shell-result"]')?.textContent).toContain('STDOUT:');
+    expect(demo.querySelector('[data-testid="docs-shell-response"]')?.textContent).toContain(english.demo.responseLead);
+  });
+
   it('reserves intrinsic scene sizes and animates no layout properties', async () => {
     // This verifies the scaffold and CSS contract, not browser pixel layout.
     const source = await readFile(new URL('../site/demos/ShellWorkspaceDemo.vue', import.meta.url), 'utf8');

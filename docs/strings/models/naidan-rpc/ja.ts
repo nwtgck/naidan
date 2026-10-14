@@ -1,9 +1,9 @@
 import type { NaidanRpcMessages } from '../../../site/messages';
 
 export const strings = {
-  title: '別の端末のAIモデルでチャットや画像を生成する',
+  title: '別の端末のNaidanでチャットの応答や画像を生成する',
   description: '2台のNaidanを接続して相手を確認し、チャット推論や画像生成の提供範囲を選んで使う手順です。',
-  intro: '一方の端末で動くモデルを、別の端末のNaidanからチャットや画像生成に使えます。Naidan RPCで両方のブラウザを接続し、モデルを動かす側が提供する機能を選びます。',
+  intro: '別の端末のNaidanで動くモデルに、手元のNaidanからチャットの応答や画像生成を依頼できます。Naidan RPCで両方のブラウザを接続し、モデルを動かす側が提供する機能を選びます。',
   launch: { before: '両方の端末で ', after: ' を開きます。初回設定が表示されたら右上の × で閉じ、手順1に進みます。' },
   hostedExample: {
     body: 'モデルを提供する端末にはHosted版が必要で、Standalone版は相手の推論を利用する側としてのみ使えます。手順2の公開HTTPS中継先は、ローカルのみ版とCurated版ではブロックされます。いずれかの端末でその版を使っている場合は、手順1の前に通常のHosted版へ切り替えてください。別のサイトのアドレスで行った設定は引き継がれません。',

@@ -111,13 +111,8 @@ describe('accessible guide presentation', () => {
       expect(scripts.filter(src => src.includes('/app-entry-'))).toHaveLength(Number(appEntry));
       expect(scripts.filter(src => src.includes('/home-brand-'))).toHaveLength(Number(homeBrand));
       expect(scripts).toHaveLength(2 + Number(branching) + Number(browserAiAvailability) + Number(appEntry) + Number(homeBrand));
-      const source = document.document.querySelector<HTMLAnchorElement>('a.source-icon');
-      expect(source?.hasAttribute('aria-label')).toBe(false);
-      expect(source?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
-      const sourceLabels = [...source?.querySelectorAll('.sr-only') ?? []].map(label => label.textContent ?? '');
-      expect(sourceLabels).toHaveLength(2);
-      expect(sourceLabels[0]).toBeTruthy();
-      expect(sourceLabels[1]).toBe(EXTERNAL_LINK_LABEL[locale]);
+      expect(document.document.querySelector('[data-testid="docs-header"] a[href="https://github.com/nwtgck/naidan"]')).toBeNull();
+      expect(document.document.querySelector('[data-testid="docs-language-menu"] summary svg')?.getAttribute('aria-hidden')).toBe('true');
       if (animations.length > 0) {
         const tree = parseCss(output.css);
         const keyframes: string[] = [], motions: string[] = [], pauseRules: string[] = [], reduced: string[] = [];

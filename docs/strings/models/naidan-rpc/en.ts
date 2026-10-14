@@ -1,7 +1,7 @@
 export const strings = {
-  title: 'Use AI models on another device for chat and images',
+  title: 'Generate chat replies and images with Naidan on another device',
   description: 'Connect two Naidan browsers, verify the other device, and choose which chat or image generation functions it can provide.',
-  intro: 'A model on one device can answer a chat or create an image while you work in Naidan on another. Naidan RPC connects the two browsers; the device running the model chooses which functions it shares.',
+  intro: 'From Naidan on one device, you can request chat replies or image generation from models running in Naidan on another. Naidan RPC connects the two browsers; the device running the models chooses which functions it shares.',
   launch: { before: 'On each device, open ', after: '. If first-run setup appears, close it with the × at the top right before following step 1.' },
   hostedExample: {
     body: 'The device providing a model must use the Hosted edition; Standalone can only use a peer’s inference. The public HTTPS relay in step 2 is blocked by Local-only and Curated. If either device uses one of those editions, switch it to regular Hosted before step 1. Settings on another site address do not carry over.',

@@ -1,16 +1,27 @@
 export type HomeBrandGeometry = {
   sourceLeft: number;
   sourceTop: number;
-  sourceWidth: number;
+  sourceMarkWidth: number;
+  sourceMarkHeight: number;
+  sourceFontSize: number;
+  sourceGap: number;
   targetLeft: number;
   targetTop: number;
   targetWidth: number;
+  targetHeight: number;
+  targetMarkWidth: number;
+  targetMarkHeight: number;
+  targetFontSize: number;
+  targetGap: number;
 };
 
-export function homeBrandTransform({ geometry, scrollY }: { geometry: HomeBrandGeometry; scrollY: number }): {
+export function homeBrandFrame({ geometry, scrollY }: { geometry: HomeBrandGeometry; scrollY: number }): {
   x: number;
   y: number;
-  scale: number;
+  markWidth: number;
+  markHeight: number;
+  fontSize: number;
+  gap: number;
   progress: number;
 } {
   const range = Math.max(1, geometry.sourceTop - geometry.targetTop);
@@ -19,7 +30,10 @@ export function homeBrandTransform({ geometry, scrollY }: { geometry: HomeBrandG
   return {
     x: (geometry.sourceLeft - geometry.targetLeft) * remaining,
     y: (geometry.sourceTop - geometry.targetTop) * remaining,
-    scale: 1 + (geometry.sourceWidth / geometry.targetWidth - 1) * remaining,
+    markWidth: geometry.targetMarkWidth + (geometry.sourceMarkWidth - geometry.targetMarkWidth) * remaining,
+    markHeight: geometry.targetMarkHeight + (geometry.sourceMarkHeight - geometry.targetMarkHeight) * remaining,
+    fontSize: geometry.targetFontSize + (geometry.sourceFontSize - geometry.targetFontSize) * remaining,
+    gap: geometry.targetGap + (geometry.sourceGap - geometry.targetGap) * remaining,
     progress,
   };
 }

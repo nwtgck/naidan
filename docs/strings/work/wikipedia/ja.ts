@@ -1,9 +1,9 @@
 import type { strings as en } from './en';
 
 export const strings = {
-  title: 'チャットからWikipediaを検索する',
-  description: 'チャットでWikipediaを有効にし、検索と記事取得を確認する手順と、Wikipediaに届く情報を説明します。',
-  intro: 'ツール呼び出しに対応する言語モデルに、会話の中でWikipediaを検索し、関連する記事を読ませられます。NaidanはWikipediaの公式APIで検索と記事本文の取得を行うため、Wikipedia用のAPIキーやアクセストークンを用意する必要はありません。今回のみ許可を選ぶと、送信する検索語と取得する記事をリクエストごとに確認できます。',
+  title: 'Wikipediaの情報を使って、ローカルAIに答えてもらう',
+  description: 'ツール呼び出しに対応する端末内のチャット用モデルも、Wikipediaの記事を回答の参考にできます。APIキー不要の使い方と、Wikipediaに届く情報を説明します。',
+  intro: 'ローカルLLMで調べものをするとき、ツール呼び出しに対応するモデルならWikipediaを検索し、関連する記事を読んで回答の参考にできます。NaidanはWikipediaの公式APIで検索と記事本文の取得を行うため、Wikipedia用のAPIキーやアクセストークンを用意する必要はありません。今回のみ許可を選ぶと、送信する検索語と取得する記事をリクエストごとに確認できます。',
   launch: { before: '', after: 'を開き、ツール呼び出しに対応するモデルのチャットを選びます。' },
   steps: {
     open: {

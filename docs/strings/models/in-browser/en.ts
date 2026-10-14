@@ -2,7 +2,7 @@ export const strings = {
   title: 'Run an AI model in your browser',
   description: 'Choose a browser-run model in Naidan, prepare its files, and start a chat. Compare llama.cpp, Transformers.js and a browser-provided language model, including Standalone availability.',
   intro: [
-    'You can run a chat model on your device without starting a separate inference server. The browser loads the model and performs the generation. Start with the llama.cpp choice if you have a GGUF model or want to choose one from the built-in catalog.',
+    'To try a local LLM in your browser, you can run a chat model on your device without starting a separate inference server. The browser loads the model and performs the generation. Start with the llama.cpp choice if you have a GGUF model or want to choose one from the built-in catalog.',
     'Model files may need to be downloaded first. That download contacts the model distributor; afterward, generation uses the selected browser runtime. Browser and hardware support determine which models will run and how fast they respond.',
   ],
   flow: {

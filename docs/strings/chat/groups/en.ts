@@ -75,6 +75,6 @@ export const strings = {
     promptField: 'Instructions for this chat group',
     promptText: 'Translate the user’s text into English. Preserve its meaning and tone.',
   },
-  related: 'How chats inherit connection and model settings',
-  nextDescription: 'See how shared settings reach a group’s chats and when one chat uses its own value.',
+  related: 'Choose models per chat with less setup',
+  nextDescription: 'See which model answers when a Chat, its group, or Global supplies the setting.',
 };

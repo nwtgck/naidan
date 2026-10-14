@@ -1,15 +1,22 @@
 <script setup lang="ts">
-import { GithubIcon } from 'lucide-vue-next';
+import { computed } from 'vue';
+import { LanguagesIcon } from 'lucide-vue-next';
 import logo from '../assets/naidan.svg';
 import type { CommonMessages } from './messages';
-import { docsHref, otherLocale, DOCS_LOCALE_NAMES } from './routes';
+import { docsHref, DOCS_LOCALES, DOCS_LOCALE_NAMES } from './routes';
 import type { DocsLocale, DocsPageId } from './routes';
 import DocsGuideMenu from './DocsGuideMenu.vue';
 import DocsGuideTree from './DocsGuideTree.vue';
 import DocsSymbols from './DocsSymbols.vue';
+import { purposeGuides } from './search-purpose';
 import SearchIsland from '../islands/search/SearchIsland.vue';
 
-defineProps<{ locale: DocsLocale; page: DocsPageId; s: CommonMessages }>();
+const props = defineProps<{ locale: DocsLocale; page: DocsPageId; s: CommonMessages }>();
+const searchPurpose = computed(() => purposeGuides({
+  locale: props.locale,
+  titles: props.s.navigation.pages,
+  descriptions: props.s.searchPurposeDescriptions,
+}));
 
 
 defineExpose({
@@ -50,32 +57,34 @@ defineExpose({
           >
           <span class="brand-text brand-wordmark">Naidan</span>
         </a>
+        <span class="brand-spacer" data-docs-brand-spacer aria-hidden="true" />
         <span class="brand-sep" aria-hidden="true" /><span class="brand-docs" aria-hidden="true">DOCS</span>
       </div>
       <DocsGuideMenu :locale="locale" :page="page" :copy="s.navigation" />
-      <div data-docs-island="search" :data-docs-props="JSON.stringify({ locale, copy: s.searchUi })">
-        <SearchIsland :locale="locale" :copy="s.searchUi" />
+      <div data-docs-island="search" :data-docs-props="JSON.stringify({ locale, currentPage: page, copy: s.searchUi, purpose: searchPurpose })">
+        <SearchIsland :locale="locale" :current-page="page" :copy="s.searchUi" :purpose="searchPurpose" />
       </div>
-      <nav
-        class="main-nav"
-        :aria-label="s.source"
-      >
-        <a
-          href="https://github.com/nwtgck/naidan"
-          target="_blank"
-          rel="noopener noreferrer"
-          referrerpolicy="no-referrer"
-          class="source-icon"
-          :title="s.source"
-        ><GithubIcon class="icon sm" aria-hidden="true" /><span class="sr-only">{{ s.source }}</span></a>
-      </nav>
       <div class="nav-controls">
-        <a
-          class="control"
-          :href="docsHref({ locale: otherLocale({ locale }), page })"
-          :lang="otherLocale({ locale })"
-          data-testid="docs-language-switch"
-        >{{ DOCS_LOCALE_NAMES[otherLocale({ locale })] }}</a>
+        <details class="locale-menu" name="docs-header-menu" data-testid="docs-language-menu">
+          <summary class="control locale-trigger" :aria-label="`${s.languageMenu}: ${DOCS_LOCALE_NAMES[locale]}`" :title="s.languageMenu">
+            <LanguagesIcon class="icon sm" aria-hidden="true" />
+            <span class="locale-code" aria-hidden="true">{{ locale.toUpperCase() }}</span>
+          </summary>
+          <nav class="locale-panel" :aria-label="s.languageMenu">
+            <a
+              v-for="option in DOCS_LOCALES"
+              :key="option"
+              :href="docsHref({ locale: option, page })"
+              :lang="option"
+              :hreflang="option"
+              :aria-current="option === locale ? 'page' : undefined"
+              data-testid="docs-language-link"
+            >
+              <span>{{ DOCS_LOCALE_NAMES[option] }}</span>
+              <span v-if="option === locale" class="locale-current">{{ s.currentLanguage }}</span>
+            </a>
+          </nav>
+        </details>
         <label class="control theme-control">
           <input
             id="docs-light-theme"

@@ -36,7 +36,7 @@ and previous Docs versions do not define current application behavior.
 | `BrowserProvidedSettingsStep.vue` | `src/components/SettingsModal.vue`, `src/components/ConnectionTab.vue`; `src/features/prompt-api/components/PromptApiStatus.vue`, `src/features/prompt-api/runtime.ts` |
 | `ChromeModelFlow.vue` | `src/features/prompt-api/{api,provider,runtime}.ts`, `src/features/prompt-api/provider.test.ts`; browser-managed model preparation and streamed chat answer |
 | `SettingsInheritanceStep.vue` | `src/components/SettingsModal.vue`, `src/components/ConnectionTab.vue`, `src/components/ChatGroupSettingsPanel.vue`, `src/components/ChatSettingsPanel.vue`, `src/components/ModelSelector.vue`; `src/logic/chat-settings-resolver.ts` |
-| `SettingsInheritanceDiagram.vue` | `src/logic/chat-settings-resolver.ts`, `src/logic/chat-settings-resolver.test.ts`; conceptual endpoint/model sources for Global, a group, and two chats |
+| `SettingsInheritanceDiagram.vue` | `src/logic/chat-settings-resolver.ts`, `src/logic/chat-settings-resolver.test.ts`; conceptual model lookup from Chat to group to Global for one question |
 | `StorageSettingsStep.vue` | `src/components/SettingsModal.vue`, `src/components/StorageTab.vue`; `src/00-storage/service/index.ts`, `src/composables/useStoragePersistence.ts` |
 | `BackupSettingsStep.vue` | `src/components/StorageTab.vue`, `src/features/import-export/components/ImportExportModal.vue`, `src/features/import-export/service.ts` |
 | `CompactStep.vue` | `src/components/ChatPaneHeader.vue`, `ContextCompactMenuItem.vue`, `ContextCompactSettingsDialog.vue`, `ContextCompactProgressStrip.vue`; `src/composables/chat/chat-scoped/chat-compact-flow.ts`; `src/logic/context-compact.ts` and its tests |

@@ -7,7 +7,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { docsBuildConfig } from '../build/production';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
-type EntryFixture = { html: string; script: string; en: string; ja: string; missing: string };
+type EntryFixture = { html: string; script: string; appEntryScript: string; en: string; ja: string; missing: string };
 let compiled: EntryFixture | undefined;
 
 function entry(): EntryFixture {
@@ -33,6 +33,14 @@ function createBrowser({ url, languages }: { url: string; languages: string[] })
   };
 }
 
+function setMotionMedia({ dom, narrow = false, reduced = false }: { dom: JSDOM; narrow?: boolean; reduced?: boolean }): void {
+  Object.defineProperty(dom.window, 'matchMedia', {
+    value: (query: string) => ({
+      matches: query === '(max-width: 480px)' ? narrow : query === '(prefers-reduced-motion: reduce)' ? reduced : false,
+    }),
+  });
+}
+
 function parseBody({ target, source }: { target: JSDOM; source: string }): void {
   using page = parsePage({ html: source });
   target.window.document.head.replaceChildren(...Array.from(page.document.head.childNodes, node => target.window.document.importNode(node, true)));
@@ -55,9 +63,12 @@ beforeAll(async () => {
   using parsed = parsePage({ html });
   const script = parsed.document.querySelector('script:not([type])[src]')?.getAttribute('src');
   if (!script) throw new Error('Missing bootstrap script');
+  const appEntry = parsed.document.querySelector('script[src^="/docs/assets/app-entry-"]')?.getAttribute('src');
+  if (!appEntry) throw new Error('Missing app entry client');
   compiled = {
     html,
     script: await readFile(path.join(dist, script.slice('/docs/'.length)), 'utf8'),
+    appEntryScript: await readFile(path.join(dist, appEntry.slice('/docs/'.length)), 'utf8'),
     en: await readFile(path.join(dist, 'en/index.html'), 'utf8'),
     ja: await readFile(path.join(dist, 'ja/index.html'), 'utf8'),
     missing: await readFile(path.join(dist, '404.html'), 'utf8'),
@@ -67,8 +78,6 @@ beforeAll(async () => {
 describe('language-neutral entrance without navigation', () => {
   it('uses a same-origin classic head script for locale selection and separate home clients', () => {
     using page = parsePage({ html: entry().html });
-    const scripts = page.document.querySelectorAll('script[src]');
-    expect(scripts).toHaveLength(3);
     const script = page.document.querySelector('script:not([type])');
     expect(script?.parentElement).toBe(page.document.head);
     expect(script?.hasAttribute('type')).toBe(false);
@@ -78,7 +87,45 @@ describe('language-neutral entrance without navigation', () => {
     expect(script?.getAttribute('src')).toMatch(/^\/docs\/assets\/locale-.+\.js$/);
     expect(page.document.querySelector('script[type="module"]')?.getAttribute('src')).toMatch(/^\/docs\/assets\/island-search-.+\.js$/);
     expect(page.document.querySelector('script[src^="/docs/assets/home-brand-"]')).not.toBeNull();
+    expect(page.document.querySelectorAll('script[src^="/docs/assets/app-entry-"]')).toHaveLength(1);
     expect(page.document.querySelectorAll('template[data-docs-locale]')).toHaveLength(2);
+  });
+
+  it.each([
+    { locale: 'en', languages: ['en-US'] },
+    { locale: 'ja', languages: ['ja-JP'] },
+  ] as const)('rebases the mounted $locale hero launch to the browsing origin after locale selection', ({ locale, languages }) => {
+    using browser = createBrowser({ url: 'https://preview.example/docs/', languages: [...languages] });
+    const { document } = browser.dom.window;
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    using staticPage = parsePage({ html: entry().html });
+    const template = staticPage.document.querySelector<HTMLTemplateElement>(`template[data-docs-locale="${locale}"]`);
+    expect(template?.content.querySelector('[data-testid="docs-hero-launch"]')?.getAttribute('href')).toBe('https://naidan.nwtgck.org/#/');
+    document.head.replaceChildren(...Array.from(staticPage.document.head.childNodes, node => document.importNode(node, true)));
+    document.body.replaceChildren(...Array.from(staticPage.document.body.childNodes, node => document.importNode(node, true)));
+    Object.defineProperty(document, 'readyState', { value: 'interactive', configurable: true });
+    new Script(entry().appEntryScript).runInContext(browser.dom.getInternalVMContext());
+    expect(document.querySelector('[data-docs-language-fallback]')).not.toBeNull();
+    document.dispatchEvent(new browser.dom.window.Event('DOMContentLoaded'));
+    const launch = document.querySelector<HTMLAnchorElement>('[data-testid="docs-hero-launch"]');
+    expect(launch?.getAttribute('href')).toBe('https://preview.example/#/');
+    expect(launch?.getAttribute('data-docs-app-entry-path')).toBe('/#/');
+    expect(document.querySelector('[data-docs-language-fallback]')).toBeNull();
+    expect(browser.errors).toEqual([]);
+  });
+
+  it.each(['en', 'ja'] as const)('rebases an already rendered $locale home without waiting for another event', locale => {
+    using browser = createBrowser({ url: `https://preview.example/docs/${locale}/`, languages: [locale] });
+    using staticPage = parsePage({ html: entry()[locale] });
+    const { document } = browser.dom.window;
+    document.body.replaceChildren(...Array.from(staticPage.document.body.childNodes, node => document.importNode(node, true)));
+    const launch = document.querySelector<HTMLAnchorElement>('[data-testid="docs-hero-launch"]');
+    expect(launch?.getAttribute('href')).toBe('https://naidan.nwtgck.org/#/');
+    Object.defineProperty(document, 'readyState', { value: 'complete', configurable: true });
+    new Script(entry().appEntryScript).runInContext(browser.dom.getInternalVMContext());
+    expect(launch?.getAttribute('href')).toBe('https://preview.example/#/');
+    expect(launch?.tagName).toBe('A');
+    expect(browser.errors).toEqual([]);
   });
 
   it.each([
@@ -103,7 +150,11 @@ describe('language-neutral entrance without navigation', () => {
     expect(document.querySelectorAll('h1')).toHaveLength(1);
     using expected = parsePage({ html: entry()[locale] });
     expect(document.querySelector('[data-testid="docs-main"]')?.outerHTML).toBe(expected.document.querySelector('[data-testid="docs-main"]')?.outerHTML);
-    expect(document.querySelector('[data-testid="docs-language-switch"]')?.getAttribute('href')).toBe(locale === 'en' ? '/docs/ja/' : '/docs/en/');
+    const languageMenu = document.querySelector('[data-testid="docs-language-menu"]');
+    expect(languageMenu?.tagName).toBe('DETAILS');
+    expect(languageMenu?.querySelector(`a[lang="${locale}"]`)?.getAttribute('href')).toBe(`/docs/${locale}/`);
+    expect(languageMenu?.querySelector(`a[lang="${locale === 'en' ? 'ja' : 'en'}"]`)?.getAttribute('href'))
+      .toBe(locale === 'en' ? '/docs/ja/' : '/docs/en/');
     expect(document.title).toBe(expected.document.title);
     expect(browser.errors).toEqual([]);
   });
@@ -115,6 +166,94 @@ describe('language-neutral entrance without navigation', () => {
     expect(fallback?.querySelector('a[lang="en"]')?.getAttribute('href')).toBe('/docs/en/');
     expect(page.document.documentElement.hasAttribute('data-docs-starting')).toBe(false);
     expect(page.document.querySelectorAll('[data-testid="docs-hero"]')).toHaveLength(0);
+  });
+
+  it.each([
+    { locale: 'en', path: '/docs/en/' },
+    { locale: 'ja', path: '/docs/ja/' },
+    { locale: 'en', path: '/docs/en/index.html' },
+    { locale: 'ja', path: '/docs/ja/index.html' },
+  ] as const)('keeps the $path home hero and native brand link in static HTML, then recovers if the brand module fails', ({ locale, path }) => {
+    using staticPage = parsePage({ html: entry()[locale] });
+    expect(staticPage.document.documentElement.hasAttribute('data-docs-home-brand-startup')).toBe(false);
+    expect(staticPage.document.querySelector('[data-docs-hero-brand]')).not.toBeNull();
+    expect(staticPage.document.querySelector('[data-docs-brand-link]')?.getAttribute('href')).toBe(`/docs/${locale}/`);
+
+    using browser = createBrowser({ url: `https://example.test${path}`, languages: [locale] });
+    setMotionMedia({ dom: browser.dom });
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    expect(browser.dom.window.document.documentElement.dataset.docsHomeBrandStartup).toBe('pending');
+    parseBody({ target: browser.dom, source: entry()[locale] });
+    expect(browser.dom.window.document.documentElement.dataset.docsHomeBrandStartup).toBe('pending');
+    expect(browser.dom.window.document.querySelector('[data-docs-brand-link]')?.getAttribute('href')).toBe(`/docs/${locale}/`);
+    browser.dom.window.dispatchEvent(new browser.dom.window.Event('load'));
+    expect(browser.dom.window.document.documentElement.dataset.docsHomeBrandStartup).toBe('aborted');
+    expect(browser.errors).toEqual([]);
+  });
+
+  it.each([
+    { state: 'paused', narrow: false, reduced: false, paused: true },
+    { state: 'narrow', narrow: true, reduced: false, paused: false },
+    { state: 'reduced', narrow: false, reduced: true, paused: false },
+  ] as const)('does not hide the static brand when motion is $state', ({ narrow, reduced, paused }) => {
+    using browser = createBrowser({ url: 'https://example.test/docs/ja/', languages: ['ja'] });
+    setMotionMedia({ dom: browser.dom, narrow, reduced });
+    if (paused) browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'dark', motion: 'paused' }));
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    expect(browser.dom.window.document.documentElement.dataset.docsHomeBrandStartup).toBe('ready');
+  });
+
+  it('abandons delayed brand motion after the single startup watchdog expires', () => {
+    using browser = createBrowser({ url: 'https://example.test/docs/en/', languages: ['en'] });
+    setMotionMedia({ dom: browser.dom });
+    let watchdog: (() => void) | undefined;
+    Object.defineProperty(browser.dom.window, 'setTimeout', {
+      value: (callback: () => void) => {
+        watchdog = callback; return 1;
+      },
+    });
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    expect(browser.dom.window.document.documentElement.dataset.docsHomeBrandStartup).toBe('pending');
+    expect(watchdog).toBeTypeOf('function');
+    watchdog?.();
+    expect(browser.dom.window.document.documentElement.dataset.docsHomeBrandStartup).toBe('aborted');
+    parseBody({ target: browser.dom, source: entry().en });
+    expect(browser.dom.window.document.querySelector('[data-docs-brand-link]')?.getAttribute('href')).toBe('/docs/en/');
+  });
+
+  it('uses the same pending recovery for the language-neutral home without hiding its fallback links', () => {
+    using browser = createBrowser({ url: 'https://example.test/docs/', languages: ['ja'] });
+    setMotionMedia({ dom: browser.dom });
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    const { document } = browser.dom.window;
+    expect(document.documentElement.dataset.docsHomeBrandStartup).toBe('pending');
+    parseBody({ target: browser.dom, source: entry().html });
+    expect(document.querySelector('[data-docs-language-fallback]')).toBeNull();
+    expect(document.querySelector('[data-docs-hero-brand]')).not.toBeNull();
+    expect(document.documentElement.dataset.docsHomeBrandStartup).toBe('pending');
+    browser.dom.window.dispatchEvent(new browser.dom.window.Event('load'));
+    expect(document.documentElement.dataset.docsHomeBrandStartup).toBe('aborted');
+  });
+
+  it('leaves article brand motion untouched', () => {
+    using browser = createBrowser({ url: 'https://example.test/docs/en/work/boundary/', languages: ['en'] });
+    setMotionMedia({ dom: browser.dom });
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    expect(browser.dom.window.document.documentElement.hasAttribute('data-docs-home-brand-startup')).toBe(false);
+  });
+
+  it('still mounts the neutral home when media detection fails', () => {
+    using browser = createBrowser({ url: 'https://example.test/docs/', languages: ['en'] });
+    Object.defineProperty(browser.dom.window, 'matchMedia', {
+      value: () => {
+        throw new Error('Media detection failed');
+      },
+    });
+    expect(() => new Script(entry().script).runInContext(browser.dom.getInternalVMContext())).not.toThrow();
+    expect(browser.dom.window.document.documentElement.dataset.docsHomeBrandStartup).toBe('ready');
+    parseBody({ target: browser.dom, source: entry().html });
+    expect(browser.dom.window.document.querySelector('[data-docs-hero-brand]')).not.toBeNull();
+    expect(browser.dom.window.document.querySelector('[data-docs-language-fallback]')).toBeNull();
   });
 
   it('restores the fallback if a template is damaged', () => {
@@ -358,6 +497,7 @@ describe('language-neutral entrance without navigation', () => {
     using page = parsePage({ html: await response.text() });
     const bootstrap = page.document.querySelector('script:not([type])[src]')?.getAttribute('src');
     expect(bootstrap).toBe('/docs/__locale.js');
+    expect(page.document.querySelectorAll('script[src="/docs/client/app-entry.ts"]')).toHaveLength(1);
     if (!bootstrap) throw new Error('Missing development locale bootstrap');
     const asset = await dev.request({ url: bootstrap });
     expect(asset.status).toBe(200);

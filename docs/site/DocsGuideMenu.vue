@@ -16,7 +16,7 @@ defineExpose({
 </script>
 
 <template>
-  <details class="docs-guide-menu" data-testid="docs-guide-menu">
+  <details class="docs-guide-menu" name="docs-header-menu" data-testid="docs-guide-menu">
     <summary class="control docs-guide-trigger">
       {{ copy.title }}<svg class="docs-guide-chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="m2 4 4 4 4-4" /></svg>
     </summary>

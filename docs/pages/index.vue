@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { GithubIcon } from 'lucide-vue-next';
 import logo from '../assets/naidan.svg';
+import AppEntryLink from '../site/AppEntryLink.vue';
 import BrowserMock from '../site/BrowserMock.vue';
+import ExternalLink from '../site/ExternalLink.vue';
 import BoundaryDiagram from '../site/demos/BoundaryDiagram.vue';
 import StandaloneDemo from '../site/demos/StandaloneDemo.vue';
 import StorageChoiceDemo from '../site/demos/StorageChoiceDemo.vue';
@@ -50,6 +53,21 @@ defineExpose({
           :key="paragraph"
           class="hero-lead"
         ><strong v-if="index === 1">{{ paragraph }}</strong><template v-else>{{ paragraph }}</template></p>
+        <div class="hero-actions">
+          <AppEntryLink
+            class="btn btn-primary hero-action"
+            :destination="{ kind: 'screen', screen: 'home' }"
+            :locale="locale"
+            display="label"
+            data-testid="docs-hero-launch"
+          >{{ common.launch }}<svg class="icon sm" aria-hidden="true"><use href="#i-arrow" /></svg></AppEntryLink>
+          <ExternalLink
+            class="btn btn-secondary hero-action"
+            href="https://github.com/nwtgck/naidan"
+            :locale="locale"
+            data-testid="docs-hero-source"
+          ><GithubIcon class="icon sm" aria-hidden="true" />{{ common.source }}</ExternalLink>
+        </div>
       </div>
       <figure class="home-mock">
         <BrowserMock :copy="s.demo" :chrome="common.chrome" />
@@ -249,6 +267,10 @@ defineExpose({
   margin-bottom: 19px;
   line-height: 2;
 }
+
+.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.hero-action { max-width: 100%; min-width: 0; height: auto; padding-block: 12px; text-align: center; line-height: 1.4; overflow-wrap: anywhere; }
+.hero-action.btn-secondary { font-weight: 700; }
 
 .home-mock {
   margin: 0;

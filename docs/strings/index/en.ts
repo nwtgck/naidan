@@ -1,6 +1,14 @@
 import { boundaryComparisonEn } from '../work/boundary/demo/en';
 import { standaloneDemoEn } from '../run/standalone/demo/en';
 import { storageChoiceDemoEn } from './storage-demo/en';
+
+const answerIntroChunks = ['Here ', 'is ', 'the ', 'plan:'];
+const answerItemChunks = [
+  ['Review ', 'the ', 'prototype.'],
+  ['Check ', 'the ', 'remaining ', 'tasks.'],
+  ['Prepare ', 'the ', 'next ', 'iteration.'],
+];
+
 export const strings = {
   standaloneDemo: standaloneDemoEn,
   storageDemo: storageChoiceDemoEn,
@@ -14,6 +22,8 @@ export const strings = {
       "Check the remaining tasks.",
       "Prepare the next iteration."
     ],
+    answerIntroChunks,
+    answerItemChunks,
     "placeholder": "Type a message...",
     "capabilities": [
       "Text generation",
@@ -108,8 +118,8 @@ export const strings = {
       body: 'Create a group, move chats into it and start another chat there.',
     },
     wikipedia: {
-      title: 'Look up Wikipedia during a chat',
-      body: 'Turn on the tool and choose how to review searches and article requests.',
+      title: 'Use Wikipedia to inform local AI answers',
+      body: 'Look up articles during a chat and use them as a source for answers.',
     },
     offline: {
       title: 'Use Naidan offline as a PWA',

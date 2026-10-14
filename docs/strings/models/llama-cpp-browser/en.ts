@@ -1,7 +1,7 @@
 export const strings = {
   title: 'Run a GGUF model in your browser with llama.cpp',
   description: 'Choose a GGUF model to try in a browser chat, or import your own file or download another from Hugging Face.',
-  intro: 'Naidan can run GGUF chat models in your browser. Choose from the models below. To use a different GGUF, open ［Settings］ to import a file from your device or download one from Hugging Face.',
+  intro: 'If you want to try a local LLM using GGUF, Naidan can run a compatible chat model in your browser. Choose from the models below. To use a different GGUF, open ［Settings］ to import a file from your device or download one from Hugging Face.',
   quickModels: {
     title: 'Choose a model to try in your browser',
     body: 'Choose a model to open its chat. If it has not been downloaded, select ［Start with this model］ there; once it is ready, enter your message. Local-only cannot fetch an unprepared model from Hugging Face: import a GGUF you obtained separately, or download the model in a Hosted edition that permits the required model file hosts.',

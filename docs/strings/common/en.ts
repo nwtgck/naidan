@@ -1,5 +1,6 @@
 import type { DocsNavGroup } from '../../site/navigation';
 import type { DocsPageId } from '../../site/routes';
+import type { PurposePageId } from '../../site/search-purpose';
 
 export const strings = {
   "chrome": {
@@ -12,6 +13,8 @@ export const strings = {
   "skip": "Skip to content",
   "home": "AI in your browser: guides",
   "guides": "Guides",
+  languageMenu: 'Choose language',
+  currentLanguage: 'Current',
   relatedGuides: 'Related guides',
   searchUi: {
     open: 'Search docs',
@@ -26,6 +29,13 @@ export const strings = {
     error: 'Could not load the guide index. Try again.',
     retry: 'Try again',
   },
+  searchPurposeDescriptions: {
+    'run/standalone': 'Open the downloaded Standalone app from local files in your browser.',
+    'models/ollama': 'Connect Naidan chat to an Ollama model already running on your device.',
+    'chat/branching': 'Edit a message or try another answer while keeping earlier conversation paths.',
+    'images/create': 'Prepare an on-device image model and generate a picture from your prompt.',
+    'data/backup': 'Export conversations to a ZIP and inspect it before restoring.',
+  } satisfies Record<PurposePageId, string>,
   navigation: {
     title: 'Guides',
     sidebarTitle: 'Browse guides',
@@ -52,7 +62,7 @@ export const strings = {
       'models/local-engines': 'Connect a local engine',
       'models/ollama': 'Connect to Ollama',
       'models/openai-compatible': 'OpenAI-compatible servers',
-      'models/naidan-rpc': 'Use models on another device',
+      'models/naidan-rpc': 'Generate with Naidan on another device',
       'files/privacy': 'Choose files AI can read or edit',
       'files/explorer': 'Browse and manage files',
       'files/settings': 'Files and folders in Settings',
@@ -61,7 +71,7 @@ export const strings = {
       'work/local-only': 'Restrict external connections',
       'work/browser-shell': 'Work with files using a browser shell',
       'work/wesh-sysfs': 'Explore past chats with Wesh sysfs',
-      'work/wikipedia': 'Search Wikipedia',
+      'work/wikipedia': 'Use Wikipedia in AI answers',
       'chat/branching': 'Branch and edit conversations',
       'chat/compact': 'Continue a long conversation with a shorter context',
       'chat/groups': 'Group chats and settings by purpose',
@@ -69,7 +79,7 @@ export const strings = {
       'run/standalone': 'Start without an installer',
       'run/hosted': 'Serve the Hosted ZIP yourself',
       'run/offline': 'Use Naidan offline as a PWA',
-      'settings/inheritance': 'Connection and model inheritance',
+      'settings/inheritance': 'Choose models per chat with less setup',
       'data/storage': 'Choose where your conversations are saved',
       'data/backup': 'Back up and restore conversations with a ZIP',
       'images/create': 'Generate AI images on your device',

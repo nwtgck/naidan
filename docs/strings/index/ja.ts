@@ -3,6 +3,13 @@ import { standaloneDemoJa } from '../run/standalone/demo/ja';
 import { storageChoiceDemoJa } from './storage-demo/ja';
 import type { HomeMessages } from '../../site/messages';
 
+const answerIntroChunks = ['明日の', '予定を', 'まとめ', 'ます。'];
+const answerItemChunks = [
+  ['試作品を', '確認', 'する。'],
+  ['残りの', '作業を', '確認', 'する。'],
+  ['次の', '改善に', '向けて', '準備する。'],
+];
+
 export const strings = {
   standaloneDemo: standaloneDemoJa,
   storageDemo: storageChoiceDemoJa,
@@ -16,6 +23,8 @@ export const strings = {
       "残りの作業を確認する。",
       "次の改善に向けて準備する。"
     ],
+    answerIntroChunks,
+    answerItemChunks,
     "placeholder": "メッセージを入力...",
     "capabilities": [
       "テキスト生成",
@@ -110,8 +119,8 @@ export const strings = {
       body: 'グループを作り、既存のチャットを移して次の会話を始められます。',
     },
     wikipedia: {
-      title: 'チャットでWikipediaを調べる',
-      body: 'Wikipediaを使う設定と、検索・記事取得の確認方法を案内します。',
+      title: 'Wikipediaの情報でローカルAIの回答を補う',
+      body: '会話中に記事を調べ、回答の参考にする方法と確認事項を案内します。',
     },
     offline: {
       title: 'NaidanをPWAとしてオフラインで使う',

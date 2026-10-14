@@ -114,7 +114,7 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
           return result;
         };
         const homes = { en: home({ locale: 'en' }), ja: home({ locale: 'ja' }) } satisfies Record<DocsLocale, RenderedPage>;
-        files.set('index.html', renderProductionLocaleRoot({ pages: homes, bootstrap, assets: { styles: [...homeAssets.styles, ...searchAssets.styles, ...homeBrandAssets.styles], scripts: [searchAssets.script, homeBrandAssets.script], favicon } }));
+        files.set('index.html', renderProductionLocaleRoot({ pages: homes, bootstrap, assets: { styles: [...homeAssets.styles, ...searchAssets.styles, ...homeBrandAssets.styles, ...appEntryAssets.styles], scripts: [searchAssets.script, homeBrandAssets.script, appEntryAssets.script], favicon } }));
         files.set('sitemap.xml', createDocsSitemap());
         for (const locale of DOCS_LOCALES) {
           files.set(`search-${locale}.json`, JSON.stringify(createSearchIndex({ locale, pages: renderedPages })));

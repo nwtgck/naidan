@@ -70,7 +70,7 @@ export const strings = {
   },
   related: {
     shell: { title: 'シェルで作業用フォルダを使う', description: 'ブラウザでシェルツールを有効にし、選んだファイルを扱います。' },
-    wikipedia: { title: 'チャットからWikipediaを検索する', description: '長い記事をシェルで読む仕組みを確認します。' },
+    wikipedia: { title: 'Wikipediaの情報を使って、ローカルAIに答えてもらう', description: '長い記事をシェルで読む仕組みを確認します。' },
     files: { title: '保存済みファイルとフォルダを管理する', description: 'このマウントに一覧される保存済みファイルを探します。' },
     explorer: { title: 'ファイルエクスプローラーで見る', description: 'チャットのマウントからファイルをプレビューします。' },
   },

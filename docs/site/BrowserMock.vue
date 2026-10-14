@@ -6,17 +6,22 @@ import type { HomeDemoCopy, ReplicaChromeCopy } from './messages';
 
 const props = defineProps<{ copy: HomeDemoCopy; chrome: ReplicaChromeCopy }>();
 
-// Every chunk is present in static HTML; CSS reveals it in reading order.
-function chunksOf({ text }: { text: string }): string[] {
-  const graphemes = Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text), part => part.segment);
-  return Array.from({ length: 3 }, (_, index) => graphemes.slice(
-    Math.floor(graphemes.length * index / 3),
-    Math.floor(graphemes.length * (index + 1) / 3),
-  ).join(''));
-}
-
-const introChunks = computed(() => chunksOf({ text: props.copy.answerIntro }));
-const itemChunks = computed(() => props.copy.answerItems.map(text => chunksOf({ text })));
+// Locale-authored chunks remain in static HTML and are revealed in reading order.
+const introChunks = computed(() => props.copy.answerIntroChunks.map((text, index) => ({ text, index })));
+const itemChunks = computed(() => {
+  let nextIndex = props.copy.answerIntroChunks.length;
+  return props.copy.answerItemChunks.map(chunks => {
+    const startIndex = nextIndex;
+    return {
+      startIndex,
+      chunks: chunks.map(text => {
+        const index = nextIndex;
+        nextIndex += 1;
+        return { text, index };
+      }),
+    };
+  });
+});
 
 
 defineExpose({
@@ -42,9 +47,9 @@ defineExpose({
           <div class="demo-message demo-assistant">
             <div class="demo-message-header"><span class="demo-avatar demo-avatar-assistant"><BirdIcon :size="13" /></span><b>Gemma</b><span class="demo-header-tools"><Volume2Icon :size="11" /><span class="demo-generating-control"><SquareIcon :size="10" /></span><MoreHorizontalIcon :size="12" /></span></div>
             <div class="demo-answer" data-testid="docs-home-response">
-              <p data-testid="docs-home-response-intro"><span v-for="(chunk, index) in introChunks" :key="index" class="demo-chunk" :class="`demo-chunk-${index}`" :data-chunk-index="index" data-testid="docs-home-response-chunk">{{ chunk }}</span></p>
+              <p data-testid="docs-home-response-intro"><span v-for="chunk in introChunks" :key="chunk.index" class="demo-chunk" :class="`demo-chunk-${chunk.index}`" :data-chunk-index="chunk.index" data-testid="docs-home-response-chunk">{{ chunk.text }}</span></p>
               <ul>
-                <li v-for="(chunks, itemIndex) in itemChunks" :key="itemIndex" class="demo-item" :class="`demo-item-${itemIndex}`" data-testid="docs-home-response-item"><span v-for="(chunk, index) in chunks" :key="index" class="demo-chunk" :class="`demo-chunk-${3 + itemIndex * 3 + index}`" :data-chunk-index="3 + itemIndex * 3 + index" data-testid="docs-home-response-chunk">{{ chunk }}</span></li>
+                <li v-for="(item, itemIndex) in itemChunks" :key="itemIndex" class="demo-item" :class="`demo-item-${item.startIndex}`" data-testid="docs-home-response-item"><span v-for="chunk in item.chunks" :key="chunk.index" class="demo-chunk" :class="`demo-chunk-${chunk.index}`" :data-chunk-index="chunk.index" data-testid="docs-home-response-chunk">{{ chunk.text }}</span></li>
               </ul>
             </div>
             <div class="demo-message-actions"><MoreHorizontalIcon :size="12" /><Volume2Icon :size="12" /><RefreshCwIcon :size="12" /><CopyIcon :size="12" /><PencilIcon :size="12" /><MoreVerticalIcon :size="12" /></div>
@@ -79,15 +84,18 @@ defineExpose({
 .demo-chunk-0 { animation-name: docs-chunk-0; }
 .demo-chunk-1 { animation-name: docs-chunk-1; }
 .demo-chunk-2 { animation-name: docs-chunk-2; }
-.demo-chunk-3,.demo-item-0 { animation-name: docs-chunk-3; }
-.demo-chunk-4 { animation-name: docs-chunk-4; }
+.demo-chunk-3 { animation-name: docs-chunk-3; }
+.demo-chunk-4,.demo-item-4 { animation-name: docs-chunk-4; }
 .demo-chunk-5 { animation-name: docs-chunk-5; }
-.demo-chunk-6,.demo-item-1 { animation-name: docs-chunk-6; }
-.demo-chunk-7 { animation-name: docs-chunk-7; }
+.demo-chunk-6 { animation-name: docs-chunk-6; }
+.demo-chunk-7,.demo-item-7 { animation-name: docs-chunk-7; }
 .demo-chunk-8 { animation-name: docs-chunk-8; }
-.demo-chunk-9,.demo-item-2 { animation-name: docs-chunk-9; }
+.demo-chunk-9 { animation-name: docs-chunk-9; }
 .demo-chunk-10 { animation-name: docs-chunk-10; }
-.demo-chunk-11 { animation-name: docs-chunk-11; }
+.demo-chunk-11,.demo-item-11 { animation-name: docs-chunk-11; }
+.demo-chunk-12 { animation-name: docs-chunk-12; }
+.demo-chunk-13 { animation-name: docs-chunk-13; }
+.demo-chunk-14 { animation-name: docs-chunk-14; }
 .demo-generating-control,.demo-send-stop { animation: docs-generating 12s steps(1,end) infinite both; }
 .demo-send-ready { animation: docs-send-disabled 12s steps(1,end) infinite both; }
 .demo-input { position: relative; background: #1f2937; border: 1px solid #374151; border-radius: 12px; margin: 9px 12px 14px; padding: 12px; box-shadow: 0 6px 18px #0003; }
@@ -106,19 +114,22 @@ defineExpose({
    completed lines never disappear in reverse reading order. */
 @keyframes docs-response-cycle { 0%,6% { opacity: 0; } 8%,92% { opacity: 1; } 98%,100% { opacity: 0; } }
 @keyframes docs-chunk-0 { 0%,11.9% { visibility: hidden; } 12%,100% { visibility: visible; } }
-@keyframes docs-chunk-1 { 0%,14.9% { visibility: hidden; } 15%,100% { visibility: visible; } }
-@keyframes docs-chunk-2 { 0%,17.9% { visibility: hidden; } 18%,100% { visibility: visible; } }
-@keyframes docs-chunk-3 { 0%,20.9% { visibility: hidden; } 21%,100% { visibility: visible; } }
-@keyframes docs-chunk-4 { 0%,23.9% { visibility: hidden; } 24%,100% { visibility: visible; } }
-@keyframes docs-chunk-5 { 0%,26.9% { visibility: hidden; } 27%,100% { visibility: visible; } }
-@keyframes docs-chunk-6 { 0%,29.9% { visibility: hidden; } 30%,100% { visibility: visible; } }
-@keyframes docs-chunk-7 { 0%,32.9% { visibility: hidden; } 33%,100% { visibility: visible; } }
-@keyframes docs-chunk-8 { 0%,35.9% { visibility: hidden; } 36%,100% { visibility: visible; } }
-@keyframes docs-chunk-9 { 0%,38.9% { visibility: hidden; } 39%,100% { visibility: visible; } }
-@keyframes docs-chunk-10 { 0%,41.9% { visibility: hidden; } 42%,100% { visibility: visible; } }
-@keyframes docs-chunk-11 { 0%,44.9% { visibility: hidden; } 45%,100% { visibility: visible; } }
-@keyframes docs-generating { 0%,7.9%,51%,100% { visibility: hidden; } 8%,50% { visibility: visible; } }
-@keyframes docs-send-disabled { 0%,7.9%,51%,100% { visibility: visible; } 8%,50% { visibility: hidden; } }
+@keyframes docs-chunk-1 { 0%,13.9% { visibility: hidden; } 14%,100% { visibility: visible; } }
+@keyframes docs-chunk-2 { 0%,15.9% { visibility: hidden; } 16%,100% { visibility: visible; } }
+@keyframes docs-chunk-3 { 0%,17.9% { visibility: hidden; } 18%,100% { visibility: visible; } }
+@keyframes docs-chunk-4 { 0%,19.9% { visibility: hidden; } 20%,100% { visibility: visible; } }
+@keyframes docs-chunk-5 { 0%,21.9% { visibility: hidden; } 22%,100% { visibility: visible; } }
+@keyframes docs-chunk-6 { 0%,23.9% { visibility: hidden; } 24%,100% { visibility: visible; } }
+@keyframes docs-chunk-7 { 0%,25.9% { visibility: hidden; } 26%,100% { visibility: visible; } }
+@keyframes docs-chunk-8 { 0%,27.9% { visibility: hidden; } 28%,100% { visibility: visible; } }
+@keyframes docs-chunk-9 { 0%,29.9% { visibility: hidden; } 30%,100% { visibility: visible; } }
+@keyframes docs-chunk-10 { 0%,31.9% { visibility: hidden; } 32%,100% { visibility: visible; } }
+@keyframes docs-chunk-11 { 0%,33.9% { visibility: hidden; } 34%,100% { visibility: visible; } }
+@keyframes docs-chunk-12 { 0%,35.9% { visibility: hidden; } 36%,100% { visibility: visible; } }
+@keyframes docs-chunk-13 { 0%,37.9% { visibility: hidden; } 38%,100% { visibility: visible; } }
+@keyframes docs-chunk-14 { 0%,39.9% { visibility: hidden; } 40%,100% { visibility: visible; } }
+@keyframes docs-generating { 0%,7.9%,42%,100% { visibility: hidden; } 8%,41.9% { visibility: visible; } }
+@keyframes docs-send-disabled { 0%,7.9%,42%,100% { visibility: visible; } 8%,41.9% { visibility: hidden; } }
 
 html:has(#docs-pause-motion:checked) .demo-answer,
 html:has(#docs-pause-motion:checked) .demo-chunk,

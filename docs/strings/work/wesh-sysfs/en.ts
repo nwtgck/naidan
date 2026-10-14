@@ -68,7 +68,7 @@ export const strings = {
   },
   related: {
     shell: { title: 'Use Shell with working folders', description: 'Set up the Shell tool and work with selected files in the browser.' },
-    wikipedia: { title: 'Search Wikipedia from a chat', description: 'See how Wikipedia uses Shell for long page extracts.' },
+    wikipedia: { title: 'Use Wikipedia to help your local AI answer questions', description: 'See how Wikipedia uses Shell for long page extracts.' },
     files: { title: 'Manage saved files and folders', description: 'Find the saved binary objects listed by this mount.' },
     explorer: { title: 'Browse files in File Explorer', description: 'Preview files from a chat’s mounted paths.' },
   },

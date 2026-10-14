@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { DOCS_BASE, DOCS_LOCALES, DOCS_PAGES, docsHref } from './routes';
-import type { DocsLocale, DocsPageId } from './routes';
+import type { DocsLocale } from './routes';
+import { PURPOSE_PAGES } from './search-purpose';
 
 const searchEntrySchema = z.object({
   href: z.string(),
@@ -13,7 +14,6 @@ const searchIndexSchema = z.object({ locale: z.enum(DOCS_LOCALES), entries: z.ar
 export type SearchEntry = z.infer<typeof searchEntrySchema>;
 export type SearchIndex = z.infer<typeof searchIndexSchema>;
 export type SearchResult = SearchEntry & { snippet: string; score: number };
-const PURPOSE_PAGES = ['run/standalone', 'models/ollama', 'chat/branching', 'images/create', 'data/backup'] as const satisfies readonly DocsPageId[];
 
 export function searchIndexHref({ locale }: { locale: DocsLocale }): string {
   return `${DOCS_BASE}search-${locale}.json`;

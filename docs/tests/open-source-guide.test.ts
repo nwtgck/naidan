@@ -18,7 +18,15 @@ describe('open source and releases guide', () => {
       const article = page.document.querySelector('[data-testid="docs-open-source"]');
       expect(page.document.documentElement.lang).toBe(locale);
       expect(article?.querySelector('h1')?.textContent).toBe(copy.title);
+      const intro = article?.querySelector('.lead');
+      const repository = article?.querySelector('#open-source-repository')?.closest('section');
+      expect(intro?.textContent).toBe(copy.intro);
+      expect(intro?.nextElementSibling).toBe(repository);
+      const repositoryLink = repository?.querySelector('a[data-docs-external]');
+      expect(repositoryLink?.getAttribute('href')).toBe('https://github.com/nwtgck/naidan');
+      expect([...(repositoryLink?.childNodes ?? [])].filter(node => node.nodeType === 3).map(node => node.textContent).join('').trim()).toBe('https://github.com/nwtgck/naidan');
       expect(Array.from(article?.querySelectorAll('h2') ?? []).map(heading => heading.textContent)).toEqual([
+        copy.repository.title,
         copy.license.title,
         copy.source.title,
         copy.build.title,
@@ -32,6 +40,7 @@ describe('open source and releases guide', () => {
 
       const links = [...(article?.querySelectorAll<HTMLAnchorElement>('a[data-docs-external]') ?? [])];
       expect(links.map(link => link.getAttribute('href'))).toEqual([
+        'https://github.com/nwtgck/naidan',
         'https://github.com/nwtgck/naidan/blob/develop/LICENSE',
         'https://github.com/nwtgck/naidan',
         'https://github.com/nwtgck/naidan/commits',

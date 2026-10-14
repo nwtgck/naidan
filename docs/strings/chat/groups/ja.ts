@@ -77,6 +77,6 @@ export const strings = {
     promptField: 'このチャットグループで使うシステムプロンプト',
     promptText: 'ユーザーの文章を英語に翻訳し、意味と文体を保ってください。',
   },
-  related: '接続先とモデルの設定が引き継がれる仕組み',
-  nextDescription: '共通の設定がグループのチャットへどう反映され、個別の値がいつ使われるかを確認します。',
+  related: '設定の手間を減らし、チャットごとにモデルを使い分ける',
+  nextDescription: 'チャット・グループ・全体のどのモデルが回答に使われるかを確認します。',
 } satisfies GroupsGuideMessages;

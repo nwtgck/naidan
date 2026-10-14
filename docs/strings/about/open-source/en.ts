@@ -2,6 +2,7 @@ export const strings = {
   title: 'Naidan is open source software',
   description: 'Use Naidan under the MIT license, inspect its source and release builds, then build a version yourself or download a published app.',
   intro: 'Naidan publishes its code and build records on GitHub under the MIT license. You can examine a version before deciding whether to build it yourself or use a published package.',
+  repository: { title: 'Repository' },
   license: {
     title: 'Use, modify, and share for free',
     body: 'You can use, copy, modify, and redistribute Naidan’s code without a license fee, including for commercial use. You may give away copies or sell them. When distributing copies or substantial portions, keep the copyright and permission notices.',

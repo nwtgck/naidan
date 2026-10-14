@@ -17,7 +17,7 @@ describe('settings inheritance guide', () => {
   it.each([
     { locale: 'en' as const, s: en, common: commonEn },
     { locale: 'ja' as const, s: ja, common: commonJa },
-  ])('explains the purpose and inheritance before five localized screen steps in %s', async ({ locale, s, common }) => {
+  ])('explains the value and model choice before five localized screen steps in %s', async ({ locale, s, common }) => {
     const html = await renderToString(createSSRApp({ render: () => h(InheritancePage, { s, locale, common }) }));
     using page = parsePage({ html });
     const article = page.document.querySelector('[data-testid="docs-settings-inheritance"]');
@@ -59,30 +59,45 @@ describe('settings inheritance guide', () => {
   it.each([
     { locale: 'en', copy: en.concept.diagram },
     { locale: 'ja', copy: ja.concept.diagram },
-  ])('shows shared values, propagation, group values, and a chat-only model in %s', async ({ copy }) => {
+  ])('uses the same question and stops at the first model setting in %s', async ({ copy }) => {
     const html = await renderToString(createSSRApp({ render: () => h(SettingsInheritanceDiagram, { copy }) }));
     using page = parsePage({ html });
     const diagram = page.document.querySelector('[data-testid="inheritance-concept"]');
     const phase = (id: keyof typeof copy.phases) => diagram?.querySelector(`[data-testid="inheritance-concept-${id}"]`);
-    const node = (id: keyof typeof copy.phases, slot: keyof typeof copy.nodes) => phase(id)?.querySelector(`[data-testid="inheritance-node-${id}-${slot}"]`);
+    const scope = (id: keyof typeof copy.phases, slot: keyof typeof copy.scopes) => phase(id)?.querySelector(`[data-testid="inheritance-scope-${id}-${slot}"]`);
+    const result = (id: keyof typeof copy.phases) => phase(id)?.querySelector(`[data-testid="inheritance-result-${id}"]`);
     expect([...(diagram?.querySelectorAll('.phase') ?? [])].map(scene => scene.querySelector('.phase-title')?.textContent)).toEqual([
-      copy.phases.shared, copy.phases.globalChange, copy.phases.groupChange, copy.phases.chatChange,
+      copy.phases.ungrouped, copy.phases.groupUnset, copy.phases.groupModel, copy.phases.chatModel,
     ]);
-    expect(node('shared', 'chatA')?.textContent).toContain(copy.sources.global);
-    expect(node('globalChange', 'chatB')?.textContent).toContain(copy.models.a2);
-    expect(node('groupChange', 'chatA')?.textContent).toContain(copy.models.b1);
-    const finalChat = node('chatChange', 'chatB');
-    const finalRows = finalChat?.querySelectorAll('.setting-row');
-    expect(finalRows?.[0]?.textContent).toContain(copy.endpoints.b);
-    expect(finalRows?.[0]?.textContent).toContain(copy.sources.group);
-    expect(finalRows?.[1]?.textContent).toContain(copy.models.b2);
-    expect(finalRows?.[1]?.textContent).toContain(copy.sources.here);
-    expect(node('chatChange', 'chatA')?.textContent).toContain(copy.models.b1);
+    for (const scene of diagram?.querySelectorAll('.phase') ?? []) {
+      expect(scene.querySelector('.question-card')?.textContent).toContain(copy.question);
+      expect(scene.querySelector('.example-answer')?.textContent).toContain(copy.answerLabel);
+    }
+    expect(scope('ungrouped', 'group')?.getAttribute('data-checked')).toBe('false');
+    expect(scope('ungrouped', 'group')?.textContent).toContain(copy.states.outside);
+    expect(scope('ungrouped', 'global')?.getAttribute('data-selected')).toBe('true');
+    expect(scope('groupUnset', 'group')?.getAttribute('data-checked')).toBe('true');
+    expect(scope('groupUnset', 'group')?.textContent).toContain(copy.states.unset);
+    expect(scope('groupUnset', 'global')?.getAttribute('data-selected')).toBe('true');
+    expect(result('ungrouped')?.textContent).toContain(copy.models.global);
+    expect(result('groupUnset')?.textContent).toContain(copy.models.global);
+    expect(result('groupUnset')?.textContent).toContain(copy.sources.global);
+    expect(result('ungrouped')?.textContent).toContain(copy.answers.park.join(''));
+    expect(result('groupUnset')?.textContent).toContain(copy.answers.park.join(''));
+    expect(scope('groupModel', 'group')?.getAttribute('data-selected')).toBe('true');
+    expect(scope('groupModel', 'global')?.getAttribute('data-checked')).toBe('false');
+    expect(result('groupModel')?.textContent).toContain(copy.models.group);
+    expect(result('groupModel')?.textContent).toContain(copy.answers.movie.join(''));
+    expect(scope('chatModel', 'chat')?.getAttribute('data-selected')).toBe('true');
+    expect(scope('chatModel', 'group')?.getAttribute('data-checked')).toBe('false');
+    expect(scope('chatModel', 'global')?.getAttribute('data-checked')).toBe('false');
+    expect(result('chatModel')?.textContent).toContain(copy.models.chat);
+    expect(result('chatModel')?.textContent).toContain(copy.answers.museum.join(''));
     expect(diagram?.querySelector('button, input, select, script')).toBeNull();
   });
 
   it.each([
-    { file: '../site/demos/SettingsInheritanceDiagram.vue', completed: '.inheritance-diagram .phase-chatChange' },
+    { file: '../site/demos/SettingsInheritanceDiagram.vue', completed: '.inheritance-diagram .phase-chatModel' },
     { file: '../site/demos/SettingsInheritanceStep.vue', completed: '.stage-reset .scene-canvas' },
   ])('keeps pause rules attached to the completed $file scene after scoped CSS compilation', ({ file, completed }) => {
     const filename = new URL(file, import.meta.url);

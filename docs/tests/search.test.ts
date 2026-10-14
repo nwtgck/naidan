@@ -11,6 +11,8 @@ import { docsBuildConfig } from '../build/production';
 import { DOCS_PAGES, docsHref } from '../site/routes';
 import { parseSearchIndex, purposeDocs, searchDocs } from '../site/search';
 import type { SearchIndex } from '../site/search';
+import { PURPOSE_PAGES } from '../site/search-purpose';
+import { parseSearchPayload } from '../islands/search/contracts';
 import { parseWorkerRequest, parseWorkerResponse } from '../islands/search/worker-contracts';
 import type { SearchWorkerApi, SearchWorkerRequest, SearchWorkerResponse } from '../islands/search/worker-contracts';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
@@ -64,7 +66,19 @@ describe('Docs search', () => {
       expect(guide.status).toBe(200);
       using page = parsePage({ html: await guide.text() });
       expect(page.document.querySelector('[data-testid="docs-search-trigger"]')?.getAttribute('aria-label')).toBe(locale === 'ja' ? 'ドキュメントを検索' : 'Search docs');
-      expect(page.document.querySelector('[data-docs-island="search"]')).not.toBeNull();
+      const searchHost = page.document.querySelector('[data-docs-island="search"]');
+      if (!searchHost) throw new Error('Missing Docs search island');
+      const payload = parseSearchPayload({ serialized: searchHost.getAttribute('data-docs-props') ?? '' });
+      expect(payload.locale).toBe(locale);
+      expect(payload.currentPage).toBe('files/privacy');
+      expect(payload.purpose.map(item => item.href)).toEqual(PURPOSE_PAGES.map(purposePage => docsHref({ locale, page: purposePage })));
+      expect(payload.purpose.every(item => item.title.trim() && item.snippet.trim())).toBe(true);
+      expect(Array.from(searchHost.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-search-results"] a'), link => link.getAttribute('href'))).toEqual(payload.purpose.map(item => item.href));
+      expect(() => parseSearchPayload({ serialized: JSON.stringify({ ...payload, purpose: [{ ...payload.purpose[0], href: docsHref({ locale: locale === 'en' ? 'ja' : 'en', page: PURPOSE_PAGES[0] }) }, ...payload.purpose.slice(1)] }) })).toThrow();
+      expect(() => parseSearchPayload({ serialized: JSON.stringify({ ...payload, currentPage: 'not-a-page' }) })).toThrow();
+      using currentPurpose = parsePage({ html: await readFile(path.join(fixture.docs, 'dist', locale, 'run/standalone/index.html'), 'utf8') });
+      const selfLink = currentPurpose.document.querySelector<HTMLAnchorElement>(`[data-docs-island="search"] [data-testid="docs-search-results"] a[href="${docsHref({ locale, page: 'run/standalone' })}"]`);
+      expect(selfLink?.hasAttribute('data-docs-guide-prefetch')).toBe(false);
       const relatedLabel = page.document.querySelector('[data-docs-related-guide] .related-eyebrow')?.textContent?.trim();
       expect(relatedLabel).toBeTruthy();
       expect(production.entries.find(entry => entry.href === docsHref({ locale, page: 'files/privacy' }))?.paragraphs).not.toContain(relatedLabel);
@@ -72,10 +86,17 @@ describe('Docs search', () => {
       const home = await dev.request({ url: '/docs/' });
       using neutral = parsePage({ html: await home.text() });
       for (const template of neutral.document.querySelectorAll<HTMLTemplateElement>('template[data-docs-locale]')) {
-        expect(template.content.querySelectorAll('[data-docs-island="search"]')).toHaveLength(1);
+        const root = template.content.querySelector('[data-docs-island="search"]');
+        if (!root) throw new Error('Missing neutral-home search island');
+        const templateLocale = template.getAttribute('data-docs-locale');
+        const templatePayload = parseSearchPayload({ serialized: root.getAttribute('data-docs-props') ?? '' });
+        expect(templatePayload.locale).toBe(templateLocale);
+        expect(templatePayload.currentPage).toBe('index');
+        expect(Array.from(root.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-search-results"] a'), link => link.getAttribute('href'))).toEqual(templatePayload.purpose.map(item => item.href));
       }
-      expect(neutral.document.querySelectorAll('script[type="module"]')).toHaveLength(3);
+      expect(neutral.document.querySelector('script[src="/docs/islands/search/client.ts"]')).not.toBeNull();
       expect(neutral.document.querySelector('script[src="/docs/client/home-brand.ts"]')).not.toBeNull();
+      expect(neutral.document.querySelector('script[src="/docs/client/app-entry.ts"]')).not.toBeNull();
     }
     const japanese = parseSearchIndex({ value: JSON.parse(await readFile(path.join(fixture.docs, 'dist/search-ja.json'), 'utf8')) as unknown, locale: 'ja' });
     expect(searchDocs({ index: japanese, query: 'バックアップ ZIP' }).some(item => item.href === '/docs/ja/data/backup/')).toBe(true);
@@ -239,7 +260,9 @@ describe('Docs search', () => {
         error.mockRestore();
       },
     };
+    const purposeMatches = parseSearchPayload({ serialized: root.getAttribute('data-docs-props') ?? '' }).purpose;
     expect(root.querySelector('button')?.disabled).toBe(true);
+    expect(Array.from(root.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-search-results"] a'), link => link.getAttribute('href'))).toEqual(purposeMatches.map(item => item.href));
     const pathname = new URL(source, 'https://naidan.invalid').pathname;
     await import(pathToFileURL(path.join(dist, pathname.slice('/docs/'.length))).href);
     page.document.dispatchEvent(new dom.Event('DOMContentLoaded'));
@@ -253,26 +276,27 @@ describe('Docs search', () => {
     trigger?.click();
     expect(root.querySelector('dialog')?.open).toBe(true);
     expect(page.document.body.style.overflow).toBe('hidden');
-    await vi.waitFor(() => expect(requests).toHaveLength(1));
-    worker.emit({ response: { kind: 'error', requestId: requests[0]?.requestId ?? -1 } });
-    await vi.waitFor(() => expect(root.querySelector('[role="alert"]')?.textContent).toContain('読み込めません'));
-    root.querySelector<HTMLButtonElement>('.docs-search-retry')?.click();
-    await vi.waitFor(() => expect(requests).toHaveLength(2));
-    const purposeMatches = purposeDocs({ index });
-    worker.emit({ response: { kind: 'results', requestId: requests[1]?.requestId ?? -1, results: purposeMatches } });
     await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(5));
     expect(root.querySelector('.search-status')?.textContent).toContain('目的から探す');
     expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/');
+    expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.hasAttribute('data-docs-guide-prefetch')).toBe(true);
+    expect(workerConstructor).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(0);
     const stableList = root.querySelector('[data-testid="docs-search-results"]');
     const stableStatus = root.querySelector('.search-status');
     input.value = 'バックアップ';
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
-    await vi.waitFor(() => expect(requests).toHaveLength(3));
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    expect(workerConstructor).toHaveBeenCalledOnce();
     await vi.waitFor(() => expect(root.querySelector('.search-status')?.textContent).toContain('検索しています… · 目的から探す'));
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/');
+    worker.emit({ response: { kind: 'error', requestId: requests[0]?.requestId ?? -1 } });
+    await vi.waitFor(() => expect(root.querySelector('[role="alert"]')?.textContent).toContain('読み込めません'));
+    root.querySelector<HTMLButtonElement>('.docs-search-retry')?.click();
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
     const matches = searchDocs({ index, query: 'バックアップ' }).map(({ href, title, snippet }) => ({ href, title, snippet }));
-    worker.emit({ response: { kind: 'results', requestId: requests[2]?.requestId ?? -1, results: matches } });
+    worker.emit({ response: { kind: 'results', requestId: requests[1]?.requestId ?? -1, results: matches } });
     await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/backup/'));
     const first = root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a');
     expect(first?.getAttribute('href')).toBe('/docs/ja/data/backup/');
@@ -286,7 +310,7 @@ describe('Docs search', () => {
     content.scrollTop = 50;
     input.value = '保存先';
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
-    await vi.waitFor(() => expect(requests).toHaveLength(4));
+    await vi.waitFor(() => expect(requests).toHaveLength(3));
     await vi.waitFor(() => expect(root.querySelector('.search-status')?.textContent).toContain('前の検索結果: “バックアップ”'));
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     expect(root.querySelector('.search-status')).toBe(stableStatus);
@@ -294,35 +318,37 @@ describe('Docs search', () => {
     expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/backup/');
     expect(root.querySelector('.search-status')?.textContent).toContain('検索しています');
     const storageMatches = searchDocs({ index, query: '保存先' }).map(({ href, title, snippet }) => ({ href, title, snippet }));
-    worker.emit({ response: { kind: 'results', requestId: requests[3]?.requestId ?? -1, results: storageMatches } });
+    worker.emit({ response: { kind: 'results', requestId: requests[2]?.requestId ?? -1, results: storageMatches } });
     await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/storage/'));
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     expect(root.querySelector('.search-status')).toBe(stableStatus);
     expect(root.querySelector('.search-status')?.textContent).not.toContain('前の検索結果');
     input.value = 'stale';
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
-    await vi.waitFor(() => expect(requests).toHaveLength(5));
+    await vi.waitFor(() => expect(requests).toHaveLength(4));
     input.value = '';
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
-    await vi.waitFor(() => expect(requests).toHaveLength(6));
-    await vi.waitFor(() => expect(root.querySelector('.search-status')?.textContent).toContain('前の検索結果: “保存先”'));
-    expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/storage/');
-    worker.deliver({ requestId: requests[4]?.requestId ?? -1, response: { kind: 'results', requestId: requests[4]?.requestId ?? -1, results: [{ href: 7, title: 'Malformed', snippet: '' }] } });
+    await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/'));
+    expect(requests).toHaveLength(4);
+    expect(root.querySelector('.search-status')?.textContent).toContain('目的から探す');
+    worker.deliver({ requestId: requests[3]?.requestId ?? -1, response: { kind: 'results', requestId: requests[3]?.requestId ?? -1, results: [{ href: 7, title: 'Malformed', snippet: '' }] } });
     await new Promise(resolve => setTimeout(resolve, 0));
-    expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/storage/');
+    expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/');
     expect(root.querySelector('[role="alert"]')).toBeNull();
     expect(worker.terminate).not.toHaveBeenCalled();
-    worker.emit({ response: { kind: 'results', requestId: requests[5]?.requestId ?? -1, results: purposeMatches } });
-    await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/'));
-    expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/');
-    expect(root.querySelector('.search-status')?.textContent).toContain('目的から探す');
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     input.focus();
     input.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     expect(page.document.activeElement).toBe(root.querySelector('[data-testid="docs-search-results"] a'));
     input.value = '保存先';
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
-    await vi.waitFor(() => expect(requests).toHaveLength(7));
+    await vi.waitFor(() => expect(requests).toHaveLength(5));
+    expect(workerConstructor).toHaveBeenCalledOnce();
+    worker.emit({ response: { kind: 'results', requestId: requests[4]?.requestId ?? -1, results: storageMatches } });
+    await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/storage/'));
+    input.value = 'pending';
+    input.dispatchEvent(new dom.Event('input', { bubbles: true }));
+    await vi.waitFor(() => expect(requests).toHaveLength(6));
     const cancel = new dom.Event('cancel', { cancelable: true });
     root.querySelector('dialog')?.dispatchEvent(cancel);
     expect(root.querySelector('dialog')?.open).toBe(false);
@@ -332,25 +358,26 @@ describe('Docs search', () => {
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
     page.document.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true }));
     expect(root.querySelector('dialog')?.open).toBe(true);
-    await vi.waitFor(() => expect(requests).toHaveLength(8));
-    await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(0));
-    worker.reject({ requestId: requests[6]?.requestId ?? -1, error: new Error('Stale request failed') });
+    await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(5));
+    expect(requests).toHaveLength(6);
+    worker.reject({ requestId: requests[5]?.requestId ?? -1, error: new Error('Stale request failed') });
     await new Promise(resolve => setTimeout(resolve, 0));
-    expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(0);
+    expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(5);
     expect(root.querySelector('[role="alert"]')).toBeNull();
     expect(worker.terminate).not.toHaveBeenCalled();
-    worker.emit({ response: { kind: 'results', requestId: requests[7]?.requestId ?? -1, results: purposeMatches } });
-    await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(5));
     page.document.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true, cancelable: true }));
     expect(root.querySelector('dialog')?.open).toBe(false);
     expect(workerConstructor).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
     trigger?.click();
-    await vi.waitFor(() => expect(requests).toHaveLength(9));
-    worker.deliver({ requestId: requests[8]?.requestId ?? -1, response: { kind: 'results', requestId: (requests[8]?.requestId ?? -1) + 1, results: purposeMatches } });
-    await vi.waitFor(() => expect(root.querySelector('[role="alert"]')?.textContent).toContain('読み込めません'));
-    expect(root.querySelector<HTMLButtonElement>('.docs-search-retry')).not.toBeNull();
+    await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(5));
+    expect(requests).toHaveLength(6);
+    const onerror = worker.onerror as ((event: ErrorEvent) => void) | null;
+    onerror?.(new dom.Event('error') as ErrorEvent);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(5);
+    expect(root.querySelector('[role="alert"]')).toBeNull();
     expect(worker.terminate).toHaveBeenCalledOnce();
     const app = (root as HTMLElement & { __vue_app__?: { unmount: () => void } }).__vue_app__;
     if (!app) throw new Error('Missing hydrated Docs search app');
@@ -367,13 +394,30 @@ describe('Docs search', () => {
     const document = dom.window.document;
     Object.defineProperty(document, 'readyState', { configurable: true, get: () => 'loading' });
     Object.defineProperty(dom.window.navigator, 'languages', { configurable: true, value: ['ja'] });
+    for (const template of document.querySelectorAll<HTMLTemplateElement>('template[data-docs-locale]')) {
+      const searchRoot = template.content.querySelector('[data-docs-island="search"]');
+      if (!searchRoot) throw new Error('Missing neutral-home search template');
+      const payload = parseSearchPayload({ serialized: searchRoot.getAttribute('data-docs-props') ?? '' });
+      expect(payload.locale).toBe(template.getAttribute('data-docs-locale'));
+      expect(searchRoot.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(PURPOSE_PAGES.length);
+    }
     const bootstrap = document.querySelector<HTMLScriptElement>('script:not([type])[src]')?.getAttribute('src');
     const search = document.querySelector<HTMLScriptElement>('script[type="module"][src]')?.getAttribute('src');
     if (!bootstrap || !search) throw new Error('Missing neutral-home scripts');
     new Script(await readFile(path.join(dist, bootstrap.slice('/docs/'.length)), 'utf8')).runInContext(dom.getInternalVMContext());
-    for (const name of ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'HTMLDialogElement', 'SVGElement', 'Event', 'MutationObserver'] as const) {
+    for (const name of ['window', 'document', 'navigator', 'Node', 'Element', 'HTMLElement', 'HTMLInputElement', 'HTMLDialogElement', 'SVGElement', 'Event', 'MutationObserver'] as const) {
       vi.stubGlobal(name, name === 'window' ? dom.window : name === 'document' ? document : dom.window[name]);
     }
+    Object.defineProperty(dom.window.HTMLDialogElement.prototype, 'showModal', {
+      configurable: true,
+      value(this: HTMLDialogElement) {
+        this.setAttribute('open', '');
+      },
+    });
+    const workerConstructor = vi.fn(() => {
+      throw new Error('Empty search must not start a Worker');
+    });
+    vi.stubGlobal('Worker', workerConstructor);
     using _cleanup = { [Symbol.dispose]: () => vi.unstubAllGlobals() };
     await import(pathToFileURL(path.join(dist, search.slice('/docs/'.length))).href);
     document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
@@ -382,5 +426,13 @@ describe('Docs search', () => {
     expect(document.querySelectorAll('[data-docs-island="search"]')).toHaveLength(1);
     expect(document.querySelector('[data-testid="docs-search-trigger"]')?.getAttribute('aria-label')).toBe('ドキュメントを検索');
     expect(document.querySelectorAll('template[data-docs-locale]')).toHaveLength(0);
+    const root = document.querySelector<HTMLElement>('[data-docs-island="search"]');
+    if (!root) throw new Error('Missing chosen-locale search island');
+    const payload = parseSearchPayload({ serialized: root.getAttribute('data-docs-props') ?? '' });
+    expect(payload.locale).toBe('ja');
+    root.querySelector<HTMLButtonElement>('[data-testid="docs-search-trigger"]')?.click();
+    await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(PURPOSE_PAGES.length));
+    expect(root.querySelector('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/');
+    expect(workerConstructor).not.toHaveBeenCalled();
   });
 });
