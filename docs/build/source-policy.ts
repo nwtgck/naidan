@@ -15,6 +15,20 @@ const reservedIslandAttributes = new Set(['data-docs-island', 'data-docs-props',
 // All article/components are reviewed source; interactions belong in islands.
 export function validateStaticComponent({ source, filename, mode }: { source: string; filename: string; mode: 'static' | 'island' }): void {
   const { descriptor, errors } = parse(source, { filename });
+  if (mode === 'static' && descriptor.script) {
+    const { line, column } = descriptor.script.loc.start;
+    throw new Error(`${filename}:${line}:${column}: Static Docs components support only inline <script setup>. Move browser behavior into a registered island.`);
+  }
+  if (mode === 'static' && descriptor.scriptSetup?.src) {
+    const { line, column } = descriptor.scriptSetup.loc.start;
+    throw new Error(`${filename}:${line}:${column}: Static Docs <script setup> must be inline so its authoring rules can be checked. Move browser behavior into a registered island.`);
+  }
+  if (mode === 'static' && errors.some(error => String(error).includes('<script setup> cannot use the "src" attribute'))) {
+    const beforeScript = source.slice(0, Math.max(0, source.search(/<script\b/u)));
+    const line = beforeScript.split('\n').length;
+    const column = beforeScript.length - beforeScript.lastIndexOf('\n');
+    throw new Error(`${filename}:${line}:${column}: Static Docs <script setup> must be inline so its authoring rules can be checked. Move browser behavior into a registered island.`);
+  }
   if (errors.length) throw new Error(`Invalid Docs component ${filename}: ${errors.map(String).join('; ')}`);
   if (descriptor.template?.src || descriptor.template?.lang) {
     throw new Error(`Docs templates must be inline HTML: ${filename}`);

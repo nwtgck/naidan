@@ -5,9 +5,72 @@ import { validateStaticComponent } from './source-policy';
 
 type ResolveImport = ({ specifier, importer }: { specifier: string; importer: string }) => Promise<string | undefined>;
 type ImportEdge = { specifier: string; kind: 'static' | 'dynamic'; node: ts.Node };
+type ScriptSource = { content: string; startLine: number; startColumn: number };
 
 const reservedIslandAttributes = new Set(['data-docs-island', 'data-docs-props', 'data-docs-hydrated']);
 const disallowedContextApis = new Set(['useId', 'provide', 'inject']);
+const unsupportedStaticVueApis = new Set([
+  'onBeforeMount', 'onMounted', 'onBeforeUpdate', 'onUpdated', 'onBeforeUnmount', 'onUnmounted',
+  'onActivated', 'onDeactivated', 'onRenderTracked', 'onRenderTriggered',
+  'watch', 'watchEffect', 'watchPostEffect', 'watchSyncEffect',
+  'h', 'createVNode', 'defineComponent',
+]);
+
+function isStaticAuthoringFile({ filename }: { filename: string }): boolean {
+  if (filename === 'server.ts' || filename.startsWith('client/')) return false;
+  if (filename.startsWith('islands/')) {
+    return filename === 'islands/spec.ts' || filename === 'islands/registry.ts'
+      || /^islands\/[^/]+\/(?:definition|contracts|copy)\.ts$/u.test(filename);
+  }
+  return true;
+}
+
+function isPublicIslandValueEdge({ filename, target }: { filename: string; target: string }): boolean {
+  if (!filename.startsWith('islands/')) {
+    return /^islands\/[^/]+\/definition\.ts$/u.test(target) || target === 'islands/browser-ai-availability/copy.ts';
+  }
+  if (filename === 'islands/registry.ts') return /^islands\/[^/]+\/contracts\.ts$/u.test(target);
+  const name = islandName({ file: filename });
+  if (name === undefined) return false;
+  if (filename === `islands/${name}/definition.ts`) return target === `islands/${name}/contracts.ts`;
+  if (filename === `islands/${name}/contracts.ts`) return target === 'islands/spec.ts';
+  return false;
+}
+
+function staticScriptError({ filename, script, ast, node, reason, remedy }: {
+  filename: string;
+  script: ScriptSource;
+  ast: ts.SourceFile;
+  node: ts.Node;
+  reason: string;
+  remedy: string;
+}): never {
+  const { line, character } = ast.getLineAndCharacterOfPosition(node.getStart(ast));
+  const fileLine = script.startLine + line;
+  const fileColumn = (line === 0 ? script.startColumn : 1) + character;
+  throw new Error(`${filename}:${fileLine}:${fileColumn}: ${reason} ${remedy}`);
+}
+
+function rejectUnsupportedStaticVueApi({ name, filename, script, ast, node }: {
+  name: string;
+  filename: string;
+  script: ScriptSource;
+  ast: ts.SourceFile;
+  node: ts.Node;
+}): void {
+  if (!unsupportedStaticVueApis.has(name)) return;
+  const reason = name.startsWith('watch')
+    ? `Vue ${name} is outside the supported static Docs script subset; its server execution does not provide browser reactivity.`
+    : ['h', 'createVNode', 'defineComponent'].includes(name)
+      ? `Vue ${name} is outside the supported static Docs script subset; render functions can hide inactive events.`
+      : `Vue ${name} is not called when a static Docs page is rendered.`;
+  const remedy = name.startsWith('watch')
+    ? 'Use computed for derived output, onServerPrefetch for async server data, or a registered island for browser updates.'
+    : ['h', 'createVNode', 'defineComponent'].includes(name)
+      ? 'Write static UI in an SFC template, and put interaction in a registered island.'
+      : 'Use computed or onServerPrefetch for server output, or move browser behavior into a registered island.';
+  staticScriptError({ filename, script, ast, node, reason, remedy });
+}
 
 function docsRelative({ root, file }: { root: string; file: string }): string | undefined {
   const relative = path.relative(root, file.split('?')[0] ?? file).split(path.sep).join('/');
@@ -55,33 +118,74 @@ function importsOnlyCoreValue({ node, exportName }: { node: ts.Node; exportName:
     && bindings.elements.every(element => element.isTypeOnly || (element.propertyName?.text ?? element.name.text) === exportName));
 }
 
-function scripts({ source, filename }: { source: string; filename: string }): string[] {
-  if (!filename.endsWith('.vue')) return [source];
+function scripts({ source, filename }: { source: string; filename: string }): ScriptSource[] {
+  if (!filename.endsWith('.vue')) return [{ content: source, startLine: 1, startColumn: 1 }];
   const { descriptor, errors } = parse(source, { filename });
   if (errors.length) throw new Error(`Invalid Docs component ${filename}: ${errors.map(String).join('; ')}`);
-  return [descriptor.script?.content, descriptor.scriptSetup?.content].filter((script): script is string => script !== undefined);
+  return [descriptor.script, descriptor.scriptSetup]
+    .filter((block): block is NonNullable<typeof block> => block !== null)
+    .map(block => ({ content: block.content, startLine: block.loc.start.line, startColumn: block.loc.start.column }));
 }
 
-function inspectScript({ source, filename }: { source: string; filename: string }): {
+function inspectScript({ script, filename }: { script: ScriptSource; filename: string }): {
   ast: ts.SourceFile;
   edges: ImportEdge[];
 } {
-  const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, filename.endsWith('.js') ? ts.ScriptKind.JS : ts.ScriptKind.TS);
+  const ast = ts.createSourceFile(filename, script.content, ts.ScriptTarget.Latest, true, filename.endsWith('.js') ? ts.ScriptKind.JS : ts.ScriptKind.TS);
   const edges: ImportEdge[] = [];
   const vueNamespaces = new Set<string>();
+  const staticAuthoring = isStaticAuthoringFile({ filename });
 
   for (const statement of ast.statements) {
     if (ts.isImportDeclaration(statement)) {
       const specifier = importedSource({ statement });
       if (specifier === undefined) continue;
       edges.push({ specifier, kind: 'static', node: statement });
+      if (staticAuthoring && (specifier.startsWith('@vue/') || specifier.startsWith('vue/'))
+        && !isTypeOnlyEdge({ node: statement })) {
+        staticScriptError({
+          filename,
+          script,
+          ast,
+          node: statement,
+          reason: `Vue runtime subpath ${specifier} is unsupported in static Docs authoring.`,
+          remedy: 'Import named server-rendered APIs from vue, or move browser behavior into a registered island.',
+        });
+      }
       if (specifier === 'vue') {
-        const bindings = statement.importClause?.namedBindings;
-        if (bindings && ts.isNamespaceImport(bindings)) vueNamespaces.add(bindings.name.text);
+        const clause = statement.importClause;
+        const bindings = clause?.namedBindings;
+        if (staticAuthoring && clause?.name && !clause.isTypeOnly) {
+          staticScriptError({
+            filename,
+            script,
+            ast,
+            node: clause.name,
+            reason: 'A default Vue value import is unsupported in static Docs.',
+            remedy: 'Use named Vue imports for server-rendered values, or a registered island for browser behavior.',
+          });
+        }
+        if (bindings && ts.isNamespaceImport(bindings) && !clause?.isTypeOnly) {
+          if (staticAuthoring) {
+            staticScriptError({
+              filename,
+              script,
+              ast,
+              node: bindings,
+              reason: 'A Vue value namespace import is unsupported in static Docs.',
+              remedy: 'Use named Vue imports so browser-only APIs can be checked.',
+            });
+          }
+          vueNamespaces.add(bindings.name.text);
+        }
         if (bindings && ts.isNamedImports(bindings)) {
           for (const element of bindings.elements) {
-            if (disallowedContextApis.has(element.propertyName?.text ?? element.name.text)) {
+            const importedName = element.propertyName?.text ?? element.name.text;
+            if (disallowedContextApis.has(importedName) && !clause?.isTypeOnly && !element.isTypeOnly) {
               throw new Error(`Vue context API ${element.name.text} is unsupported in Docs islands: ${filename}`);
+            }
+            if (staticAuthoring && !clause?.isTypeOnly && !element.isTypeOnly) {
+              rejectUnsupportedStaticVueApi({ name: importedName, filename, script, ast, node: element });
             }
           }
         }
@@ -89,18 +193,91 @@ function inspectScript({ source, filename }: { source: string; filename: string 
     } else if (ts.isExportDeclaration(statement)) {
       const specifier = importedSource({ statement });
       if (specifier !== undefined) edges.push({ specifier, kind: 'static', node: statement });
-      if (specifier === 'vue' && (!statement.exportClause || ts.isNamedExports(statement.exportClause)
-        && statement.exportClause.elements.some(element => disallowedContextApis.has(element.propertyName?.text ?? element.name.text)))) {
-        throw new Error(`Docs islands cannot re-export Vue context APIs in ${filename}`);
+      if (staticAuthoring && specifier && (specifier.startsWith('@vue/') || specifier.startsWith('vue/'))
+        && !isTypeOnlyEdge({ node: statement })) {
+        staticScriptError({
+          filename,
+          script,
+          ast,
+          node: statement,
+          reason: `Vue runtime subpath ${specifier} is unsupported in static Docs authoring.`,
+          remedy: 'Re-export only named server-rendered APIs from vue.',
+        });
+      }
+      if (specifier === 'vue') {
+        const clause = statement.exportClause;
+        if (staticAuthoring && !statement.isTypeOnly && (!clause || ts.isNamespaceExport(clause))) {
+          staticScriptError({
+            filename,
+            script,
+            ast,
+            node: statement,
+            reason: 'A Vue value star or namespace re-export is unsupported in static Docs.',
+            remedy: 'Re-export only explicitly named server-rendered Vue values.',
+          });
+        }
+        if (!staticAuthoring && !statement.isTypeOnly && !clause) {
+          throw new Error(`Docs islands cannot re-export Vue context APIs in ${filename}`);
+        }
+        if (clause && ts.isNamedExports(clause)) {
+          for (const element of clause.elements) {
+            if (statement.isTypeOnly || element.isTypeOnly) continue;
+            const exportedName = element.propertyName?.text ?? element.name.text;
+            if (disallowedContextApis.has(exportedName)) {
+              throw new Error(`Docs islands cannot re-export Vue context APIs in ${filename}`);
+            }
+            if (staticAuthoring) rejectUnsupportedStaticVueApi({ name: exportedName, filename, script, ast, node: element });
+          }
+        }
       }
     }
   }
 
   const visit = ({ node }: { node: ts.Node }): void => {
     if (ts.isCallExpression(node)) {
+      if (staticAuthoring && filename.endsWith('.vue') && ts.isIdentifier(node.expression) && node.expression.text === 'defineOptions') {
+        const option = node.arguments[0];
+        const property = option && ts.isObjectLiteralExpression(option) && option.properties.length === 1 ? option.properties[0] : undefined;
+        const valid = node.arguments.length === 1 && property && ts.isPropertyAssignment(property)
+          && propertyName({ name: property.name }) === 'inheritAttrs'
+          && property.initializer.kind === ts.SyntaxKind.FalseKeyword;
+        if (!valid) {
+          staticScriptError({
+            filename,
+            script,
+            ast,
+            node,
+            reason: 'Static Docs defineOptions supports only { inheritAttrs: false }; lifecycle options are not called in published static pages.',
+            remedy: 'Use inline <script setup> for server output, or a registered island for browser behavior.',
+          });
+        }
+      }
       if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
         const argument = node.arguments[0];
+        if (staticAuthoring && argument && ts.isStringLiteralLike(argument)
+          && (argument.text === 'vue' || argument.text.startsWith('@vue/') || argument.text.startsWith('vue/'))) {
+          staticScriptError({
+            filename,
+            script,
+            ast,
+            node,
+            reason: 'A dynamic Vue value import is unsupported in static Docs.',
+            remedy: 'Use named Vue imports for server-rendered values, or a registered island for browser behavior.',
+          });
+        }
         if (argument && ts.isStringLiteralLike(argument)) edges.push({ specifier: argument.text, kind: 'dynamic', node });
+      }
+      if (staticAuthoring && ts.isIdentifier(node.expression) && node.expression.text === 'require'
+        && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])
+        && (node.arguments[0].text === 'vue' || node.arguments[0].text.startsWith('@vue/') || node.arguments[0].text.startsWith('vue/'))) {
+        staticScriptError({
+          filename,
+          script,
+          ast,
+          node,
+          reason: 'A require("vue") value import is unsupported in static Docs.',
+          remedy: 'Use named Vue imports for server-rendered values, or a registered island for browser behavior.',
+        });
       }
     }
     if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)
@@ -227,13 +404,24 @@ export async function validateDocsAuthoringSource({ source, filename, root, reso
   }
   const importer = path.resolve(root, filename);
   for (const script of scripts({ source, filename })) {
-    const { ast, edges } = inspectScript({ source: script, filename });
+    const { ast, edges } = inspectScript({ script, filename });
     if (name !== undefined && filename.endsWith('/definition.ts')) checkDefinition({ ast, filename });
     if (name !== undefined && filename === `islands/${name}/contracts.ts`) checkSpec({ ast, filename });
     for (const edge of edges) {
       const resolved = await resolve({ specifier: edge.specifier, importer });
       if (resolved === undefined) continue;
       const target = docsRelative({ root, file: resolved });
+      const staticAuthoring = isStaticAuthoringFile({ filename });
+      if (staticAuthoring && target?.startsWith('client/') && !isTypeOnlyEdge({ node: edge.node })) {
+        staticScriptError({
+          filename,
+          script,
+          ast,
+          node: edge.node,
+          reason: `Static Docs cannot import browser client code from ${target}.`,
+          remedy: 'Keep static output in the page or a server-rendered helper; put browser behavior in a registered island.',
+        });
+      }
       if (target === 'islands/core.ts' && !isTypeOnlyEdge({ node: edge.node })) {
         const hostImport = filename === 'site/DocsIsland.vue' && importsOnlyCoreValue({ node: edge.node, exportName: 'readDocsIslandEntry' });
         const definitionImport = name !== undefined && filename === `islands/${name}/definition.ts`
@@ -242,12 +430,34 @@ export async function validateDocsAuthoringSource({ source, filename, root, reso
           throw new Error(`Import Docs island runtime through a definition or DocsIsland host: ${filename}`);
         }
       }
+      if (staticAuthoring && target?.startsWith('islands/') && !target.endsWith('.vue')
+        && !isTypeOnlyEdge({ node: edge.node }) && target !== 'islands/core.ts'
+        && !isPublicIslandValueEdge({ filename, target })) {
+        staticScriptError({
+          filename,
+          script,
+          ast,
+          node: edge.node,
+          reason: `Static Docs cannot import private island code from ${target}.`,
+          remedy: 'Import the registered island definition through DocsIsland, or move shared static data into an approved static helper.',
+        });
+      }
       if (target === undefined || !target.endsWith('.vue') || islandName({ file: target }) === undefined) continue;
       const targetIsland = islandName({ file: target });
       const withinIslandComponent = name === targetIsland && filename.endsWith('.vue');
       const definitionImport = name === targetIsland && filename === `islands/${name}/definition.ts`
         && edge.kind === 'static' && edge.specifier.startsWith('./') && path.posix.dirname(target) === path.posix.dirname(filename);
       if (!withinIslandComponent && !definitionImport) {
+        if (staticAuthoring) {
+          staticScriptError({
+            filename,
+            script,
+            ast,
+            node: edge.node,
+            reason: `Import raw Docs island component through its definition instead: ${filename} -> ${target}.`,
+            remedy: 'Pass the registered factory to DocsIsland.',
+          });
+        }
         throw new Error(`Import raw Docs island component through its definition instead: ${filename} -> ${target}`);
       }
     }

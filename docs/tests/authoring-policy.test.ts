@@ -12,7 +12,10 @@ const root = '/docs';
 const resolve = async ({ specifier, importer }: { specifier: string; importer: string }): Promise<string | undefined> => {
   if (specifier === '@branching') return '/docs/islands/branching/BranchingDemo.vue';
   if (specifier.endsWith('/core')) return `${path.resolve(path.dirname(importer), specifier)}.ts`;
-  if (specifier.startsWith('.')) return path.resolve(path.dirname(importer), specifier);
+  if (specifier.startsWith('.')) {
+    const resolved = path.resolve(path.dirname(importer), specifier);
+    return path.extname(resolved) ? resolved : `${resolved}.ts`;
+  }
   return undefined;
 };
 
@@ -164,5 +167,124 @@ export const branchingIsland = defineDocsIsland({ spec: branchingSpec, component
 <script setup lang="ts">import * as Vue from 'vue'; Vue.provide('x', 1);</script>
 <template><p>Demo</p></template>`,
     })).rejects.toThrow('Vue context API');
+  });
+
+  it('rejects browser lifecycle and watcher imports in static scripts with source locations', async () => {
+    for (const name of ['onBeforeMount', 'onMounted', 'onBeforeUpdate', 'onUpdated', 'onBeforeUnmount', 'onUnmounted',
+      'onActivated', 'onDeactivated', 'onRenderTracked', 'onRenderTriggered',
+      'watch', 'watchEffect', 'watchPostEffect', 'watchSyncEffect']) {
+      await expect(validate({
+        filename: 'pages/test/index.vue',
+        source: `<script setup lang="ts">\nimport { ${name} as callback } from 'vue';\n</script><template><p>Static</p></template>`,
+      })).rejects.toThrow(new RegExp(`pages/test/index\\.vue:2:10: Vue ${name} `, 'u'));
+    }
+    await expect(validate({
+      filename: 'site/helper.ts',
+      source: "export { onMounted as afterRender } from 'vue';",
+    })).rejects.toThrow('Vue onMounted is not called');
+    await expect(validate({
+      filename: 'islands/browser-ai-availability/copy.ts',
+      source: "import { onMounted } from 'vue';",
+    })).rejects.toThrow('Vue onMounted is not called');
+    await expect(validate({
+      filename: 'islands/branching/definition.ts',
+      source: "import { onMounted } from 'vue';",
+    })).rejects.toThrow('Vue onMounted is not called');
+    await expect(validate({
+      filename: 'islands/branching/contracts.ts',
+      source: "import { onMounted } from 'vue';",
+    })).rejects.toThrow('Vue onMounted is not called');
+  });
+
+  it('keeps server-rendered Vue APIs and island browser lifecycle available', async () => {
+    await expect(validate({
+      filename: 'pages/test/index.vue',
+      source: `\
+<script setup lang="ts">
+import { computed, defineAsyncComponent, onErrorCaptured, onServerPrefetch, ref } from 'vue';
+const count = ref(1);
+const doubled = computed(() => count.value * 2);
+const Child = defineAsyncComponent(() => import('../../site/demos/StaticDemo.vue'));
+onServerPrefetch(async () => { count.value = 2; });
+onErrorCaptured(() => false);
+</script>
+<template><Child />{{ doubled }}</template>`,
+    })).resolves.toBeUndefined();
+    await expect(validate({
+      filename: 'islands/branching/BranchingDemo.vue',
+      source: '<script setup lang="ts">import { onMounted, watch } from "vue"; onMounted(() => {}); watch(() => 1, () => {});</script><template><p>Island</p></template>',
+    })).resolves.toBeUndefined();
+    await expect(validate({ filename: 'server.ts', source: "import { h } from 'vue'; export const node = h('p', 'Static');" })).resolves.toBeUndefined();
+  });
+
+  it('limits static SFCs to inline setup and the current safe defineOptions form', async () => {
+    await expect(validate({
+      filename: 'site/DocsIsland.vue',
+      source: '<script setup lang="ts">defineOptions({ inheritAttrs: false });</script><template><p>Host</p></template>',
+    })).resolves.toBeUndefined();
+    for (const source of [
+      '<script>export default { mounted() {} };</script><template><p>Page</p></template>',
+      '<script src="./client.ts"></script><template><p>Page</p></template>',
+      '<script setup src="./client.ts"></script><template><p>Page</p></template>',
+    ]) {
+      await expect(validate({ filename: 'pages/test/index.vue', source })).rejects.toThrow(/pages\/test\/index\.vue:\d+:\d+: Static Docs/u);
+    }
+    for (const options of ['{ mounted() {} }', '{ inheritAttrs: true }', '{ inheritAttrs: false, mounted() {} }', '{ ...options }']) {
+      await expect(validate({
+        filename: 'pages/test/index.vue',
+        source: `<script setup lang="ts">defineOptions(${options});</script><template><p>Page</p></template>`,
+      })).rejects.toThrow('defineOptions supports only { inheritAttrs: false }');
+    }
+    await expect(validate({ filename: 'site/helper.ts', source: 'function defineOptions(value: object) { return value; } defineOptions({ mounted: true });' }))
+      .resolves.toBeUndefined();
+  });
+
+  it('rejects unsupported Vue script syntax and render functions only in static authoring', async () => {
+    for (const source of [
+      "import * as Vue from 'vue'; Vue.onMounted(() => {});",
+      "export * from 'vue';",
+      "export * as Vue from 'vue';",
+      "void import('vue');",
+      "const Vue = require('vue');",
+      "import { onMounted } from '@vue/runtime-core';",
+      "export { watchEffect } from '@vue/runtime-dom';",
+      "import { watch } from '@vue/reactivity';",
+      "import { h } from 'vue';",
+      "import { createVNode } from 'vue';",
+      "import { defineComponent } from 'vue';",
+    ]) {
+      await expect(validate({ filename: 'site/helper.ts', source })).rejects.toThrow(/site\/helper\.ts:1:\d+:/u);
+    }
+    await expect(validate({ filename: 'site/helper.ts', source: "import type * as Vue from 'vue'; import type { VNode } from '@vue/runtime-core';" }))
+      .resolves.toBeUndefined();
+  });
+
+  it('keeps static helpers out of browser client and private island code', async () => {
+    await expect(validate({ filename: 'site/helper.ts', source: "export { start } from '../client/behavior.ts';" }))
+      .rejects.toThrow('cannot import browser client code');
+    await expect(validate({ filename: 'site/helper.ts', source: "import { wrapSearchWorker } from '../islands/search/transport.ts';" }))
+      .rejects.toThrow('cannot import private island code');
+    await expect(validate({ filename: 'site/helper.ts', source: "import type { Start } from '../client/behavior.ts';" }))
+      .resolves.toBeUndefined();
+    await expect(validate({ filename: 'site/helper.ts', source: "import { checkerCopy } from '../islands/browser-ai-availability/copy.ts';" }))
+      .resolves.toBeUndefined();
+    await expect(validate({ filename: 'site/helper.ts', source: "import { branchingIsland } from '../islands/branching/definition.ts';" }))
+      .resolves.toBeUndefined();
+    await expect(validate({
+      filename: 'islands/branching/definition.ts',
+      source: `\
+import { defineDocsIsland } from '../core';
+import { branchingSpec } from './contracts';
+import BranchingDemo from './BranchingDemo.vue';
+import { start } from '../search/transport.ts';
+export const branchingIsland = defineDocsIsland({ spec: branchingSpec, component: BranchingDemo });`,
+    })).rejects.toThrow('cannot import private island code');
+    await expect(validate({
+      filename: 'islands/branching/contracts.ts',
+      source: `\
+import { defineDocsIslandSpec } from '../spec';
+import { start } from '../search/transport.ts';
+export const branchingSpec = defineDocsIslandSpec({ id: 'branching', parse: () => ({}), start: 'interactive' });`,
+    })).rejects.toThrow('cannot import private island code');
   });
 });

@@ -29,6 +29,16 @@ Keep complete per-language HTML at build time and shared development rendering.
 Hydrate only explicitly registered demonstrations. Maintain the independent
 `build:docs` output and the normal development server's `/docs/` entry.
 
+Static Docs components use an inline `<script setup>` or no script. Their Vue
+value imports must be named imports from `vue`: browser lifecycle hooks, the
+`watch` family, and render-function APIs such as `h` are unsupported in static
+authoring. Use `computed` for derived HTML, `onServerPrefetch` for async server
+data, and a registered island for browser behavior. The only supported
+`defineOptions` form is `{ inheritAttrs: false }`. Static modules do not import
+browser client modules or private island helpers as values. These rules run in
+both development and production builds; development keeps static pages
+server-rendered instead of hydrating them as Vue applications.
+
 For an interactive island, keep its `type`-alias `JsonObject` payload and
 boundary parser in `islands/<id>/contracts.ts`. Register its spec there, and
 directly import its concrete Vue component in `islands/<id>/definition.ts` for

@@ -225,6 +225,18 @@ import HiddenEvent from "../../site/HiddenEvent.vue";`).replace('<template>', '<
 });
 
 describe('Docs authoring boundaries', () => {
+  it('fails a production Docs build when a static page imports a browser lifecycle hook', async () => {
+    await using fixture = await createSiteFixture();
+    const file = path.join(fixture.docs, 'pages/file-access/index.vue');
+    const original = await readFile(file, 'utf8');
+    await writeFile(file, original.replace('<script setup lang="ts">', `\
+<script setup lang="ts">
+import { onMounted } from 'vue';
+onMounted(() => {});`));
+    await expect(build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' }))
+      .rejects.toThrow(/pages\/file-access\/index\.vue:\d+:\d+: Vue onMounted is not called/u);
+  });
+
   it('rejects a translation registry import from an island definition', async () => {
     await using fixture = await createSiteFixture();
     const file = path.join(fixture.docs, 'islands/branching/definition.ts');

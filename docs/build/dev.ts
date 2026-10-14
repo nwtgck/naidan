@@ -15,6 +15,20 @@ import { publicAssetHref } from './assets';
 
 const favicon = publicAssetHref({ file: 'assets/favicon.svg' });
 
+function escapeHtml({ value }: { value: string }): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+}
+
+function renderDevError({ context, details }: { context: string; details: string }): string {
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex"><title>Docs development error</title>
+<style>body{box-sizing:border-box;min-height:100vh;margin:0;padding:2rem;background:#16181d;color:#f1f3f5;font:1rem/1.5 system-ui,sans-serif}main{max-width:70rem;margin:auto}h1{font-size:1.5rem}pre{overflow:auto;padding:1rem;border:1px solid #58606b;border-radius:.5rem;background:#22262d;color:#f8d7da;white-space:pre-wrap;overflow-wrap:anywhere}</style>
+<script type="module" src="/docs/@vite/client"></script></head>
+<body><main><h1>Docs development error</h1><p>Docs ${escapeHtml({ value: context })} failed. Fix the source, then reload this page.</p>
+<pre>${escapeHtml({ value: details })}</pre></main></body></html>`;
+}
+
 function devHref({ moduleUrl }: { moduleUrl: string }): string {
   return moduleUrl.startsWith('/docs/') ? moduleUrl : `/docs${moduleUrl}`;
 }
@@ -161,9 +175,16 @@ function createDocsRequestPlugin(): Plugin {
             current = current.cause;
           }
           if (current !== undefined) causes.push(String(current));
-          server.config.logger.error(`[Docs ${context}] ${causes.join('\nCaused by: ')}`);
+          const details = causes.join('\nCaused by: ');
+          server.config.logger.error(`[Docs ${context}] ${details}`);
           response.statusCode = 500;
-          sendBody({ body: `Docs ${context} failed; see the development console.` });
+          if (route.kind === 'page' || route.kind === 'root' || route.kind === 'missing') {
+            response.setHeader('Content-Type', 'text/html; charset=utf-8');
+            sendBody({ body: renderDevError({ context, details }) });
+          } else {
+            response.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            sendBody({ body: `Docs ${context} failed; see the development console.` });
+          }
         }
       });
     },

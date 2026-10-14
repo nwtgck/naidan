@@ -71,7 +71,7 @@ describe('Docs development registry', () => {
     const homeSource = await readFile(homeFile, 'utf8');
     const brokenHome = homeSource.replace('<script setup lang="ts">', `\
 <script setup lang="ts">
-const broken = ;`);
+const broken = ; // </pre><img src=x onerror=alert(1)>`);
     expect(brokenHome).not.toBe(homeSource);
     await using dev = await startSiteDev({ root: fixture.root });
     expect((await dev.request({ url: '/docs/en/' })).status).toBe(200);
@@ -80,6 +80,23 @@ const broken = ;`);
     await vi.waitFor(async () => {
       expect((await dev.request({ url: '/docs/en/' })).status).toBe(500);
     }, { timeout: 5000, interval: 100 });
+    const failed = await dev.request({ url: '/docs/en/' });
+    expect(failed.headers.get('content-type')).toContain('text/html');
+    const failedHtml = await failed.text();
+    expect(failedHtml).toContain('&lt;/pre&gt;&lt;img src=x onerror=alert(1)&gt;');
+    using failedPage = parsePage({ html: failedHtml });
+    expect(failedPage.document.title).toBe('Docs development error');
+    expect(failedPage.document.querySelector('pre')?.textContent).toContain('pages/index/index.vue');
+    expect(failedPage.document.querySelector('pre')?.textContent).toContain('const broken = ;');
+    expect(failedPage.document.querySelector('img')).toBeNull();
+    expect([...failedPage.document.scripts].map(script => script.getAttribute('src'))).toEqual(['/docs/@vite/client']);
+    const failedHead = await dev.request({ url: '/docs/en/', method: 'HEAD' });
+    expect(failedHead.status).toBe(500);
+    expect(await failedHead.text()).toBe('');
+    const searchIndex = await dev.request({ url: '/docs/search-en.json' });
+    expect(searchIndex.status).toBe(500);
+    expect(searchIndex.headers.get('content-type')).toContain('text/plain');
+    expect(await searchIndex.text()).toContain('Docs search-index failed');
     const missing = await dev.request({ url: '/docs/en/not-a-page/' });
     expect(missing.status).toBe(404);
     expect(missing.headers.get('content-type')).toContain('text/html');
@@ -98,6 +115,37 @@ const broken = ;`);
     await writeFile(homeFile, homeSource);
     await vi.waitFor(async () => {
       expect((await dev.request({ url: '/docs/en/' })).status).toBe(200);
+    }, { timeout: 5000, interval: 100 });
+  });
+
+  it('shows static script misuse on the affected route and recovers after an edit', async () => {
+    await using fixture = await createSiteFixture();
+    const pageFile = path.join(fixture.docs, 'pages/tool-browser-shell/index.vue');
+    const pageSource = await readFile(pageFile, 'utf8');
+    const brokenPage = pageSource.replace('<script setup lang="ts">', `\
+<script setup lang="ts">
+import { onMounted } from 'vue';
+onMounted(() => {});`);
+    expect(brokenPage).not.toBe(pageSource);
+    await writeFile(pageFile, brokenPage);
+    await using dev = await startSiteDev({ root: fixture.root });
+
+    const failed = await dev.request({ url: '/docs/en/tool-browser-shell/' });
+    expect(failed.status).toBe(500);
+    expect(failed.headers.get('content-type')).toContain('text/html');
+    using failedPage = parsePage({ html: await failed.text() });
+    const details = failedPage.document.querySelector('pre')?.textContent ?? '';
+    expect(details).toMatch(/pages\/tool-browser-shell\/index\.vue:\d+:\d+/);
+    expect(details).toContain('onMounted');
+    expect(details).toMatch(/island/i);
+    expect((await dev.request({ url: '/docs/en/chat-branching/' })).status).toBe(200);
+    const app = await dev.request({ url: '/' });
+    expect(app.status).toBe(200);
+    expect(await app.text()).toContain('APP-ONLY');
+
+    await writeFile(pageFile, pageSource);
+    await vi.waitFor(async () => {
+      expect((await dev.request({ url: '/docs/en/tool-browser-shell/' })).status).toBe(200);
     }, { timeout: 5000, interval: 100 });
   });
 
