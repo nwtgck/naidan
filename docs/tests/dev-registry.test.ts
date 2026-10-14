@@ -67,7 +67,7 @@ it('replaces the Docs child after compiler edits before serving another request'
 describe('Docs development registry', () => {
   it('serves a styled 404 while the home page has a syntax error', async () => {
     await using fixture = await createSiteFixture();
-    const homeFile = path.join(fixture.docs, 'pages/index.vue');
+    const homeFile = path.join(fixture.docs, 'pages/index/index.vue');
     const homeSource = await readFile(homeFile, 'utf8');
     const brokenHome = homeSource.replace('<script setup lang="ts">', `\
 <script setup lang="ts">
@@ -93,7 +93,7 @@ const broken = ;`);
     expect(css.headers.get('content-type')).toContain('text/css');
     expect(await css.text()).toContain('.language-page');
 
-    expect((await dev.request({ url: '/docs/en/work/browser-shell/' })).status).toBe(200);
+    expect((await dev.request({ url: '/docs/en/tool-browser-shell/' })).status).toBe(200);
 
     await writeFile(homeFile, homeSource);
     await vi.waitFor(async () => {
@@ -113,7 +113,7 @@ const broken = ;`);
     await cp(path.join(repository, 'tsconfig.node.json'), path.join(fixture, 'tsconfig.node.json'));
     await symlink(path.join(repository, 'node_modules'), path.join(fixture, 'node_modules'), 'dir');
 
-    const pageFile = path.join(fixture, 'docs/pages/work/browser-shell.vue');
+    const pageFile = path.join(fixture, 'docs/pages/tool-browser-shell/index.vue');
     const pageSource = await readFile(pageFile, 'utf8');
     const brokenPage = pageSource.replace('<script setup lang="ts">', `\
 <script setup lang="ts">
@@ -139,28 +139,28 @@ const broken = ;`);
       },
     };
     const renderer = await server.ssrLoadModule('/server.ts') as DocsRenderer;
-    await expect(renderer.renderPage({ locale: 'en', page: 'work/browser-shell' })).rejects.toThrow(/Docs en\/work\/browser-shell failed/);
+    await expect(renderer.renderPage({ locale: 'en', page: 'tool-browser-shell' })).rejects.toThrow(/Docs en\/tool-browser-shell failed/);
     expect((await renderer.renderPage({ locale: 'en', page: 'index' })).body).toContain('<h1');
 
     await writeFile(pageFile, pageSource);
     server.watcher.emit('change', pageFile);
     await vi.waitFor(async () => {
-      expect((await renderer.renderPage({ locale: 'en', page: 'work/browser-shell' })).body).toContain('<h1');
+      expect((await renderer.renderPage({ locale: 'en', page: 'tool-browser-shell' })).body).toContain('<h1');
     }, { timeout: 5000, interval: 100 });
 
-    const japaneseFile = path.join(fixture, 'docs/strings/work/browser-shell/ja.ts');
+    const japaneseFile = path.join(fixture, 'docs/pages/tool-browser-shell/strings/ja.ts');
     const japaneseSource = await readFile(japaneseFile, 'utf8');
     await writeFile(japaneseFile, 'export const strings = { broken: ; };');
     server.watcher.emit('change', japaneseFile);
     await vi.waitFor(async () => {
-      await expect(renderer.renderPage({ locale: 'ja', page: 'work/browser-shell' })).rejects.toThrow(/Docs ja\/work\/browser-shell failed/);
+      await expect(renderer.renderPage({ locale: 'ja', page: 'tool-browser-shell' })).rejects.toThrow(/Docs ja\/tool-browser-shell failed/);
     }, { timeout: 5000, interval: 100 });
-    expect((await renderer.renderPage({ locale: 'en', page: 'work/browser-shell' })).body).toContain('<h1');
+    expect((await renderer.renderPage({ locale: 'en', page: 'tool-browser-shell' })).body).toContain('<h1');
 
     await writeFile(japaneseFile, japaneseSource);
     server.watcher.emit('change', japaneseFile);
     await vi.waitFor(async () => {
-      expect((await renderer.renderPage({ locale: 'ja', page: 'work/browser-shell' })).body).toContain('<h1');
+      expect((await renderer.renderPage({ locale: 'ja', page: 'tool-browser-shell' })).body).toContain('<h1');
     }, { timeout: 5000, interval: 100 });
   });
 });

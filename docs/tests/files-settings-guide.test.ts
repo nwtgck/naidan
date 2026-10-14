@@ -1,9 +1,9 @@
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
-import SettingsPage from '../pages/files/settings.vue';
-import { strings as english } from '../strings/files/settings/en';
-import { strings as japanese } from '../strings/files/settings/ja';
+import SettingsPage from '../pages/files-and-folders-settings/index.vue';
+import { strings as english } from '../pages/files-and-folders-settings/strings/en';
+import { strings as japanese } from '../pages/files-and-folders-settings/strings/ja';
 import { strings as commonEnglish } from '../strings/common/en';
 import { strings as commonJapanese } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
@@ -30,14 +30,14 @@ describe('Files and folders Settings guide', () => {
     expect(article?.querySelector('[data-testid="files-settings-step-files"]')?.textContent).toContain(s.demo.filesHeading);
     expect(article?.querySelector('[data-testid="files-settings-step-files"] .files-focus')?.textContent).toContain(s.demo.fileName);
     expect(article?.querySelector('[data-testid="files-settings-step-files"] .files-focus')?.textContent).toContain(s.demo.download);
-    expect(article?.querySelector('#files-settings-files')?.parentElement?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/work/wesh-sysfs/`);
+    expect(article?.querySelector('#files-settings-files')?.parentElement?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/wesh-sysfs/`);
     expect(article?.querySelector('[data-testid="files-settings-step-manage"]')?.textContent).toContain(s.demo.inUse);
     expect(article?.querySelector('[data-testid="files-settings-step-copy"]')?.textContent).toContain(s.demo.copied);
     expect(article?.querySelector('[data-testid="files-settings-step-manage"]')?.textContent).toContain(s.demo.copied);
     expect(article?.textContent).toContain(visibleGuideText({ text: s.after }));
     expect(article?.querySelectorAll('figure button, figure input, figure a')).toHaveLength(0);
     expect([...article?.querySelectorAll('[data-docs-related-guide] a') ?? []].map(link => link.getAttribute('href'))).toEqual([
-      `/docs/${locale}/files/privacy/`, `/docs/${locale}/work/browser-shell/`,
+      `/docs/${locale}/file-access/`, `/docs/${locale}/tool-browser-shell/`,
     ]);
   });
 });

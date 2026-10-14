@@ -1,9 +1,9 @@
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
-import OfflinePage from '../pages/run/offline.vue';
-import { strings as english } from '../strings/run/offline/en';
-import { strings as japanese } from '../strings/run/offline/ja';
+import OfflinePage from '../pages/pwa/index.vue';
+import { strings as english } from '../pages/pwa/strings/en';
+import { strings as japanese } from '../pages/pwa/strings/ja';
 import { strings as commonEnglish } from '../strings/common/en';
 import { strings as commonJapanese } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
@@ -32,10 +32,10 @@ describe('offline browser AI guide', () => {
     expect(article?.textContent).toContain(s.verify.limitation);
     expect(article?.querySelectorAll('figure button, figure input, figure a')).toHaveLength(0);
     expect([...article?.querySelectorAll('[data-docs-related-guide] a') ?? []].map(link => link.getAttribute('href'))).toEqual([
-      `/docs/${locale}/models/llama-cpp-browser/`,
-      `/docs/${locale}/models/in-browser/`,
-      `/docs/${locale}/run/standalone/`,
-      `/docs/${locale}/run/hosted/`,
+      `/docs/${locale}/endpoint-type-llama-cpp-browser/`,
+      `/docs/${locale}/in-browser-models/`,
+      `/docs/${locale}/standalone/`,
+      `/docs/${locale}/hosted/`,
     ]);
   });
 });

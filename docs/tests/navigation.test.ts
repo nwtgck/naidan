@@ -19,6 +19,17 @@ async function renderLayout({ locale, page }: { locale: DocsLocale; page: DocsPa
 }
 
 describe('all-page Docs navigation', () => {
+  it('keeps article URLs flat and unique across both languages', () => {
+    const paths = DOCS_PAGES.map(page => page.path);
+    expect(DOCS_PAGES.filter(page => page.path === '').map(page => page.id)).toEqual(['index']);
+    expect(new Set(paths).size).toBe(paths.length);
+    for (const path of paths.filter(path => path !== '')) expect(path).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*\/$/u);
+    for (const page of DOCS_PAGES) {
+      expect(docsHref({ locale: 'en', page: page.id }).slice('/docs/en/'.length))
+        .toBe(docsHref({ locale: 'ja', page: page.id }).slice('/docs/ja/'.length));
+    }
+  });
+
   it.each(DOCS_LOCALES)('lists every %s route once as a normal link, with one current page', async locale => {
     for (const route of DOCS_PAGES) {
       using rendered = await renderLayout({ locale, page: route.id });

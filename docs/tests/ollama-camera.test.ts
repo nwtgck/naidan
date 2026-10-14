@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
-import OllamaGuide from '../pages/models/ollama.vue';
-import { strings as english } from '../strings/models/ollama/en';
-import { strings as japanese } from '../strings/models/ollama/ja';
+import OllamaGuide from '../pages/endpoint-type-ollama/index.vue';
+import { strings as english } from '../pages/endpoint-type-ollama/strings/en';
+import { strings as japanese } from '../pages/endpoint-type-ollama/strings/ja';
 import { parsePage } from './site.test-support';
 import type { CommonMessages } from '../site/messages';
 

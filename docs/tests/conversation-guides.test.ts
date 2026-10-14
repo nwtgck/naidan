@@ -3,12 +3,12 @@ import { readFileSync } from 'node:fs';
 import { compileStyle, parse } from '@vue/compiler-sfc';
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import CompactPage from '../pages/chat/compact.vue';
-import GroupsPage from '../pages/chat/groups.vue';
-import { strings as compactEn } from '../strings/chat/compact/en';
-import { strings as compactJa } from '../strings/chat/compact/ja';
-import { strings as groupsEn } from '../strings/chat/groups/en';
-import { strings as groupsJa } from '../strings/chat/groups/ja';
+import CompactPage from '../pages/chat-context-compaction/index.vue';
+import GroupsPage from '../pages/chat-groups/index.vue';
+import { strings as compactEn } from '../pages/chat-context-compaction/strings/en';
+import { strings as compactJa } from '../pages/chat-context-compaction/strings/ja';
+import { strings as groupsEn } from '../pages/chat-groups/strings/en';
+import { strings as groupsJa } from '../pages/chat-groups/strings/ja';
 import { strings as commonEn } from '../strings/common/en';
 import { strings as commonJa } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
@@ -22,9 +22,9 @@ describe('conversation guides', () => {
     using page = parsePage({ html });
     const { document } = page;
     expect(document.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('Naidan');
-    expect(document.querySelector('.prerequisite a')?.getAttribute('href')).toBe(`/docs/${locale}/models/local-engines/`);
+    expect(document.querySelector('.prerequisite a')?.getAttribute('href')).toBe(`/docs/${locale}/local-ai-servers/`);
     expect(document.querySelector('.prerequisite a')?.textContent).toBe(copy.setup.link);
-    expect(document.querySelectorAll('.prerequisite a')[1]?.getAttribute('href')).toBe(`/docs/${locale}/models/in-browser/`);
+    expect(document.querySelectorAll('.prerequisite a')[1]?.getAttribute('href')).toBe(`/docs/${locale}/in-browser-models/`);
     expect(document.querySelectorAll('section.walkthrough-step')).toHaveLength(4);
     expect([...document.querySelectorAll('section.walkthrough-step')].map(section => section.querySelector('h2')?.textContent)).toEqual([
       copy.steps.open.title, copy.steps.keep.title, copy.steps.run.title, copy.steps.result.title,
@@ -46,7 +46,7 @@ describe('conversation guides', () => {
     expect(document.querySelector('[data-testid="compact-step-result"]')?.textContent).toContain(copy.demo.recentMessage);
     const related = document.querySelector('[data-docs-related-guide]');
     expect(related?.getAttribute('aria-label')).toBe(common.relatedGuides);
-    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/chat/branching/`);
+    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/chat-branching/`);
     expect(related?.textContent).toContain(copy.nextDescription);
   });
 
@@ -59,7 +59,7 @@ describe('conversation guides', () => {
     const { document } = page;
     expect(document.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('Naidan');
     expect(document.querySelector('h1')?.textContent).toBe(copy.title);
-    expect(document.querySelector('.prerequisite a')?.getAttribute('href')).toBe(`/docs/${locale}/models/local-engines/`);
+    expect(document.querySelector('.prerequisite a')?.getAttribute('href')).toBe(`/docs/${locale}/local-ai-servers/`);
     expect([...document.querySelectorAll('section.walkthrough-step')].map(section => section.querySelector('h2')?.textContent)).toEqual([
       copy.steps.create.title, copy.steps.model.title, copy.steps.prompt.title,
       copy.steps.move.title, copy.steps.add.title, copy.steps.tidy.title,
@@ -89,7 +89,7 @@ describe('conversation guides', () => {
     expect(document.querySelectorAll('script, [data-docs-island]')).toHaveLength(0);
     const related = document.querySelector('[data-docs-related-guide]');
     expect(related?.getAttribute('aria-label')).toBe(common.relatedGuides);
-    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/settings/inheritance/`);
+    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/settings-inheritance/`);
     expect(related?.textContent).toContain(copy.nextDescription);
   });
 

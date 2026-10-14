@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
-import OpenAiCompatibleGuide from '../pages/models/openai-compatible.vue';
-import BrowserProvidedGuide from '../pages/models/browser-provided.vue';
-import { strings as openAiEn } from '../strings/models/openai-compatible/en';
-import { strings as openAiJa } from '../strings/models/openai-compatible/ja';
-import { strings as browserEn } from '../strings/models/browser-provided/en';
-import { strings as browserJa } from '../strings/models/browser-provided/ja';
+import OpenAiCompatibleGuide from '../pages/endpoint-type-openai/index.vue';
+import BrowserProvidedGuide from '../pages/endpoint-type-browser-provided-lm/index.vue';
+import { strings as openAiEn } from '../pages/endpoint-type-openai/strings/en';
+import { strings as openAiJa } from '../pages/endpoint-type-openai/strings/ja';
+import { strings as browserEn } from '../pages/endpoint-type-browser-provided-lm/strings/en';
+import { strings as browserJa } from '../pages/endpoint-type-browser-provided-lm/strings/ja';
 import { checkerCopy } from '../islands/browser-ai-availability/copy';
 import { parsePage } from './site.test-support';
 import type { CommonMessages } from '../site/messages';

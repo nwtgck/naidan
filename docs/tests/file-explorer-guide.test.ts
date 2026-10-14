@@ -1,9 +1,9 @@
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
-import ExplorerPage from '../pages/files/explorer.vue';
-import { strings as english } from '../strings/files/explorer/en';
-import { strings as japanese } from '../strings/files/explorer/ja';
+import ExplorerPage from '../pages/file-explorer/index.vue';
+import { strings as english } from '../pages/file-explorer/strings/en';
+import { strings as japanese } from '../pages/file-explorer/strings/ja';
 import { strings as commonEnglish } from '../strings/common/en';
 import { strings as commonJapanese } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
@@ -38,7 +38,7 @@ describe('File Explorer guide', () => {
     expect(article?.textContent).toContain(visibleGuideText({ text: s.steps.organize.body }));
     expect(article?.querySelectorAll('figure button, figure input, figure a')).toHaveLength(0);
     expect([...article?.querySelectorAll('[data-docs-related-guide] a') ?? []].map(link => link.getAttribute('href'))).toEqual([
-      `/docs/${locale}/files/privacy/`, `/docs/${locale}/work/browser-shell/`,
+      `/docs/${locale}/file-access/`, `/docs/${locale}/tool-browser-shell/`,
     ]);
   });
 });

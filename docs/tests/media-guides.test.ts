@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import ImagePage from '../pages/images/create.vue';
-import AudioPage from '../pages/audio/speech.vue';
-import { strings as imageEn } from '../strings/images/create/en';
-import { strings as imageJa } from '../strings/images/create/ja';
-import { strings as audioEn } from '../strings/audio/speech/en';
-import { strings as audioJa } from '../strings/audio/speech/ja';
+import ImagePage from '../pages/image-generation/index.vue';
+import AudioPage from '../pages/audio-generation/index.vue';
+import { strings as imageEn } from '../pages/image-generation/strings/en';
+import { strings as imageJa } from '../pages/image-generation/strings/ja';
+import { strings as audioEn } from '../pages/audio-generation/strings/en';
+import { strings as audioJa } from '../pages/audio-generation/strings/ja';
 import { strings as commonEn } from '../strings/common/en';
 import { strings as commonJa } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
@@ -47,7 +47,7 @@ describe('media workflow guides', () => {
     expect(page.document.querySelectorAll('figure button, figure input, figure a, figure audio')).toHaveLength(0);
     const related = page.document.querySelector('[data-docs-related-guide]');
     expect(related?.getAttribute('aria-label')).toBe(common.relatedGuides);
-    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/models/llama-cpp-browser/`);
+    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/endpoint-type-llama-cpp-browser/`);
     expect(related?.textContent).toContain(copy.relatedTitle);
     expect(related?.textContent).toContain(copy.relatedDescription);
   });
@@ -76,7 +76,7 @@ describe('media workflow guides', () => {
     expect(page.document.querySelectorAll('figure button, figure input, figure a, figure audio')).toHaveLength(0);
     const related = page.document.querySelector('[data-docs-related-guide]');
     expect(related?.getAttribute('aria-label')).toBe(common.relatedGuides);
-    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/models/llama-cpp-browser/`);
+    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/endpoint-type-llama-cpp-browser/`);
     expect(related?.textContent).toContain(copy.relatedTitle);
     expect(related?.textContent).toContain(copy.relatedDescription);
   });

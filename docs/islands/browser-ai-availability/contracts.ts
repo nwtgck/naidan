@@ -1,4 +1,4 @@
-import type { BrowserAiAvailabilityCopy } from '../../strings/models/browser-provided/checker/en';
+import type { BrowserAiAvailabilityCopy } from '../../pages/endpoint-type-browser-provided-lm/strings/checker/en';
 
 export type BrowserAiAvailabilityPayload = { copy: BrowserAiAvailabilityCopy };
 

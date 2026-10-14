@@ -1,9 +1,9 @@
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
-import BranchingPage from '../pages/chat/branching.vue';
-import { strings as english } from '../strings/chat/branching/en';
-import { strings as japanese } from '../strings/chat/branching/ja';
+import BranchingPage from '../pages/chat-branching/index.vue';
+import { strings as english } from '../pages/chat-branching/strings/en';
+import { strings as japanese } from '../pages/chat-branching/strings/ja';
 import { strings as englishCommon } from '../strings/common/en';
 import { strings as japaneseCommon } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
@@ -18,7 +18,7 @@ describe('conversation branching guide', () => {
     const article = page.document.querySelector('[data-testid="docs-branching"]');
     if (!article) throw new Error('Missing branching guide');
     expect(article.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('Naidan');
-    expect(article.querySelector('.app-entry-intro a[href] + a')?.getAttribute('href')).toBe(`/docs/${locale}/models/in-browser/`);
+    expect(article.querySelector('.app-entry-intro a[href] + a')?.getAttribute('href')).toBe(`/docs/${locale}/in-browser-models/`);
     const labels = [...article.querySelectorAll('.ui-label')].map(element => element.textContent);
     for (const expected of [copy.demo.ui.sendAndBranch, copy.demo.ui.moreActions, copy.demo.ui.fork, copy.demo.controls.replay, update]) {
       expect(labels).toContain(expected);
@@ -30,6 +30,6 @@ describe('conversation branching guide', () => {
     for (const label of article.querySelectorAll('.ui-label')) {
       expect(label.closest('button, a, kbd')).toBeNull();
     }
-    expect(article.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/chat/super-edit/`);
+    expect(article.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/chat-super-edit/`);
   });
 });

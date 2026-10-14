@@ -4,7 +4,7 @@ import { appDestinationPath, appEntryFallbackUrl } from './app-entry';
 import type { AppDestination } from './app-entry';
 import type { DocsLocale } from './routes';
 
-const props = defineProps<{ destination: AppDestination; locale: DocsLocale; display: 'path' | 'label' }>();
+const props = defineProps<{ destination: AppDestination; locale: DocsLocale; display: 'path' | 'label'; href?: never }>();
 const path = computed(() => appDestinationPath({ destination: props.destination }));
 const fallbackUrl = computed(() => appEntryFallbackUrl({ destination: props.destination }));
 const pathText = computed(() => {

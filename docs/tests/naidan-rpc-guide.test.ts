@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import RpcPage from '../pages/models/naidan-rpc.vue';
-import { strings as rpcEn } from '../strings/models/naidan-rpc/en';
-import { strings as rpcJa } from '../strings/models/naidan-rpc/ja';
+import RpcPage from '../pages/endpoint-type-naidan-rpc/index.vue';
+import { strings as rpcEn } from '../pages/endpoint-type-naidan-rpc/strings/en';
+import { strings as rpcJa } from '../pages/endpoint-type-naidan-rpc/strings/ja';
 import { strings as commonEn } from '../strings/common/en';
 import { strings as commonJa } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
@@ -46,7 +46,7 @@ describe('Naidan RPC guide', () => {
     expect(article?.querySelector('[data-testid="rpc-step-use"]')?.textContent).toContain(copy.demo.model);
     expect(article?.textContent).toContain(visibleGuideText({ text: copy.image }));
     expect(article?.textContent).toContain(visibleGuideText({ text: copy.boundary }));
-    expect(article?.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/models/llama-cpp-browser/`);
+    expect(article?.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/endpoint-type-llama-cpp-browser/`);
     expect(article?.querySelectorAll('figure button, figure input, figure select, figure a')).toHaveLength(0);
   });
 });

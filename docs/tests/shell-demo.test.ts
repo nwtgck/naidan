@@ -5,10 +5,10 @@ import { renderToString } from 'vue/server-renderer';
 import { compileStyle, parse as parseSfc } from '@vue/compiler-sfc';
 import { parse as parseCss } from 'postcss';
 import { JSDOM } from 'jsdom';
-import ShellGuide from '../pages/work/browser-shell.vue';
+import ShellGuide from '../pages/tool-browser-shell/index.vue';
 import ShellWorkspaceDemo from '../site/demos/ShellWorkspaceDemo.vue';
-import { strings as english } from '../strings/work/browser-shell/en';
-import { strings as japanese } from '../strings/work/browser-shell/ja';
+import { strings as english } from '../pages/tool-browser-shell/strings/en';
+import { strings as japanese } from '../pages/tool-browser-shell/strings/ja';
 import { strings as englishCommon } from '../strings/common/en';
 import { strings as japaneseCommon } from '../strings/common/ja';
 
@@ -42,7 +42,7 @@ describe('shell guide tool-call demonstration', () => {
     expect(enable?.textContent).toContain('/sys/fs/naidan');
     expect(walkthrough?.querySelectorAll('.ui-label').length).toBeGreaterThan(4);
     expect([...walkthrough?.querySelectorAll('a') ?? []].map(link => link.getAttribute('href'))).toEqual([
-      `/docs/${locale}/work/wesh-sysfs/`, `/docs/${locale}/files/privacy/`,
+      `/docs/${locale}/wesh-sysfs/`, `/docs/${locale}/file-access/`,
     ]);
     expect(walkthrough?.textContent).toContain(strings.walkthrough.use.filesLink);
     expect(walkthrough?.querySelector('button, input, textarea, [tabindex], script')).toBeNull();

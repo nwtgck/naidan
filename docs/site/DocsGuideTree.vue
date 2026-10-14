@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { CommonMessages } from './messages';
+import DocsLink from './DocsLink.vue';
 import { DOCS_NAV_PAGES, navigationGroups } from './navigation';
 import type { DocsLocale, DocsPageId } from './routes';
 
@@ -43,19 +44,21 @@ defineExpose({
       <h2 v-else :id="`docs-guide-group-${idPrefix}-${group.id}`">{{ group.label }}</h2>
       <ul>
         <li v-for="entry in group.pages" :key="entry.id">
-          <a
-            :href="entry.href"
+          <DocsLink
+            :locale="locale"
+            :page="entry.id"
             :aria-current="entry.id === page ? 'page' : undefined"
             :class="{ 'is-ancestor': entry.children.some(child => child.id === page) }"
             data-testid="docs-guide-link"
-          >{{ entry.label }}</a>
+          >{{ entry.label }}</DocsLink>
           <ul v-if="entry.children.length > 0" class="docs-guide-children">
             <li v-for="child in entry.children" :key="child.id">
-              <a
-                :href="child.href"
+              <DocsLink
+                :locale="locale"
+                :page="child.id"
                 :aria-current="child.id === page ? 'page' : undefined"
                 data-testid="docs-guide-link"
-              >{{ child.label }}</a>
+              >{{ child.label }}</DocsLink>
             </li>
           </ul>
         </li>

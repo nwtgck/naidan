@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import UiText from '../site/UiText.vue';
-import OllamaGuide from '../pages/models/ollama.vue';
-import { strings as en } from '../strings/models/ollama/en';
-import { strings as ja } from '../strings/models/ollama/ja';
+import OllamaGuide from '../pages/endpoint-type-ollama/index.vue';
+import { strings as en } from '../pages/endpoint-type-ollama/strings/en';
+import { strings as ja } from '../pages/endpoint-type-ollama/strings/ja';
 import { parsePage } from './site.test-support';
 import type { CommonMessages } from '../site/messages';
 

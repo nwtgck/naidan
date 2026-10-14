@@ -3,8 +3,8 @@ import path from 'node:path';
 import { build } from 'vite';
 import { describe, expect, it } from 'vitest';
 import { docsBuildConfig } from '../build/production';
-import { strings as en } from '../strings/about/open-source/en';
-import { strings as ja } from '../strings/about/open-source/ja';
+import { strings as en } from '../pages/open-source/strings/en';
+import { strings as ja } from '../pages/open-source/strings/ja';
 import { createSiteFixture, parsePage } from './site.test-support';
 
 describe('open source and releases guide', () => {
@@ -13,7 +13,7 @@ describe('open source and releases guide', () => {
     await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' });
 
     for (const [locale, copy] of [['en', en], ['ja', ja]] as const) {
-      const html = await readFile(path.join(fixture.docs, 'dist', locale, 'about/open-source/index.html'), 'utf8');
+      const html = await readFile(path.join(fixture.docs, 'dist', locale, 'open-source/index.html'), 'utf8');
       using page = parsePage({ html });
       const article = page.document.querySelector('[data-testid="docs-open-source"]');
       expect(page.document.documentElement.lang).toBe(locale);
@@ -36,7 +36,7 @@ describe('open source and releases guide', () => {
       expect(article?.textContent).toContain(copy.use.selfBuild.body);
       expect(article?.querySelectorAll('.open-source-flow li')).toHaveLength(3);
       expect(article?.querySelectorAll('.pair-grid .panel')).toHaveLength(2);
-      expect(article?.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/run/standalone/`);
+      expect(article?.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/standalone/`);
 
       const links = [...(article?.querySelectorAll<HTMLAnchorElement>('a[data-docs-external]') ?? [])];
       expect(links.map(link => link.getAttribute('href'))).toEqual([

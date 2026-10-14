@@ -3,41 +3,51 @@ export const DOCS_LOCALES = ['en', 'ja'] as const;
 export type DocsLocale = typeof DOCS_LOCALES[number];
 export const DOCS_LOCALE_NAMES = { en: 'English', ja: '日本語' } satisfies Record<DocsLocale, string>;
 
-// One route declaration owns discovery, rendering, style entries and output paths.
-export const DOCS_PAGES = [
-  { id: 'index', path: '', source: 'pages/index.vue' },
-  { id: 'about/open-source', path: 'about/open-source/', source: 'pages/about/open-source.vue' },
-  { id: 'files/privacy', path: 'files/privacy/', source: 'pages/files/privacy.vue' },
-  { id: 'files/explorer', path: 'files/explorer/', source: 'pages/files/explorer.vue' },
-  { id: 'files/settings', path: 'files/settings/', source: 'pages/files/settings.vue' },
-  { id: 'work/app-permissions', path: 'work/app-permissions/', source: 'pages/work/app-permissions.vue' },
-  { id: 'work/boundary', path: 'work/boundary/', source: 'pages/work/boundary.vue' },
-  { id: 'work/local-only', path: 'work/local-only/', source: 'pages/work/local-only.vue' },
-  { id: 'chat/branching', path: 'chat/branching/', source: 'pages/chat/branching.vue' },
-  { id: 'chat/compact', path: 'chat/compact/', source: 'pages/chat/compact.vue' },
-  { id: 'chat/groups', path: 'chat/groups/', source: 'pages/chat/groups.vue' },
-  { id: 'chat/super-edit', path: 'chat/super-edit/', source: 'pages/chat/super-edit.vue' },
-  { id: 'run/standalone', path: 'run/standalone/', source: 'pages/run/standalone.vue' },
-  { id: 'run/hosted', path: 'run/hosted/', source: 'pages/run/hosted.vue' },
-  { id: 'run/offline', path: 'run/offline/', source: 'pages/run/offline.vue' },
-  { id: 'models/in-browser', path: 'models/in-browser/', source: 'pages/models/in-browser.vue' },
-  { id: 'models/llama-cpp-browser', path: 'models/llama-cpp-browser/', source: 'pages/models/llama-cpp-browser.vue' },
-  { id: 'models/transformers-js', path: 'models/transformers-js/', source: 'pages/models/transformers-js.vue' },
-  { id: 'models/browser-provided', path: 'models/browser-provided/', source: 'pages/models/browser-provided.vue' },
-  { id: 'models/local-engines', path: 'models/local-engines/', source: 'pages/models/local-engines.vue' },
-  { id: 'models/ollama', path: 'models/ollama/', source: 'pages/models/ollama.vue' },
-  { id: 'models/openai-compatible', path: 'models/openai-compatible/', source: 'pages/models/openai-compatible.vue' },
-  { id: 'models/naidan-rpc', path: 'models/naidan-rpc/', source: 'pages/models/naidan-rpc.vue' },
-  { id: 'settings/inheritance', path: 'settings/inheritance/', source: 'pages/settings/inheritance.vue' },
-  { id: 'data/storage', path: 'data/storage/', source: 'pages/data/storage.vue' },
-  { id: 'data/backup', path: 'data/backup/', source: 'pages/data/backup.vue' },
-  { id: 'images/create', path: 'images/create/', source: 'pages/images/create.vue' },
-  { id: 'audio/speech', path: 'audio/speech/', source: 'pages/audio/speech.vue' },
-  { id: 'work/browser-shell', path: 'work/browser-shell/', source: 'pages/work/browser-shell.vue' },
-  { id: 'work/wesh-sysfs', path: 'work/wesh-sysfs/', source: 'pages/work/wesh-sysfs.vue' },
-  { id: 'work/wikipedia', path: 'work/wikipedia/', source: 'pages/work/wikipedia.vue' },
+// The registered article ID also names its URL and source directory.
+export const DOCS_PAGE_IDS = [
+  'index',
+  'open-source',
+  'file-access',
+  'file-explorer',
+  'files-and-folders-settings',
+  'web-and-native-app-permissions',
+  'browser-boundaries',
+  'csp-editions',
+  'chat-branching',
+  'chat-context-compaction',
+  'chat-groups',
+  'chat-super-edit',
+  'standalone',
+  'hosted',
+  'pwa',
+  'in-browser-models',
+  'endpoint-type-llama-cpp-browser',
+  'endpoint-type-transformers-js',
+  'endpoint-type-browser-provided-lm',
+  'local-ai-servers',
+  'endpoint-type-ollama',
+  'endpoint-type-openai',
+  'endpoint-type-naidan-rpc',
+  'settings-inheritance',
+  'data-storage',
+  'data-backup',
+  'image-generation',
+  'audio-generation',
+  'tool-browser-shell',
+  'wesh-sysfs',
+  'tool-wikipedia',
 ] as const;
-export type DocsPageId = typeof DOCS_PAGES[number]['id'];
+export type DocsPageId = typeof DOCS_PAGE_IDS[number];
+
+function articlePath({ id }: { id: string }): string {
+  return id === 'index' ? '' : `${id}/`;
+}
+
+export const DOCS_PAGES = DOCS_PAGE_IDS.map(id => ({
+  id,
+  path: articlePath({ id }),
+  source: `pages/${id}/index.vue`,
+}));
 
 export function docsHref({ locale, page }: { locale: DocsLocale; page: DocsPageId }): string {
   const definition = DOCS_PAGES.find(entry => entry.id === page);

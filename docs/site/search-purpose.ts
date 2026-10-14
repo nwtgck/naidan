@@ -1,7 +1,7 @@
 import { docsHref } from './routes';
 import type { DocsLocale, DocsPageId } from './routes';
 
-export const PURPOSE_PAGES = ['run/standalone', 'models/ollama', 'chat/branching', 'images/create', 'data/backup'] as const satisfies readonly DocsPageId[];
+export const PURPOSE_PAGES = ['standalone', 'endpoint-type-ollama', 'chat-branching', 'image-generation', 'data-backup'] as const satisfies readonly DocsPageId[];
 export type PurposePageId = typeof PURPOSE_PAGES[number];
 export type PurposeGuide = { href: string; title: string; snippet: string };
 

@@ -7,14 +7,14 @@ import { docsHref } from '../site/routes';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
 const guidePages = [
-  'models/llama-cpp-browser',
-  'images/create',
-  'audio/speech',
-  'chat/branching',
-  'work/browser-shell',
-  'chat/groups',
-  'work/wikipedia',
-  'run/offline',
+  'endpoint-type-llama-cpp-browser',
+  'image-generation',
+  'audio-generation',
+  'chat-branching',
+  'tool-browser-shell',
+  'chat-groups',
+  'tool-wikipedia',
+  'pwa',
 ] as const;
 
 const guideTitles = {
@@ -93,18 +93,18 @@ describe('Docs home brand', () => {
     expect(guideCards.map(card => card.getAttribute('href'))).toEqual(guidePages.map(page => docsHref({ locale, page })));
     expect(guideCards.map(card => card.querySelector('h3')?.textContent)).toEqual(guideTitles[locale]);
     const appGuide = home.document.querySelector('[data-testid="docs-app-permissions-guide"]');
-    expect(appGuide?.getAttribute('href')).toBe(docsHref({ locale, page: 'work/app-permissions' }));
+    expect(appGuide?.getAttribute('href')).toBe(docsHref({ locale, page: 'web-and-native-app-permissions' }));
     expect(appGuide?.textContent).toContain(appDescription);
     const standaloneGuide = home.document.querySelector('[data-testid="docs-standalone-guide"]');
-    expect(standaloneGuide?.getAttribute('href')).toBe(docsHref({ locale, page: 'run/standalone' }));
+    expect(standaloneGuide?.getAttribute('href')).toBe(docsHref({ locale, page: 'standalone' }));
     expect(standaloneGuide?.textContent).toContain(standaloneDescription);
     const localOnlyGuide = home.document.querySelector('[data-testid="docs-local-only-guide"]');
-    expect(localOnlyGuide?.getAttribute('href')).toBe(docsHref({ locale, page: 'work/local-only' }));
+    expect(localOnlyGuide?.getAttribute('href')).toBe(docsHref({ locale, page: 'csp-editions' }));
     expect(localOnlyGuide?.textContent).toBe(localOnlyLink);
     expect(home.document.querySelector('script[src="/docs/client/home-brand.ts"]')).not.toBeNull();
     expect(home.document.querySelector('script[src="/docs/client/app-entry.ts"]')).not.toBeNull();
 
-    using guide = parsePage({ html: await (await dev.request({ url: docsHref({ locale, page: 'work/boundary' }) })).text() });
+    using guide = parsePage({ html: await (await dev.request({ url: docsHref({ locale, page: 'browser-boundaries' }) })).text() });
     expect(guide.document.querySelector('[data-docs-hero-brand]')).toBeNull();
     expect(guide.document.querySelector('script[src="/docs/client/home-brand.ts"]')).toBeNull();
     expect(guide.document.querySelector('[data-testid="docs-header"] [data-testid="docs-guide-menu"]')).not.toBeNull();
@@ -167,7 +167,7 @@ describe('Docs home brand', () => {
 </style></head><body>
 <header class="topbar" data-testid="docs-header"><div class="topbar-inner">
 <div data-docs-brand-slot><a data-docs-brand-link href="/docs/en/"><img><span class="brand-wordmark">Naidan</span></a><span data-docs-brand-spacer aria-hidden="true"></span></div>
-<details class="docs-guide-menu"><summary class="docs-guide-trigger">Guides</summary><div class="docs-guide-panel"><a href="/docs/en/models/">Models</a></div></details>
+<details class="docs-guide-menu"><summary class="docs-guide-trigger">Guides</summary><div class="docs-guide-panel"><a href="/docs/en/in-browser-models/">Models</a></div></details>
 <div class="docs-search"><button class="docs-search-trigger" type="button">Search</button></div>
 </div></header>
 <input id="docs-pause-motion" type="checkbox">
@@ -450,7 +450,7 @@ describe('Docs home brand', () => {
 <!doctype html><html><head><style>${css}</style></head><body>
 <header class="topbar"><div class="topbar-inner">
 <div class="brand-group"><a data-docs-brand-link href="/docs/en/">Naidan</a></div>
-<details class="docs-guide-menu" name="docs-header-menu"><summary class="docs-guide-trigger">Guides</summary><div class="docs-guide-panel"><a href="/docs/en/models/">Models</a></div></details>
+<details class="docs-guide-menu" name="docs-header-menu"><summary class="docs-guide-trigger">Guides</summary><div class="docs-guide-panel"><a href="/docs/en/in-browser-models/">Models</a></div></details>
 <button class="docs-search-trigger" type="button">Search</button>
 <div class="nav-controls"><details class="locale-menu" name="docs-header-menu"><summary class="locale-trigger">EN</summary><nav class="locale-panel"><a href="/docs/en/">English</a><a href="/docs/ja/">日本語</a></nav></details></div>
 </div></header></body></html>`);
@@ -480,7 +480,7 @@ describe('Docs home brand', () => {
     expect(Number(openZ)).toBeGreaterThan(Number(dom.window.getComputedStyle(brand).zIndex));
     expect(openZ).not.toBe(closedZ);
     expect(menu.querySelector('summary')).toBe(guideTrigger);
-    expect(menu.querySelector('a')?.getAttribute('href')).toBe('/docs/en/models/');
+    expect(menu.querySelector('a')?.getAttribute('href')).toBe('/docs/en/in-browser-models/');
     menu.open = false;
     localeMenu.open = true;
     expect(Number(dom.window.getComputedStyle(controls).zIndex)).toBeGreaterThan(Number(dom.window.getComputedStyle(brand).zIndex));

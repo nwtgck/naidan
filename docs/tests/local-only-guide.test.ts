@@ -1,9 +1,9 @@
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
-import LocalOnlyPage from '../pages/work/local-only.vue';
-import { strings as english } from '../strings/work/local-only/en';
-import { strings as japanese } from '../strings/work/local-only/ja';
+import LocalOnlyPage from '../pages/csp-editions/index.vue';
+import { strings as english } from '../pages/csp-editions/strings/en';
+import { strings as japanese } from '../pages/csp-editions/strings/ja';
 import { strings as commonEnglish } from '../strings/common/en';
 import { strings as commonJapanese } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
@@ -26,12 +26,12 @@ describe('Local-only connection guide', () => {
 
     const hostedLinks = [...article?.querySelectorAll<HTMLAnchorElement>('.version-card a[data-docs-external]') ?? []];
     expect(hostedLinks.map(link => link.getAttribute('href'))).toEqual([
-      'https://naidan-local-only.pages.dev',
-      'https://naidan-curated.pages.dev',
-      'https://naidan.pages.dev',
+      'https://naidan-local-only.pages.dev/',
+      'https://naidan-curated.pages.dev/',
+      'https://naidan.pages.dev/',
     ]);
     for (const link of hostedLinks) expect(link.querySelector('[data-docs-external-icon]')).not.toBeNull();
-    expect(article?.querySelector('.switching-note a')?.getAttribute('href')).toBe(`/docs/${locale}/data/backup/`);
+    expect(article?.querySelector('.switching-note a')?.getAttribute('href')).toBe(`/docs/${locale}/data-backup/`);
     const diagram = article?.querySelector('[data-testid="connection-policy-diagram"]');
     expect(diagram?.querySelectorAll('.policy-row')).toHaveLength(3);
     for (const row of diagram?.querySelectorAll('.policy-row') ?? []) {
@@ -54,6 +54,6 @@ describe('Local-only connection guide', () => {
     expect(article?.querySelectorAll('.guide-steps > li')).toHaveLength(3);
     expect(article?.textContent).toContain('Content-Security-Policy');
     expect(article?.textContent).toContain('connect-src');
-    expect(article?.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/models/local-engines/`);
+    expect(article?.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/local-ai-servers/`);
   });
 });

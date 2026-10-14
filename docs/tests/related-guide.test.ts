@@ -1,15 +1,15 @@
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
-import BranchingPage from '../pages/chat/branching.vue';
-import StandalonePage from '../pages/run/standalone.vue';
+import BranchingPage from '../pages/chat-branching/index.vue';
+import StandalonePage from '../pages/standalone/index.vue';
 import RelatedGuide from '../site/RelatedGuide.vue';
-import { strings as branchingEn } from '../strings/chat/branching/en';
-import { strings as branchingJa } from '../strings/chat/branching/ja';
+import { strings as branchingEn } from '../pages/chat-branching/strings/en';
+import { strings as branchingJa } from '../pages/chat-branching/strings/ja';
 import { strings as english } from '../strings/common/en';
 import { strings as japanese } from '../strings/common/ja';
-import { strings as standaloneEn } from '../strings/run/standalone/en';
-import { strings as standaloneJa } from '../strings/run/standalone/ja';
+import { strings as standaloneEn } from '../pages/standalone/strings/en';
+import { strings as standaloneJa } from '../pages/standalone/strings/ja';
 import { parsePage } from './site.test-support';
 
 describe('related guide links', () => {
@@ -22,8 +22,8 @@ describe('related guide links', () => {
         locale,
         eyebrow: common.relatedGuides,
         guides: [
-          { page: 'models/ollama', title: titles[0] ?? '', description: descriptions[0] ?? '' },
-          { page: 'models/in-browser', title: titles[1] ?? '', description: descriptions[1] ?? '' },
+          { page: 'endpoint-type-ollama', title: titles[0] ?? '', description: descriptions[0] ?? '' },
+          { page: 'in-browser-models', title: titles[1] ?? '', description: descriptions[1] ?? '' },
         ],
       }),
     }));
@@ -32,7 +32,7 @@ describe('related guide links', () => {
     expect(nav?.tagName).toBe('NAV');
     expect(nav?.getAttribute('aria-label')).toBe(common.relatedGuides);
     const links = [...(nav?.querySelectorAll('a') ?? [])];
-    expect(links.map(link => link.getAttribute('href'))).toEqual([`/docs/${locale}/models/ollama/`, `/docs/${locale}/models/in-browser/`]);
+    expect(links.map(link => link.getAttribute('href'))).toEqual([`/docs/${locale}/endpoint-type-ollama/`, `/docs/${locale}/in-browser-models/`]);
     for (const [index, link] of links.entries()) {
       expect(link.textContent).toContain(titles[index]);
       expect(link.textContent).toContain(descriptions[index]);
@@ -48,7 +48,7 @@ describe('related guide links', () => {
     const html = await renderToString(createSSRApp(BranchingPage, { locale, common, s: copy }));
     using page = parsePage({ html });
     const related = page.document.querySelector('[data-docs-related-guide]');
-    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/chat/super-edit/`);
+    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/chat-super-edit/`);
     expect(related?.textContent).toContain(copy.next);
     expect(related?.textContent).toContain(copy.nextDescription);
   });
@@ -62,10 +62,10 @@ describe('related guide links', () => {
     const related = page.document.querySelector('[data-docs-related-guide]');
     const links = [...(related?.querySelectorAll('a') ?? [])];
     expect(links.map(link => link.getAttribute('href'))).toEqual([
-      `/docs/${locale}/run/offline/`,
-      `/docs/${locale}/run/hosted/`,
-      `/docs/${locale}/work/app-permissions/`,
-      `/docs/${locale}/work/boundary/`,
+      `/docs/${locale}/pwa/`,
+      `/docs/${locale}/hosted/`,
+      `/docs/${locale}/web-and-native-app-permissions/`,
+      `/docs/${locale}/browser-boundaries/`,
     ]);
     expect(links[0]?.textContent).toContain(copy.offlineGuideTitle);
     expect(links[0]?.textContent).toContain(copy.offlineGuideDescription);

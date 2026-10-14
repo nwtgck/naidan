@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CheckIcon, ChevronDownIcon, ChevronRightIcon, FolderIcon, FolderInputIcon, FolderPlusIcon, MessageSquarePlusIcon, MoreVerticalIcon, MousePointer2Icon, PencilIcon, SearchIcon, SquarePenIcon, XIcon } from 'lucide-vue-next';
-import type { strings as groupsStrings } from '../../strings/chat/groups/en';
+import type { strings as groupsStrings } from '../../pages/chat-groups/strings/en';
 
 defineProps<{ stage: 'create' | 'move' | 'add' | 'tidy'; copy: typeof groupsStrings.demo }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
-import SuperEditPage from '../pages/chat/super-edit.vue';
-import { strings as en } from '../strings/chat/super-edit/en';
-import { strings as ja } from '../strings/chat/super-edit/ja';
+import SuperEditPage from '../pages/chat-super-edit/index.vue';
+import { strings as en } from '../pages/chat-super-edit/strings/en';
+import { strings as ja } from '../pages/chat-super-edit/strings/ja';
 import { strings as commonEn } from '../strings/common/en';
 import { strings as commonJa } from '../strings/common/ja';
 
@@ -24,7 +24,7 @@ describe('Super Edit guide', () => {
     expect(html).toContain(copy.demo.editedPath);
     expect(html).toContain(copy.steps.prompt.title);
     expect(html).toContain(copy.steps.apply.title);
-    expect(html).toContain(`href="/docs/${locale}/chat/branching/"`);
+    expect(html).toContain(`href="/docs/${locale}/chat-branching/"`);
     expect(html).toContain('class="ui-label"');
     expect(html).not.toContain('<button');
   });

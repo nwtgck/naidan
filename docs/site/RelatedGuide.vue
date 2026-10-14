@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { docsHref, type DocsLocale, type DocsPageId } from './routes';
+import DocsLink from './DocsLink.vue';
+import type { DocsLocale, DocsPageId } from './routes';
 
 defineProps<{
   locale: DocsLocale;
@@ -15,13 +16,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <p class="related-eyebrow">{{ eyebrow }}</p>
     <ul class="related-list">
       <li v-for="guide in guides" :key="guide.page">
-        <a class="related-link" :href="docsHref({ locale, page: guide.page })">
+        <DocsLink class="related-link" :locale="locale" :page="guide.page">
           <span class="related-copy">
             <strong>{{ guide.title }}</strong>
             <span>{{ guide.description }}</span>
           </span>
           <span class="related-arrow" aria-hidden="true">→</span>
-        </a>
+        </DocsLink>
       </li>
     </ul>
   </nav>

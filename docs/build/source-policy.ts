@@ -2,6 +2,13 @@ import { parse } from '@vue/compiler-sfc';
 import { NodeTypes, parse as parseTemplate } from '@vue/compiler-dom';
 import type { TemplateChildNode } from '@vue/compiler-dom';
 
+const nativeAnchorComponents = new Set([
+  'site/DocsLink.vue',
+  'site/LocalAnchorLink.vue',
+  'site/ExternalLink.vue',
+  'site/AppEntryLink.vue',
+]);
+
 // This is an authoring guard, not an execution sandbox for untrusted Vue code.
 // All article/components are reviewed source; interactions belong in islands.
 export function validateStaticComponent({ source, filename, mode }: { source: string; filename: string; mode: 'static' | 'island' }): void {
@@ -13,6 +20,9 @@ export function validateStaticComponent({ source, filename, mode }: { source: st
   const root = parseTemplate(descriptor.template?.content ?? '');
   const visit = ({ node }: { node: TemplateChildNode }): void => {
     if (node.type !== NodeTypes.ELEMENT) return;
+    if (node.tag.toLowerCase() === 'a' && !nativeAnchorComponents.has(filename)) {
+      throw new Error(`Use a typed Docs link component instead of <a> in ${filename}`);
+    }
     if (['script', 'iframe', 'object', 'embed', 'base'].includes(node.tag.toLowerCase())) {
       throw new Error(`Unsupported active element <${node.tag}> in ${filename}`);
     }

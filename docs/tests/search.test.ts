@@ -22,24 +22,24 @@ describe('Docs search', () => {
     const index: SearchIndex = {
       locale: 'ja',
       entries: [
-        { href: '/docs/ja/files/privacy/', title: 'ファイルを選ぶ', description: '読む範囲を選ぶ', headings: ['読み取り権限'], paragraphs: ['ファイルを読み取る範囲を選択します。'] },
-        { href: '/docs/ja/data/storage/', title: '保存先', description: '場所を選ぶ', headings: ['ファイルを選ぶ'], paragraphs: ['保存する場所を選択します。'] },
-        { href: '/docs/ja/chat/groups/', title: 'チャット', description: '会話を整理する', headings: ['会話'], paragraphs: ['ファイルを選ぶと会話に添付できます。'] },
+        { href: '/docs/ja/file-access/', title: 'ファイルを選ぶ', description: '読む範囲を選ぶ', headings: ['読み取り権限'], paragraphs: ['ファイルを読み取る範囲を選択します。'] },
+        { href: '/docs/ja/data-storage/', title: '保存先', description: '場所を選ぶ', headings: ['ファイルを選ぶ'], paragraphs: ['保存する場所を選択します。'] },
+        { href: '/docs/ja/chat-groups/', title: 'チャット', description: '会話を整理する', headings: ['会話'], paragraphs: ['ファイルを選ぶと会話に添付できます。'] },
       ],
     };
     expect(searchDocs({ index, query: 'ファイル 選ぶ' }).map(item => item.href)).toEqual(index.entries.map(item => item.href));
     expect(searchDocs({ index, query: 'ＦＡＩＬ' })).toEqual([]);
-    expect(searchDocs({ index, query: '読み取り ファイル' }).map(item => item.href)).toEqual(['/docs/ja/files/privacy/']);
+    expect(searchDocs({ index, query: '読み取り ファイル' }).map(item => item.href)).toEqual(['/docs/ja/file-access/']);
     expect(searchDocs({ index, query: '　' })).toEqual([]);
     expect(searchDocs({ index, query: '保存' })[0]?.snippet).toContain('保存');
-    const english: SearchIndex = { locale: 'en', entries: [{ href: '/docs/en/data/backup/', title: 'Back up ZIP files', description: 'Save a ZIP', headings: ['Restore a backup'], paragraphs: ['Restore your conversations from a ZIP.'] }] };
+    const english: SearchIndex = { locale: 'en', entries: [{ href: '/docs/en/data-backup/', title: 'Back up ZIP files', description: 'Save a ZIP', headings: ['Restore a backup'], paragraphs: ['Restore your conversations from a ZIP.'] }] };
     expect(searchDocs({ index: english, query: 'BACKUP zip' })).toHaveLength(1);
     expect(searchDocs({ index: english, query: 'BACKUP unicorn' })).toEqual([]);
     const broad: SearchIndex = { locale: 'ja', entries: Array.from({ length: 8 }, (_, number) => ({ href: `/docs/ja/example-${number}/`, title: `保存先 ${number}`, description: '', headings: [], paragraphs: [] })) };
     expect(searchDocs({ index: broad, query: '保存先を変えたい' })).toHaveLength(5);
     expect(parseWorkerResponse({ value: { kind: 'results', requestId: 1, results: [{ href: '/docs/ja/', title: 'Home', snippet: '' }] }, locale: 'ja' })).toEqual({ kind: 'results', requestId: 1, results: [{ href: '/docs/ja/', title: 'Home', snippet: '' }] });
-    expect(() => parseWorkerResponse({ value: { kind: 'results', requestId: 1, results: [{ href: '/docs/en/data/backup/', title: 'Wrong locale', snippet: '' }] }, locale: 'ja' })).toThrow();
-    for (const href of ['/docs/ja/../../', '/docs/ja/unregistered/', '/docs/ja/files/privacy/?q=1']) {
+    expect(() => parseWorkerResponse({ value: { kind: 'results', requestId: 1, results: [{ href: '/docs/en/data-backup/', title: 'Wrong locale', snippet: '' }] }, locale: 'ja' })).toThrow();
+    for (const href of ['/docs/ja/../../', '/docs/ja/unregistered/', '/docs/ja/file-access/?q=1']) {
       expect(() => parseWorkerResponse({ value: { kind: 'results', requestId: 1, results: [{ href, title: 'Unregistered', snippet: '' }] }, locale: 'ja' })).toThrow();
     }
   });
@@ -59,10 +59,10 @@ describe('Docs search', () => {
       expect(development).toEqual(production);
       expect(production.entries.map(item => item.href)).toEqual(expectedHrefs(locale));
       const purposes = purposeDocs({ index: production });
-      expect(purposes.map(item => item.href)).toEqual(['run/standalone', 'models/ollama', 'chat/branching', 'images/create', 'data/backup'].map(page => `/docs/${locale}/${page}/`));
+      expect(purposes.map(item => item.href)).toEqual(PURPOSE_PAGES.map(page => docsHref({ locale, page })));
       for (const hit of purposes) expect(hit.snippet).toBe(production.entries.find(entry => entry.href === hit.href)?.description);
       expect(file).not.toContain('Project notes');
-      const guide = await dev.request({ url: docsHref({ locale, page: 'files/privacy' }) });
+      const guide = await dev.request({ url: docsHref({ locale, page: 'file-access' }) });
       expect(guide.status).toBe(200);
       using page = parsePage({ html: await guide.text() });
       expect(page.document.querySelector('[data-testid="docs-search-trigger"]')?.getAttribute('aria-label')).toBe(locale === 'ja' ? 'ドキュメントを検索' : 'Search docs');
@@ -70,19 +70,19 @@ describe('Docs search', () => {
       if (!searchHost) throw new Error('Missing Docs search island');
       const payload = parseSearchPayload({ serialized: searchHost.getAttribute('data-docs-props') ?? '' });
       expect(payload.locale).toBe(locale);
-      expect(payload.currentPage).toBe('files/privacy');
+      expect(payload.currentPage).toBe('file-access');
       expect(payload.purpose.map(item => item.href)).toEqual(PURPOSE_PAGES.map(purposePage => docsHref({ locale, page: purposePage })));
       expect(payload.purpose.every(item => item.title.trim() && item.snippet.trim())).toBe(true);
       expect(Array.from(searchHost.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-search-results"] a'), link => link.getAttribute('href'))).toEqual(payload.purpose.map(item => item.href));
       expect(() => parseSearchPayload({ serialized: JSON.stringify({ ...payload, purpose: [{ ...payload.purpose[0], href: docsHref({ locale: locale === 'en' ? 'ja' : 'en', page: PURPOSE_PAGES[0] }) }, ...payload.purpose.slice(1)] }) })).toThrow();
       expect(() => parseSearchPayload({ serialized: JSON.stringify({ ...payload, currentPage: 'not-a-page' }) })).toThrow();
-      using currentPurpose = parsePage({ html: await readFile(path.join(fixture.docs, 'dist', locale, 'run/standalone/index.html'), 'utf8') });
-      const selfLink = currentPurpose.document.querySelector<HTMLAnchorElement>(`[data-docs-island="search"] [data-testid="docs-search-results"] a[href="${docsHref({ locale, page: 'run/standalone' })}"]`);
+      using currentPurpose = parsePage({ html: await readFile(path.join(fixture.docs, 'dist', locale, 'standalone/index.html'), 'utf8') });
+      const selfLink = currentPurpose.document.querySelector<HTMLAnchorElement>(`[data-docs-island="search"] [data-testid="docs-search-results"] a[href="${docsHref({ locale, page: 'standalone' })}"]`);
       expect(selfLink?.hasAttribute('data-docs-guide-prefetch')).toBe(false);
       const relatedLabel = page.document.querySelector('[data-docs-related-guide] .related-eyebrow')?.textContent?.trim();
       expect(relatedLabel).toBeTruthy();
-      expect(production.entries.find(entry => entry.href === docsHref({ locale, page: 'files/privacy' }))?.paragraphs).not.toContain(relatedLabel);
-      expect(page.document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toContain(`/docs/${locale}/files/privacy/`);
+      expect(production.entries.find(entry => entry.href === docsHref({ locale, page: 'file-access' }))?.paragraphs).not.toContain(relatedLabel);
+      expect(page.document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toContain(`/docs/${locale}/file-access/`);
       const home = await dev.request({ url: '/docs/' });
       using neutral = parsePage({ html: await home.text() });
       for (const template of neutral.document.querySelectorAll<HTMLTemplateElement>('template[data-docs-locale]')) {
@@ -99,21 +99,21 @@ describe('Docs search', () => {
       expect(neutral.document.querySelector('script[src="/docs/client/app-entry.ts"]')).not.toBeNull();
     }
     const japanese = parseSearchIndex({ value: JSON.parse(await readFile(path.join(fixture.docs, 'dist/search-ja.json'), 'utf8')) as unknown, locale: 'ja' });
-    expect(searchDocs({ index: japanese, query: 'バックアップ ZIP' }).some(item => item.href === '/docs/ja/data/backup/')).toBe(true);
+    expect(searchDocs({ index: japanese, query: 'バックアップ ZIP' }).some(item => item.href === '/docs/ja/data-backup/')).toBe(true);
     expect(searchDocs({ index: japanese, query: '新しいチャット' }).some(item => item.href === '/docs/ja/')).toBe(false);
     for (const [query, expectedHref] of [
-      ['バックアップしたい', '/docs/ja/data/backup/'],
-      ['バックアップしたいです。', '/docs/ja/data/backup/'],
-      ['保存先を変えたい', '/docs/ja/data/storage/'],
-      ['ファイルを渡したい', '/docs/ja/files/privacy/'],
-      ['音声を保存したい', '/docs/ja/audio/speech/'],
-      ['シェルを有効にしたい', '/docs/ja/work/browser-shell/'],
+      ['バックアップしたい', '/docs/ja/data-backup/'],
+      ['バックアップしたいです。', '/docs/ja/data-backup/'],
+      ['保存先を変えたい', '/docs/ja/data-storage/'],
+      ['ファイルを渡したい', '/docs/ja/file-access/'],
+      ['音声を保存したい', '/docs/ja/audio-generation/'],
+      ['シェルを有効にしたい', '/docs/ja/tool-browser-shell/'],
     ] as const) {
       const results = searchDocs({ index: japanese, query });
       expect(results[0]?.href).toBe(expectedHref);
       expect(results.length).toBeLessThanOrEqual(5);
     }
-    expect(searchDocs({ index: japanese, query: 'GGUF' }).some(item => item.href === '/docs/ja/models/llama-cpp-browser/')).toBe(true);
+    expect(searchDocs({ index: japanese, query: 'GGUF' }).some(item => item.href === '/docs/ja/endpoint-type-llama-cpp-browser/')).toBe(true);
     expect(searchDocs({ index: japanese, query: '量子ユニコーンを飼いたい' })).toEqual([]);
     expect(searchDocs({ index: japanese, query: 'したい' })).toEqual([]);
     expect(searchDocs({ index: japanese, query: 'をしたい。' })).toEqual([]);
@@ -166,7 +166,7 @@ describe('Docs search', () => {
     const firstMessage = workerMessages.find(message => message.requestId === 2);
     expect(firstMessage?.kind).toBe('results');
     if (firstMessage?.kind !== 'results') throw new Error('Missing Docs worker search results');
-    expect(firstMessage.results.some(hit => hit.href === '/docs/ja/data/backup/')).toBe(true);
+    expect(firstMessage.results.some(hit => hit.href === '/docs/ja/data-backup/')).toBe(true);
     expect(await remote.search({ request: { requestId: 4, locale: 'en', query: 'backup' } })).toEqual({ kind: 'error', requestId: 4 });
     expect((await remote.search({ request: { requestId: 5, locale: 'en', query: 'backup' } })).kind).toBe('results');
     expect(fetchIndex).toHaveBeenCalledTimes(3);
@@ -175,7 +175,7 @@ describe('Docs search', () => {
     const natural = await remote.search({ request: { requestId: 7, locale: 'ja', query: '保存先を変えたい' } });
     expect(natural.kind).toBe('results');
     if (natural.kind !== 'results') throw new Error('Missing Docs natural-language search results');
-    expect(natural.results[0]?.href).toBe('/docs/ja/data/storage/');
+    expect(natural.results[0]?.href).toBe('/docs/ja/data-storage/');
     expect(fetchIndex).toHaveBeenCalledTimes(3);
   });
 
@@ -183,7 +183,7 @@ describe('Docs search', () => {
     await using fixture = await createSiteFixture();
     await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' });
     const dist = path.join(fixture.docs, 'dist');
-    using page = parsePage({ html: await readFile(path.join(dist, 'ja/files/privacy/index.html'), 'utf8') });
+    using page = parsePage({ html: await readFile(path.join(dist, 'ja/file-access/index.html'), 'utf8') });
     const source = page.document.querySelector<HTMLScriptElement>('script[src*="island-search"]')?.getAttribute('src');
     const root = page.document.querySelector<HTMLElement>('[data-docs-island="search"]');
     if (!source || !root) throw new Error('Missing production Docs search island');
@@ -278,7 +278,7 @@ describe('Docs search', () => {
     expect(page.document.body.style.overflow).toBe('hidden');
     await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(5));
     expect(root.querySelector('.search-status')?.textContent).toContain('目的から探す');
-    expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/');
+    expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/standalone/');
     expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.hasAttribute('data-docs-guide-prefetch')).toBe(true);
     expect(workerConstructor).not.toHaveBeenCalled();
     expect(requests).toHaveLength(0);
@@ -290,16 +290,16 @@ describe('Docs search', () => {
     expect(workerConstructor).toHaveBeenCalledOnce();
     await vi.waitFor(() => expect(root.querySelector('.search-status')?.textContent).toContain('検索しています… · 目的から探す'));
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
-    expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/');
+    expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/standalone/');
     worker.emit({ response: { kind: 'error', requestId: requests[0]?.requestId ?? -1 } });
     await vi.waitFor(() => expect(root.querySelector('[role="alert"]')?.textContent).toContain('読み込めません'));
     root.querySelector<HTMLButtonElement>('.docs-search-retry')?.click();
     await vi.waitFor(() => expect(requests).toHaveLength(2));
     const matches = searchDocs({ index, query: 'バックアップ' }).map(({ href, title, snippet }) => ({ href, title, snippet }));
     worker.emit({ response: { kind: 'results', requestId: requests[1]?.requestId ?? -1, results: matches } });
-    await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/backup/'));
+    await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data-backup/'));
     const first = root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a');
-    expect(first?.getAttribute('href')).toBe('/docs/ja/data/backup/');
+    expect(first?.getAttribute('href')).toBe('/docs/ja/data-backup/');
     input.focus();
     input.dispatchEvent(new dom.KeyboardEvent('keydown', { key: 'ArrowDown', isComposing: true, bubbles: true }));
     expect(page.document.activeElement).toBe(input);
@@ -315,11 +315,11 @@ describe('Docs search', () => {
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     expect(root.querySelector('.search-status')).toBe(stableStatus);
     expect(content.scrollTop).toBe(50);
-    expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/backup/');
+    expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data-backup/');
     expect(root.querySelector('.search-status')?.textContent).toContain('検索しています');
     const storageMatches = searchDocs({ index, query: '保存先' }).map(({ href, title, snippet }) => ({ href, title, snippet }));
     worker.emit({ response: { kind: 'results', requestId: requests[2]?.requestId ?? -1, results: storageMatches } });
-    await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/storage/'));
+    await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data-storage/'));
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     expect(root.querySelector('.search-status')).toBe(stableStatus);
     expect(root.querySelector('.search-status')?.textContent).not.toContain('前の検索結果');
@@ -328,12 +328,12 @@ describe('Docs search', () => {
     await vi.waitFor(() => expect(requests).toHaveLength(4));
     input.value = '';
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
-    await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/'));
+    await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/standalone/'));
     expect(requests).toHaveLength(4);
     expect(root.querySelector('.search-status')?.textContent).toContain('目的から探す');
     worker.deliver({ requestId: requests[3]?.requestId ?? -1, response: { kind: 'results', requestId: requests[3]?.requestId ?? -1, results: [{ href: 7, title: 'Malformed', snippet: '' }] } });
     await new Promise(resolve => setTimeout(resolve, 0));
-    expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/');
+    expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/standalone/');
     expect(root.querySelector('[role="alert"]')).toBeNull();
     expect(worker.terminate).not.toHaveBeenCalled();
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
@@ -345,7 +345,7 @@ describe('Docs search', () => {
     await vi.waitFor(() => expect(requests).toHaveLength(5));
     expect(workerConstructor).toHaveBeenCalledOnce();
     worker.emit({ response: { kind: 'results', requestId: requests[4]?.requestId ?? -1, results: storageMatches } });
-    await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data/storage/'));
+    await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data-storage/'));
     input.value = 'pending';
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
     await vi.waitFor(() => expect(requests).toHaveLength(6));
@@ -432,7 +432,7 @@ describe('Docs search', () => {
     expect(payload.locale).toBe('ja');
     root.querySelector<HTMLButtonElement>('[data-testid="docs-search-trigger"]')?.click();
     await vi.waitFor(() => expect(root.querySelectorAll('[data-testid="docs-search-results"] a')).toHaveLength(PURPOSE_PAGES.length));
-    expect(root.querySelector('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/run/standalone/');
+    expect(root.querySelector('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/standalone/');
     expect(workerConstructor).not.toHaveBeenCalled();
   });
 });

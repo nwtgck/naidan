@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { BrainCircuitIcon, CheckIcon, ChevronDownIcon, DownloadIcon, FileUpIcon, FolderOpenIcon, GlobeIcon, HardDriveIcon, MousePointer2Icon, SearchIcon, Settings2Icon, SettingsIcon } from 'lucide-vue-next';
-import type { strings as llamaEnglish } from '../../strings/models/llama-cpp-browser/en';
-import type { strings as transformersEnglish } from '../../strings/models/transformers-js/en';
+import type { strings as llamaEnglish } from '../../pages/endpoint-type-llama-cpp-browser/strings/en';
+import type { strings as transformersEnglish } from '../../pages/endpoint-type-transformers-js/strings/en';
 
 type LlamaCopy = typeof llamaEnglish.demo;
 type TransformersCopy = typeof transformersEnglish.demo;

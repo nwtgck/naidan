@@ -4,8 +4,8 @@ import { validateStaticComponent } from '../build/source-policy';
 import { findIslands, renderDocument, renderLocaleRoot } from '../build/html';
 import { manifestEntry, parseManifest, publicAssetHref } from '../build/assets';
 import { selectDocsLocale } from '../site/locale';
-import { strings as homeEn } from '../strings/index/en';
-import { strings as homeJa } from '../strings/index/ja';
+import { strings as homeEn } from '../pages/index/strings/en';
+import { strings as homeJa } from '../pages/index/strings/ja';
 import { isDocsUrl } from '../../pwa/docs-routing';
 import { parsePage } from './site.test-support';
 
@@ -18,8 +18,8 @@ describe('Docs URL routing', () => {
     ['/docs/', { kind: 'root' }],
     ['/docs/index.html?x=1', { kind: 'redirect', location: '/docs/?x=1' }],
     ['/docs/ja/', { kind: 'page', locale: 'ja', page: 'index' }],
-    ['/docs/en/chat/branching/?q=%3F', { kind: 'page', locale: 'en', page: 'chat/branching' }],
-    ['/docs/en/chat/branching/index.html?q=1', { kind: 'redirect', location: '/docs/en/chat/branching/?q=1' }],
+    ['/docs/en/chat-branching/?q=%3F', { kind: 'page', locale: 'en', page: 'chat-branching' }],
+    ['/docs/en/chat-branching/index.html?q=1', { kind: 'redirect', location: '/docs/en/chat-branching/?q=1' }],
     ['/docs/ja?x=1', { kind: 'redirect', location: '/docs/ja/?x=1' }],
     ['/docs/fr/', { kind: 'missing' }],
     ['/docs/ja/not-a-page/', { kind: 'missing' }],

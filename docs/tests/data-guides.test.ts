@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
-import StoragePage from '../pages/data/storage.vue';
-import BackupPage from '../pages/data/backup.vue';
-import { strings as storageEn } from '../strings/data/storage/en';
-import { strings as storageJa } from '../strings/data/storage/ja';
-import { strings as backupEn } from '../strings/data/backup/en';
-import { strings as backupJa } from '../strings/data/backup/ja';
+import StoragePage from '../pages/data-storage/index.vue';
+import BackupPage from '../pages/data-backup/index.vue';
+import { strings as storageEn } from '../pages/data-storage/strings/en';
+import { strings as storageJa } from '../pages/data-storage/strings/ja';
+import { strings as backupEn } from '../pages/data-backup/strings/en';
+import { strings as backupJa } from '../pages/data-backup/strings/ja';
 import { strings as commonEn } from '../strings/common/en';
 import { strings as commonJa } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
@@ -41,7 +41,7 @@ describe('data guides', () => {
     expect(article?.textContent).toContain(s.limits[0]);
     const related = article?.querySelector('[data-docs-related-guide]');
     expect(related?.getAttribute('aria-label')).toBe(common.relatedGuides);
-    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/data/backup/`);
+    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/data-backup/`);
     expect(related?.textContent).toContain(s.nextDescription);
   });
 
@@ -73,7 +73,7 @@ describe('data guides', () => {
     expect(article?.textContent).toContain(s.careBody);
     const related = article?.querySelector('[data-docs-related-guide]');
     expect(related?.getAttribute('aria-label')).toBe(common.relatedGuides);
-    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/data/storage/`);
+    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/data-storage/`);
     expect(related?.textContent).toContain(s.nextDescription);
   });
 });

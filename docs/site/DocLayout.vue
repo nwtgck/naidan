@@ -3,8 +3,11 @@ import { computed } from 'vue';
 import { LanguagesIcon } from 'lucide-vue-next';
 import logo from '../assets/naidan.svg';
 import type { CommonMessages } from './messages';
-import { docsHref, DOCS_LOCALES, DOCS_LOCALE_NAMES } from './routes';
+import { DOCS_LOCALES, DOCS_LOCALE_NAMES } from './routes';
 import type { DocsLocale, DocsPageId } from './routes';
+import AppEntryLink from './AppEntryLink.vue';
+import DocsLink from './DocsLink.vue';
+import LocalAnchorLink from './LocalAnchorLink.vue';
 import DocsGuideMenu from './DocsGuideMenu.vue';
 import DocsGuideTree from './DocsGuideTree.vue';
 import DocsSymbols from './DocsSymbols.vue';
@@ -31,10 +34,9 @@ defineExpose({
 
 <template>
   <DocsSymbols />
-  <a
+  <LocalAnchorLink
     class="skip-link"
-    href="#docs-main"
-  >{{ s.skip }}</a>
+  >{{ s.skip }}</LocalAnchorLink>
   <header
     class="topbar"
     :class="{ 'docs-article-page': page !== 'index' }"
@@ -42,9 +44,10 @@ defineExpose({
   >
     <div class="wrap topbar-inner">
       <div class="brand-group" data-docs-brand-slot>
-        <a
+        <DocsLink
           class="brand"
-          :href="docsHref({ locale, page: 'index' })"
+          :locale="locale"
+          page="index"
           :aria-label="s.home"
           data-docs-brand-link
         >
@@ -56,7 +59,7 @@ defineExpose({
             alt=""
           >
           <span class="brand-text brand-wordmark">Naidan</span>
-        </a>
+        </DocsLink>
         <span class="brand-spacer" data-docs-brand-spacer aria-hidden="true" />
         <span class="brand-sep" aria-hidden="true" /><span class="brand-docs" aria-hidden="true">DOCS</span>
       </div>
@@ -71,10 +74,11 @@ defineExpose({
             <span class="locale-code" aria-hidden="true">{{ locale.toUpperCase() }}</span>
           </summary>
           <nav class="locale-panel" :aria-label="s.languageMenu">
-            <a
+            <DocsLink
               v-for="option in DOCS_LOCALES"
               :key="option"
-              :href="docsHref({ locale: option, page })"
+              :locale="option"
+              :page="page"
               :lang="option"
               :hreflang="option"
               :aria-current="option === locale ? 'page' : undefined"
@@ -82,7 +86,7 @@ defineExpose({
             >
               <span>{{ DOCS_LOCALE_NAMES[option] }}</span>
               <span v-if="option === locale" class="locale-current">{{ s.currentLanguage }}</span>
-            </a>
+            </DocsLink>
           </nav>
         </details>
         <label class="control theme-control">
@@ -105,11 +109,13 @@ defineExpose({
             <span class="sr-only resume-motion-label">{{ s.resumeMotion }}</span>
           </label>
         </div>
-        <a
-          href="/"
+        <AppEntryLink
+          :destination="{ kind: 'screen', screen: 'home' }"
+          :locale="locale"
+          display="label"
           class="nav-launch"
           :aria-label="s.launch"
-        ><span class="nav-open-text">{{ s.launch }}</span><span aria-hidden="true">→</span></a>
+        ><span class="nav-open-text">{{ s.launch }}</span><span aria-hidden="true">→</span></AppEntryLink>
       </div>
     </div>
   </header>
@@ -135,8 +141,8 @@ defineExpose({
     </div>
   </main>
   <footer class="footer">
-    <div class="wrap footer-inner"><span>{{ s.footer }}</span><a
-      :href="docsHref({ locale, page: 'index' })">{{ s.home }}</a></div>
+    <div class="wrap footer-inner"><span>{{ s.footer }}</span><DocsLink
+      :locale="locale" page="index">{{ s.home }}</DocsLink></div>
   </footer>
 </template>
 

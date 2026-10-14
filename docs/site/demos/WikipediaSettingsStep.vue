@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { BookOpenIcon, CalculatorIcon, ListIcon, MousePointer2Icon, SendIcon, Settings2Icon, SquarePenIcon, TerminalIcon } from 'lucide-vue-next';
-import type { strings } from '../../strings/work/wikipedia/en';
+import type { strings } from '../../pages/tool-wikipedia/strings/en';
 
 defineProps<{ stage: 'open' | 'enabled'; copy: typeof strings.demo }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

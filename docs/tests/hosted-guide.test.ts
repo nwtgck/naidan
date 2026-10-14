@@ -1,9 +1,9 @@
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
-import HostedPage from '../pages/run/hosted.vue';
-import { strings as english } from '../strings/run/hosted/en';
-import { strings as japanese } from '../strings/run/hosted/ja';
+import HostedPage from '../pages/hosted/index.vue';
+import { strings as english } from '../pages/hosted/strings/en';
+import { strings as japanese } from '../pages/hosted/strings/ja';
 import { strings as commonEnglish } from '../strings/common/en';
 import { strings as commonJapanese } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
@@ -28,12 +28,12 @@ describe('self-hosted ZIP guide', () => {
     expect(article?.querySelector('[data-docs-animation="hosted-static-flow"] figcaption')?.textContent).toBe(s.flow.caption);
     expect(article?.querySelectorAll('figure button, figure input, figure a')).toHaveLength(0);
     expect([...article?.querySelectorAll('[data-docs-related-guide] a') ?? []].map(link => link.getAttribute('href'))).toEqual([
-      `/docs/${locale}/run/offline/`,
-      `/docs/${locale}/run/standalone/`,
-      `/docs/${locale}/data/backup/`,
+      `/docs/${locale}/pwa/`,
+      `/docs/${locale}/standalone/`,
+      `/docs/${locale}/data-backup/`,
     ]);
-    expect(article?.querySelector(`a[href="/docs/${locale}/models/in-browser/"]`)?.textContent).toBe(s.model.browserGuide);
-    expect(article?.querySelector(`a[href="/docs/${locale}/models/llama-cpp-browser/"]`)?.textContent).toBe(s.model.ggufGuide);
-    expect(article?.querySelector(`a[href="/docs/${locale}/models/local-engines/"]`)?.textContent).toBe(s.model.engineGuide);
+    expect(article?.querySelector(`a[href="/docs/${locale}/in-browser-models/"]`)?.textContent).toBe(s.model.browserGuide);
+    expect(article?.querySelector(`a[href="/docs/${locale}/endpoint-type-llama-cpp-browser/"]`)?.textContent).toBe(s.model.ggufGuide);
+    expect(article?.querySelector(`a[href="/docs/${locale}/local-ai-servers/"]`)?.textContent).toBe(s.model.engineGuide);
   });
 });

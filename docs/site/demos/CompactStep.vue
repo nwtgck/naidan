@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowLeftIcon, ArrowRightIcon, BrainIcon, ChevronDownIcon, ChevronUpIcon, FolderInputIcon, GitForkIcon, HammerIcon, ListIcon, Minimize2Icon, MoreVerticalIcon, MousePointer2Icon, PrinterIcon, SearchIcon, SquareIcon, XIcon } from 'lucide-vue-next';
-import type { strings as compactStrings } from '../../strings/chat/compact/en';
+import type { strings as compactStrings } from '../../pages/chat-context-compaction/strings/en';
 
 defineProps<{ stage: 'open' | 'keep' | 'run' | 'result'; copy: typeof compactStrings.demo }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });

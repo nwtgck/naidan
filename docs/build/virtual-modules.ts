@@ -31,13 +31,14 @@ export function createDocsModulesPlugin({ root }: { root: string }): Plugin {
         ];
         const records: string[] = [];
         for (const page of DOCS_PAGES) {
-          for (const source of [page.source, `strings/${page.id}/en.ts`, `strings/${page.id}/ja.ts`]) {
+          const strings = `pages/${page.id}/strings`;
+          for (const source of [page.source, `${strings}/en.ts`, `${strings}/ja.ts`]) {
             const file = path.resolve(root, source);
             this.addWatchFile(file);
           }
           const component = `() => checked({ source: ${JSON.stringify(page.source)}, load: () => import(${JSON.stringify(`/${page.source}`)}) })`;
-          const en = `() => checked({ source: ${JSON.stringify(`strings/${page.id}/en.ts`)}, load: () => import(${JSON.stringify(`/strings/${page.id}/en.ts`)}) })`;
-          const ja = `() => checked({ source: ${JSON.stringify(`strings/${page.id}/ja.ts`)}, load: () => import(${JSON.stringify(`/strings/${page.id}/ja.ts`)}) })`;
+          const en = `() => checked({ source: ${JSON.stringify(`${strings}/en.ts`)}, load: () => import(${JSON.stringify(`/${strings}/en.ts`)}) })`;
+          const ja = `() => checked({ source: ${JSON.stringify(`${strings}/ja.ts`)}, load: () => import(${JSON.stringify(`/${strings}/ja.ts`)}) })`;
           records.push(`${JSON.stringify(page.id)}: { component: ${component}, messages: { en: ${en}, ja: ${ja} } }`);
         }
         lines.push(`export const pages = { ${records.join(',')} };`);
@@ -61,7 +62,7 @@ export function createDocsModulesPlugin({ root }: { root: string }): Plugin {
       const relative = path.relative(root, filename);
       if (relative.startsWith('..') || path.isAbsolute(relative)) return undefined;
       const source = await readFile(filename, 'utf8');
-      validateStaticComponent({ source, filename, mode: relative.startsWith(`islands${path.sep}`) ? 'island' : 'static' });
+      validateStaticComponent({ source, filename: relative.split(path.sep).join('/'), mode: relative.startsWith(`islands${path.sep}`) ? 'island' : 'static' });
       return undefined;
     },
   };

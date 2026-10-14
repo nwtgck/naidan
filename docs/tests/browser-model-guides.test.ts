@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
-import LlamaGuide from '../pages/models/llama-cpp-browser.vue';
-import TransformersGuide from '../pages/models/transformers-js.vue';
-import { strings as llamaEnglish } from '../strings/models/llama-cpp-browser/en';
-import { strings as llamaJapanese } from '../strings/models/llama-cpp-browser/ja';
-import { strings as transformersEnglish } from '../strings/models/transformers-js/en';
-import { strings as transformersJapanese } from '../strings/models/transformers-js/ja';
+import LlamaGuide from '../pages/endpoint-type-llama-cpp-browser/index.vue';
+import TransformersGuide from '../pages/endpoint-type-transformers-js/index.vue';
+import { strings as llamaEnglish } from '../pages/endpoint-type-llama-cpp-browser/strings/en';
+import { strings as llamaJapanese } from '../pages/endpoint-type-llama-cpp-browser/strings/ja';
+import { strings as transformersEnglish } from '../pages/endpoint-type-transformers-js/strings/en';
+import { strings as transformersJapanese } from '../pages/endpoint-type-transformers-js/strings/ja';
 import { strings as commonEnglish } from '../strings/common/en';
 import { strings as commonJapanese } from '../strings/common/ja';
 import { parsePage } from './site.test-support';

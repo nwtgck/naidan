@@ -148,12 +148,12 @@ describe('accessible guide presentation', () => {
   it('gives file:// a homepage entry and a complete localized standalone guide', () => {
     for (const locale of DOCS_LOCALES) {
       const home = pages.get(docsHref({ locale, page: 'index' }));
-      const guide = pages.get(docsHref({ locale, page: 'run/standalone' }));
+      const guide = pages.get(docsHref({ locale, page: 'standalone' }));
       if (!home || !guide) throw new Error('Missing standalone guide');
       using homePage = parsePage({ html: home.html });
       using guidePage = parsePage({ html: guide.html });
       const link = homePage.document.querySelector('[data-testid="docs-home-standalone"] a');
-      expect(link?.getAttribute('href')).toBe(docsHref({ locale, page: 'run/standalone' }));
+      expect(link?.getAttribute('href')).toBe(docsHref({ locale, page: 'standalone' }));
       const article = guidePage.document.querySelector('[data-testid="docs-standalone"]');
       expect(article?.textContent).toContain('file://');
       expect(article?.textContent).toContain('index.html');
@@ -168,13 +168,13 @@ describe('accessible guide presentation', () => {
     const expected = locale === 'ja'
       ? { os: 'このPCのOS', browser: 'ブラウザ', blocked: '直接操作を防止', folder: 'フォルダ（コピー）', access: '読み取り専用', open: 'ブラウザで開く', newChat: '新しいチャット' }
       : { os: 'The OS on this PC', browser: 'Browser', blocked: 'Direct access prevented', folder: 'Folder (copy)', access: 'READ ONLY', open: 'Open in your browser', newChat: 'New Chat' };
-    for (const page of ['index', 'work/boundary', 'files/privacy', 'run/standalone'] as const) {
+    for (const page of ['index', 'browser-boundaries', 'file-access', 'standalone'] as const) {
       const output = pages.get(docsHref({ locale, page }));
       if (!output) throw new Error('Missing localized demonstration page');
       using document = parsePage({ html: output.html });
       expect(document.document.documentElement.lang).toBe(locale);
       const diagram = document.document.querySelector('[data-testid="boundary-diagram"]');
-      if (page === 'index' || page === 'work/boundary') expect(diagram).not.toBeNull();
+      if (page === 'index' || page === 'browser-boundaries') expect(diagram).not.toBeNull();
       if (diagram) {
         const os = diagram.querySelector('[data-testid="os-boundary"]');
         const browser = diagram.querySelector('[data-testid="browser-boundary"]');
@@ -192,11 +192,11 @@ describe('accessible guide presentation', () => {
         expect(diagram.hasAttribute('lang')).toBe(false);
       }
       const folder = document.document.querySelector('[data-testid="folder-access-demo"]');
-      if (page === 'files/privacy') {
+      if (page === 'file-access') {
         expect(folder).not.toBeNull();
         const guide = document.document.querySelector('[data-testid="docs-files"]');
         expect(guide?.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')).not.toBeNull();
-        expect(guide?.querySelector('.app-entry-intro a[href] + a')?.getAttribute('href')).toBe(`/docs/${locale}/models/in-browser/`);
+        expect(guide?.querySelector('.app-entry-intro a[href] + a')?.getAttribute('href')).toBe(`/docs/${locale}/in-browser-models/`);
         expect(guide?.querySelector('.app-entry-intro')?.textContent).toContain(locale === 'ja' ? 'ツール呼び出しに対応するモデル' : 'model that supports tool calls');
         const steps = guide?.querySelectorAll('ol > li');
         expect(steps).toHaveLength(5);
@@ -215,7 +215,7 @@ describe('accessible guide presentation', () => {
         expect(folder.hasAttribute('lang')).toBe(false);
       }
       const standalone = document.document.querySelector('[data-testid="standalone-demo"]');
-      if (page === 'run/standalone') expect(standalone).not.toBeNull();
+      if (page === 'standalone') expect(standalone).not.toBeNull();
       if (standalone) {
         expect(standalone.textContent).toContain(expected.open);
         expect(standalone.textContent).toContain(expected.newChat);
@@ -241,19 +241,19 @@ describe('accessible guide presentation', () => {
     using document = parsePage({ html: output.html });
     const links = [...document.document.querySelectorAll('[data-testid="docs-model-guide"]')];
     expect(links.map(link => link.getAttribute('href'))).toEqual([
-      docsHref({ locale, page: 'models/in-browser' }),
-      docsHref({ locale, page: 'models/local-engines' }),
+      docsHref({ locale, page: 'in-browser-models' }),
+      docsHref({ locale, page: 'local-ai-servers' }),
     ]);
-    for (const page of ['models/in-browser', 'models/local-engines'] as const) {
+    for (const page of ['in-browser-models', 'local-ai-servers'] as const) {
       const guide = pages.get(docsHref({ locale, page }));
       if (!guide) throw new Error('Missing model guide');
       using document = parsePage({ html: guide.html });
       expect(document.document.documentElement.lang).toBe(locale);
       expect(document.document.querySelector('article h1')?.textContent?.trim()).toBeTruthy();
       expect(document.document.querySelectorAll('article ol li').length).toBeGreaterThan(0);
-      const targets = page === 'models/in-browser'
-        ? ['models/llama-cpp-browser', 'models/transformers-js', 'models/browser-provided'] as const
-        : ['models/ollama', 'models/openai-compatible'] as const;
+      const targets = page === 'in-browser-models'
+        ? ['endpoint-type-llama-cpp-browser', 'endpoint-type-transformers-js', 'endpoint-type-browser-provided-lm'] as const
+        : ['endpoint-type-ollama', 'endpoint-type-openai'] as const;
       const links = [...document.document.querySelectorAll<HTMLAnchorElement>('.card-guide-link')];
       expect(links.map(link => link.getAttribute('href'))).toEqual(targets.map(target => docsHref({ locale, page: target })));
       expect(links.every(link => link.textContent?.trim())).toBe(true);

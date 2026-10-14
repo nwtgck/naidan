@@ -45,7 +45,7 @@ describe('Docs development and static output', () => {
         const response = await dev.request({ url: href });
         expect(response.status, href).toBe(200);
         using development = parsePage({ html: await response.text() });
-        const relative = `${locale}/${page.id === 'index' ? '' : `${page.id}/`}index.html`;
+        const relative = `${href.slice('/docs/'.length)}index.html`;
         using production = parsePage({ html: await readFile(path.join(fixture.docs, 'dist', relative), 'utf8') });
         expect(iconHref({ document: development.document }), href).toBe('/docs/assets/favicon.svg');
         expect(iconHref({ document: production.document }), href).toBe(productionIcon);
@@ -118,7 +118,7 @@ describe('Docs adversarial lifecycle behavior', () => {
       if (locale === 'ja') expect(heading).toBe('安全性を徹底追求した、簡単に使えるAI環境。');
       else expect(heading).toBe('An easy-to-use AI environment, built around privacy.');
     }));
-    const file = path.join(fixture.docs, 'strings/index/ja.ts');
+    const file = path.join(fixture.docs, 'pages/index/strings/ja.ts');
     const source = await readFile(file, 'utf8');
     await writeFile(file, source.replace('知りたい機能から探す', 'Updated Japanese guide heading'));
     await vi.waitFor(async () => {
@@ -133,7 +133,7 @@ describe('Docs adversarial lifecycle behavior', () => {
     const config = { ...docsBuildConfig({ root: fixture.docs }), configFile: false as const, logLevel: 'error' as const };
     await build(config);
     await writeFile(path.join(fixture.docs, 'dist', 'stale.html'), 'previous route');
-    const file = path.join(fixture.docs, 'strings/index/en.ts');
+    const file = path.join(fixture.docs, 'pages/index/strings/en.ts');
     await writeFile(file, (await readFile(file, 'utf8')).replace('Find what you want to do.', 'Updated production heading'));
     await build(config);
     const html = await readFile(path.join(fixture.docs, 'dist/en/index.html'), 'utf8');
@@ -151,7 +151,7 @@ describe('Docs adversarial lifecycle behavior', () => {
 
   it('fails Docs builds on invalid dictionaries while leaving the normal app build independent', async () => {
     await using fixture = await createSiteFixture();
-    const file = path.join(fixture.docs, 'strings/index/ja.ts');
+    const file = path.join(fixture.docs, 'pages/index/strings/ja.ts');
     await writeFile(file, 'export const strings = { title: "Incomplete" };');
     await expect(build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' })).rejects.toThrow();
     expect(await readdir(path.join(fixture.docs, 'dist')).catch(() => [])).not.toContain('index.html');
@@ -168,7 +168,7 @@ describe('Docs adversarial lifecycle behavior', () => {
 <style scoped>@import './nested.css'; .nested-native { background-image: url('../assets/naidan.svg'); }</style>`;
     await writeFile(path.join(fixture.docs, 'site/NestedNative.vue'), child);
     await writeFile(path.join(fixture.docs, 'site/nested.css'), '.nested-native { --native-css-probe: 617px; }');
-    const page = path.join(fixture.docs, 'pages/files/privacy.vue');
+    const page = path.join(fixture.docs, 'pages/file-access/index.vue');
     const declaration = kind === 'static'
       ? 'import NestedNative from "../../site/NestedNative.vue";'
       : `\
@@ -179,8 +179,8 @@ const NestedNative = defineAsyncComponent(() => import('../../site/NestedNative.
 ${declaration}`).replace('<template>', '<template><NestedNative />'));
     await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' });
     await using dev = await startSiteDev({ root: fixture.root });
-    using development = parsePage({ html: await (await dev.request({ url: '/docs/en/files/privacy/' })).text() });
-    using production = parsePage({ html: await readFile(path.join(fixture.docs, 'dist/en/files/privacy/index.html'), 'utf8') });
+    using development = parsePage({ html: await (await dev.request({ url: '/docs/en/file-access/' })).text() });
+    using production = parsePage({ html: await readFile(path.join(fixture.docs, 'dist/en/file-access/index.html'), 'utf8') });
     expect(development.document.querySelector('[data-testid="nested-native"]')?.outerHTML).toBe(production.document.querySelector('[data-testid="nested-native"]')?.outerHTML);
     let productionCss = '', developmentCss = '';
     for (const link of production.document.querySelectorAll('link[rel="stylesheet"]')) {
@@ -203,10 +203,10 @@ ${declaration}`).replace('<template>', '<template><NestedNative />'));
   it('rejects interactions hidden inside an imported static child', async () => {
     await using fixture = await createSiteFixture();
     await writeFile(path.join(fixture.docs, 'site/HiddenEvent.vue'), '<template><button @focus="() => {}">Hidden event</button></template>');
-    const file = path.join(fixture.docs, 'pages/index.vue');
+    const file = path.join(fixture.docs, 'pages/index/index.vue');
     await writeFile(file, (await readFile(file, 'utf8')).replace('<script setup lang="ts">', `\
 <script setup lang="ts">
-import HiddenEvent from "../site/HiddenEvent.vue";`).replace('<template>', '<template><HiddenEvent />'));
+import HiddenEvent from "../../site/HiddenEvent.vue";`).replace('<template>', '<template><HiddenEvent />'));
     await expect(build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' })).rejects.toThrow('Interactive binding');
   });
 });
@@ -224,7 +224,7 @@ console.log(pages);
 
   it('isolates accidental component mutations from subsequent and concurrent renders', async () => {
     await using fixture = await createSiteFixture();
-    const file = path.join(fixture.docs, 'pages/index.vue');
+    const file = path.join(fixture.docs, 'pages/index/index.vue');
     const original = await readFile(file, 'utf8');
     const mutated = original.replace(
       'defineProps<{ s: HomeMessages; locale: DocsLocale; common: CommonMessages }>();',

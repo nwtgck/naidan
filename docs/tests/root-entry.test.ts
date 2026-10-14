@@ -236,7 +236,7 @@ describe('language-neutral entrance without navigation', () => {
   });
 
   it('leaves article brand motion untouched', () => {
-    using browser = createBrowser({ url: 'https://example.test/docs/en/work/boundary/', languages: ['en'] });
+    using browser = createBrowser({ url: 'https://example.test/docs/en/browser-boundaries/', languages: ['en'] });
     setMotionMedia({ dom: browser.dom });
     new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
     expect(browser.dom.window.document.documentElement.hasAttribute('data-docs-home-brand-startup')).toBe(false);

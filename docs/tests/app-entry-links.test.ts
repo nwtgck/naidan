@@ -25,9 +25,9 @@ describe('Docs app entry links', () => {
   });
 
   it.each([
-    'https://naidan.pages.dev/docs/ja/images/create/',
-    'https://naidan.nwtgck.org/docs/en/images/create/',
-    'http://localhost:5173/docs/ja/images/create/',
+    'https://naidan.pages.dev/docs/ja/image-generation/',
+    'https://naidan.nwtgck.org/docs/en/image-generation/',
+    'http://localhost:5173/docs/ja/image-generation/',
   ])('resolves against the browsing origin from %s', locationHref => {
     const destination = { kind: 'screen', screen: 'image-generation' } as const;
     expect(appEntryUrl({ destination, base: locationHref })).toBe(`${new URL(locationHref).origin}/#/image-generation/`);
@@ -61,7 +61,7 @@ describe('Docs app entry links', () => {
   it('rebases the link while keeping its visible path and SEO metadata unchanged', async () => {
     const destination = { kind: 'screen', screen: 'image-generation' } as const;
     const html = await renderToString(createSSRApp({ render: () => h(AppEntryLink, { destination, locale: 'ja', display: 'path' }) }));
-    const dom = new JSDOM(`<!doctype html><head><link rel="canonical" href="https://naidan.nwtgck.org/docs/ja/images/create/"></head><body>${html}<a href="https://example.org/">Other site</a></body>`, { url: 'http://localhost:5173/docs/ja/images/create/' });
+    const dom = new JSDOM(`<!doctype html><head><link rel="canonical" href="https://naidan.nwtgck.org/docs/ja/image-generation/"></head><body>${html}<a href="https://example.org/">Other site</a></body>`, { url: 'http://localhost:5173/docs/ja/image-generation/' });
     try {
       const { document } = dom.window;
       const anchor = document.querySelector<HTMLAnchorElement>('a[data-docs-app-entry-path]');
@@ -73,7 +73,7 @@ describe('Docs app entry links', () => {
 
       expect(anchor?.href).toBe('http://localhost:5173/#/image-generation/');
       expect(anchor?.querySelector('[data-docs-app-entry-path-text]')?.textContent).toBe('/#/image-generation/');
-      expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://naidan.nwtgck.org/docs/ja/images/create/');
+      expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://naidan.nwtgck.org/docs/ja/image-generation/');
       expect(document.querySelector('a[href="https://example.org/"]')).not.toBeNull();
     } finally {
       dom.window.close();
@@ -83,7 +83,7 @@ describe('Docs app entry links', () => {
   it('updates a short model label while retaining its decoded launch value', async () => {
     const model = 'hf.co/ggml-org/gpt-oss-20b-GGUF:MXFP4';
     const html = await renderToString(createSSRApp({ render: () => h(AppEntryLink, { destination: { kind: 'model', model }, locale: 'en', display: 'label' }, () => 'gpt-oss-20b') }));
-    const dom = new JSDOM(html, { url: 'https://naidan.pages.dev/docs/en/models/llama-cpp-browser/' });
+    const dom = new JSDOM(html, { url: 'https://naidan.pages.dev/docs/en/endpoint-type-llama-cpp-browser/' });
     try {
       updateAppEntryLinks({ document: dom.window.document, locationHref: dom.window.location.href });
       const anchor = dom.window.document.querySelector<HTMLAnchorElement>('a[data-docs-app-entry-path]');
@@ -97,21 +97,22 @@ describe('Docs app entry links', () => {
     }
   });
 
-  it('serves the independent enhancement only on pages with app entry links', async () => {
+  it('serves the app entry enhancement for the shared header and article launch links', async () => {
     await using fixture = await createSiteFixture();
     await using dev = await startSiteDev({ root: fixture.root });
-    const article = new JSDOM(await (await dev.request({ url: '/docs/ja/images/create/' })).text());
-    const transformersArticle = new JSDOM(await (await dev.request({ url: '/docs/ja/models/transformers-js/' })).text());
-    const unrelated = new JSDOM(await (await dev.request({ url: '/docs/ja/about/open-source/' })).text());
+    const article = new JSDOM(await (await dev.request({ url: '/docs/ja/image-generation/' })).text());
+    const transformersArticle = new JSDOM(await (await dev.request({ url: '/docs/ja/endpoint-type-transformers-js/' })).text());
+    const unrelated = new JSDOM(await (await dev.request({ url: '/docs/ja/open-source/' })).text());
     try {
-      const anchor = article.window.document.querySelector('a[data-docs-app-entry-path]');
+      const anchor = article.window.document.querySelector('[data-testid="docs-main"] a[data-docs-app-entry-path="/#/image-generation/"]');
       expect(anchor?.getAttribute('href')).toBe('https://naidan.nwtgck.org/#/image-generation/');
       expect(anchor?.querySelector('[data-docs-app-entry-path-text]')?.textContent).toBe('/#/image-generation/');
       expect(anchor?.querySelector('[data-docs-external-icon], .sr-only')).toBeNull();
       expect(article.window.document.querySelector('script[src="/docs/client/app-entry.ts"]')).not.toBeNull();
       expect(transformersArticle.window.document.querySelector('a[data-docs-app-entry-path="/#/settings/transformers-js"] [data-docs-app-entry-path-text]')?.textContent).toBe('/#/settings/transformers-js');
       expect(transformersArticle.window.document.querySelector('script[src="/docs/client/app-entry.ts"]')).not.toBeNull();
-      expect(unrelated.window.document.querySelector('script[src="/docs/client/app-entry.ts"]')).toBeNull();
+      expect(unrelated.window.document.querySelector('.nav-launch[data-docs-app-entry-path="/#/"]')).not.toBeNull();
+      expect(unrelated.window.document.querySelector('script[src="/docs/client/app-entry.ts"]')).not.toBeNull();
     } finally {
       article.window.close();
       transformersArticle.window.close();

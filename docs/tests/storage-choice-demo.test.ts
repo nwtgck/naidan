@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import StorageChoiceDemo from '../site/demos/StorageChoiceDemo.vue';
-import { storageChoiceDemoEn } from '../strings/index/storage-demo/en';
-import { storageChoiceDemoJa } from '../strings/index/storage-demo/ja';
+import { storageChoiceDemoEn } from '../pages/index/strings/storage-demo/en';
+import { storageChoiceDemoJa } from '../pages/index/strings/storage-demo/ja';
 import { parsePage } from './site.test-support';
 
 describe('storage choice replica', () => {

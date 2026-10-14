@@ -1,9 +1,9 @@
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
-import AppPermissionsPage from '../pages/work/app-permissions.vue';
-import { strings as english } from '../strings/work/app-permissions/en';
-import { strings as japanese } from '../strings/work/app-permissions/ja';
+import AppPermissionsPage from '../pages/web-and-native-app-permissions/index.vue';
+import { strings as english } from '../pages/web-and-native-app-permissions/strings/en';
+import { strings as japanese } from '../pages/web-and-native-app-permissions/strings/ja';
 import { strings as commonEnglish } from '../strings/common/en';
 import { strings as commonJapanese } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
@@ -49,9 +49,9 @@ describe('app permissions comparison guide', () => {
     expect(evidence.length).toBeGreaterThanOrEqual(9);
     for (const link of evidence) expect(link.querySelector('[data-docs-external-icon]')).not.toBeNull();
     expect([...article?.querySelectorAll('[data-docs-related-guide] a') ?? []].map(link => link.getAttribute('href'))).toEqual([
-      `/docs/${locale}/work/boundary/`,
-      `/docs/${locale}/work/local-only/`,
-      `/docs/${locale}/run/standalone/`,
+      `/docs/${locale}/browser-boundaries/`,
+      `/docs/${locale}/csp-editions/`,
+      `/docs/${locale}/standalone/`,
     ]);
   });
 });

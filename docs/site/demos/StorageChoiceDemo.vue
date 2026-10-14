@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { DatabaseIcon, GhostIcon, HardDriveIcon } from 'lucide-vue-next';
-import type { StorageChoiceDemoCopy } from '../../strings/index/storage-demo/en';
+import type { StorageChoiceDemoCopy } from '../../pages/index/strings/storage-demo/en';
 
 defineProps<{ copy: StorageChoiceDemoCopy }>();
 

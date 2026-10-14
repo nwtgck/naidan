@@ -1,9 +1,9 @@
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
-import WeshSysfsGuide from '../pages/work/wesh-sysfs.vue';
-import { strings as english } from '../strings/work/wesh-sysfs/en';
-import { strings as japanese } from '../strings/work/wesh-sysfs/ja';
+import WeshSysfsGuide from '../pages/wesh-sysfs/index.vue';
+import { strings as english } from '../pages/wesh-sysfs/strings/en';
+import { strings as japanese } from '../pages/wesh-sysfs/strings/ja';
 import { strings as commonEnglish } from '../strings/common/en';
 import { strings as commonJapanese } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
@@ -48,8 +48,8 @@ describe('Wesh sysfs guide', () => {
     expect(examples.join('\n')).not.toMatch(/\{id\}|<id>|ID_FROM_LIST/u);
     expect(article?.textContent).toContain('/sys/fs/naidan/binary-objects/by-id/{id}/data');
     expect([...article?.querySelectorAll('[data-docs-related-guide] a') ?? []].map(link => link.getAttribute('href'))).toEqual([
-      `/docs/${locale}/work/browser-shell/`, `/docs/${locale}/work/wikipedia/`,
-      `/docs/${locale}/files/settings/`, `/docs/${locale}/files/explorer/`,
+      `/docs/${locale}/tool-browser-shell/`, `/docs/${locale}/tool-wikipedia/`,
+      `/docs/${locale}/files-and-folders-settings/`, `/docs/${locale}/file-explorer/`,
     ]);
   });
 });

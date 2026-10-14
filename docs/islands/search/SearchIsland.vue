@@ -6,7 +6,9 @@ import type { SearchWorkerRemote } from './transport';
 import { parseWorkerResponse } from './worker-contracts';
 import type { SearchHit, SearchWorkerRequest } from './worker-contracts';
 import { isDocsArticleHref } from '../../site/navigation-prefetch';
-import { docsHref } from '../../site/routes';
+import DocsLink from '../../site/DocsLink.vue';
+import { DOCS_PAGES, docsHref } from '../../site/routes';
+import type { DocsPageId } from '../../site/routes';
 
 const props = defineProps<SearchPayload>();
 const active = ref(false);
@@ -18,6 +20,13 @@ const input = ref<HTMLInputElement>();
 const resultList = ref<HTMLElement>();
 const displayedQuery = ref('');
 const currentHref = docsHref({ locale: props.locale, page: props.currentPage });
+
+function pageForResult({ href }: { href: string }): DocsPageId {
+  const page = DOCS_PAGES.find(candidate => docsHref({ locale: props.locale, page: candidate.id }) === href);
+  if (!page) throw new Error(`Unregistered Docs search result: ${href}`);
+  return page.id;
+}
+
 const resultsLabel = computed(() => {
   const typed = query.value.trim();
   if (typed !== displayedQuery.value) {
@@ -238,10 +247,10 @@ function moveResult({ event, offset }: { event: KeyboardEvent; offset: number })
         <button v-if="status === 'error'" class="docs-search-retry" type="button" @click="submitSearch">{{ copy.retry }}</button>
         <ul v-show="results.length" ref="resultList" class="search-results" :aria-label="resultsLabel" data-testid="docs-search-results">
           <li v-for="result in results" :key="result.href">
-            <a :href="result.href" :data-docs-guide-prefetch="isDocsArticleHref({ href: result.href }) && result.href !== currentHref ? '' : undefined" @keydown.down="moveResult({ event: $event, offset: 1 })" @keydown.up="moveResult({ event: $event, offset: -1 })">
+            <DocsLink :locale="locale" :page="pageForResult({ href: result.href })" :data-docs-guide-prefetch="isDocsArticleHref({ href: result.href }) && result.href !== currentHref ? '' : undefined" @keydown.down="moveResult({ event: $event, offset: 1 })" @keydown.up="moveResult({ event: $event, offset: -1 })">
               <strong>{{ result.title }}</strong>
               <span>{{ result.snippet }}</span>
-            </a>
+            </DocsLink>
           </li>
         </ul>
       </div>

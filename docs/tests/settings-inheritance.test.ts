@@ -3,11 +3,11 @@ import { readFileSync } from 'node:fs';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import { compileStyle, parse } from '@vue/compiler-sfc';
-import InheritancePage from '../pages/settings/inheritance.vue';
+import InheritancePage from '../pages/settings-inheritance/index.vue';
 import SettingsInheritanceDiagram from '../site/demos/SettingsInheritanceDiagram.vue';
 import SettingsInheritanceStep from '../site/demos/SettingsInheritanceStep.vue';
-import { strings as en } from '../strings/settings/inheritance/en';
-import { strings as ja } from '../strings/settings/inheritance/ja';
+import { strings as en } from '../pages/settings-inheritance/strings/en';
+import { strings as ja } from '../pages/settings-inheritance/strings/ja';
 import { strings as commonEn } from '../strings/common/en';
 import { strings as commonJa } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
@@ -47,11 +47,11 @@ describe('settings inheritance guide', () => {
       expect(section?.querySelector('figcaption')?.textContent).toBe(visibleGuideText({ text: s.steps[stage].caption }));
     }
     const groupPreparation = sections[1]?.querySelector('.group-preparation');
-    expect(groupPreparation?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/chat/groups/`);
+    expect(groupPreparation?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/chat-groups/`);
     expect(groupPreparation?.textContent).toBe(`${s.groupPreparation.before}${s.groupsLink}${s.groupPreparation.after}`);
     expect(sections[0]?.querySelector('.group-preparation')).toBeNull();
     expect([...(article?.querySelectorAll('[data-docs-related-guide] a') ?? [])].map(link => link.getAttribute('href'))).toEqual([
-      `/docs/${locale}/chat/groups/`, `/docs/${locale}/models/ollama/`,
+      `/docs/${locale}/chat-groups/`, `/docs/${locale}/endpoint-type-ollama/`,
     ]);
     expect(article?.querySelectorAll('script, [data-docs-island]')).toHaveLength(0);
   });

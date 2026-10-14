@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { CheckIcon, CloudDownloadIcon, FileCode2Icon, HardDriveIcon, MessageSquareIcon, RotateCwIcon, SendIcon, WifiIcon, WifiOffIcon } from 'lucide-vue-next';
 import logo from '../../assets/naidan.svg';
-import type { strings as english } from '../../strings/run/offline/en';
+import type { strings as english } from '../../pages/pwa/strings/en';
 
 defineProps<{ stage: 'prepare' | 'model' | 'verify' | 'update'; copy: typeof english.demo }>();
 

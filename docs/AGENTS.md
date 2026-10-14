@@ -29,6 +29,18 @@ Keep complete per-language HTML at build time and shared development rendering.
 Hydrate only explicitly registered demonstrations. Maintain the independent
 `build:docs` output and the normal development server's `/docs/` entry.
 
+Treat the article ID and public URL slug as one stable identifier for the
+article's subject. Do not rename it merely because a title, introduction, or
+navigation label changes. Register each ID in `site/routes.ts` and place its
+entry component at `pages/<id>/index.vue`, with article-owned strings and
+assets under that directory. In Vue templates use `site/DocsLink.vue` with a
+`DocsPageId`; other code uses `docsHref`. Native anchors belong only in the
+link components. Use `site/LocalAnchorLink.vue` for the page's skip link,
+`site/AppEntryLink.vue` for app entry, and `site/ExternalLink.vue` for absolute
+HTTP(S) destinations. Add compatibility aliases when an
+intentional public URL migration needs them; do not accumulate aliases from
+intermediate feature branch revisions.
+
 Page titles, headings, descriptions and navigation should explain the task and
 its benefit to a reader who has never heard of Naidan. Use concise, specific
 titles in the page language. Keep the approved homepage headline. Avoid keyword

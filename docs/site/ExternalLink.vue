@@ -1,8 +1,21 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { DocsLocale } from './routes';
 import { EXTERNAL_LINK_PATH, EXTERNAL_LINK_LABEL, isGitHubUrl } from './external-link';
 
-defineProps<{ href: string; locale: DocsLocale }>();
+const props = defineProps<{ href: string; locale: DocsLocale }>();
+const externalHref = computed(() => {
+  let url: URL;
+  try {
+    url = new URL(props.href);
+  } catch {
+    throw new Error(`ExternalLink requires an absolute HTTP(S) URL: ${props.href}`);
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`ExternalLink requires an absolute HTTP(S) URL: ${props.href}`);
+  }
+  return url.href;
+});
 
 
 defineExpose({
@@ -16,7 +29,7 @@ defineExpose({
 </script>
 
 <template>
-  <a :href="href" :target="isGitHubUrl({ href }) ? '_blank' : undefined" rel="noopener noreferrer" referrerpolicy="no-referrer" data-docs-external>
+  <a :href="externalHref" :target="isGitHubUrl({ href: externalHref }) ? '_blank' : undefined" rel="noopener noreferrer" referrerpolicy="no-referrer" data-docs-external>
     <slot />
     <svg viewBox="0 0 24 24" data-docs-external-icon aria-hidden="true" focusable="false">
       <path :d="EXTERNAL_LINK_PATH" />

@@ -80,13 +80,13 @@ describe('Docs search metadata', () => {
     const head = await dev.request({ url: '/docs/sitemap.xml', method: 'HEAD' });
     expect(head.status).toBe(200);
     expect(await head.text()).toBe('');
-    const response = await dev.request({ url: '/docs/ja/models/ollama/' });
+    const response = await dev.request({ url: '/docs/ja/endpoint-type-ollama/' });
     expect(response.status).toBe(200);
     using page = parsePage({ html: await response.text() });
-    expect(page.document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://naidan.nwtgck.org/docs/ja/models/ollama/');
+    expect(page.document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://naidan.nwtgck.org/docs/ja/endpoint-type-ollama/');
     expect(Array.from(page.document.querySelectorAll('link[hreflang]'), link => link.getAttribute('href'))).toEqual([
-      'https://naidan.nwtgck.org/docs/en/models/ollama/',
-      'https://naidan.nwtgck.org/docs/ja/models/ollama/',
+      'https://naidan.nwtgck.org/docs/en/endpoint-type-ollama/',
+      'https://naidan.nwtgck.org/docs/ja/endpoint-type-ollama/',
     ]);
   });
 });

@@ -41,7 +41,7 @@ The following files own the pipeline.
 
 | File | Responsibility |
 | --- | --- |
-| `site/routes.ts` | Supported languages and explicit page IDs, paths and sources |
+| `site/routes.ts` | Supported languages, registered article IDs and derived paths and sources |
 | `build/seo.ts` | Public Docs URLs, language alternates and sitemap XML |
 | `site/messages.ts` | TypeScript contracts for locally authored page and demo copy |
 | `build/virtual-modules.ts` | Server-only page registry and native style collection entries |
@@ -92,22 +92,25 @@ only explicitly discovered runtime entries are attached to a document.
 
 ## Adding a page
 
-Use one Vue component for both languages. Add a route in `site/routes.ts`, a
-canonical English copy object in `strings/<page-id>/en.ts`, derive its type in
-`site/messages.ts`, and check `ja.ts` with `satisfies` against that type. Add matching
-copy props to the page component and link it from the relevant navigation or
-feature list.
+Use one Vue component for both languages. Add the article ID to
+`site/routes.ts`; the ID determines its public URL and source directory.
+Place the component in `pages/<page-id>/index.vue` and the canonical English
+copy in `pages/<page-id>/strings/en.ts`. Derive its type in `site/messages.ts`
+and check `ja.ts` with `satisfies` against that type. Keep article-specific
+assets and components in the same article directory, and shared UI in `site/`.
+Add matching copy props to the page component and link it from the relevant
+navigation or feature list through `docsHref`.
 
 The existing examples exercise different delivery requirements.
 
 | Page ID | Behavior in production |
 | --- | --- |
 | `index` | Static homepage, native checkbox-based theme choice |
-| `files/privacy` | Static text and CSS |
-| `work/boundary` | Nested OS/browser/Naidan boundaries and permitted localhost API path |
-| `chat/branching` | Static text plus one hydrated Vue demonstration |
-| `work/browser-shell` | Source-derived shell demonstration and permission guide |
-| `run/standalone` | Explorer double-click to browser walkthrough, download and setup guide |
+| `file-access` | Static text and CSS |
+| `browser-boundaries` | Nested OS/browser/Naidan boundaries and permitted localhost API path |
+| `chat-branching` | Static text plus one hydrated Vue demonstration |
+| `tool-browser-shell` | Source-derived shell demonstration and permission guide |
+| `standalone` | Explorer double-click to browser walkthrough, download and setup guide |
 
 Use normal CSS classes in Docs; do not copy app Tailwind class names into this
 isolated compiler. Page-specific `<style scoped>`, imported styles and local
@@ -231,6 +234,8 @@ screenshot capture is not a prerequisite for Docs work or builds.
 
 ## Link and motion contracts
 
+Use `site/DocsLink.vue` with a registered page ID for article links in Vue
+templates. The build rejects native `<a>` tags outside the link components.
 The shared DOM compositor marks every external HTTP(S) link with an inline SVG
 external-link icon and a localized accessible suffix. Same-site links keep normal
 navigation styling. An interactive island must use `site/ExternalLink.vue` for
