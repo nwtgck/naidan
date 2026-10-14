@@ -49,7 +49,9 @@ export const strings = {
     }
   ],
   "boundaryNote": "Model downloads contact their distribution service. When you choose an external engine or tool, its permissions and connections also become part of your setup.",
+  localOnlyLink: 'Learn about the Local-only edition’s connection limits',
   appPermissionsLink: 'Compare what web and native apps can access',
+  appPermissionsDescription: 'See where each can reach on your device and what it can send afterward.',
   "modelsTitle": "Choose where your model runs.",
   "models": [
     {
@@ -77,24 +79,41 @@ export const strings = {
   "storageNote": "This choice covers chats, groups, settings and files held by Naidan’s selected storage provider. Model caches, exported files and operating-system memory management have separate lifetimes.",
   "standalone": { "title": "Double-click to start using AI.", "body": "Extract the Standalone ZIP, then double-click index.html on your PC. Naidan opens in your browser without an installer or a server to serve the app. Then choose a model or local engine for your work." },
   "standaloneLink": "Start without an installer or app server",
+  standaloneDescription: 'Follow the steps from downloading the ZIP to opening the app and choosing a model.',
   "guidesTitle": "Find what you want to do.",
   "guidesLead": "Open the guide you need. Each page includes its own context, examples and important choices.",
   "guides": {
-    "files": {
-      "title": "Choose which files AI can read or edit",
-      "body": "Choose between a linked folder and a separate copy, and decide which files AI can edit.",
+    gguf: {
+      title: 'Chat with a GGUF model in your browser',
+      body: 'Pick a model to try, or import a GGUF file you already have.',
     },
-    "boundary": {
-      "title": "Understand local AI and browser permissions",
-      "body": "See how browser permissions and local processing fit together.",
+    image: {
+      title: 'Create images on your device',
+      body: 'Generate a first image with a local model, then reuse settings for another try.',
+    },
+    audio: {
+      title: 'Make speech from text on your device',
+      body: 'Generate, listen to and save a WAV with a local speech model.',
     },
     "branching": {
-      "title": "Branch and edit AI conversations",
-      "body": "Keep the original conversation while editing an earlier message, trying another answer, or opening a separate Chat.",
+      "title": "Branch and edit a conversation",
+      "body": "Try a different answer or revise an earlier message while keeping the original.",
     },
     "shell": {
-      "title": "Let AI work with files using a browser shell",
-      "body": "Ask AI to search selected files with shell tools, then inspect the commands and results.",
+      "title": "Let AI work with selected files",
+      "body": "Choose files and folder access, then review the shell commands and results.",
+    },
+    groups: {
+      title: 'Keep chats organized by purpose',
+      body: 'Create a group, move chats into it and start another chat there.',
+    },
+    wikipedia: {
+      title: 'Look up Wikipedia during a chat',
+      body: 'Turn on the tool and choose how to review searches and article requests.',
+    },
+    offline: {
+      title: 'Use Naidan offline as a PWA',
+      body: 'Prepare the app and an on-device model while online, then test them without a connection.',
     },
   },
 };

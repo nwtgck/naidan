@@ -68,6 +68,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       { page: 'models/llama-cpp-browser', title: s.related.gguf, description: s.related.ggufDescription },
       { page: 'models/in-browser', title: s.related.models, description: s.related.modelsDescription },
       { page: 'run/standalone', title: s.related.standalone, description: s.related.standaloneDescription },
+      { page: 'run/hosted', title: s.related.hostedZip, description: s.related.hostedZipDescription },
     ]" />
   </article>
 </template>

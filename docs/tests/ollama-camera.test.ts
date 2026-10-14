@@ -20,7 +20,7 @@ describe('Ollama camera guide', () => {
     using page = parsePage({ html });
     const launch = page.document.querySelector<HTMLAnchorElement>('[data-docs-app-entry-path]');
     expect(launch?.getAttribute('href')).toBe('https://naidan.nwtgck.org/#/');
-    expect(launch?.textContent).toBe('/#/');
+    expect(launch?.textContent).toBe('Naidan');
     const sections = [...page.document.querySelectorAll('article section.walkthrough-step')];
     expect(sections.map(section => section.querySelector('[data-docs-animation]')?.getAttribute('data-docs-animation'))).toEqual([
       'ollama-open', 'ollama-provider', 'ollama-check', 'ollama-model',

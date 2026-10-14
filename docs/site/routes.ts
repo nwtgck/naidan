@@ -18,6 +18,7 @@ export const DOCS_PAGES = [
   { id: 'chat/groups', path: 'chat/groups/', source: 'pages/chat/groups.vue' },
   { id: 'chat/super-edit', path: 'chat/super-edit/', source: 'pages/chat/super-edit.vue' },
   { id: 'run/standalone', path: 'run/standalone/', source: 'pages/run/standalone.vue' },
+  { id: 'run/hosted', path: 'run/hosted/', source: 'pages/run/hosted.vue' },
   { id: 'run/offline', path: 'run/offline/', source: 'pages/run/offline.vue' },
   { id: 'models/in-browser', path: 'models/in-browser/', source: 'pages/models/in-browser.vue' },
   { id: 'models/llama-cpp-browser', path: 'models/llama-cpp-browser/', source: 'pages/models/llama-cpp-browser.vue' },

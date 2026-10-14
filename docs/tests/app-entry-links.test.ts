@@ -33,6 +33,31 @@ describe('Docs app entry links', () => {
     expect(appEntryUrl({ destination, base: locationHref })).toBe(`${new URL(locationHref).origin}/#/image-generation/`);
   });
 
+  it.each(['en', 'ja'] as const)('shows the brand for the home link while retaining deep paths and model queries in %s', async locale => {
+    const home = await renderToString(createSSRApp({ render: () => h(AppEntryLink, { destination: { kind: 'screen', screen: 'home' }, locale, display: 'path' }) }));
+    const settings = await renderToString(createSSRApp({ render: () => h(AppEntryLink, { destination: { kind: 'screen', screen: 'gguf-manager' }, locale, display: 'path' }) }));
+    const model = 'hf.co/owner/repository:Q4_K_M';
+    const modelLink = await renderToString(createSSRApp({ render: () => h(AppEntryLink, { destination: { kind: 'model', model }, locale, display: 'path' }) }));
+    const dom = new JSDOM(`${home}${settings}${modelLink}`, { url: `http://localhost:5173/docs/${locale}/` });
+    try {
+      const [homeAnchor, settingsAnchor, modelAnchor] = dom.window.document.querySelectorAll<HTMLAnchorElement>('a[data-docs-app-entry-path]');
+      expect(homeAnchor?.textContent).toBe('Naidan');
+      expect(homeAnchor?.getAttribute('data-docs-app-entry-path')).toBe('/#/');
+      expect(homeAnchor?.getAttribute('href')).toBe('https://naidan.nwtgck.org/#/');
+      expect(settingsAnchor?.textContent).toBe('/#/settings/llama-cpp-browser');
+      expect(modelAnchor?.textContent).toBe(appDestinationPath({ destination: { kind: 'model', model } }));
+
+      updateAppEntryLinks({ document: dom.window.document, locationHref: dom.window.location.href });
+
+      expect(homeAnchor?.href).toBe('http://localhost:5173/#/');
+      expect(homeAnchor?.textContent).toBe('Naidan');
+      expect(settingsAnchor?.href).toBe('http://localhost:5173/#/settings/llama-cpp-browser');
+      expect(new URLSearchParams(modelAnchor?.hash.split('?')[1]).get('llama-cpp-browser-model')).toBe(model);
+    } finally {
+      dom.window.close();
+    }
+  });
+
   it('rebases the link while keeping its visible path and SEO metadata unchanged', async () => {
     const destination = { kind: 'screen', screen: 'image-generation' } as const;
     const html = await renderToString(createSSRApp({ render: () => h(AppEntryLink, { destination, locale: 'ja', display: 'path' }) }));

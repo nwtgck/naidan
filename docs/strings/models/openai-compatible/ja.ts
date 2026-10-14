@@ -4,7 +4,7 @@ export const strings = {
   title: 'OpenAI互換サーバーに接続する',
   description: 'NaidanでOpenAI互換の接続先とモデル一覧を確認し、設定を継承する会話のデフォルトモデルを選びます。',
   intro: 'OpenAI互換のモデル取得とチャット用APIを提供するサーバーに接続する手順です。サーバーが起動し、利用できるモデルがある状態から始めます。Naidanはブラウザから接続しますが、サーバー自体は起動しません。',
-  launch: { before: 'まず ', after: ' を開いてNaidanを起動します。初回設定が表示されたら右上の × で閉じ、手順1に進みます。' },
+  launch: { before: 'まず ', after: ' を開きます。初回設定が表示されたら右上の × で閉じ、手順1に進みます。' },
   before: 'ローカル用のプリセットには、LM Studioの http://localhost:1234/v1 と llama-serverの http://localhost:8080/v1 があります。実際の接続先に合うものを選ぶか、ベースURLを入力してください。外部APIではHTTPヘッダーが必要な場合があります。認証方法、CORSの設定、利用できるモデルは接続先ごとに異なります。',
   steps: {
     open: {

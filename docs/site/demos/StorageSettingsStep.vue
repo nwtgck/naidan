@@ -64,7 +64,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <style scoped>
 .storage-viewport { --demo-panel:var(--surface);--demo-field:var(--surface-2);--demo-line:var(--line-strong);--demo-blue:var(--blue);--demo-warning:#fbbf24;position:relative;width:100%;max-width:680px;height:350px;margin-inline:auto;overflow:hidden;border:1px solid var(--demo-line);border-radius:15px;background:var(--bg);color:var(--text);box-shadow:var(--panel-shadow); }
-:global(html:has(#docs-light-theme:checked)) .storage-viewport { --demo-warning:#92400e; }
+html:has(#docs-light-theme:checked) .storage-viewport { --demo-warning:#92400e; }
 .camera { width:1120px;height:760px;transform-origin:top left;will-change:transform; }
 .stage-open .camera { transform:translate(-165px,-155px) scale(.92);animation:camera-open 10s ease-in-out infinite; }
 .stage-choose .camera { transform:translate(-370px,-290px) scale(1);animation:camera-choose 11s ease-in-out infinite; }
@@ -173,14 +173,14 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   @keyframes camera-persist-mobile { 0%,12% { transform:translate(-657px,-230px) scale(.9); } 31% { transform:translate(-350px,0px) scale(.9); } 56%,77% { transform:translate(-650px,0px) scale(.9); } 87%,100% { transform:translate(-350px,0px) scale(.9); } }
   @keyframes persistence-result { 0%,62% { opacity:0; } 72%,100% { opacity:1; } }
 }
-:global(html:has(#docs-pause-motion:checked)) .storage-viewport *,
-:global(html:has(#docs-pause-motion:checked)) .storage-viewport *::before,
-:global(html:has(#docs-pause-motion:checked)) .storage-viewport *::after { animation:none!important; }
-:global(html:has(#docs-pause-motion:checked)) .stage-open .settings-window { opacity:1;transform:none; }
-:global(html:has(#docs-pause-motion:checked)) .stage-choose .opfs-card { border-color:var(--demo-line);background:var(--demo-panel); }
-:global(html:has(#docs-pause-motion:checked)) .stage-choose .memory-card { border-color:#a855f7;background:color-mix(in srgb,#a855f7 11%,var(--demo-panel)); }
-:global(html:has(#docs-pause-motion:checked)) .stage-persist .status-after,:global(html:has(#docs-pause-motion:checked)) .stage-persist .enable-after,:global(html:has(#docs-pause-motion:checked)) .stage-persist .persistence-result { opacity:1; }
-:global(html:has(#docs-pause-motion:checked)) .stage-persist .status-before,:global(html:has(#docs-pause-motion:checked)) .stage-persist .enable-before { opacity:0; }
-:global(html:has(#docs-pause-motion:checked)) .pointer { display:none; }
+html:has(#docs-pause-motion:checked) .storage-viewport *,
+html:has(#docs-pause-motion:checked) .storage-viewport *::before,
+html:has(#docs-pause-motion:checked) .storage-viewport *::after { animation:none!important; }
+html:has(#docs-pause-motion:checked) .stage-open .settings-window { opacity:1;transform:none; }
+html:has(#docs-pause-motion:checked) .stage-choose .opfs-card { border-color:var(--demo-line);background:var(--demo-panel); }
+html:has(#docs-pause-motion:checked) .stage-choose .memory-card { border-color:#a855f7;background:color-mix(in srgb,#a855f7 11%,var(--demo-panel)); }
+html:has(#docs-pause-motion:checked) .stage-persist .status-after,html:has(#docs-pause-motion:checked) .stage-persist .enable-after,html:has(#docs-pause-motion:checked) .stage-persist .persistence-result { opacity:1; }
+html:has(#docs-pause-motion:checked) .stage-persist .status-before,html:has(#docs-pause-motion:checked) .stage-persist .enable-before { opacity:0; }
+html:has(#docs-pause-motion:checked) .pointer { display:none; }
 @media(prefers-reduced-motion:reduce) { .storage-viewport *, .storage-viewport *::before, .storage-viewport *::after { animation:none!important; } .stage-open .settings-window { opacity:1;transform:none; } .stage-choose .opfs-card { border-color:var(--demo-line);background:var(--demo-panel); } .stage-choose .memory-card { border-color:#a855f7;background:color-mix(in srgb,#a855f7 11%,var(--demo-panel)); } .stage-persist .status-after,.stage-persist .enable-after,.stage-persist .persistence-result { opacity:1; } .stage-persist .status-before,.stage-persist .enable-before { opacity:0; } .pointer { display:none; } }
 </style>

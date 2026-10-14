@@ -1,9 +1,9 @@
 import type { OfflineGuideMessages } from '../../../site/messages';
 
 export const strings = {
-  title: 'ブラウザのAIをオフラインで使う',
-  description: 'Hosted版のPWAとブラウザ内モデルを接続中に準備し、切断後にアプリが開いて応答できることを確認します。更新時の操作も案内します。',
-  intro: 'NaidanのHosted版はPWA（プログレッシブウェブアプリ）です。ブラウザがアプリのファイルを保存すると、接続がなくても開けるようになります。オフラインでAIの応答を得るには、端末内で動くモデルも準備します。',
+  title: 'NaidanをPWAとしてオフラインで使う',
+  description: '接続中にNaidanのHosted版PWAと端末内モデルを準備し、切断後にアプリの起動とチャットの応答を確認します。再接続後の更新方法も案内します。',
+  intro: 'NaidanのHosted版はPWA（プログレッシブウェブアプリ）で、ブラウザが接続中にアプリのファイルを保存すると、切断後も開けるWebアプリです。オフラインでAIの応答を得るには、端末内で動くモデルも準備します。',
   launch: {
     before: '接続中にHosted版の',
     after: ' を開いてください。以下の確認も同じブラウザとサイトのアドレスで行います。',
@@ -46,6 +46,8 @@ export const strings = {
     modelsDescription: 'llama.cpp、Transformers.js、ブラウザ提供モデルの準備と利用条件を確認します。',
     standalone: 'ZIPからスタンドアロン版を開く',
     standaloneDescription: '別のfile://版を使う方法と、フォルダ単位の更新方法を確認します。',
+    hostedZip: 'Hosted版ZIPを自分のHTTPサーバーで使う',
+    hostedZipDescription: 'Hosted版のファイルを自分の静的HTTPサーバーで配信します。',
   },
   demo: {
     hosted: 'Hosted版Naidan',

@@ -18,6 +18,7 @@ export type ShellMessages = typeof import('../strings/work/browser-shell/en').st
 export type WeshSysfsMessages = typeof import('../strings/work/wesh-sysfs/en').strings;
 export type WikipediaMessages = typeof import('../strings/work/wikipedia/en').strings;
 export type StandaloneMessages = typeof import('../strings/run/standalone/en').strings;
+export type HostedGuideMessages = typeof import('../strings/run/hosted/en').strings;
 export type OfflineGuideMessages = typeof import('../strings/run/offline/en').strings;
 export type InBrowserModelsMessages = typeof import('../strings/models/in-browser/en').strings;
 export type LlamaCppBrowserGuideMessages = typeof import('../strings/models/llama-cpp-browser/en').strings;

@@ -12,7 +12,7 @@ describe('Wesh sysfs guide', () => {
   it.each([
     { locale: 'en', s: english, common: commonEnglish },
     { locale: 'ja', s: japanese, common: commonJapanese },
-  ] as const)('makes the access decision and read paths available in $locale HTML', async ({ locale, s, common }) => {
+  ] as const)('explains AI reuse before access choices and keeps verification paths available in $locale HTML', async ({ locale, s, common }) => {
     const html = await renderToString(createSSRApp(WeshSysfsGuide, { locale, s, common }));
     using page = parsePage({ html });
     const article = page.document.querySelector('[data-testid="docs-wesh-sysfs"]');
@@ -20,6 +20,16 @@ describe('Wesh sysfs guide', () => {
     expect(article?.querySelector('h1')).not.toBeNull();
     expect(article?.querySelector('[data-docs-app-entry-path]')?.getAttribute('data-docs-app-entry-path')).toBe('/#/');
     expect(article?.querySelector('p.lead')?.textContent).toContain('/sys/fs/naidan');
+    const sectionIds = [...article?.querySelectorAll(':scope > section h2[id]') ?? []].map(heading => heading.id);
+    expect(sectionIds.slice(0, 5)).toEqual(['sysfs-purpose', 'sysfs-filesystem', 'sysfs-example', 'sysfs-scope', 'sysfs-start']);
+    const example = article?.querySelector('[data-testid="docs-wesh-sysfs-example"]');
+    expect(example?.textContent).toContain(locale === 'en' ? 'other Chat Groups and branches' : '別のチャットグループや分岐');
+    expect(example?.textContent).toContain(locale === 'en' ? 'candidate Markdown paths' : '候補Markdownパス');
+    expect(example?.textContent).toContain('branches/leaves-md/');
+    expect(example?.textContent).toContain('current-chat/content-md/');
+    const pipeline = example?.querySelector('pre code')?.textContent ?? '';
+    expect(pipeline).toMatch(/^grep -r -l .+ \/sys\/fs\/naidan\/chats \| sed -n '\/\\\.md\$\/p' \| head -n 10$/u);
+    expect(pipeline).not.toMatch(/\{id\}|<id>|ID_FROM_LIST/u);
     const start = article?.querySelector('#sysfs-start')?.parentElement;
     expect(start?.textContent).toContain(locale === 'en' ? 'Wesh Terminal' : 'Wesh ターミナル');
     expect(start?.textContent).toContain(locale === 'en' ? 'Mount' : 'マウント');

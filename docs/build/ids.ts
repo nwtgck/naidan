@@ -1,7 +1,7 @@
 import type { DocsPageId } from '../site/routes';
 
 export const REGISTRY_ID = 'virtual:naidan-docs/registry';
-export const ISLAND_ENTRIES = { branching: 'islands/branching/client.ts', search: 'islands/search/client.ts' } as const;
+export const ISLAND_ENTRIES = { branching: 'islands/branching/client.ts', search: 'islands/search/client.ts', 'browser-ai-availability': 'islands/browser-ai-availability/client.ts' } as const;
 export const APP_ENTRY_CLIENT = 'client/app-entry.ts';
 export const HOME_BRAND_CLIENT = 'client/home-brand.ts';
 

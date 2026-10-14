@@ -5,11 +5,57 @@ import { startHomeBrandMotion } from '../client/home-brand-motion';
 import { docsHref } from '../site/routes';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
+const guidePages = [
+  'models/llama-cpp-browser',
+  'images/create',
+  'audio/speech',
+  'chat/branching',
+  'work/browser-shell',
+  'chat/groups',
+  'work/wikipedia',
+  'run/offline',
+] as const;
+
+const guideTitles = {
+  en: [
+    'Chat with a GGUF model in your browser',
+    'Create images on your device',
+    'Make speech from text on your device',
+    'Branch and edit a conversation',
+    'Let AI work with selected files',
+    'Keep chats organized by purpose',
+    'Look up Wikipedia during a chat',
+    'Use Naidan offline as a PWA',
+  ],
+  ja: [
+    'GGUFモデルでチャットする',
+    '端末内で画像を作る',
+    '端末内で音声を作る',
+    '会話を分岐・編集する',
+    'AIにファイル操作を任せる',
+    '用途別にチャットをまとめる',
+    'チャットでWikipediaを調べる',
+    'NaidanをPWAとしてオフラインで使う',
+  ],
+} as const;
+
 describe('Docs home brand', () => {
   it.each([
-    { locale: 'en', headline: 'An easy-to-use AI environment, built around privacy.' },
-    { locale: 'ja', headline: '安全性を徹底追求した、簡単に使えるAI環境。' },
-  ] as const)('ships a complete static $locale hero and a home-only client', async ({ locale, headline }) => {
+    {
+      locale: 'en',
+      headline: 'An easy-to-use AI environment, built around privacy.',
+      appDescription: 'See where each can reach on your device and what it can send afterward.',
+      standaloneDescription: 'Follow the steps from downloading the ZIP to opening the app and choosing a model.',
+      localOnlyLink: 'Learn about the Local-only edition’s connection limits',
+    },
+    {
+      locale: 'ja',
+      headline: '安全性を徹底追求した、簡単に使えるAI環境。',
+      appDescription: '端末のどこにアクセスでき、得た情報をどう送れるかを比べます。',
+      standaloneDescription: 'ZIPの取得から起動、モデル選びまでの手順を確認できます。',
+      localOnlyLink: 'ローカルのみ版の通信先と制限を詳しく見る',
+    },
+  ] as const)('ships a complete static $locale hero and a home-only client', async ({ locale, headline, appDescription, standaloneDescription, localOnlyLink }) => {
     await using fixture = await createSiteFixture();
     await using dev = await startSiteDev({ root: fixture.root });
     const homeResponse = await dev.request({ url: docsHref({ locale, page: 'index' }) });
@@ -20,8 +66,18 @@ describe('Docs home brand', () => {
     expect(home.document.querySelectorAll('[data-docs-brand-link]')).toHaveLength(1);
     expect(home.document.querySelector('[data-docs-brand-link]')?.getAttribute('href')).toBe(docsHref({ locale, page: 'index' }));
     expect(home.document.querySelector('[data-docs-brand-slot] .brand-docs')?.closest('a')).toBeNull();
-    expect(home.document.querySelector('[data-testid="docs-guides"] a')).not.toBeNull();
-    expect(home.document.querySelector('.boundary-guide-link')?.getAttribute('href')).toBe(docsHref({ locale, page: 'work/app-permissions' }));
+    const guideCards = Array.from(home.document.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-home-guide-card"]'));
+    expect(guideCards.map(card => card.getAttribute('href'))).toEqual(guidePages.map(page => docsHref({ locale, page })));
+    expect(guideCards.map(card => card.querySelector('h3')?.textContent)).toEqual(guideTitles[locale]);
+    const appGuide = home.document.querySelector('[data-testid="docs-app-permissions-guide"]');
+    expect(appGuide?.getAttribute('href')).toBe(docsHref({ locale, page: 'work/app-permissions' }));
+    expect(appGuide?.textContent).toContain(appDescription);
+    const standaloneGuide = home.document.querySelector('[data-testid="docs-standalone-guide"]');
+    expect(standaloneGuide?.getAttribute('href')).toBe(docsHref({ locale, page: 'run/standalone' }));
+    expect(standaloneGuide?.textContent).toContain(standaloneDescription);
+    const localOnlyGuide = home.document.querySelector('[data-testid="docs-local-only-guide"]');
+    expect(localOnlyGuide?.getAttribute('href')).toBe(docsHref({ locale, page: 'work/local-only' }));
+    expect(localOnlyGuide?.textContent).toBe(localOnlyLink);
     expect(home.document.querySelector('script[src="/docs/client/home-brand.ts"]')).not.toBeNull();
 
     using guide = parsePage({ html: await (await dev.request({ url: docsHref({ locale, page: 'work/boundary' }) })).text() });

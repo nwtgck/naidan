@@ -52,15 +52,15 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="open-source-use">{{ s.use.title }}</h2>
       <p>{{ s.use.body }}</p>
       <div class="pair-grid">
-        <section class="panel">
+        <section class="panel open-source-choice-card">
           <h3>{{ s.use.selfBuild.title }}</h3>
           <p>{{ s.use.selfBuild.body }}</p>
-          <ExternalLink href="https://github.com/nwtgck/naidan/blob/develop/README.md#development" :locale="locale">{{ s.use.selfBuild.link }}</ExternalLink>
+          <ExternalLink class="open-source-choice-link" href="https://github.com/nwtgck/naidan/blob/develop/README.md#development" :locale="locale">{{ s.use.selfBuild.link }}</ExternalLink>
         </section>
-        <section class="panel">
+        <section class="panel open-source-choice-card">
           <h3>{{ s.use.release.title }}</h3>
           <p>{{ s.use.release.body }}</p>
-          <ExternalLink href="https://github.com/nwtgck/naidan/releases/latest" :locale="locale">{{ s.use.release.link }}</ExternalLink>
+          <ExternalLink class="open-source-choice-link" href="https://github.com/nwtgck/naidan/releases/latest" :locale="locale">{{ s.use.release.link }}</ExternalLink>
         </section>
       </div>
     </section>
@@ -82,6 +82,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .open-source-flow li:nth-child(3) { animation-delay: .24s; }
 .panel p { margin-bottom: 12px; }
 .panel a { font-size: 14px; }
+.open-source-choice-card { display: flex; flex-direction: column; min-width: 0; }
+.open-source-choice-link { align-self: flex-start; margin-top: auto; }
 @keyframes open-source-appear { from { opacity: .45; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 700px) {
   .open-source-flow { grid-template-columns: 1fr; gap: 26px; }
@@ -89,5 +91,5 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   .open-source-flow li + li::before { content: '↓'; left: 50%; right: auto; bottom: calc(100% + 1px); transform: translateX(-50%); }
 }
 @media (prefers-reduced-motion: reduce) { .open-source-flow li { animation: none; } }
-:global(html:has(#docs-pause-motion:checked)) .open-source-flow li { animation: none; }
+html:has(#docs-pause-motion:checked) .open-source-flow li { animation: none; }
 </style>

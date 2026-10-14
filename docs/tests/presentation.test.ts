@@ -14,7 +14,7 @@ import ExternalLink from '../site/ExternalLink.vue';
 import { createSiteFixture, parsePage } from './site.test-support';
 
 function compose({ body, locale }: { body: string; locale: DocsLocale }): string {
-  return renderDocument({ page: { page: 'index', locale, body, title: 'Test', description: 'Description' }, assets: { styles: [], scripts: [] }, bootstrap: undefined });
+  return renderDocument({ page: { page: 'index', locale, body, title: 'Test', description: 'Description' }, assets: { styles: [], scripts: [], favicon: '/docs/assets/favicon.svg' }, bootstrap: undefined });
 }
 
 describe('external link presentation', () => {
@@ -103,12 +103,14 @@ describe('accessible guide presentation', () => {
       expect(bootstrap?.getAttribute('src')).toMatch(/^\/docs\/assets\/locale-.+\.js$/);
       expect(scripts.filter(src => src.includes('/island-search-'))).toHaveLength(1);
       const branching = document.document.querySelector('[data-docs-island="branching"]') !== null;
+      const browserAiAvailability = document.document.querySelector('[data-docs-island="browser-ai-availability"]') !== null;
       const appEntry = document.document.querySelector('a[data-docs-app-entry-path]') !== null;
       const homeBrand = document.document.querySelector('[data-docs-hero-brand]') !== null;
       expect(scripts.filter(src => src.includes('/island-branching-'))).toHaveLength(Number(branching));
+      expect(scripts.filter(src => src.includes('/island-browser-ai-availability-'))).toHaveLength(Number(browserAiAvailability));
       expect(scripts.filter(src => src.includes('/app-entry-'))).toHaveLength(Number(appEntry));
       expect(scripts.filter(src => src.includes('/home-brand-'))).toHaveLength(Number(homeBrand));
-      expect(scripts).toHaveLength(2 + Number(branching) + Number(appEntry) + Number(homeBrand));
+      expect(scripts).toHaveLength(2 + Number(branching) + Number(browserAiAvailability) + Number(appEntry) + Number(homeBrand));
       const source = document.document.querySelector<HTMLAnchorElement>('a.source-icon');
       expect(source?.hasAttribute('aria-label')).toBe(false);
       expect(source?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');

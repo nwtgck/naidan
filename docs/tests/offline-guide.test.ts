@@ -17,7 +17,7 @@ describe('offline browser AI guide', () => {
     using page = parsePage({ html });
     const article = page.document.querySelector('[data-testid="docs-run-offline"]');
     expect(article?.querySelector('h1')?.textContent).toBe(s.title);
-    expect(article?.querySelector('.app-entry-intro a[data-docs-app-entry-path]')?.textContent).toBe('/#/');
+    expect(article?.querySelector('.app-entry-intro a[data-docs-app-entry-path]')?.textContent).toBe('Naidan');
     expect([...article?.querySelectorAll('section.walkthrough-step h2') ?? []].map(heading => heading.textContent)).toEqual([
       s.prepare.title, s.model.title, s.verify.title, s.update.title,
     ]);
@@ -35,6 +35,7 @@ describe('offline browser AI guide', () => {
       `/docs/${locale}/models/llama-cpp-browser/`,
       `/docs/${locale}/models/in-browser/`,
       `/docs/${locale}/run/standalone/`,
+      `/docs/${locale}/run/hosted/`,
     ]);
   });
 });

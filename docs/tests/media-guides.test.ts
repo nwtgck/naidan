@@ -7,12 +7,14 @@ import { strings as imageEn } from '../strings/images/create/en';
 import { strings as imageJa } from '../strings/images/create/ja';
 import { strings as audioEn } from '../strings/audio/speech/en';
 import { strings as audioJa } from '../strings/audio/speech/ja';
+import { strings as commonEn } from '../strings/common/en';
+import { strings as commonJa } from '../strings/common/ja';
 import { parsePage } from './site.test-support';
 import { visibleGuideText } from './ui-label.test-support';
 
 describe('media workflow guides', () => {
-  it.each([{ copy: imageEn, locale: 'en' }, { copy: imageJa, locale: 'ja' }] as const)('renders every image step and its result as static HTML', async ({ copy, locale }) => {
-    const html = await renderToString(createSSRApp(ImagePage, { s: copy, locale }));
+  it.each([{ copy: imageEn, locale: 'en', common: commonEn }, { copy: imageJa, locale: 'ja', common: commonJa }] as const)('renders every image step and its result as static HTML', async ({ copy, locale, common }) => {
+    const html = await renderToString(createSSRApp(ImagePage, { s: copy, locale, common }));
     using page = parsePage({ html });
     expect(page.document.querySelector('article h1')?.textContent).toBe(copy.title);
     const steps = [...page.document.querySelectorAll('section.media-step')];
@@ -43,10 +45,15 @@ describe('media workflow guides', () => {
     expect(page.document.querySelector('article')?.textContent).toContain(visibleGuideText({ text: copy.storage }));
     expect(page.document.querySelector('article')?.textContent).not.toContain('Naidan RPC');
     expect(page.document.querySelectorAll('figure button, figure input, figure a, figure audio')).toHaveLength(0);
+    const related = page.document.querySelector('[data-docs-related-guide]');
+    expect(related?.getAttribute('aria-label')).toBe(common.relatedGuides);
+    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/models/llama-cpp-browser/`);
+    expect(related?.textContent).toContain(copy.relatedTitle);
+    expect(related?.textContent).toContain(copy.relatedDescription);
   });
 
-  it.each([{ copy: audioEn, locale: 'en' }, { copy: audioJa, locale: 'ja' }] as const)('renders speech generation and explicit WAV saving in both languages', async ({ copy, locale }) => {
-    const html = await renderToString(createSSRApp(AudioPage, { s: copy, locale }));
+  it.each([{ copy: audioEn, locale: 'en', common: commonEn }, { copy: audioJa, locale: 'ja', common: commonJa }] as const)('renders speech generation and explicit WAV saving in both languages', async ({ copy, locale, common }) => {
+    const html = await renderToString(createSSRApp(AudioPage, { s: copy, locale, common }));
     using page = parsePage({ html });
     expect(page.document.querySelector('article h1')?.textContent).toBe(copy.title);
     const steps = [...page.document.querySelectorAll('section.media-step')];
@@ -67,5 +74,10 @@ describe('media workflow guides', () => {
     expect(page.document.querySelector('[data-testid="audio-step-save"]')?.textContent).toContain(copy.demo.saveWav);
     expect(page.document.querySelector('article')?.textContent).toContain(visibleGuideText({ text: copy.reading }));
     expect(page.document.querySelectorAll('figure button, figure input, figure a, figure audio')).toHaveLength(0);
+    const related = page.document.querySelector('[data-docs-related-guide]');
+    expect(related?.getAttribute('aria-label')).toBe(common.relatedGuides);
+    expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/models/llama-cpp-browser/`);
+    expect(related?.textContent).toContain(copy.relatedTitle);
+    expect(related?.textContent).toContain(copy.relatedDescription);
   });
 });

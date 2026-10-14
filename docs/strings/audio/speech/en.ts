@@ -29,6 +29,8 @@ export const strings = {
   reference: 'Pocket TTS needs a reference voice; Qwen3-TTS Base can use one but does not require it. The reference section accepts a local file, or a microphone recording when your browser and permissions allow it. A page-local reference library can keep several clips selected, up to 30 seconds total selected audio. The reference clips are not copied into generated-result history. The model must support the reference voice path; selection alone does not guarantee a particular voice or quality.',
   readingTitle: 'Chat Read aloud is a separate feature',
   reading: '［Read aloud］ on a chat answer uses the browser’s Web Speech API. It does not create a WAV in this workspace. Where that voice is processed depends on the browser, operating system and selected voice, so its offline behavior is different from this local model generation.',
+  relatedTitle: 'Run a GGUF model in your browser with llama.cpp',
+  relatedDescription: 'Start a chat with a GGUF language model running on your device.',
   demo: {
     app: 'Naidan',
     more: 'More Actions',

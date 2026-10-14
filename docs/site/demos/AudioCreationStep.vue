@@ -36,7 +36,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes camera-pan { 0%,22% { transform:translate(var(--x0),var(--y0)) scale(var(--z0)); } 54%,90% { transform:translate(var(--x1),var(--y1)) scale(var(--z1)); } 100% { transform:translate(var(--x0),var(--y0)) scale(var(--z0)); } }@keyframes menu-leave { 0%,22% { opacity:1; } 38%,100% { opacity:0; } }@keyframes pointer-tap { 0%,8%,23%,100% { opacity:0;transform:translate(6px,6px); } 12%,18% { opacity:1;transform:none; } }
 @keyframes text-before { 0%,25% { opacity:1; } 41%,100% { opacity:0; } }@keyframes text-after { 0%,25% { opacity:0; } 41%,100% { opacity:1; } }
 @keyframes generate-tap { 0%,12%,31%,100% { box-shadow:none; } 18%,25% { box-shadow:0 0 0 5px color-mix(in srgb,var(--a) 22%,transparent); } }@keyframes busy-actions { 0%,24%,65%,100% { opacity:0; } 35%,56% { opacity:1; } }@keyframes progress-show { 0%,24%,65%,100% { opacity:0; } 35%,56% { opacity:1; } }@keyframes progress-fill { 0%,25% { transform:scaleX(0); } 58%,100% { transform:scaleX(1); } }@keyframes history-show { 0%,59% { opacity:0; } 74%,100% { opacity:1; } }@keyframes save-tap { 0%,65%,85%,100% { box-shadow:none; } 71%,79% { box-shadow:0 0 0 5px color-mix(in srgb,var(--a) 22%,transparent); } }
-:global(html:has(#docs-pause-motion:checked)) .camera *, :global(html:has(#docs-pause-motion:checked)) .camera *::before, :global(html:has(#docs-pause-motion:checked)) .camera *::after { animation:none!important; }:global(html:has(#docs-pause-motion:checked)) .camera .canvas { transform:translate(var(--x1),var(--y1)) scale(var(--z1)); }:global(html:has(#docs-pause-motion:checked)) .camera .menu,:global(html:has(#docs-pause-motion:checked)) .camera .pointer,:global(html:has(#docs-pause-motion:checked)) .camera .model-before,:global(html:has(#docs-pause-motion:checked)) .camera .text-before,:global(html:has(#docs-pause-motion:checked)) .camera .busy-actions,:global(html:has(#docs-pause-motion:checked)) .camera .progress { opacity:0; }:global(html:has(#docs-pause-motion:checked)) .camera .model-after,:global(html:has(#docs-pause-motion:checked)) .camera .text-after,:global(html:has(#docs-pause-motion:checked)) .camera .history { opacity:1; }
+html:has(#docs-pause-motion:checked) .camera *, html:has(#docs-pause-motion:checked) .camera *::before, html:has(#docs-pause-motion:checked) .camera *::after { animation:none!important; }html:has(#docs-pause-motion:checked) .camera .canvas { transform:translate(var(--x1),var(--y1)) scale(var(--z1)); }html:has(#docs-pause-motion:checked) .camera .menu,html:has(#docs-pause-motion:checked) .camera .pointer,html:has(#docs-pause-motion:checked) .camera .model-before,html:has(#docs-pause-motion:checked) .camera .text-before,html:has(#docs-pause-motion:checked) .camera .busy-actions,html:has(#docs-pause-motion:checked) .camera .progress { opacity:0; }html:has(#docs-pause-motion:checked) .camera .model-after,html:has(#docs-pause-motion:checked) .camera .text-after,html:has(#docs-pause-motion:checked) .camera .history { opacity:1; }
 @media(prefers-reduced-motion:reduce) { .camera *, .camera *::before, .camera *::after { animation:none!important; }.canvas { transform:translate(var(--x1),var(--y1)) scale(var(--z1)); }.menu,.pointer,.model-before,.text-before,.busy-actions,.progress { opacity:0; }.model-after,.text-after,.history { opacity:1; } }
 @media(max-width:560px) { .camera { height:316px; }.stage-open { --x0:0px;--x1:-138px;--z1:.84; }.stage-text { --x0:-138px;--z0:.84;--x1:-155px;--y1:-230px;--z1:.85; }.stage-generate { --x0:-125px;--y0:-230px;--z0:.85;--x1:-160px;--y1:-585px;--z1:.85; }.stage-save { --x0:-125px;--y0:-548px;--z0:.85;--x1:-478px;--y1:-635px;--z1:.86; } }
 .model-before,.model-after,.text-before,.text-after,.busy-actions,.progress,.history,.suggestion-action,.generate,.download { animation:none; }
@@ -60,10 +60,10 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes open-suggestion-tap { 0%,39%,51%,100% { box-shadow:none; } 43%,48% { box-shadow:0 0 0 5px color-mix(in srgb,var(--a) 22%,transparent); } }
 @keyframes open-model-before { 0%,53% { opacity:1; } 65%,100% { opacity:0; } }
 @keyframes open-model-after { 0%,53% { opacity:0; } 65%,100% { opacity:1; } }
-:global(html:has(#docs-pause-motion:checked)) .camera.stage-open .text-before { opacity:1; }
-:global(html:has(#docs-pause-motion:checked)) .camera.stage-open .text-after,
-:global(html:has(#docs-pause-motion:checked)) .camera.stage-open .history,
-:global(html:has(#docs-pause-motion:checked)) .camera.stage-text .history { opacity:0; }
+html:has(#docs-pause-motion:checked) .camera.stage-open .text-before { opacity:1; }
+html:has(#docs-pause-motion:checked) .camera.stage-open .text-after,
+html:has(#docs-pause-motion:checked) .camera.stage-open .history,
+html:has(#docs-pause-motion:checked) .camera.stage-text .history { opacity:0; }
 @media(prefers-reduced-motion:reduce) {
   .stage-open .text-before { opacity:1; }
   .stage-open .text-after,.stage-open .history,.stage-text .history { opacity:0; }
@@ -102,8 +102,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes audio-language-focus { 0%,49%,76%,100% { border-color:var(--l);box-shadow:none; } 54%,71% { border-color:var(--a);box-shadow:0 0 0 3px color-mix(in srgb,var(--a) 16%,transparent); } }
 @keyframes audio-model-chevron { 0%,18%,41%,100% { transform:none; } 24%,36% { transform:rotate(180deg); } }
 @keyframes audio-language-chevron { 0%,48%,76%,100% { transform:none; } 55%,70% { transform:rotate(180deg); } }
-:global(html:has(#docs-pause-motion:checked)) .camera .model-popup,
-:global(html:has(#docs-pause-motion:checked)) .camera .language-popup { opacity:0; }
+html:has(#docs-pause-motion:checked) .camera .model-popup,
+html:has(#docs-pause-motion:checked) .camera .language-popup { opacity:0; }
 @media(prefers-reduced-motion:reduce) { .model-popup,.language-popup { opacity:0; } }
 @media(max-width:560px) { .model-popup { width:296px; } }
 </style>

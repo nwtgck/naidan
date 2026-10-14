@@ -31,6 +31,7 @@ defineExpose({
       </div>
       <p class="switching-note">{{ s.switching }} <a :href="docsHref({ locale, page: 'data/backup' })">{{ s.backupLink }}</a></p>
       <figure class="policy-figure"><ConnectionPolicyDiagram :s="s" /><figcaption>{{ s.diagram.caption }}</figcaption></figure>
+      <p>{{ s.deploymentPolicy }} <ExternalLink href="https://github.com/nwtgck/naidan/blob/develop/.github/workflows/main.yml" :locale="locale">{{ s.deploymentSourceLink }}</ExternalLink></p>
     </section>
 
     <section>

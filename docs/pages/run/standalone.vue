@@ -2,6 +2,7 @@
 import ExternalLink from '../../site/ExternalLink.vue';
 import StandaloneDemo from '../../site/demos/StandaloneDemo.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
+import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
 import type { StandaloneMessages, CommonMessages } from '../../site/messages';
 defineProps<{ s: StandaloneMessages; locale: DocsLocale; common: CommonMessages }>();
@@ -23,12 +24,13 @@ defineExpose({
     <figure class="guide-figure"><StandaloneDemo :copy="s.demo" /><figcaption class="caption">{{ s.diagramCaption }}</figcaption></figure>
     <ExternalLink class="download-link" href="https://naidan.pages.dev/naidan-standalone.zip" :locale="locale">{{ s.download }}</ExternalLink>
     <h2>{{ s.stepsTitle }}</h2>
-    <ol class="guide-steps"><li v-for="step in s.steps" :key="step.title"><h3>{{ step.title }}</h3><p>{{ step.body }}</p></li></ol>
+    <ol class="guide-steps"><li v-for="(step, index) in s.steps" :key="step.title"><h3>{{ step.title }}</h3><p>{{ step.body }}</p><p v-if="index === 2">{{ s.modelGuides.before }}<a :href="docsHref({ locale, page: 'models/in-browser' })">{{ s.modelGuides.browser }}</a>{{ s.modelGuides.middle }}<a :href="docsHref({ locale, page: 'models/local-engines' })">{{ s.modelGuides.engine }}</a>{{ s.modelGuides.after }}</p></li></ol>
     <h2>{{ s.modesTitle }}</h2>
     <div class="pair-grid"><section v-for="mode in s.modes" :key="mode.title" class="panel"><h3>{{ mode.title }}</h3><p>{{ mode.body }}</p></section></div>
     <section v-for="detail in s.details" :key="detail.title"><h2>{{ detail.title }}</h2><p>{{ detail.body }}</p></section>
     <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[
       { page: 'run/offline', title: s.offlineGuideTitle, description: s.offlineGuideDescription },
+      { page: 'run/hosted', title: s.hostedGuideTitle, description: s.hostedGuideDescription },
       { page: 'work/app-permissions', title: s.permissionsGuideTitle, description: s.permissionsGuideDescription },
       { page: 'work/boundary', title: s.next, description: s.nextDescription },
     ]" />

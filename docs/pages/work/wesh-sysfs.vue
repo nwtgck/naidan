@@ -20,14 +20,24 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article class="prose" data-testid="docs-wesh-sysfs">
     <h1>{{ s.title }}</h1>
     <p class="lead">{{ s.intro }} <code>/sys/fs/naidan</code>{{ s.introAfter }}</p>
-    <p class="lead">{{ s.introScope }}</p>
     <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
 
-    <section aria-labelledby="sysfs-start">
-      <h2 id="sysfs-start">{{ s.start.title }}</h2>
-      <p><UiText :text="s.start.settingsBefore" /><code>/sys/fs/naidan</code><UiText :text="s.start.settingsAfter" /></p>
-      <p><UiText :text="s.start.terminal" /></p>
-      <p class="session-note"><UiText :text="s.start.session" /></p>
+    <section aria-labelledby="sysfs-purpose">
+      <h2 id="sysfs-purpose">{{ s.purpose.title }}</h2>
+      <p>{{ s.purpose.body }}</p>
+    </section>
+
+    <section aria-labelledby="sysfs-filesystem">
+      <h2 id="sysfs-filesystem">{{ s.filesystem.title }}</h2>
+      <p>{{ s.filesystem.body }}</p>
+    </section>
+
+    <section aria-labelledby="sysfs-example" data-testid="docs-wesh-sysfs-example">
+      <h2 id="sysfs-example">{{ s.example.title }}</h2>
+      <p>{{ s.example.request }}</p>
+      <p><UiText :text="s.example.scope" /></p>
+      <pre><code>{{ s.example.command }}</code></pre>
+      <p>{{ s.example.resultBefore }}<code>branches/leaves-md/</code>{{ s.example.resultBetween }}<code>current-chat/content-md/</code>{{ s.example.resultAfter }}</p>
     </section>
 
     <section aria-labelledby="sysfs-scope">
@@ -46,6 +56,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         </table>
       </div>
       <p><UiText :text="s.scope.detail" /></p>
+    </section>
+
+    <section aria-labelledby="sysfs-start">
+      <h2 id="sysfs-start">{{ s.start.title }}</h2>
+      <p><UiText :text="s.start.settingsBefore" /><code>/sys/fs/naidan</code><UiText :text="s.start.settingsAfter" /></p>
+      <p><UiText :text="s.start.terminal" /></p>
+      <p class="session-note"><UiText :text="s.start.session" /></p>
     </section>
 
     <section aria-labelledby="sysfs-paths">

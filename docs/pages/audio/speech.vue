@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
 import AppEntryLink from '../../site/AppEntryLink.vue';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import AudioCreationStep from '../../site/demos/AudioCreationStep.vue';
-import type { AudioSpeechMessages } from '../../site/messages';
+import type { AudioSpeechMessages, CommonMessages } from '../../site/messages';
 import type { DocsLocale } from '../../site/routes';
 
-defineProps<{ s: AudioSpeechMessages; locale: DocsLocale }>();
+defineProps<{ s: AudioSpeechMessages; locale: DocsLocale; common: CommonMessages }>();
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -42,6 +43,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <section class="media-note" aria-labelledby="audio-reference"><h2 id="audio-reference">{{ s.referenceTitle }}</h2><p><UiText :text="s.reference" /></p></section>
     <section class="media-note" aria-labelledby="audio-reading"><h2 id="audio-reading">{{ s.readingTitle }}</h2><p><UiText :text="s.reading" /></p></section>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'models/llama-cpp-browser', title: s.relatedTitle, description: s.relatedDescription }]" />
   </article>
 </template>
 

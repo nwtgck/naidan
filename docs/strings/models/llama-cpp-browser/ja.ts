@@ -7,6 +7,7 @@ export const strings = {
   quickModels: {
     title: 'モデルを選んでブラウザで試す',
     body: 'モデルを選ぶとチャットが開きます。まだ取得していない場合は、開いた画面で［このモデルで始める］を押してダウンロードし、準備ができたらメッセージを入力してください。ローカルのみ版では未取得モデルをHugging Faceから取得できません。別途入手したGGUFを取り込むか、必要なモデル配信元への通信を許可するHosted版で取得してください。',
+    ownLink: { before: '自分でモデルのリンクを作るには、アプリのURLの', middle: 'パラメーターに、', after: 'のようなhf.co形式のGGUFモデル指定を入れます。' },
   },
   availability: 'llama.cpp browserはHosted版とスタンドアロン版の両方にあります。［推論設定］では、このブラウザと端末の対応状況を確認できます。実際に使えるモデルや速度は端末とモデルによって変わります。',
   manager: {
@@ -77,4 +78,8 @@ export const strings = {
   note: 'まず［推論設定］を確認し、GGUFと、必要な場合はmmprojが使うモデルに対応しているか確かめてください。ダウンロード完了はファイルが用意できた状態であり、このブラウザで実行できる保証ではありません。スタンドアロン版にはWebGPUとJSPIを使うwasm32またはwasm64の実行環境が含まれますが、CPUやAsyncifyへの切り替えはありません。',
   next: 'ブラウザ内でAIモデルを動かす',
   nextDescription: 'llama.cpp、Transformers.js、ブラウザ提供モデルの違いと利用条件を比べます。',
+  related: {
+    image: { title: '端末内でAI画像を生成する', description: 'プロンプトを外部の推論サーバーに送らず、画像モデルで生成します。' },
+    speech: { title: '端末内で音声を生成する', description: '文章を外部の推論サーバーに送らず、音声を作ってWAVで保存します。' },
+  },
 } satisfies typeof english;

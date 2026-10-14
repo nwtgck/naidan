@@ -4,7 +4,7 @@ export const strings = {
   title: 'OllamaのローカルAIにブラウザから接続する',
   description: 'Naidanの設定画面を使い、端末上のOllamaに接続します。Ollamaを選び、ローカルURLで接続を確認して、チャット用モデルを指定する手順です。',
   intro: 'この例では、端末上で起動済みのOllamaにNaidanを接続します。NaidanからOllamaのプロセスを起動する操作はありません。',
-  launch: { before: 'まず ', after: ' を開いてNaidanを起動します。初回設定が表示されたら右上の × で閉じ、手順1に進みます。' },
+  launch: { before: 'まず ', after: ' を開きます。初回設定が表示されたら右上の × で閉じ、手順1に進みます。' },
   before: '接続する前に、Ollamaで使うモデルを1つ以上用意してください。サーバーのアドレスは接続設定で選びます。',
   steps: {
     open: {

@@ -3,11 +3,30 @@ import type { BrowserProvidedGuideMessages } from '../../../site/messages';
 export const strings = {
   title: 'Chrome組み込みのAI言語モデルでチャットをする',
   description: 'Chrome 148以降の端末内モデルをNaidanのチャットで使うために、利用条件を確認し、必要なら準備して接続設定を保存します。',
-  intro: 'デスクトップ版Chrome 148以降では、Prompt API経由でChrome組み込みのAI言語モデルをNaidanのチャットに使えます。サーバーURLやモデルファイルの指定は不要です。',
+  intro: 'デスクトップ版Chrome 148以降では、Chrome組み込みのAI言語モデルをNaidanのチャットに使えます。モデルはChromeが端末内で管理するため、サーバーURLやモデルファイルの指定は不要です。',
+  flow: {
+    title: 'Chromeのモデルがチャットに答えるまで',
+    caption: 'Naidanの質問をChromeの端末内モデルで処理し、届いた回答を順に表示します。初回はChromeがモデルをダウンロードして準備する場合があります。モデルファイルを自分で選ぶ必要はありません。',
+    demo: {
+      browser: 'Chrome',
+      device: 'この端末',
+      chat: 'Naidanのチャット',
+      question: 'あなたの質問',
+      answer: '回答',
+      request: '質問',
+      response: '回答',
+      model: 'Chrome組み込みモデル',
+      provider: 'ブラウザ提供',
+      onDevice: 'この端末内でチャットを処理',
+    },
+  },
   launch: { before: 'まず ', after: ' を開き、Naidanでモデルを設定します。' },
   onboarding: '初回設定が表示されたら、右上の × で閉じます。リンク先の［接続］画面が残るので、以下の手順を進めてください。',
   before: '対応端末はWindows 10/11、macOS 13以降、Linux、またはChromeOSプラットフォーム16389.0.0以降のChromebook Plusです。Chromeのプロファイルがあるドライブに22 GB以上の空き容量と、VRAM 4 GB超のGPU、またはメモリ16 GB以上かつ4コア以上のCPUが必要です。初回のモデルダウンロードには通信量無制限、または従量制ではない回線が必要です。Android・iOS版ChromeとChromebook Plus以外のChromeOS端末には対応していません。',
+  languageSupport: 'Chromeのモデルが日本語のテキスト入力・出力に対応するのはChrome 149以降です。Naidanとこのページは入出力言語を指定せずに利用可否を確認するため、利用可能と表示されても日本語での回答を確認したことにはなりません。',
   requirementsSource: 'Chrome公式のPrompt API利用条件',
+  languageSource: 'Chrome公式の組み込みAI対応言語',
+  requirementsSummary: 'Chromeと端末の利用条件を見る',
   steps: {
     open: {
       title: '1. 接続設定を開く',

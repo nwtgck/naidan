@@ -131,20 +131,20 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes switch-pointer { 0%,10%,43%,100% { opacity:0; transform:translate(10px,8px); } 19%,29% { opacity:1; transform:none; } }
 @keyframes show-settings { 0%,36%,100% { opacity:0; transform:translateY(5px); } 46%,91% { opacity:1; transform:none; } }
 
-:global(html:has(#docs-pause-motion:checked)) .shell-enable-camera *,
-:global(html:has(#docs-pause-motion:checked)) .shell-enable-camera *::before,
-:global(html:has(#docs-pause-motion:checked)) .shell-enable-camera *::after { animation:none!important; }
-:global(html:has(#docs-pause-motion:checked)) .stage-open .sheet-backdrop { opacity:1; }
-:global(html:has(#docs-pause-motion:checked)) .stage-open .tools-sheet { transform:none; }
-:global(html:has(#docs-pause-motion:checked)) .stage-open .open-pointer,
-:global(html:has(#docs-pause-motion:checked)) .stage-enable .switch-pointer { display:none; }
-:global(html:has(#docs-pause-motion:checked)) .stage-enable .shell-tool-card { border-color:#3b82f680; background:#1e3a8a33; }
-:global(html:has(#docs-pause-motion:checked)) .stage-enable .shell-tool-icon,
-:global(html:has(#docs-pause-motion:checked)) .stage-enable .shell-switch { background:#2563eb; color:white; }
-:global(html:has(#docs-pause-motion:checked)) .stage-enable .shell-switch i { transform:translateX(28px); }
-:global(html:has(#docs-pause-motion:checked)) .stage-enable .switch-off { opacity:0; }
-:global(html:has(#docs-pause-motion:checked)) .stage-enable .switch-on,
-:global(html:has(#docs-pause-motion:checked)) .stage-enable .shell-settings-panel { opacity:1; transform:none; }
+html:has(#docs-pause-motion:checked) .shell-enable-camera *,
+html:has(#docs-pause-motion:checked) .shell-enable-camera *::before,
+html:has(#docs-pause-motion:checked) .shell-enable-camera *::after { animation:none!important; }
+html:has(#docs-pause-motion:checked) .stage-open .sheet-backdrop { opacity:1; }
+html:has(#docs-pause-motion:checked) .stage-open .tools-sheet { transform:none; }
+html:has(#docs-pause-motion:checked) .stage-open .open-pointer,
+html:has(#docs-pause-motion:checked) .stage-enable .switch-pointer { display:none; }
+html:has(#docs-pause-motion:checked) .stage-enable .shell-tool-card { border-color:#3b82f680; background:#1e3a8a33; }
+html:has(#docs-pause-motion:checked) .stage-enable .shell-tool-icon,
+html:has(#docs-pause-motion:checked) .stage-enable .shell-switch { background:#2563eb; color:white; }
+html:has(#docs-pause-motion:checked) .stage-enable .shell-switch i { transform:translateX(28px); }
+html:has(#docs-pause-motion:checked) .stage-enable .switch-off { opacity:0; }
+html:has(#docs-pause-motion:checked) .stage-enable .switch-on,
+html:has(#docs-pause-motion:checked) .stage-enable .shell-settings-panel { opacity:1; transform:none; }
 @media (prefers-reduced-motion:reduce) {
   .shell-enable-camera *,.shell-enable-camera *::before,.shell-enable-camera *::after { animation:none!important; }
   .stage-open .sheet-backdrop { opacity:1; }

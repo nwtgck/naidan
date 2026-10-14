@@ -257,22 +257,22 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes inherited-label-shift { 0%,45%,100% { transform:none; } 65%,94% { transform:translateX(24px); } }
 @keyframes chat-model-label-shift { 0%,15%,42%,94%,100% { transform:translateX(24px); } 30% { transform:none; } }
 @keyframes reset-label-shift { 0%,22%,100% { transform:none; } 27%,94% { transform:translateX(24px); } }
-:global(html:has(#docs-pause-motion:checked)) .camera-viewport *,
-:global(html:has(#docs-pause-motion:checked)) .camera-viewport *::before,
-:global(html:has(#docs-pause-motion:checked)) .camera-viewport *::after { animation:none!important; }
-:global(html:has(#docs-pause-motion:checked)) .stage-global .scene-canvas { transform:translate(-120px,-210px) scale(.98); }
-:global(html:has(#docs-pause-motion:checked)) .stage-group .scene-canvas { transform:translate(-85px,-165px) scale(1.05); }
-:global(html:has(#docs-pause-motion:checked)) .stage-inheritedChat .scene-canvas { transform:translate(-105px,-215px) scale(1.05); }
-:global(html:has(#docs-pause-motion:checked)) .stage-chatModel .scene-canvas { transform:translate(-120px,-15px) scale(.85); }
-:global(html:has(#docs-pause-motion:checked)) .stage-reset .scene-canvas { transform:translate(-105px,-215px) scale(1.05); }
-:global(html:has(#docs-pause-motion:checked)) .camera-viewport .pointer { display:none; }
-:global(html:has(#docs-pause-motion:checked)) .camera-viewport .select-menu { opacity:0; }
+:global(html:has(#docs-pause-motion:checked) .camera-viewport *),
+:global(html:has(#docs-pause-motion:checked) .camera-viewport *::before),
+:global(html:has(#docs-pause-motion:checked) .camera-viewport *::after) { animation:none!important; }
+:global(html:has(#docs-pause-motion:checked) .stage-global .scene-canvas) { transform:translate(-120px,-210px) scale(.98); }
+:global(html:has(#docs-pause-motion:checked) .stage-group .scene-canvas) { transform:translate(-85px,-165px) scale(1.05); }
+:global(html:has(#docs-pause-motion:checked) .stage-inheritedChat .scene-canvas) { transform:translate(-105px,-215px) scale(1.05); }
+:global(html:has(#docs-pause-motion:checked) .stage-chatModel .scene-canvas) { transform:translate(-120px,-15px) scale(.85); }
+:global(html:has(#docs-pause-motion:checked) .stage-reset .scene-canvas) { transform:translate(-105px,-215px) scale(1.05); }
+:global(html:has(#docs-pause-motion:checked) .camera-viewport .pointer) { display:none; }
+:global(html:has(#docs-pause-motion:checked) .camera-viewport .select-menu) { opacity:0; }
 @media(max-width:560px) {
-  :global(html:has(#docs-pause-motion:checked)) .stage-global .scene-canvas { transform:translate(-342px,-190px) scale(.82); }
-  :global(html:has(#docs-pause-motion:checked)) .stage-group .scene-canvas { transform:translate(-212px,-130px) scale(.82); }
-  :global(html:has(#docs-pause-motion:checked)) .stage-inheritedChat .scene-canvas { transform:translate(-260px,-145px) scale(.82); }
-  :global(html:has(#docs-pause-motion:checked)) .stage-chatModel .scene-canvas { transform:translate(-150px,-10px) scale(.82); }
-  :global(html:has(#docs-pause-motion:checked)) .stage-reset .scene-canvas { transform:translate(-260px,-145px) scale(.82); }
+  :global(html:has(#docs-pause-motion:checked) .stage-global .scene-canvas) { transform:translate(-342px,-190px) scale(.82); }
+  :global(html:has(#docs-pause-motion:checked) .stage-group .scene-canvas) { transform:translate(-212px,-130px) scale(.82); }
+  :global(html:has(#docs-pause-motion:checked) .stage-inheritedChat .scene-canvas) { transform:translate(-260px,-145px) scale(.82); }
+  :global(html:has(#docs-pause-motion:checked) .stage-chatModel .scene-canvas) { transform:translate(-150px,-10px) scale(.82); }
+  :global(html:has(#docs-pause-motion:checked) .stage-reset .scene-canvas) { transform:translate(-260px,-145px) scale(.82); }
 }
 @media(prefers-reduced-motion:reduce) {
   .camera-viewport *, .camera-viewport *::before, .camera-viewport *::after { animation:none!important; }

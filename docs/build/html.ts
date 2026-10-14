@@ -6,6 +6,7 @@ import type { PageAssets, RenderedPage } from './contracts';
 import { ISLAND_ENTRIES } from './ids';
 import { parseBranchingPayload } from '../islands/branching/contracts';
 import { parseSearchPayload } from '../islands/search/contracts';
+import { parseBrowserAiAvailabilityPayload } from '../islands/browser-ai-availability/contracts';
 import { strings as entryEn } from '../strings/entry/en';
 import { strings as entryJa } from '../strings/entry/ja';
 import type { DocsLocale } from '../site/routes';
@@ -28,6 +29,11 @@ function appendSeoLinks({ document, route }: { document: Document; route: DocsSe
 }
 
 function appendAssets({ document, assets }: { document: Document; assets: PageAssets }): void {
+  const icon = document.createElement('link');
+  icon.rel = 'icon';
+  icon.type = 'image/svg+xml';
+  icon.setAttribute('href', assets.favicon);
+  document.head.append(icon);
   for (const href of new Set(assets.styles)) {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
@@ -50,7 +56,7 @@ function appendBootstrap({ document, bootstrap }: { document: Document; bootstra
   document.head.append(script);
 }
 
-const islandPayloadParsers = { branching: parseBranchingPayload, search: parseSearchPayload } satisfies Record<keyof typeof ISLAND_ENTRIES, ({ serialized }: { serialized: string }) => unknown>;
+const islandPayloadParsers = { branching: parseBranchingPayload, search: parseSearchPayload, 'browser-ai-availability': parseBrowserAiAvailabilityPayload } satisfies Record<keyof typeof ISLAND_ENTRIES, ({ serialized }: { serialized: string }) => unknown>;
 
 function isIslandName(name: string): name is keyof typeof ISLAND_ENTRIES {
   return Object.hasOwn(ISLAND_ENTRIES, name);
@@ -272,7 +278,7 @@ function renderLocaleRootInternal({ assets, pages, bootstrap, guidePrefetch }: {
       const page = pages[locale];
       if (page.page !== 'index' || page.locale !== locale) throw new Error('Invalid localized Docs home');
       if (findIslands({ body: page.body }).some(name => name !== 'search')) throw new Error('The language-neutral home permits only the Docs search island');
-      const localized = new JSDOM(renderDocument({ page, assets: { styles: [], scripts: [] }, bootstrap: undefined }));
+      const localized = new JSDOM(renderDocument({ page, assets: { styles: [], scripts: [], favicon: assets.favicon }, bootstrap: undefined }));
       try {
         const template = document.createElement('template');
         template.dataset.docsLocale = locale;

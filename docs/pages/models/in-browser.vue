@@ -59,10 +59,10 @@ defineExpose({
 .flow-arrow { flex:none;color:var(--blue);font-weight:800; }
 @keyframes flow-emphasis { 50% { box-shadow:0 0 0 4px color-mix(in srgb,var(--blue) 13%,transparent); } }
 .runtime-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px; }
-.runtime-card { min-width:0;padding:21px; }
+.runtime-card { display:flex;flex-direction:column;min-width:0;padding:21px; }
 .runtime-card h3 { font-size:18px;line-height:1.45;margin:14px 0 10px;overflow-wrap:anywhere; }
 .runtime-card p { font-size:13px;line-height:1.8; }
-.card-guide-link { display:inline-flex;align-items:center;gap:7px;margin-top:5px;color:var(--blue);font-size:12px;font-weight:800;overflow-wrap:anywhere; }
+.card-guide-link { display:inline-flex;align-items:center;align-self:flex-start;gap:7px;margin-top:auto;padding-top:12px;color:var(--blue);font-size:12px;font-weight:800;overflow-wrap:anywhere; }
 .card-guide-link:hover { text-decoration:underline; }
 .runtime-availability { display:block;color:var(--blue);font-size:11px;line-height:1.6;font-weight:750; }
 .guide-notes { border-top:1px solid var(--line); }

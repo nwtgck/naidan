@@ -173,7 +173,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes result-arrive { 0%,54% { box-shadow:none; } 65%,82% { box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 25%,transparent); } 100% { box-shadow:none; } }
 @keyframes result-arrive-sensor { 0%,72% { box-shadow:none; } 79%,93% { box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 25%,transparent); } 100% { box-shadow:none; } }
 @keyframes permission-step { 0%,30% { box-shadow:0 0 0 3px color-mix(in srgb,var(--blue) 23%,transparent); } 37%,100% { box-shadow:none; } }
-:global(html:has(#docs-pause-motion:checked)) .access-scene *, :global(html:has(#docs-pause-motion:checked)) .access-scene *::before, :global(html:has(#docs-pause-motion:checked)) .access-scene *::after { animation:none!important; }
+html:has(#docs-pause-motion:checked) .access-scene *, html:has(#docs-pause-motion:checked) .access-scene *::before, html:has(#docs-pause-motion:checked) .access-scene *::after { animation:none!important; }
 @media(prefers-reduced-motion:reduce) { .access-scene *, .access-scene *::before, .access-scene *::after { animation:none!important; } }
 @media(max-width:620px) {
   .access-scene { padding:13px; }

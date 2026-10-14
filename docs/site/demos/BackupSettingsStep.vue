@@ -69,7 +69,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
 <style scoped>
 .backup-viewport { --demo-panel:var(--surface);--demo-field:var(--surface-2);--demo-line:var(--line-strong);--demo-blue:var(--blue);--demo-warning:#fbbf24;position:relative;width:100%;max-width:680px;height:350px;margin-inline:auto;overflow:hidden;border:1px solid var(--demo-line);border-radius:15px;background:var(--bg);color:var(--text);box-shadow:var(--panel-shadow);container-type:inline-size; }
-:global(html:has(#docs-light-theme:checked)) .backup-viewport { --demo-warning:#92400e; }
+html:has(#docs-light-theme:checked) .backup-viewport { --demo-warning:#92400e; }
 .camera { width:1120px;height:760px;transform-origin:top left;will-change:transform; }
 .stage-export .camera { transform:translate(-280px,-205px) scale(.95);animation:camera-export 11s ease-in-out infinite; }
 .stage-preview .camera { transform:translate(-280px,-270px) scale(.95);animation:camera-preview 10s ease-in-out infinite; }
@@ -260,13 +260,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   .upload-action,.upload-row strong,.stats-grid small,.content-preview > strong { font-size:12px; }
   .mode-card small,.replace-warning,.settings-fields > div,.import-progress { font-size:13px; }
 }
-:global(html:has(#docs-pause-motion:checked)) .backup-viewport *,
-:global(html:has(#docs-pause-motion:checked)) .backup-viewport *::before,
-:global(html:has(#docs-pause-motion:checked)) .backup-viewport *::after { animation:none!important; }
-:global(html:has(#docs-pause-motion:checked)) .stage-export .import-window,:global(html:has(#docs-pause-motion:checked)) .stage-export .export-pane,:global(html:has(#docs-pause-motion:checked)) .stage-preview .preview-pane,:global(html:has(#docs-pause-motion:checked)) .stage-mode .mode-pane,:global(html:has(#docs-pause-motion:checked)) .stage-export .export-result,:global(html:has(#docs-pause-motion:checked)) .stage-mode .import-done { opacity:1;transform:none; }
-:global(html:has(#docs-pause-motion:checked)) .menu-pane,:global(html:has(#docs-pause-motion:checked)) .stage-mode .preview-pane,:global(html:has(#docs-pause-motion:checked)) .stage-mode .verify { opacity:0; }
-:global(html:has(#docs-pause-motion:checked)) .history-choice .fake-check { background:var(--demo-blue); }
-:global(html:has(#docs-pause-motion:checked)) .history-choice .fake-check svg { opacity:1; }
-:global(html:has(#docs-pause-motion:checked)) .pointer { display:none; }
+html:has(#docs-pause-motion:checked) .backup-viewport *,
+html:has(#docs-pause-motion:checked) .backup-viewport *::before,
+html:has(#docs-pause-motion:checked) .backup-viewport *::after { animation:none!important; }
+html:has(#docs-pause-motion:checked) .stage-export .import-window,html:has(#docs-pause-motion:checked) .stage-export .export-pane,html:has(#docs-pause-motion:checked) .stage-preview .preview-pane,html:has(#docs-pause-motion:checked) .stage-mode .mode-pane,html:has(#docs-pause-motion:checked) .stage-export .export-result,html:has(#docs-pause-motion:checked) .stage-mode .import-done { opacity:1;transform:none; }
+html:has(#docs-pause-motion:checked) .menu-pane,html:has(#docs-pause-motion:checked) .stage-mode .preview-pane,html:has(#docs-pause-motion:checked) .stage-mode .verify { opacity:0; }
+html:has(#docs-pause-motion:checked) .history-choice .fake-check { background:var(--demo-blue); }
+html:has(#docs-pause-motion:checked) .history-choice .fake-check svg { opacity:1; }
+html:has(#docs-pause-motion:checked) .pointer { display:none; }
 @media(prefers-reduced-motion:reduce) { .backup-viewport *, .backup-viewport *::before, .backup-viewport *::after { animation:none!important; } .stage-export .import-window,.stage-export .export-pane,.stage-preview .preview-pane,.stage-mode .mode-pane,.stage-export .export-result,.stage-mode .import-done { opacity:1;transform:none; } .menu-pane,.stage-mode .preview-pane,.stage-mode .verify { opacity:0; } .history-choice .fake-check { background:var(--demo-blue); } .history-choice .fake-check svg { opacity:1; } .pointer { display:none; } }
 </style>

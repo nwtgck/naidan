@@ -9,7 +9,7 @@ import { strings as homeJa } from '../strings/index/ja';
 import { isDocsUrl } from '../../pwa/docs-routing';
 import { parsePage } from './site.test-support';
 
-const emptyAssets = { styles: [], scripts: [] };
+const emptyAssets = { styles: [], scripts: [], favicon: '/docs/assets/favicon.svg' };
 
 describe('Docs URL routing', () => {
   it.each([

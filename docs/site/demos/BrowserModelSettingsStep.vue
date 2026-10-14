@@ -130,7 +130,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <style scoped>
 .browser-model-camera { --panel:var(--surface);--field:var(--surface-2);--line:var(--line-strong);--ink:var(--text);--soft:var(--muted);--accent:var(--blue);--action-ink:#081622;position:relative;width:100%;max-width:680px;height:340px;margin-inline:auto;overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--bg);color:var(--ink);box-shadow:var(--panel-shadow);font:14px/1.45 ui-sans-serif,system-ui,sans-serif; }
 .mode-transformers { --accent:#8b5cf6;--action-ink:#fff; }
-:global(html:has(#docs-light-theme:checked)) .browser-model-camera { --action-ink:#fff; }
+html:has(#docs-light-theme:checked) .browser-model-camera { --action-ink:#fff; }
 .camera-canvas { position:absolute;top:0;left:0;display:flex;width:980px;height:720px;transform-origin:top left;transform:translate(var(--camera-end-x),var(--camera-end-y)) scale(var(--camera-end-z));animation:camera-move 11s ease-in-out infinite; }
 .stage-open { --camera-start-x:10px;--camera-start-y:-430px;--camera-start-z:.9;--camera-focus-x:-115px;--camera-focus-y:-6px;--camera-focus-z:.9;--camera-end-x:-234px;--camera-end-y:-20px;--camera-end-z:.92; }
 .mode-llama.stage-import { --camera-start-x:-234px;--camera-start-y:-20px;--camera-start-z:.92;--camera-focus-x:-275px;--camera-focus-y:-35px;--camera-focus-z:1;--camera-end-x:-275px;--camera-end-y:-97px;--camera-end-z:1; }
@@ -378,35 +378,35 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   .mode-transformers.stage-resume { --camera-start-x:-255px;--camera-start-y:-85px;--camera-start-z:.85;--camera-focus-x:-255px;--camera-focus-y:-85px;--camera-focus-z:.85;--camera-end-x:-255px;--camera-end-y:-135px;--camera-end-z:.85; }
   .mode-transformers.stage-save { --camera-start-x:-255px;--camera-start-y:-135px;--camera-start-z:.85;--camera-focus-x:-90px;--camera-focus-y:-5px;--camera-focus-z:.85;--camera-end-x:-255px;--camera-end-y:-30px;--camera-end-z:.85; }
 }
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera *,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera *::before,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera *::after { animation:none!important; }
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .camera-canvas { transform:translate(var(--camera-end-x),var(--camera-end-y)) scale(var(--camera-end-z)); }
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .settings-panel,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .imported-result,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .downloaded-result,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .progress-scene,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .connection-content { opacity:1;transform:none; }
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .importing-status,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .downloading-status,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .resume-status,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .confirm-panel,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .manager-before-save,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .previous-download-result,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .choice-menu,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .input-placeholder,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .switch-label.before,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .phase-preparing,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .phase-loading,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .incomplete-tag { opacity:0; }
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .input-value,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .switch-label.after,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .phase-ready,
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .model-options { opacity:1;clip-path:none; }
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .load-action .before { opacity:1; }
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .load-action .after { opacity:0; }
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .progress-track > span { transform:scaleX(1); }
-:global(html:has(#docs-pause-motion:checked)) .browser-model-camera .pointer { display:none; }
+html:has(#docs-pause-motion:checked) .browser-model-camera *,
+html:has(#docs-pause-motion:checked) .browser-model-camera *::before,
+html:has(#docs-pause-motion:checked) .browser-model-camera *::after { animation:none!important; }
+html:has(#docs-pause-motion:checked) .browser-model-camera .camera-canvas { transform:translate(var(--camera-end-x),var(--camera-end-y)) scale(var(--camera-end-z)); }
+html:has(#docs-pause-motion:checked) .browser-model-camera .settings-panel,
+html:has(#docs-pause-motion:checked) .browser-model-camera .imported-result,
+html:has(#docs-pause-motion:checked) .browser-model-camera .downloaded-result,
+html:has(#docs-pause-motion:checked) .browser-model-camera .progress-scene,
+html:has(#docs-pause-motion:checked) .browser-model-camera .connection-content { opacity:1;transform:none; }
+html:has(#docs-pause-motion:checked) .browser-model-camera .importing-status,
+html:has(#docs-pause-motion:checked) .browser-model-camera .downloading-status,
+html:has(#docs-pause-motion:checked) .browser-model-camera .resume-status,
+html:has(#docs-pause-motion:checked) .browser-model-camera .confirm-panel,
+html:has(#docs-pause-motion:checked) .browser-model-camera .manager-before-save,
+html:has(#docs-pause-motion:checked) .browser-model-camera .previous-download-result,
+html:has(#docs-pause-motion:checked) .browser-model-camera .choice-menu,
+html:has(#docs-pause-motion:checked) .browser-model-camera .input-placeholder,
+html:has(#docs-pause-motion:checked) .browser-model-camera .switch-label.before,
+html:has(#docs-pause-motion:checked) .browser-model-camera .phase-preparing,
+html:has(#docs-pause-motion:checked) .browser-model-camera .phase-loading,
+html:has(#docs-pause-motion:checked) .browser-model-camera .incomplete-tag { opacity:0; }
+html:has(#docs-pause-motion:checked) .browser-model-camera .input-value,
+html:has(#docs-pause-motion:checked) .browser-model-camera .switch-label.after,
+html:has(#docs-pause-motion:checked) .browser-model-camera .phase-ready,
+html:has(#docs-pause-motion:checked) .browser-model-camera .model-options { opacity:1;clip-path:none; }
+html:has(#docs-pause-motion:checked) .browser-model-camera .load-action .before { opacity:1; }
+html:has(#docs-pause-motion:checked) .browser-model-camera .load-action .after { opacity:0; }
+html:has(#docs-pause-motion:checked) .browser-model-camera .progress-track > span { transform:scaleX(1); }
+html:has(#docs-pause-motion:checked) .browser-model-camera .pointer { display:none; }
 @media(prefers-reduced-motion:reduce) {
   .browser-model-camera *, .browser-model-camera *::before, .browser-model-camera *::after { animation:none!important; }
   .camera-canvas { transform:translate(var(--camera-end-x),var(--camera-end-y)) scale(var(--camera-end-z)); }

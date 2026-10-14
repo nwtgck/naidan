@@ -29,6 +29,8 @@ export const strings = {
   storage: 'The session draft and results need browser storage (OPFS) and Web Locks. When session storage is unavailable, the workspace may offer ［Generate without saving in this workspace］; that result is not a saved session. Image sessions use an experimental data format that may change without migration. Save important images, prompts and settings outside Naidan. Session ZIP exports include inputs and outputs and local model paths, but not the model weights; a regular chat backup does not preserve the whole image session.',
   nextTitle: 'After your first image',
   next: 'The same workspace can generate several images, search a gallery, mark favorites, compare two saved images, and reuse an image as an initial or reference image. An initial image and a reference image serve different purposes and are optional for a first text prompt.',
+  relatedTitle: 'Run a GGUF model in your browser with llama.cpp',
+  relatedDescription: 'Start a chat with a GGUF language model running on your device.',
   demo: {
     app: 'Naidan',
     more: 'More Actions',

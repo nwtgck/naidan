@@ -76,13 +76,13 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes progress-show { 0%,73% { opacity:0; } 84%,100% { opacity:1; } }@keyframes progress-leave { 0%,21% { opacity:1; } 36%,100% { opacity:0; } }
 @keyframes original-leave { 0%,34% { opacity:1; } 48%,100% { opacity:0; } }@keyframes branch-arrive { 0%,34% { opacity:0; } 48%,100% { opacity:1; } }
 .stage-result .compact-canvas { animation:camera-result 9s linear infinite; }@keyframes camera-result { 0%,21% { transform:translate(var(--progress-x),0); } 43%,100% { transform:none; } }
-:global(html:has(#docs-pause-motion:checked)) .compact-viewport * { animation:none!important; }
-:global(html:has(#docs-pause-motion:checked)) .stage-open .more-menu,:global(html:has(#docs-pause-motion:checked)) .stage-keep .modal-shade,:global(html:has(#docs-pause-motion:checked)) .stage-keep .compact-dialog,:global(html:has(#docs-pause-motion:checked)) .stage-run .progress-strip,:global(html:has(#docs-pause-motion:checked)) .stage-result .compacted-path { opacity:1;transform:none; }
-:global(html:has(#docs-pause-motion:checked)) .stage-keep .compact-canvas { transform:translate(var(--focus-x),var(--keep-y)); }
-:global(html:has(#docs-pause-motion:checked)) .stage-keep .more-menu,:global(html:has(#docs-pause-motion:checked)) .stage-run .modal-shade,:global(html:has(#docs-pause-motion:checked)) .stage-run .compact-dialog,:global(html:has(#docs-pause-motion:checked)) .stage-result .original-path { opacity:0; }
-:global(html:has(#docs-pause-motion:checked)) .stage-run .compact-canvas { transform:translate(var(--progress-x),0); }
-:global(html:has(#docs-pause-motion:checked)) .stage-result .compact-canvas { transform:none; }
-:global(html:has(#docs-pause-motion:checked)) .compact-viewport .pointer { display:none; }
+html:has(#docs-pause-motion:checked) .compact-viewport * { animation:none!important; }
+html:has(#docs-pause-motion:checked) .stage-open .more-menu,html:has(#docs-pause-motion:checked) .stage-keep .modal-shade,html:has(#docs-pause-motion:checked) .stage-keep .compact-dialog,html:has(#docs-pause-motion:checked) .stage-run .progress-strip,html:has(#docs-pause-motion:checked) .stage-result .compacted-path { opacity:1;transform:none; }
+html:has(#docs-pause-motion:checked) .stage-keep .compact-canvas { transform:translate(var(--focus-x),var(--keep-y)); }
+html:has(#docs-pause-motion:checked) .stage-keep .more-menu,html:has(#docs-pause-motion:checked) .stage-run .modal-shade,html:has(#docs-pause-motion:checked) .stage-run .compact-dialog,html:has(#docs-pause-motion:checked) .stage-result .original-path { opacity:0; }
+html:has(#docs-pause-motion:checked) .stage-run .compact-canvas { transform:translate(var(--progress-x),0); }
+html:has(#docs-pause-motion:checked) .stage-result .compact-canvas { transform:none; }
+html:has(#docs-pause-motion:checked) .compact-viewport .pointer { display:none; }
 @media(prefers-reduced-motion:reduce) { .compact-viewport * { animation:none!important; } .stage-open .more-menu,.stage-keep .modal-shade,.stage-keep .compact-dialog,.stage-run .progress-strip,.stage-result .compacted-path { opacity:1;transform:none; } .stage-keep .compact-canvas { transform:translate(var(--focus-x),var(--keep-y)); } .stage-keep .more-menu,.stage-run .modal-shade,.stage-run .compact-dialog,.stage-result .original-path { opacity:0; } .stage-run .compact-canvas { transform:translate(var(--progress-x),0); } .stage-result .compact-canvas { transform:none; } .compact-viewport .pointer { display:none; } }
 @container (max-width:640px) { .compact-canvas { --start-x:calc(100cqw - 650px);--focus-x:-88px;--prompt-y:-380px;--run-y:-540px;--progress-x:calc(100cqw - 650px); }.compact-dialog { left:100px;width:calc(100cqw - 24px); }.progress-strip { left:calc(650px - 100cqw + 12px);width:calc(100cqw - 24px); }.message { max-width:calc(100cqw - 55px); }.compacted-path .user-message { margin-left:0; } }
 </style>

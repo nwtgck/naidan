@@ -11,6 +11,9 @@ import { compileLocaleBootstrap } from './locale-bootstrap';
 import { createDocsSitemap } from './seo';
 import { createSearchIndex } from './search';
 import { DOCS_PAGES, docsHref } from '../site/routes';
+import { publicAssetHref } from './assets';
+
+const favicon = publicAssetHref({ file: 'assets/favicon.svg' });
 
 function devHref({ moduleUrl }: { moduleUrl: string }): string {
   return moduleUrl.startsWith('/docs/') ? moduleUrl : `/docs${moduleUrl}`;
@@ -99,7 +102,7 @@ function createDocsRequestPlugin(): Plugin {
           case 'missing': {
             response.statusCode = 404;
             const styles = await devStyles({ server, entry: '/site/site.css' });
-            html = renderNotFound({ assets: { styles, scripts: ['/docs/@vite/client'] }, bootstrap: '/docs/__locale.js' });
+            html = renderNotFound({ assets: { styles, scripts: ['/docs/@vite/client'], favicon }, bootstrap: '/docs/__locale.js' });
             break;
           }
           case 'root': {
@@ -109,7 +112,7 @@ function createDocsRequestPlugin(): Plugin {
               ja: await renderer.renderPage({ locale: 'ja', page: 'index' }),
             } satisfies Record<DocsLocale, RenderedPage>;
             const styles = await devStyles({ server, entry: styleEntryId({ page: 'index' }) });
-            html = renderLocaleRoot({ pages, bootstrap: '/docs/__locale.js', assets: { styles, scripts: ['/docs/@vite/client', devHref({ moduleUrl: `/${ISLAND_ENTRIES.search}` }), devHref({ moduleUrl: `/${HOME_BRAND_CLIENT}` })] } });
+            html = renderLocaleRoot({ pages, bootstrap: '/docs/__locale.js', assets: { styles, scripts: ['/docs/@vite/client', devHref({ moduleUrl: `/${ISLAND_ENTRIES.search}` }), devHref({ moduleUrl: `/${HOME_BRAND_CLIENT}` })], favicon } });
             break;
           }
           case 'page': {
@@ -120,7 +123,7 @@ function createDocsRequestPlugin(): Plugin {
             const scripts = findIslands({ body: rendered.body }).map(name => devHref({ moduleUrl: `/${ISLAND_ENTRIES[name]}` }));
             if (hasHomeBrand({ body: rendered.body })) scripts.push(devHref({ moduleUrl: `/${HOME_BRAND_CLIENT}` }));
             if (hasAppEntryLinks({ body: rendered.body })) scripts.push(devHref({ moduleUrl: `/${APP_ENTRY_CLIENT}` }));
-            html = renderDocument({ page: rendered, assets: { styles, scripts: ['/docs/@vite/client', ...scripts] }, bootstrap: '/docs/__locale.js' });
+            html = renderDocument({ page: rendered, assets: { styles, scripts: ['/docs/@vite/client', ...scripts], favicon }, bootstrap: '/docs/__locale.js' });
             break;
           }
           default: {

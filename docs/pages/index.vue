@@ -6,7 +6,18 @@ import StandaloneDemo from '../site/demos/StandaloneDemo.vue';
 import StorageChoiceDemo from '../site/demos/StorageChoiceDemo.vue';
 import type { HomeMessages, CommonMessages } from '../site/messages';
 import { docsHref } from '../site/routes';
-import type { DocsLocale } from '../site/routes';
+import type { DocsLocale, DocsPageId } from '../site/routes';
+
+const guideCards = [
+  { key: 'gguf', page: 'models/llama-cpp-browser', icon: '#i-model' },
+  { key: 'image', page: 'images/create', icon: '#i-image' },
+  { key: 'audio', page: 'audio/speech', icon: '#i-audio' },
+  { key: 'branching', page: 'chat/branching', icon: '#i-branch' },
+  { key: 'shell', page: 'work/browser-shell', icon: '#i-terminal' },
+  { key: 'groups', page: 'chat/groups', icon: '#i-grid' },
+  { key: 'wikipedia', page: 'work/wikipedia', icon: '#i-search' },
+  { key: 'offline', page: 'run/offline', icon: '#i-download' },
+] as const satisfies readonly { key: keyof HomeMessages['guides']; page: DocsPageId; icon: string }[];
 
 defineProps<{ s: HomeMessages; locale: DocsLocale; common: CommonMessages }>();
 
@@ -71,13 +82,28 @@ defineExpose({
            >0{{ index + 1 }}</span>
             <div>
               <h3>{{ item.title }}</h3>
-              <p>{{ item.body }}</p>
+              <p>{{ item.body }} <a
+                v-if="index === 2"
+                class="mechanism-detail-link"
+                data-testid="docs-local-only-guide"
+                :href="docsHref({ locale, page: 'work/local-only' })"
+              >{{ s.localOnlyLink }}</a></p>
             </div>
           </section>
         </div>
       </div>
       <p class="boundary-footnote">{{ s.boundaryNote }}</p>
-      <a class="boundary-guide-link" :href="docsHref({ locale, page: 'work/app-permissions' })">{{ s.appPermissionsLink }}<span aria-hidden="true">→</span></a>
+      <a
+        class="home-guide-entry"
+        data-testid="docs-app-permissions-guide"
+        :href="docsHref({ locale, page: 'work/app-permissions' })"
+      >
+        <span class="home-guide-copy">
+          <strong>{{ s.appPermissionsLink }}</strong>
+          <span>{{ s.appPermissionsDescription }}</span>
+        </span>
+        <span class="home-guide-arrow" aria-hidden="true">→</span>
+      </a>
       <div class="models-section">
         <h2 class="section-title">{{ s.modelsTitle }}</h2>
         <div class="pair-grid">
@@ -97,7 +123,17 @@ defineExpose({
   </section>
   <section class="standalone-section wrap" aria-labelledby="standalone-title" data-testid="docs-home-standalone">
     <div><h2 id="standalone-title" class="section-title">{{ s.standalone.title }}</h2><p>{{ s.standalone.body }}</p>
-      <a class="next-link" :href="docsHref({ locale, page: 'run/standalone' })">{{ s.standaloneLink }} <span aria-hidden="true">→</span></a>
+      <a
+        class="home-guide-entry"
+        data-testid="docs-standalone-guide"
+        :href="docsHref({ locale, page: 'run/standalone' })"
+      >
+        <span class="home-guide-copy">
+          <strong>{{ s.standaloneLink }}</strong>
+          <span>{{ s.standaloneDescription }}</span>
+        </span>
+        <span class="home-guide-arrow" aria-hidden="true">→</span>
+      </a>
     </div>
     <figure class="standalone-preview"><StandaloneDemo :copy="s.standaloneDemo" /></figure>
   </section>
@@ -137,52 +173,15 @@ defineExpose({
       </div>
       <div class="article-grid">
         <a
-          class="article-card card-feature"
-          :href="docsHref({ locale, page: 'files/privacy' })"
-        ><span class="card-top"><span class="card-icon"><svg
-           class="icon lg"
-           aria-hidden="true"
-         >
-           <use href="#i-folder" />
-         </svg></span><span aria-hidden="true">→</span></span>
-          <h3 class="card-title">{{ s.guides.files.title }}</h3>
-          <p class="card-desc">{{ s.guides.files.body }}</p>
-        </a>
-        <a
+          v-for="guide in guideCards"
+          :key="guide.page"
           class="article-card"
-          :href="docsHref({ locale, page: 'work/boundary' })"
-        ><span class="card-top"><span class="card-icon"><svg
-           class="icon lg"
-           aria-hidden="true"
-         >
-           <use href="#i-shield" />
-         </svg></span><span aria-hidden="true">→</span></span>
-          <h3 class="card-title">{{ s.guides.boundary.title }}</h3>
-          <p class="card-desc">{{ s.guides.boundary.body }}</p>
-        </a>
-        <a
-          class="article-card"
-          :href="docsHref({ locale, page: 'chat/branching' })"
-        ><span class="card-top"><span class="card-icon"><svg
-           class="icon lg"
-           aria-hidden="true"
-         >
-           <use href="#i-branch" />
-         </svg></span><span aria-hidden="true">→</span></span>
-          <h3 class="card-title">{{ s.guides.branching.title }}</h3>
-          <p class="card-desc">{{ s.guides.branching.body }}</p>
-        </a>
-        <a
-          class="article-card"
-          :href="docsHref({ locale, page: 'work/browser-shell' })"
-        ><span class="card-top"><span class="card-icon"><svg
-           class="icon lg"
-           aria-hidden="true"
-         >
-           <use href="#i-terminal" />
-         </svg></span><span aria-hidden="true">→</span></span>
-          <h3 class="card-title">{{ s.guides.shell.title }}</h3>
-          <p class="card-desc">{{ s.guides.shell.body }}</p>
+          data-testid="docs-home-guide-card"
+          :href="docsHref({ locale, page: guide.page })"
+        >
+          <span class="card-top"><span class="card-icon"><svg class="icon lg" aria-hidden="true"><use :href="guide.icon" /></svg></span><span class="card-arrow" aria-hidden="true">→</span></span>
+          <h3 class="card-title">{{ s.guides[guide.key].title }}</h3>
+          <p class="card-desc">{{ s.guides[guide.key].body }}</p>
         </a>
       </div>
     </div>
@@ -260,17 +259,33 @@ defineExpose({
   margin-top: 64px;
 }
 
-.boundary-guide-link {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 9px;
-  margin-top: 14px;
-  color: var(--blue);
-  font-size: 13px;
-  line-height: 1.7;
-}
+.mechanism-detail-link { color: var(--blue); text-underline-offset: .16em; }
+.mechanism-detail-link:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 
-.boundary-guide-link:hover { text-decoration: underline; }
+.home-guide-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  width: min(100%, 520px);
+  min-width: 0;
+  margin-top: 18px;
+  padding: 14px 17px;
+  border: 1px solid var(--line-strong);
+  border-radius: 13px;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+.home-guide-copy { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.home-guide-copy strong { font-size: 14px; font-weight: 750; line-height: 1.5; }
+.home-guide-copy > span { color: var(--muted); font-size: 12px; line-height: 1.65; }
+.home-guide-arrow { color: var(--blue); font-size: 21px; line-height: 1; transition: transform .18s ease; }
+.home-guide-entry:hover { border-color: var(--blue); background: var(--surface-2); box-shadow: var(--panel-shadow); }
+.home-guide-entry:hover .home-guide-arrow, .home-guide-entry:focus-visible .home-guide-arrow { transform: translateX(3px); }
+.home-guide-entry:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .home-guide-entry, .home-guide-arrow { transition: none; } }
 
 .models-section h2 {
   margin-bottom: 27px;
@@ -290,14 +305,21 @@ defineExpose({
 }
 
 .article-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
 }
 
-.card-feature {
-  grid-column: auto;
+.article-grid .article-card {
+  min-height: 172px;
+  padding: 19px;
 }
+
+.article-grid .card-icon { width: 36px; height: 36px; border-radius: 10px; }
+.article-grid .card-title { margin-top: 15px; font-size: 15px; }
+.article-grid .card-desc { max-width: none; font-size: 12px; line-height: 1.7; }
 
 @media(max-width:900px) {
+  .article-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hero-brand { gap: 11.4px; margin-inline-start: -17px; font-size: 62.5px; }
   .hero-brand img { width: 108px; }
 
@@ -346,6 +368,8 @@ defineExpose({
   .article-grid {
     grid-template-columns: 1fr;
   }
+
+  .article-grid .article-card { min-height: 150px; }
 
   .panel {
     padding: 22px;

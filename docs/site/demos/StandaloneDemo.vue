@@ -85,8 +85,8 @@ defineExpose({
 .standalone-note { color: var(--subtle); font-size: 9px; margin: 6px 0 0; }
 @keyframes docs-index-double-click { 0%, 8% { opacity: 0; transform: translate(20px, 12px); } 16% { opacity: 1; transform: translate(0, 0); } 19%, 23% { opacity: 1; transform: scale(.78); } 21%, 25%, 32% { opacity: 1; transform: scale(1); } 40%, 100% { opacity: 0; transform: scale(1); } }
 @keyframes docs-open-browser { 0%, 31% { opacity: 0; transform: translateY(10px) scale(.97); } 42%, 88% { opacity: 1; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(0) scale(1); } }
-:global(html:has(#docs-pause-motion:checked)) .browser-window { animation: none; }
-:global(html:has(#docs-pause-motion:checked)) .open-pointer { animation: none; }
+html:has(#docs-pause-motion:checked) .browser-window { animation: none; }
+html:has(#docs-pause-motion:checked) .open-pointer { animation: none; }
 @media(max-width: 520px) {
   .standalone-demo { padding: 13px; }
   .standalone-stage { grid-template-columns: minmax(0, 1fr); gap: 12px; }

@@ -120,12 +120,12 @@ defineExpose({
 @keyframes docs-generating { 0%,7.9%,51%,100% { visibility: hidden; } 8%,50% { visibility: visible; } }
 @keyframes docs-send-disabled { 0%,7.9%,51%,100% { visibility: visible; } 8%,50% { visibility: hidden; } }
 
-:global(html:has(#docs-pause-motion:checked)) .demo-answer,
-:global(html:has(#docs-pause-motion:checked)) .demo-chunk,
-:global(html:has(#docs-pause-motion:checked)) .demo-item { animation: none !important; opacity: 1 !important; visibility: visible !important; }
-:global(html:has(#docs-pause-motion:checked)) .demo-send-ready { animation: none !important; visibility: visible !important; }
-:global(html:has(#docs-pause-motion:checked)) .demo-generating-control,
-:global(html:has(#docs-pause-motion:checked)) .demo-send-stop { animation: none !important; visibility: hidden !important; }
+html:has(#docs-pause-motion:checked) .demo-answer,
+html:has(#docs-pause-motion:checked) .demo-chunk,
+html:has(#docs-pause-motion:checked) .demo-item { animation: none !important; opacity: 1 !important; visibility: visible !important; }
+html:has(#docs-pause-motion:checked) .demo-send-ready { animation: none !important; visibility: visible !important; }
+html:has(#docs-pause-motion:checked) .demo-generating-control,
+html:has(#docs-pause-motion:checked) .demo-send-stop { animation: none !important; visibility: hidden !important; }
 @media (prefers-reduced-motion: reduce) {
   .demo-answer,.demo-chunk,.demo-item { animation: none !important; opacity: 1 !important; visibility: visible !important; }
   .demo-send-ready { animation: none !important; visibility: visible !important; }

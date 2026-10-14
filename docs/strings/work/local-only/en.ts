@@ -25,6 +25,8 @@ export const strings = {
   },
   switching: 'These versions use different site origins, so browser-stored conversations do not appear automatically when you switch between them. If you need existing conversations, export and import a ZIP:',
   backupLink: 'Back up and restore conversations',
+  deploymentPolicy: 'When publishing the Local-only and Curated versions, GitHub Actions writes each version’s CSP to a _headers file and deploys it with the site to Cloudflare Pages. Pages sends the CSP as an HTTP response header, which your browser applies. You can check the header actually received below and inspect the source here:',
+  deploymentSourceLink: 'View the deployment workflow',
   diagram: {
     title: 'How each page handles connection destinations',
     page: 'Browser page',
@@ -50,7 +52,7 @@ export const strings = {
   localGuideLink: 'Set up a local AI server connection',
   scopeTitle: 'What does this limit?',
   scope: 'The page’s CSP connect-src rule limits browser requests such as API calls made with fetch or XMLHttpRequest to those destinations. Other CSP rules govern resources such as scripts and images. A direct model download from an external service such as Hugging Face is outside the Local-only connection allowlist, so features needing it may fail.',
-  outsideScope: 'The Local-only site itself still loads over the internet. A local AI server is a separate process with its own permissions and possible network activity; the page’s CSP does not control that process. Changing Naidan’s endpoint setting cannot widen the browser’s CSP allowlist.',
+  outsideScope: 'Opening the Local-only site for the first time, or fetching app files that have not been saved, requires a connection. Once the PWA’s app files are prepared in this browser, the app can open offline at the same address. A local AI server is a separate process with its own permissions and possible network activity; the page’s CSP does not control that process. Changing Naidan’s endpoint setting cannot widen the browser’s CSP allowlist.',
   checkTitle: 'Check the policy and the traffic in your browser',
   checkSteps: [
     {

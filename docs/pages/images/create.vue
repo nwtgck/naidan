@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import UiText from '../../site/UiText.vue';
 import AppEntryLink from '../../site/AppEntryLink.vue';
+import RelatedGuide from '../../site/RelatedGuide.vue';
 import ImageCreationStep from '../../site/demos/ImageCreationStep.vue';
-import type { ImageCreateMessages } from '../../site/messages';
+import type { CommonMessages, ImageCreateMessages } from '../../site/messages';
 import type { DocsLocale } from '../../site/routes';
 
-defineProps<{ s: ImageCreateMessages; locale: DocsLocale }>();
+defineProps<{ s: ImageCreateMessages; locale: DocsLocale; common: CommonMessages }>();
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -42,6 +43,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <section class="media-note" aria-labelledby="image-storage"><h2 id="image-storage">{{ s.storageTitle }}</h2><p><UiText :text="s.storage" /></p></section>
     <section class="media-note" aria-labelledby="image-next"><h2 id="image-next">{{ s.nextTitle }}</h2><p><UiText :text="s.next" /></p></section>
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'models/llama-cpp-browser', title: s.relatedTitle, description: s.relatedDescription }]" />
   </article>
 </template>
 

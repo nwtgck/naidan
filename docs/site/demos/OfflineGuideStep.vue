@@ -130,17 +130,17 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes update-before { 0%,25% { opacity:1; } 33%,91% { opacity:0; } 100% { opacity:1; } }
 @keyframes update-after { 0%,25% { opacity:0; } 33%,91% { opacity:1; } 100% { opacity:0; } }
 @keyframes update-warning { 0%,25% { opacity:0; } 33%,57% { opacity:1; } 67%,100% { opacity:0; } }
-:global(html:has(#docs-pause-motion:checked)) .offline-step *,
-:global(html:has(#docs-pause-motion:checked)) .offline-step *::before,
-:global(html:has(#docs-pause-motion:checked)) .offline-step *::after { animation:none!important; }
-:global(html:has(#docs-pause-motion:checked)) .offline-step .progress-track span { transform:scaleX(1); }
-:global(html:has(#docs-pause-motion:checked)) .offline-step .status-before,
-:global(html:has(#docs-pause-motion:checked)) .offline-step .update-before,
-:global(html:has(#docs-pause-motion:checked)) .offline-step .update-warning { opacity:0; }
-:global(html:has(#docs-pause-motion:checked)) .offline-step .status-after,
-:global(html:has(#docs-pause-motion:checked)) .offline-step .update-after,
-:global(html:has(#docs-pause-motion:checked)) .offline-step .answer,
-:global(html:has(#docs-pause-motion:checked)) .offline-step .verify-answer { opacity:1;transform:none; }
+html:has(#docs-pause-motion:checked) .offline-step *,
+html:has(#docs-pause-motion:checked) .offline-step *::before,
+html:has(#docs-pause-motion:checked) .offline-step *::after { animation:none!important; }
+html:has(#docs-pause-motion:checked) .offline-step .progress-track span { transform:scaleX(1); }
+html:has(#docs-pause-motion:checked) .offline-step .status-before,
+html:has(#docs-pause-motion:checked) .offline-step .update-before,
+html:has(#docs-pause-motion:checked) .offline-step .update-warning { opacity:0; }
+html:has(#docs-pause-motion:checked) .offline-step .status-after,
+html:has(#docs-pause-motion:checked) .offline-step .update-after,
+html:has(#docs-pause-motion:checked) .offline-step .answer,
+html:has(#docs-pause-motion:checked) .offline-step .verify-answer { opacity:1;transform:none; }
 @media(max-width:520px) {
   .offline-step { padding:11px;height:238px; }
   .prepare-layout { grid-template-columns:minmax(0,1fr) 17px minmax(0,1fr);gap:5px; }

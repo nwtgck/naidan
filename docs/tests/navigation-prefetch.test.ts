@@ -3,7 +3,7 @@ import { renderDocument, renderProductionDocument, renderProductionLocaleRoot } 
 import { isDocsArticleHref } from '../site/navigation-prefetch';
 import { parsePage } from './site.test-support';
 
-const assets = { styles: [], scripts: [] };
+const assets = { styles: [], scripts: [], favicon: '/docs/assets/favicon.svg' };
 const body = `\
 <h1>Guide</h1>
 <a href="/docs/en/chat/branching/">This article</a>

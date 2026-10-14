@@ -16,6 +16,29 @@ describe('Docs development and static output', () => {
     expect(await app.text()).toContain('APP-ONLY');
     expect(await readdir(path.join(fixture.docs, '.cache')).catch(() => [])).toEqual([]);
     await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'error' });
+    const iconHref = ({ document }: { document: Document }): string => {
+      const icons = document.querySelectorAll('head link[rel="icon"]');
+      expect(icons).toHaveLength(1);
+      expect(icons[0]?.getAttribute('type')).toBe('image/svg+xml');
+      return icons[0]?.getAttribute('href') ?? '';
+    };
+    using productionRoot = parsePage({ html: await readFile(path.join(fixture.docs, 'dist/index.html'), 'utf8') });
+    const productionIcon = iconHref({ document: productionRoot.document });
+    expect(productionIcon).toMatch(/^\/docs\/assets\/[A-Za-z0-9_-]+-[A-Za-z0-9_-]{8}\.svg$/u);
+    const sourceIcon = await readFile(path.join(fixture.docs, 'assets/favicon.svg'), 'utf8');
+    expect(sourceIcon).toBe(await readFile(new URL('../../public/favicon.svg', import.meta.url), 'utf8'));
+    expect(await readFile(path.join(fixture.docs, 'dist', productionIcon.slice('/docs/'.length)), 'utf8')).toBe(sourceIcon);
+    for (const file of ['404.html', 'en/index.html', 'ja/index.html']) {
+      using entry = parsePage({ html: await readFile(path.join(fixture.docs, 'dist', file), 'utf8') });
+      expect(iconHref({ document: entry.document }), file).toBe(productionIcon);
+    }
+    for (const route of ['/docs/', '/docs/en/', '/docs/ja/', '/docs/missing/']) {
+      using entry = parsePage({ html: await (await dev.request({ url: route })).text() });
+      expect(iconHref({ document: entry.document }), route).toBe('/docs/assets/favicon.svg');
+    }
+    const developmentIcon = await dev.request({ url: '/docs/assets/favicon.svg' });
+    expect(developmentIcon.status).toBe(200);
+    expect(await developmentIcon.text()).toBe(sourceIcon);
     for (const locale of DOCS_LOCALES) {
       for (const page of DOCS_PAGES) {
         const href = docsHref({ locale, page: page.id });
@@ -24,6 +47,8 @@ describe('Docs development and static output', () => {
         using development = parsePage({ html: await response.text() });
         const relative = `${locale}/${page.id === 'index' ? '' : `${page.id}/`}index.html`;
         using production = parsePage({ html: await readFile(path.join(fixture.docs, 'dist', relative), 'utf8') });
+        expect(iconHref({ document: development.document }), href).toBe('/docs/assets/favicon.svg');
+        expect(iconHref({ document: production.document }), href).toBe(productionIcon);
         const normalize = ({ document }: { document: Document }) => {
           const body = document.body.cloneNode(true) as HTMLElement;
           for (const element of body.querySelectorAll('[src]')) {

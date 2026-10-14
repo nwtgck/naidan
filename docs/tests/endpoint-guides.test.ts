@@ -7,6 +7,7 @@ import { strings as openAiEn } from '../strings/models/openai-compatible/en';
 import { strings as openAiJa } from '../strings/models/openai-compatible/ja';
 import { strings as browserEn } from '../strings/models/browser-provided/en';
 import { strings as browserJa } from '../strings/models/browser-provided/ja';
+import { checkerCopy } from '../islands/browser-ai-availability/copy';
 import { parsePage } from './site.test-support';
 import type { CommonMessages } from '../site/messages';
 import type { DocsLocale } from '../site/routes';
@@ -24,7 +25,7 @@ describe('endpoint connection guides', () => {
     using page = await renderGuide({ kind: 'openai', locale });
     const launch = page.document.querySelector<HTMLAnchorElement>('[data-docs-app-entry-path]');
     expect(launch?.getAttribute('href')).toBe('https://naidan.nwtgck.org/#/');
-    expect(launch?.textContent).toBe('/#/');
+    expect(launch?.textContent).toBe('Naidan');
     const sections = [...page.document.querySelectorAll('article section.walkthrough-step')];
     expect(sections).toHaveLength(5);
     expect(sections.map(section => section.querySelector('[data-docs-animation]')?.getAttribute('data-docs-animation'))).toEqual([
@@ -61,6 +62,29 @@ describe('endpoint connection guides', () => {
 
   it.each(['en', 'ja'] as const)('shows the browser-managed choice and conditional preparation in %s', async locale => {
     using page = await renderGuide({ kind: 'browser', locale });
+    const article = page.document.querySelector('article');
+    const guide = locale === 'en' ? browserEn : browserJa;
+    const concept = article?.querySelector('.concept-section');
+    const flow = concept?.querySelector('[data-docs-animation="chrome-model-flow"]');
+    expect(concept?.querySelector('h2')?.textContent).toBe(guide.flow.title);
+    expect(flow?.querySelector('.chrome-flow-question')?.textContent?.trim()).toBe(guide.flow.demo.question);
+    expect(flow?.querySelector('.chrome-flow-answer')?.textContent?.trim()).toBe(guide.flow.demo.answer);
+    expect(flow?.querySelector('.chrome-flow-provider')?.textContent).toBe(guide.flow.demo.provider);
+    expect(flow?.querySelectorAll('.chrome-flow-chunk').length).toBeGreaterThan(1);
+    expect(concept?.querySelector('figcaption')?.textContent).toBe(guide.flow.caption);
+    const checker = concept?.nextElementSibling;
+    expect(checker?.getAttribute('data-docs-island')).toBe('browser-ai-availability');
+    expect(checker?.querySelector('h2')?.textContent).toBe(checkerCopy[locale].title);
+    const requirements = checker?.nextElementSibling;
+    expect(requirements?.tagName).toBe('DETAILS');
+    expect(requirements?.hasAttribute('open')).toBe(false);
+    expect(requirements?.querySelector('summary')?.textContent).toBe(guide.requirementsSummary);
+    expect(requirements?.textContent).toContain(guide.before);
+    expect(requirements?.textContent).toContain(guide.languageSupport);
+    expect([...requirements?.querySelectorAll('[data-docs-external]') ?? []].map(link => link.getAttribute('href'))).toEqual([
+      'https://developer.chrome.com/docs/ai/prompt-api',
+      'https://developer.chrome.com/docs/ai/get-started',
+    ]);
     const sections = [...page.document.querySelectorAll('article section.walkthrough-step')];
     expect(sections).toHaveLength(4);
     expect(sections.map(section => section.querySelector('[data-docs-animation]')?.getAttribute('data-docs-animation'))).toEqual([
@@ -69,7 +93,7 @@ describe('endpoint connection guides', () => {
       'browser-provided-prepare',
       'browser-provided-save',
     ]);
-    const copy = locale === 'en' ? browserEn.demo : browserJa.demo;
+    const copy = guide.demo;
     expect(sections[0]?.querySelector('.provider-before')?.textContent).toBe(copy.ollama);
     expect(sections[1]?.querySelector('.provider-after')?.textContent).toBe(copy.browserProvided);
     expect(sections[1]?.querySelector('.provider-option-target')?.textContent).toContain(copy.browserProvided);

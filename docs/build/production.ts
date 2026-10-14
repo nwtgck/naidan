@@ -7,7 +7,7 @@ import { DOCS_BASE, DOCS_PAGES, DOCS_LOCALES, docsHref } from '../site/routes';
 import { docsCompilerConfig } from './compiler';
 import { findIslands, hasAppEntryLinks, hasHomeBrand, renderProductionDocument, renderProductionLocaleRoot, renderNotFound } from './html';
 import { APP_ENTRY_CLIENT, HOME_BRAND_CLIENT, ISLAND_ENTRIES, styleEntryId, styleEntryName } from './ids';
-import { manifestEntry, parseManifest } from './assets';
+import { manifestEntry, parseManifest, publicAssetHref } from './assets';
 import type { DocsRenderer, RenderedPage } from './contracts';
 import type { DocsLocale } from '../site/routes';
 import { compileLocaleBootstrap } from './locale-bootstrap';
@@ -37,6 +37,7 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
     apply: 'build',
     async buildStart() {
       this.emitFile({ type: 'asset', fileName: undefined, name: 'locale.js', source: await compileLocaleBootstrap({ root }) });
+      this.emitFile({ type: 'asset', name: 'favicon.svg', source: await readFile(path.resolve(root, 'assets/favicon.svg')) });
     },
     // writeBundle runs only after a successful client build, including manifest.
     async writeBundle(_options, bundle) {
@@ -70,6 +71,9 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
         const entryAsset = Object.values(bundle).find(item => item.type === 'asset' && item.names.includes('locale.js'));
         if (!entryAsset) throw new Error('Missing Docs locale bootstrap');
         const bootstrap = `${DOCS_BASE}${entryAsset.fileName}`;
+        const faviconAsset = Object.values(bundle).find(item => item.type === 'asset' && item.names.includes('favicon.svg'));
+        if (!faviconAsset) throw new Error('Missing Docs favicon');
+        const favicon = publicAssetHref({ file: faviconAsset.fileName });
         const homeAssets = manifestEntry({ manifest, name: styleEntryName({ page: 'index' }) });
         const searchAssets = manifestEntry({ manifest, name: 'island-search' });
         if (!searchAssets.script) throw new Error('Missing Docs search client entry');
@@ -78,7 +82,7 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
         const homeBrandAssets = manifestEntry({ manifest, name: 'home-brand' });
         if (!homeBrandAssets.script) throw new Error('Missing Docs home brand client');
         const renderedPages = new Map<string, RenderedPage>();
-        files.set('404.html', renderNotFound({ assets: { styles: homeAssets.styles, scripts: [] }, bootstrap }));
+        files.set('404.html', renderNotFound({ assets: { styles: homeAssets.styles, scripts: [], favicon }, bootstrap }));
         for (const locale of DOCS_LOCALES) {
           for (const page of DOCS_PAGES) {
             const rendered = await renderer.renderPage({ locale, page: page.id });
@@ -101,7 +105,7 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
             }
             if (!assets.styles.length) throw new Error(`Missing styles for ${page.id}`);
             const relative = `${docsHref({ locale, page: page.id }).slice(DOCS_BASE.length)}index.html`;
-            files.set(relative, renderProductionDocument({ page: rendered, assets: { styles: assets.styles, scripts }, bootstrap }));
+            files.set(relative, renderProductionDocument({ page: rendered, assets: { styles: assets.styles, scripts, favicon }, bootstrap }));
           }
         }
         const home = ({ locale }: { locale: DocsLocale }): RenderedPage => {
@@ -110,7 +114,7 @@ function createDocsOutputPlugin({ root }: { root: string }): Plugin {
           return result;
         };
         const homes = { en: home({ locale: 'en' }), ja: home({ locale: 'ja' }) } satisfies Record<DocsLocale, RenderedPage>;
-        files.set('index.html', renderProductionLocaleRoot({ pages: homes, bootstrap, assets: { styles: [...homeAssets.styles, ...searchAssets.styles, ...homeBrandAssets.styles], scripts: [searchAssets.script, homeBrandAssets.script] } }));
+        files.set('index.html', renderProductionLocaleRoot({ pages: homes, bootstrap, assets: { styles: [...homeAssets.styles, ...searchAssets.styles, ...homeBrandAssets.styles], scripts: [searchAssets.script, homeBrandAssets.script], favicon } }));
         files.set('sitemap.xml', createDocsSitemap());
         for (const locale of DOCS_LOCALES) {
           files.set(`search-${locale}.json`, JSON.stringify(createSearchIndex({ locale, pages: renderedPages })));

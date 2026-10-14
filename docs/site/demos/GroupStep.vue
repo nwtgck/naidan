@@ -61,11 +61,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes rename-field { 0%,28%,59%,100% { opacity:0; } 36%,51% { opacity:1; } }
 @keyframes name-arrive { 0%,56% { opacity:0; } 66%,100% { opacity:1; } }@keyframes name-leave { 0%,56% { opacity:1; } 66%,100% { opacity:0; } }
 @keyframes collapse-items { 0%,61% { opacity:1;transform:none; } 74%,100% { opacity:0;transform:scaleY(.85); } }@keyframes chevron-collapse { 0%,61% { transform:none; } 74%,100% { transform:rotate(-90deg); } }
-:global(html:has(#docs-pause-motion:checked)) .group-viewport * { animation:none!important; }
-:global(html:has(#docs-pause-motion:checked)) .stage-create .group-block,:global(html:has(#docs-pause-motion:checked)) .stage-move .first-chat,:global(html:has(#docs-pause-motion:checked)) .stage-add .second-chat,:global(html:has(#docs-pause-motion:checked)) .stage-add .new-title,:global(html:has(#docs-pause-motion:checked)) .stage-tidy .new-name { opacity:1;transform:none; }
-:global(html:has(#docs-pause-motion:checked)) .stage-create .creation-row,:global(html:has(#docs-pause-motion:checked)) .stage-move .top-chat,:global(html:has(#docs-pause-motion:checked)) .stage-add .old-title,:global(html:has(#docs-pause-motion:checked)) .stage-add .chat-body,:global(html:has(#docs-pause-motion:checked)) .stage-tidy .old-name,:global(html:has(#docs-pause-motion:checked)) .stage-tidy .nested-items { opacity:0; }
-:global(html:has(#docs-pause-motion:checked)) .stage-tidy .group-chevron { transform:rotate(-90deg); }
-:global(html:has(#docs-pause-motion:checked)) .group-viewport .pointer { display:none; }
+html:has(#docs-pause-motion:checked) .group-viewport * { animation:none!important; }
+html:has(#docs-pause-motion:checked) .stage-create .group-block,html:has(#docs-pause-motion:checked) .stage-move .first-chat,html:has(#docs-pause-motion:checked) .stage-add .second-chat,html:has(#docs-pause-motion:checked) .stage-add .new-title,html:has(#docs-pause-motion:checked) .stage-tidy .new-name { opacity:1;transform:none; }
+html:has(#docs-pause-motion:checked) .stage-create .creation-row,html:has(#docs-pause-motion:checked) .stage-move .top-chat,html:has(#docs-pause-motion:checked) .stage-add .old-title,html:has(#docs-pause-motion:checked) .stage-add .chat-body,html:has(#docs-pause-motion:checked) .stage-tidy .old-name,html:has(#docs-pause-motion:checked) .stage-tidy .nested-items { opacity:0; }
+html:has(#docs-pause-motion:checked) .stage-tidy .group-chevron { transform:rotate(-90deg); }
+html:has(#docs-pause-motion:checked) .group-viewport .pointer { display:none; }
 @media(prefers-reduced-motion:reduce) { .group-viewport * { animation:none!important; } .stage-create .group-block,.stage-move .first-chat,.stage-add .second-chat,.stage-add .new-title,.stage-tidy .new-name { opacity:1;transform:none; } .stage-create .creation-row,.stage-move .top-chat,.stage-add .old-title,.stage-add .chat-body,.stage-tidy .old-name,.stage-tidy .nested-items { opacity:0; } .stage-tidy .group-chevron { transform:rotate(-90deg); } .group-viewport .pointer { display:none; } }
 @container (max-width:650px) { .group-canvas { --move-x:calc(100cqw - 725px);--add-x:-230px; } .move-menu { right:49px; } }
 </style>

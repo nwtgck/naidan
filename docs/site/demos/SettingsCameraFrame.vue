@@ -98,25 +98,25 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .focus-select .camera-canvas{animation-name:camera-select}
 @keyframes camera-select{0%,7%{transform:translate(-140px,-7px) scale(.92)}16%,92%{transform:translate(-360px,-50px) scale(1)}100%{transform:translate(-140px,-7px) scale(.92)}}
 @media(max-width:700px){.focus-select .camera-canvas{animation-name:camera-select-mobile}}
-:global(html:has(#docs-pause-motion:checked)) .camera-canvas,:global(html:has(#docs-pause-motion:checked)) .settings-modal,:global(html:has(#docs-pause-motion:checked)) .app-settings,:global(html:has(#docs-pause-motion:checked)) .app-pointer{animation:none!important}
-:global(html:has(#docs-pause-motion:checked)) .settings-modal{opacity:1;transform:none}
-:global(html:has(#docs-pause-motion:checked)) .app-pointer{display:none}
-:global(html:has(#docs-pause-motion:checked)) .focus-open .camera-canvas{transform:translate(-140px,-7px) scale(.92)}
-:global(html:has(#docs-pause-motion:checked)) .focus-provider .camera-canvas,:global(html:has(#docs-pause-motion:checked)) .focus-select .camera-canvas{transform:translate(-360px,-50px) scale(1)}
-:global(html:has(#docs-pause-motion:checked)) .focus-headers .camera-canvas{transform:translate(-360px,-280px) scale(1)}
-:global(html:has(#docs-pause-motion:checked)) .focus-check .camera-canvas{transform:translate(-360px,-170px) scale(1)}
-:global(html:has(#docs-pause-motion:checked)) .focus-model .camera-canvas{transform:translate(-430px,-414px) scale(1)}
-:global(html:has(#docs-pause-motion:checked)) .focus-save .camera-canvas{transform:translate(-430px,-390px) scale(1)}
-:global(html:has(#docs-pause-motion:checked)) .focus-prepare .camera-canvas{transform:translate(-360px,-135px) scale(1)}
+html:has(#docs-pause-motion:checked) .camera-canvas,html:has(#docs-pause-motion:checked) .settings-modal,html:has(#docs-pause-motion:checked) .app-settings,html:has(#docs-pause-motion:checked) .app-pointer{animation:none!important}
+html:has(#docs-pause-motion:checked) .settings-modal{opacity:1;transform:none}
+html:has(#docs-pause-motion:checked) .app-pointer{display:none}
+html:has(#docs-pause-motion:checked) .focus-open .camera-canvas{transform:translate(-140px,-7px) scale(.92)}
+html:has(#docs-pause-motion:checked) .focus-provider .camera-canvas,html:has(#docs-pause-motion:checked) .focus-select .camera-canvas{transform:translate(-360px,-50px) scale(1)}
+html:has(#docs-pause-motion:checked) .focus-headers .camera-canvas{transform:translate(-360px,-280px) scale(1)}
+html:has(#docs-pause-motion:checked) .focus-check .camera-canvas{transform:translate(-360px,-170px) scale(1)}
+html:has(#docs-pause-motion:checked) .focus-model .camera-canvas{transform:translate(-430px,-414px) scale(1)}
+html:has(#docs-pause-motion:checked) .focus-save .camera-canvas{transform:translate(-430px,-390px) scale(1)}
+html:has(#docs-pause-motion:checked) .focus-prepare .camera-canvas{transform:translate(-360px,-135px) scale(1)}
 @media(max-width:700px){
-  :global(html:has(#docs-pause-motion:checked)) .focus-open .camera-canvas{transform:translate(-275px,-5px) scale(.85)}
-  :global(html:has(#docs-pause-motion:checked)) .focus-provider .camera-canvas{transform:translate(-275px,-85px) scale(.85)}
-  :global(html:has(#docs-pause-motion:checked)) .focus-select .camera-canvas{transform:translate(-275px,-60px) scale(.85)}
-  :global(html:has(#docs-pause-motion:checked)) .focus-headers .camera-canvas{transform:translate(-275px,-210px) scale(.85)}
-  :global(html:has(#docs-pause-motion:checked)) .focus-check .camera-canvas{transform:translate(var(--right-field),-120px) scale(.85)}
-  :global(html:has(#docs-pause-motion:checked)) .focus-model .camera-canvas{transform:translate(var(--right-save),-300px) scale(.85)}
-  :global(html:has(#docs-pause-motion:checked)) .focus-save .camera-canvas{transform:translate(var(--right-save),-300px) scale(.85)}
-  :global(html:has(#docs-pause-motion:checked)) .focus-prepare .camera-canvas{transform:translate(-275px,-75px) scale(.85)}
+  html:has(#docs-pause-motion:checked) .focus-open .camera-canvas{transform:translate(-275px,-5px) scale(.85)}
+  html:has(#docs-pause-motion:checked) .focus-provider .camera-canvas{transform:translate(-275px,-85px) scale(.85)}
+  html:has(#docs-pause-motion:checked) .focus-select .camera-canvas{transform:translate(-275px,-60px) scale(.85)}
+  html:has(#docs-pause-motion:checked) .focus-headers .camera-canvas{transform:translate(-275px,-210px) scale(.85)}
+  html:has(#docs-pause-motion:checked) .focus-check .camera-canvas{transform:translate(var(--right-field),-120px) scale(.85)}
+  html:has(#docs-pause-motion:checked) .focus-model .camera-canvas{transform:translate(var(--right-save),-300px) scale(.85)}
+  html:has(#docs-pause-motion:checked) .focus-save .camera-canvas{transform:translate(var(--right-save),-300px) scale(.85)}
+  html:has(#docs-pause-motion:checked) .focus-prepare .camera-canvas{transform:translate(-275px,-75px) scale(.85)}
 }
 @media(prefers-reduced-motion:reduce){
   .camera-canvas,.settings-modal,.app-settings,.app-pointer{animation:none!important}.settings-modal{opacity:1;transform:none}.app-pointer{display:none}

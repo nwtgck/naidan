@@ -16,6 +16,7 @@ export async function createSiteFixture() {
   try {
     await cp(path.join(repository, 'docs'), path.join(root, 'docs'), {
       recursive: true,
+      dereference: true,
       filter: source => !['dist', '.cache', 'tests'].includes(path.basename(source)),
     });
     await symlink(path.join(repository, 'node_modules'), path.join(root, 'node_modules'), 'dir');

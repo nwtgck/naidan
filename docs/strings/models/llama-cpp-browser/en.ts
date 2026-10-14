@@ -5,6 +5,7 @@ export const strings = {
   quickModels: {
     title: 'Choose a model to try in your browser',
     body: 'Choose a model to open its chat. If it has not been downloaded, select ［Start with this model］ there; once it is ready, enter your message. Local-only cannot fetch an unprepared model from Hugging Face: import a GGUF you obtained separately, or download the model in a Hosted edition that permits the required model file hosts.',
+    ownLink: { before: 'To make your own model link, set the app URL’s ', middle: ' parameter to an hf.co GGUF model reference such as ', after: '.' },
   },
   availability: 'The llama.cpp browser option appears in both Hosted and Standalone. ［Inference settings］ checks what this browser and device support. Model compatibility and speed depend on the device and model.',
   manager: {
@@ -75,4 +76,8 @@ export const strings = {
   note: 'Check ［Inference settings］ first, then confirm that the GGUF and any companion mmproj match the model you intend to use. A completed download only means the files are available; it does not prove that this browser can run the model. Standalone includes WebGPU with JSPI for wasm32 or wasm64, without a CPU or Asyncify fallback.',
   next: 'Run an AI model in your browser',
   nextDescription: 'Compare llama.cpp, Transformers.js and browser-provided models and their availability.',
+  related: {
+    image: { title: 'Generate AI images on your device', description: 'Use a local image model without sending prompts to an inference server.' },
+    speech: { title: 'Generate speech on your device', description: 'Turn text into a WAV without sending it to an inference server.' },
+  },
 };

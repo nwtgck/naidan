@@ -1,11 +1,30 @@
 export const strings = {
   title: 'Chat with Chrome’s built-in AI language model',
   description: 'Use Chrome’s on-device model for chat in Naidan: check the Chrome 148+ requirements, prepare the model, and save the connection.',
-  intro: 'On desktop Chrome 148 or later, Naidan can use Chrome’s built-in AI language model for chat through the Prompt API. You do not enter a server URL or choose a model file.',
+  intro: 'On desktop Chrome 148 or later, Naidan can chat with Chrome’s built-in AI language model. Chrome manages it on your device, so you do not enter a server URL or choose a model file.',
+  flow: {
+    title: 'How Chrome’s model answers your chat',
+    caption: 'Naidan sends your question to Chrome’s model on this device and shows the answer as it arrives. Chrome may need to download and prepare the model the first time; you do not choose its files.',
+    demo: {
+      browser: 'Chrome',
+      device: 'On this device',
+      chat: 'Naidan Chat',
+      question: 'Your question',
+      answer: 'Answer',
+      request: 'Question',
+      response: 'Answer',
+      model: 'Chrome’s built-in model',
+      provider: 'Browser-provided',
+      onDevice: 'Processes this chat on your device',
+    },
+  },
   launch: { before: 'First, open ', after: ' to set up the model in Naidan.' },
   onboarding: 'If first-run setup appears, close it with the × at the top right. The linked ［Connection］ settings stay open for the steps below.',
   before: 'Chrome requires Windows 10/11, macOS 13+, Linux, or a Chromebook Plus with ChromeOS platform 16389.0.0+; at least 22 GB free on the drive with your Chrome profile; and either a GPU with more than 4 GB VRAM or at least 16 GB RAM and four CPU cores. The first model download needs an unmetered or unlimited connection. Chrome on Android or iOS and other Chromebooks are not supported.',
+  languageSupport: 'Chrome’s model supports Japanese text input and output from Chrome 149. Naidan and this page check availability without specifying input or output languages, so an available result does not confirm Japanese responses.',
   requirementsSource: 'Chrome’s official Prompt API requirements',
+  languageSource: 'Chrome’s built-in AI language support',
+  requirementsSummary: 'Chrome and device requirements',
   steps: {
     open: {
       title: '1. Open Connection settings',

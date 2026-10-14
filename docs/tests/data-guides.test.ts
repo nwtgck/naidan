@@ -21,7 +21,7 @@ describe('data guides', () => {
     using page = parsePage({ html });
     const article = page.document.querySelector('[data-testid="docs-data-storage"]');
     expect(article?.querySelector('h1')?.textContent).toBe(s.title);
-    expect(article?.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('/#/');
+    expect(article?.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('Naidan');
     expect(article?.querySelectorAll('.walkthrough-step')).toHaveLength(3);
 
     for (const stage of ['open', 'choose', 'persist'] as const) {
@@ -53,7 +53,7 @@ describe('data guides', () => {
     using page = parsePage({ html });
     const article = page.document.querySelector('[data-testid="docs-data-backup"]');
     expect(article?.querySelector('h1')?.textContent).toBe(s.title);
-    expect(article?.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('/#/');
+    expect(article?.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('Naidan');
     expect(article?.querySelectorAll('.walkthrough-step')).toHaveLength(3);
 
     for (const stage of ['export', 'preview', 'mode'] as const) {

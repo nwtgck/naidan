@@ -26,6 +26,13 @@ export const strings = {
       "body": "対応するブラウザ内モデルを使うか、Ollamaやllama.cpp serverなどへ接続します。モデルの配信元からの取得には通信を使う場合があります。ローカル推論サーバーは別プロセスとして、それ自身の権限で動作します。",
     }
   ],
+  modelGuides: {
+    before: '起動したら、GGUFなどをブラウザ内で動かす場合は',
+    browser: 'ブラウザ内モデルの手順',
+    middle: 'へ、別の推論サーバーへ接続する場合は',
+    engine: 'ローカルエンジンの手順',
+    after: 'へ進みます。',
+  },
   "modesTitle": "ここでいう「サーバー不要」の範囲",
   "modes": [
     {
@@ -55,6 +62,8 @@ export const strings = {
   nextDescription: 'ブラウザの許可範囲と、ローカルAIが使えるデータの境界を確認します。',
   permissionsGuideTitle: 'Webアプリとネイティブアプリの権限を比べる',
   permissionsGuideDescription: 'ブラウザ、デスクトップ、CLI、モバイルでアクセスできる範囲を比べます。',
-  offlineGuideTitle: 'Hosted版をオフラインで使う',
+  offlineGuideTitle: 'NaidanをPWAとしてオフラインで使う',
   offlineGuideDescription: '接続を切る前にHosted版のPWAとブラウザ内モデルを準備します。',
+  hostedGuideTitle: 'Hosted版ZIPを自分のHTTPサーバーで使う',
+  hostedGuideDescription: '通常のWebオリジンを使いたいときに、自分の静的HTTPサーバーで配信します。',
 } satisfies StandaloneMessages;

@@ -76,6 +76,13 @@ independent guide content or the ways to use a feature behind tabs.
 
 Docs tests must not execute external commands or child processes, directly or
 through a helper. Exercise the compiler and renderer through their library APIs.
+For Docs-only verification, run targeted tests with
+`npm run test:only-failed -- --config docs/vitest.config.ts <docs paths>`, or run
+the full Docs suite with `npm run test:only-failed -- --config docs/vitest.config.ts docs`.
+The default root Vitest configuration excludes `docs/**`, so invoking the script
+without the Docs config runs the application suite instead of verifying Docs.
+The configured invocation fulfills the root `test:only-failed` requirement.
+
 Keep external HTTP(S) links visibly marked with the shared external-link icon.
 Typed `AppEntryLink` launch links are in-app actions: their static public-origin
 fallback is rebased to the current Docs origin, and they do not use that icon.
@@ -83,4 +90,4 @@ fallback is rebased to the current Docs origin, and they do not use that icon.
 For Docs-only changes, apply `eslint --fix` only to changed Docs code files,
 then run `npm run lint:docs`. This scoped fix pass is sufficient in place of the
 repository-wide `lint:fix`; still run the required root typecheck and
-`test:only-failed` before committing.
+configured `test:only-failed` command above before committing.

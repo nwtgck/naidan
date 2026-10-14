@@ -21,4 +21,4 @@ export type PageRegistry = {
   pages: Record<DocsPageId, RegisteredPage>;
   common: Record<DocsLocale, () => Promise<{ strings: CommonMessages }>>;
 };
-export type PageAssets = { styles: string[]; scripts: string[] };
+export type PageAssets = { styles: string[]; scripts: string[]; favicon: string };

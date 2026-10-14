@@ -112,7 +112,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes camera-content-narrow { 0%,8% { transform:translate(-155px,-20px) scale(.87); } 21%,92% { transform:translate(-329px,-75px) scale(.87); } 100% { transform:translate(-155px,-20px) scale(.87); } }
 @keyframes camera-files-narrow { 0%,8% { transform:translate(-139px,-7px) scale(.88); } 21%,52% { transform:translate(-329px,-75px) scale(.87); } 65%,92% { transform:translate(-586px,-75px) scale(.87); } 100% { transform:translate(-139px,-7px) scale(.88); } }
 @keyframes camera-manage-narrow { 0%,8% { transform:translate(-155px,-80px) scale(.87); } 21%,92% { transform:translate(-329px,-150px) scale(.87); } 100% { transform:translate(-155px,-80px) scale(.87); } }
-:global(html:has(#docs-pause-motion:checked)) .settings-camera *, :global(html:has(#docs-pause-motion:checked)) .settings-camera *::before, :global(html:has(#docs-pause-motion:checked)) .settings-camera *::after { animation:none!important; }
-:global(html:has(#docs-pause-motion:checked)) .settings-camera .pointer { display:none; }
+html:has(#docs-pause-motion:checked) .settings-camera *, html:has(#docs-pause-motion:checked) .settings-camera *::before, html:has(#docs-pause-motion:checked) .settings-camera *::after { animation:none!important; }
+html:has(#docs-pause-motion:checked) .settings-camera .pointer { display:none; }
 @media(prefers-reduced-motion:reduce) { .settings-camera *, .settings-camera *::before, .settings-camera *::after { animation:none!important; }.pointer { display:none; } }
 </style>

@@ -2,7 +2,7 @@ export const strings = {
   title: 'Connect to an OpenAI-compatible server',
   description: 'Set an OpenAI-compatible endpoint in Naidan, check its model list, and choose the default for chats that inherit it.',
   intro: 'Use this route when an inference server or API exposes OpenAI-compatible model and chat endpoints. Start with a server that is already running and has a model available. Naidan connects from your browser; it does not start the server.',
-  launch: { before: 'First, open ', after: ' to start Naidan. If first-run setup appears, close it with the × at the top right, then follow step 1.' },
+  launch: { before: 'First, open ', after: '. If first-run setup appears, close it with the × at the top right, then follow step 1.' },
   before: 'The local presets fill in LM Studio at http://localhost:1234/v1 or llama-server at http://localhost:8080/v1. Choose the preset that matches your server, or enter its actual base URL. A remote API may require custom HTTP headers. Its authentication, CORS policy and model support depend on that service.',
   steps: {
     open: {

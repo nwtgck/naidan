@@ -40,6 +40,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
           <AppEntryLink :destination="{ kind: 'model', model: item.model }" :locale="locale" display="label">{{ item.name }}</AppEntryLink>
         </li>
       </ul>
+      <p>{{ s.quickModels.ownLink.before }}<code>llama-cpp-browser-model</code>{{ s.quickModels.ownLink.middle }}<code>hf.co/owner/repository:Q4_K_M</code>{{ s.quickModels.ownLink.after }}</p>
     </section>
     <p class="guide-context"><UiText :text="s.availability" /></p>
 
@@ -90,7 +91,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 
     <h2>{{ s.noteTitle }}</h2>
     <p><UiText :text="s.note" /></p>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'models/in-browser', title: s.next, description: s.nextDescription }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[
+      { page: 'models/in-browser', title: s.next, description: s.nextDescription },
+      { page: 'images/create', ...s.related.image },
+      { page: 'audio/speech', ...s.related.speech },
+    ]" />
   </article>
 </template>
 

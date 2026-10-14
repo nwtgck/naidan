@@ -39,7 +39,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes tab-generate { 0%,49% { color:var(--m);background:transparent; } 61%,100% { color:var(--a);background:color-mix(in srgb,var(--a) 11%,var(--p)); } }@keyframes tab-model { 0%,49% { color:var(--a);background:color-mix(in srgb,var(--a) 11%,var(--p)); } 61%,100% { color:var(--m);background:transparent; } }
 @keyframes catalog-download { 0%,22% { opacity:1; } 35%,100% { opacity:0; } }@keyframes catalog-ready { 0%,22% { opacity:0; } 35%,100% { opacity:1; } }
 @keyframes progress-show { 0%,24%,69%,100% { opacity:0; } 34%,59% { opacity:1; } }@keyframes progress-fill { 0%,25% { transform:scaleX(0); } 60%,100% { transform:scaleX(1); } }@keyframes result-show { 0%,61% { opacity:0; } 74%,100% { opacity:1; } }
-:global(html:has(#docs-pause-motion:checked)) .camera *, :global(html:has(#docs-pause-motion:checked)) .camera *::before, :global(html:has(#docs-pause-motion:checked)) .camera *::after { animation:none!important; }:global(html:has(#docs-pause-motion:checked)) .camera .canvas { transform:translate(var(--x1),var(--y1)) scale(var(--z1)); }:global(html:has(#docs-pause-motion:checked)) .camera .menu,:global(html:has(#docs-pause-motion:checked)) .camera .models-overlay,:global(html:has(#docs-pause-motion:checked)) .camera .viewer,:global(html:has(#docs-pause-motion:checked)) .camera .progress,:global(html:has(#docs-pause-motion:checked)) .camera .pointer,:global(html:has(#docs-pause-motion:checked)) .camera .catalog-download { opacity:0; }:global(html:has(#docs-pause-motion:checked)) .camera .complete,:global(html:has(#docs-pause-motion:checked)) .camera .asset,:global(html:has(#docs-pause-motion:checked)) .camera .catalog-ready,:global(html:has(#docs-pause-motion:checked)) .camera .available { opacity:1; }
+html:has(#docs-pause-motion:checked) .camera *, html:has(#docs-pause-motion:checked) .camera *::before, html:has(#docs-pause-motion:checked) .camera *::after { animation:none!important; }html:has(#docs-pause-motion:checked) .camera .canvas { transform:translate(var(--x1),var(--y1)) scale(var(--z1)); }html:has(#docs-pause-motion:checked) .camera .menu,html:has(#docs-pause-motion:checked) .camera .models-overlay,html:has(#docs-pause-motion:checked) .camera .viewer,html:has(#docs-pause-motion:checked) .camera .progress,html:has(#docs-pause-motion:checked) .camera .pointer,html:has(#docs-pause-motion:checked) .camera .catalog-download { opacity:0; }html:has(#docs-pause-motion:checked) .camera .complete,html:has(#docs-pause-motion:checked) .camera .asset,html:has(#docs-pause-motion:checked) .camera .catalog-ready,html:has(#docs-pause-motion:checked) .camera .available { opacity:1; }
 @media(prefers-reduced-motion:reduce) { .camera *, .camera *::before, .camera *::after { animation:none!important; }.canvas { transform:translate(var(--x1),var(--y1)) scale(var(--z1)); }.menu,.models-overlay,.viewer,.progress,.pointer,.catalog-download { opacity:0; }.complete,.asset,.catalog-ready,.available { opacity:1; } }
 @media(max-width:560px) { .camera { height:316px; }.stage-open { --x0:0px;--x1:-125px;--y1:-8px;--z1:.84; }.stage-model { --x0:-125px;--y0:-8px;--z0:.84;--x1:-160px;--y1:-77px;--z1:.84; }.stage-generate { --x0:-125px;--y0:-77px;--z0:.84;--x1:-478px;--y1:-135px;--z1:.83; }.stage-reuse { --x0:-450px;--y0:-135px;--z0:.83;--xf:-690px;--yf:-135px;--zf:.83;--x1:-170px;--y1:-140px;--z1:.83; } }
 .session-sidebar { position:absolute;z-index:2;inset:0;display:flex;flex-direction:column;gap:11px;padding:15px 10px;background:var(--p);border-right:1px solid var(--l); }
@@ -65,11 +65,11 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes reuse-camera { 0%,17% { transform:translate(var(--x0),var(--y0)) scale(var(--z0)); } 32%,50% { transform:translate(var(--xf),var(--yf)) scale(var(--zf)); } 75%,90% { transform:translate(var(--x1),var(--y1)) scale(var(--z1)); } 100% { transform:translate(var(--x0),var(--y0)) scale(var(--z0)); } }
 @keyframes empty-leave { 0%,25% { opacity:1; } 35%,100% { opacity:0; } }
 @keyframes draft-focus { 0%,52% { border-color:var(--l);box-shadow:none; } 68%,90% { border-color:var(--a);box-shadow:0 0 0 3px color-mix(in srgb,var(--a) 18%,transparent); } 100% { border-color:var(--l);box-shadow:none; } }
-:global(html:has(#docs-pause-motion:checked)) .camera.stage-open .session-sidebar { opacity:1; }
-:global(html:has(#docs-pause-motion:checked)) .camera.stage-open .complete,
-:global(html:has(#docs-pause-motion:checked)) .camera.stage-open .asset,
-:global(html:has(#docs-pause-motion:checked)) .camera.stage-model .complete,
-:global(html:has(#docs-pause-motion:checked)) .camera.stage-model .asset { opacity:0; }
+html:has(#docs-pause-motion:checked) .camera.stage-open .session-sidebar { opacity:1; }
+html:has(#docs-pause-motion:checked) .camera.stage-open .complete,
+html:has(#docs-pause-motion:checked) .camera.stage-open .asset,
+html:has(#docs-pause-motion:checked) .camera.stage-model .complete,
+html:has(#docs-pause-motion:checked) .camera.stage-model .asset { opacity:0; }
 @media(prefers-reduced-motion:reduce) {
   .stage-open .session-sidebar { opacity:1; }
   .stage-open .complete,.stage-open .asset,.stage-model .complete,.stage-model .asset { opacity:0; }
@@ -95,7 +95,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 @keyframes image-picker-choice { 0%,76% { background:transparent; } 80%,100% { background:color-mix(in srgb,var(--a) 12%,var(--p)); } }
 @keyframes image-picker-focus { 0%,69%,90%,100% { border-color:var(--l);box-shadow:none; } 75%,85% { border-color:var(--a);box-shadow:0 0 0 3px color-mix(in srgb,var(--a) 16%,transparent); } }
 @keyframes image-picker-chevron { 0%,69%,90%,100% { transform:none; } 75%,85% { transform:rotate(180deg); } }
-:global(html:has(#docs-pause-motion:checked)) .camera .model-picker-popup { opacity:0; }
+html:has(#docs-pause-motion:checked) .camera .model-picker-popup { opacity:0; }
 @media(prefers-reduced-motion:reduce) { .model-picker-popup { opacity:0; } }
 @media(max-width:560px) { .model-picker-popup { width:296px; } }
 </style>

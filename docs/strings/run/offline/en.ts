@@ -1,7 +1,7 @@
 export const strings = {
-  title: 'Use browser AI offline',
-  description: 'Prepare Naidan’s hosted PWA and a browser-run model while online, then check that the app opens and answers without a connection. Learn how to apply an update.',
-  intro: 'Naidan’s hosted site is a progressive web app (PWA). After its application files are saved by the browser, the site can open without a connection. To receive an AI answer offline, prepare a model that runs on your device as well.',
+  title: 'Use Naidan offline as a PWA',
+  description: 'Prepare Naidan’s hosted PWA and a local model while online, then verify that Naidan opens and answers offline and learn how to update after reconnecting.',
+  intro: 'Naidan’s hosted edition is a progressive web app (PWA): your browser can save its app files while you are online and open Naidan again without a connection. To get an AI answer offline, also prepare a model that runs on your device.',
   launch: {
     before: 'While connected, open the hosted app at ',
     after: '. Keep using that browser and site address for the checks below.',
@@ -44,6 +44,8 @@ export const strings = {
     modelsDescription: 'See the preparation and availability of llama.cpp, Transformers.js, and browser-provided models.',
     standalone: 'Open the Standalone edition from a ZIP',
     standaloneDescription: 'Use the separate file:// edition and its local-folder update path.',
+    hostedZip: 'Serve the Hosted ZIP yourself',
+    hostedZipDescription: 'Publish the Hosted files with your own static HTTP server.',
   },
   demo: {
     hosted: 'Hosted Naidan',

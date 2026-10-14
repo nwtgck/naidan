@@ -3,7 +3,7 @@ import type { strings as en } from './en';
 export const strings = {
   title: 'チャットからWikipediaを検索する',
   description: 'チャットでWikipediaを有効にし、検索と記事取得を確認する手順と、Wikipediaに届く情報を説明します。',
-  intro: 'ツール呼び出しに対応する言語モデルに、会話の中でWikipediaを検索し、関連する記事を読ませられます。今回のみ許可を選ぶと、送信する検索語と取得する記事をリクエストごとに確認できます。',
+  intro: 'ツール呼び出しに対応する言語モデルに、会話の中でWikipediaを検索し、関連する記事を読ませられます。NaidanはWikipediaの公式APIで検索と記事本文の取得を行うため、Wikipedia用のAPIキーやアクセストークンを用意する必要はありません。今回のみ許可を選ぶと、送信する検索語と取得する記事をリクエストごとに確認できます。',
   launch: { before: '', after: 'を開き、ツール呼び出しに対応するモデルのチャットを選びます。' },
   steps: {
     open: {

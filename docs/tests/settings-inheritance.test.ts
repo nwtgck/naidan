@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
+import { compileStyle, parse } from '@vue/compiler-sfc';
 import InheritancePage from '../pages/settings/inheritance.vue';
+import SettingsInheritanceDiagram from '../site/demos/SettingsInheritanceDiagram.vue';
 import SettingsInheritanceStep from '../site/demos/SettingsInheritanceStep.vue';
 import { strings as en } from '../strings/settings/inheritance/en';
 import { strings as ja } from '../strings/settings/inheritance/ja';
@@ -14,28 +17,83 @@ describe('settings inheritance guide', () => {
   it.each([
     { locale: 'en' as const, s: en, common: commonEn },
     { locale: 'ja' as const, s: ja, common: commonJa },
-  ])('renders five localized explanation-and-screen pairs in %s', async ({ locale, s, common }) => {
+  ])('explains the purpose and inheritance before five localized screen steps in %s', async ({ locale, s, common }) => {
     const html = await renderToString(createSSRApp({ render: () => h(InheritancePage, { s, locale, common }) }));
     using page = parsePage({ html });
     const article = page.document.querySelector('[data-testid="docs-settings-inheritance"]');
     expect(article?.querySelector('h1')?.textContent).toBe(s.title);
+    expect([...(article?.querySelectorAll('h2') ?? [])].slice(0, 3).map(heading => heading.textContent)).toEqual([
+      s.why.title, s.concept.title, s.setupTitle,
+    ]);
+    expect(article?.querySelector('.guide-purpose p')?.textContent).toBe(visibleGuideText({ text: s.why.body }));
+    expect(article?.querySelector('.guide-concept p')?.textContent).toBe(visibleGuideText({ text: s.concept.definition }));
+    const diagram = article?.querySelector('[data-testid="inheritance-concept"]');
+    expect(diagram?.getAttribute('data-docs-animation')).toBe('inheritance-concept');
+    expect(diagram?.querySelectorAll('.phase')).toHaveLength(4);
+    expect(article?.querySelector('.guide-concept figcaption')?.textContent).toBe(visibleGuideText({ text: s.concept.caption }));
     const launch = article?.querySelector<HTMLAnchorElement>('[data-docs-app-entry-path]');
     expect(launch?.getAttribute('href')).toBe('https://naidan.nwtgck.org/#/');
-    expect(launch?.textContent).toBe('/#/');
+    expect(launch?.textContent).toBe('Naidan');
     const sections = [...(article?.querySelectorAll('section.walkthrough-step') ?? [])];
     expect(sections).toHaveLength(5);
     const stages = ['global', 'group', 'inheritedChat', 'chatModel', 'reset'] as const;
     for (const [index, stage] of stages.entries()) {
       const section = sections[index];
-      expect(section?.querySelector('h2')?.textContent).toBe(s.steps[stage].title);
-      expect(section?.querySelector('p')?.textContent).toBe(visibleGuideText({ text: s.steps[stage].body }));
+      expect(section?.querySelector('h3')?.textContent).toBe(s.steps[stage].title);
+      expect(section?.querySelector('p:not(.group-preparation)')?.textContent).toBe(visibleGuideText({ text: s.steps[stage].body }));
       const scene = section?.querySelector(`[data-testid="inheritance-step-${stage}"]`);
       expect(scene?.getAttribute('data-docs-animation')).toBe(`inheritance-${stage}`);
       expect(scene?.querySelector('[data-testid="inheritance-camera-canvas"]')).not.toBeNull();
       expect(section?.querySelector('figcaption')?.textContent).toBe(visibleGuideText({ text: s.steps[stage].caption }));
     }
-    expect(article?.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/models/ollama/`);
+    const groupPreparation = sections[1]?.querySelector('.group-preparation');
+    expect(groupPreparation?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/chat/groups/`);
+    expect(groupPreparation?.textContent).toBe(`${s.groupPreparation.before}${s.groupsLink}${s.groupPreparation.after}`);
+    expect(sections[0]?.querySelector('.group-preparation')).toBeNull();
+    expect([...(article?.querySelectorAll('[data-docs-related-guide] a') ?? [])].map(link => link.getAttribute('href'))).toEqual([
+      `/docs/${locale}/chat/groups/`, `/docs/${locale}/models/ollama/`,
+    ]);
     expect(article?.querySelectorAll('script, [data-docs-island]')).toHaveLength(0);
+  });
+
+  it.each([
+    { locale: 'en', copy: en.concept.diagram },
+    { locale: 'ja', copy: ja.concept.diagram },
+  ])('shows shared values, propagation, group values, and a chat-only model in %s', async ({ copy }) => {
+    const html = await renderToString(createSSRApp({ render: () => h(SettingsInheritanceDiagram, { copy }) }));
+    using page = parsePage({ html });
+    const diagram = page.document.querySelector('[data-testid="inheritance-concept"]');
+    const phase = (id: keyof typeof copy.phases) => diagram?.querySelector(`[data-testid="inheritance-concept-${id}"]`);
+    const node = (id: keyof typeof copy.phases, slot: keyof typeof copy.nodes) => phase(id)?.querySelector(`[data-testid="inheritance-node-${id}-${slot}"]`);
+    expect([...(diagram?.querySelectorAll('.phase') ?? [])].map(scene => scene.querySelector('.phase-title')?.textContent)).toEqual([
+      copy.phases.shared, copy.phases.globalChange, copy.phases.groupChange, copy.phases.chatChange,
+    ]);
+    expect(node('shared', 'chatA')?.textContent).toContain(copy.sources.global);
+    expect(node('globalChange', 'chatB')?.textContent).toContain(copy.models.a2);
+    expect(node('groupChange', 'chatA')?.textContent).toContain(copy.models.b1);
+    const finalChat = node('chatChange', 'chatB');
+    const finalRows = finalChat?.querySelectorAll('.setting-row');
+    expect(finalRows?.[0]?.textContent).toContain(copy.endpoints.b);
+    expect(finalRows?.[0]?.textContent).toContain(copy.sources.group);
+    expect(finalRows?.[1]?.textContent).toContain(copy.models.b2);
+    expect(finalRows?.[1]?.textContent).toContain(copy.sources.here);
+    expect(node('chatChange', 'chatA')?.textContent).toContain(copy.models.b1);
+    expect(diagram?.querySelector('button, input, select, script')).toBeNull();
+  });
+
+  it.each([
+    { file: '../site/demos/SettingsInheritanceDiagram.vue', completed: '.inheritance-diagram .phase-chatChange' },
+    { file: '../site/demos/SettingsInheritanceStep.vue', completed: '.stage-reset .scene-canvas' },
+  ])('keeps pause rules attached to the completed $file scene after scoped CSS compilation', ({ file, completed }) => {
+    const filename = new URL(file, import.meta.url);
+    const { descriptor, errors } = parse(readFileSync(filename, 'utf8'), { filename: filename.pathname });
+    expect(errors).toHaveLength(0);
+    const style = descriptor.styles[0];
+    if (!style) throw new Error(`Missing style block in ${file}`);
+    const compiled = compileStyle({ source: style.content, filename: filename.pathname, id: 'data-v-test', scoped: true });
+    expect(compiled.errors).toHaveLength(0);
+    expect(compiled.code).toContain(`html:has(#docs-pause-motion:checked) ${completed}`);
+    expect(compiled.code).not.toMatch(/html:has\(#docs-pause-motion:checked\)\s*\{/);
   });
 
   it.each([

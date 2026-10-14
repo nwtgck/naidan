@@ -20,9 +20,9 @@ describe('Naidan RPC guide', () => {
     expect(article?.querySelector('h1')?.textContent).toBe(copy.title);
     const launch = article?.querySelector<HTMLAnchorElement>('.app-entry-intro a[data-docs-app-entry-path]');
     expect(launch?.getAttribute('href')).toBe('https://naidan.nwtgck.org/#/');
-    expect(launch?.textContent).toBe('/#/');
+    expect(launch?.textContent).toBe('Naidan');
     expect(launch?.querySelector('[data-docs-external-icon], .sr-only')).toBeNull();
-    expect(article?.querySelector('.app-entry-intro')?.textContent).toBe(`${copy.launch.before}/#/${copy.launch.after}`);
+    expect(article?.querySelector('.app-entry-intro')?.textContent).toBe(`${copy.launch.before}Naidan${copy.launch.after}`);
     const hostedExample = article?.querySelector('.hosted-example');
     expect(hostedExample?.textContent).toContain(copy.hostedExample.body);
     expect(hostedExample?.querySelector('[data-docs-external]')?.getAttribute('href')).toBe('https://naidan.pages.dev/');

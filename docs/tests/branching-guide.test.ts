@@ -17,7 +17,7 @@ describe('conversation branching guide', () => {
     using page = parsePage({ html });
     const article = page.document.querySelector('[data-testid="docs-branching"]');
     if (!article) throw new Error('Missing branching guide');
-    expect(article.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('/#/');
+    expect(article.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('Naidan');
     expect(article.querySelector('.app-entry-intro a[href] + a')?.getAttribute('href')).toBe(`/docs/${locale}/models/in-browser/`);
     const labels = [...article.querySelectorAll('.ui-label')].map(element => element.textContent);
     for (const expected of [copy.demo.ui.sendAndBranch, copy.demo.ui.moreActions, copy.demo.ui.fork, copy.demo.controls.replay, update]) {

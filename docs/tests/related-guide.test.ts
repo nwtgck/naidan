@@ -63,14 +63,17 @@ describe('related guide links', () => {
     const links = [...(related?.querySelectorAll('a') ?? [])];
     expect(links.map(link => link.getAttribute('href'))).toEqual([
       `/docs/${locale}/run/offline/`,
+      `/docs/${locale}/run/hosted/`,
       `/docs/${locale}/work/app-permissions/`,
       `/docs/${locale}/work/boundary/`,
     ]);
     expect(links[0]?.textContent).toContain(copy.offlineGuideTitle);
     expect(links[0]?.textContent).toContain(copy.offlineGuideDescription);
-    expect(links[1]?.textContent).toContain(copy.permissionsGuideTitle);
-    expect(links[1]?.textContent).toContain(copy.permissionsGuideDescription);
-    expect(links[2]?.textContent).toContain(copy.next);
-    expect(links[2]?.textContent).toContain(copy.nextDescription);
+    expect(links[1]?.textContent).toContain(copy.hostedGuideTitle);
+    expect(links[1]?.textContent).toContain(copy.hostedGuideDescription);
+    expect(links[2]?.textContent).toContain(copy.permissionsGuideTitle);
+    expect(links[2]?.textContent).toContain(copy.permissionsGuideDescription);
+    expect(links[3]?.textContent).toContain(copy.next);
+    expect(links[3]?.textContent).toContain(copy.nextDescription);
   });
 });

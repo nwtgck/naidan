@@ -24,6 +24,13 @@ export const strings = {
       "body": "Use a supported in-browser model or connect an engine such as Ollama or llama.cpp server. Fetching model files may need a connection. A local inference server runs separately with its own process permissions.",
     }
   ],
+  modelGuides: {
+    before: 'After opening Naidan, follow ',
+    browser: 'the in-browser model guide',
+    middle: ' for a GGUF or another browser model, or ',
+    engine: 'the local engine guide',
+    after: ' to connect a separate inference server.',
+  },
   "modesTitle": "What “no server” means here",
   "modes": [
     {
@@ -53,6 +60,8 @@ export const strings = {
   nextDescription: 'See where browser permissions stop and which data a local model can use.',
   permissionsGuideTitle: 'Compare app access on your device',
   permissionsGuideDescription: 'See how web, desktop, command-line and mobile apps differ in what they can access.',
-  offlineGuideTitle: 'Use the hosted app offline',
+  offlineGuideTitle: 'Use Naidan offline as a PWA',
   offlineGuideDescription: 'Prepare the hosted PWA and a browser-run model before disconnecting.',
+  hostedGuideTitle: 'Serve the Hosted ZIP yourself',
+  hostedGuideDescription: 'Use your own static HTTP server when you want a normal web origin.',
 };

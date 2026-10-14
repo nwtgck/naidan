@@ -27,6 +27,8 @@ export const strings = {
   },
   switching: 'それぞれの版はオリジンが異なるため、ブラウザに保存した会話は切り替え先に自動表示されません。以前の会話を使う場合は、ZIPの書き出しと読み込みを行います。',
   backupLink: '会話データをバックアップ・復元する',
+  deploymentPolicy: 'ローカルのみ版とCurated版の公開時には、GitHub Actionsが版ごとのCSPを_headersファイルに書き込み、サイトとともにCloudflare Pagesへデプロイします。Cloudflare PagesはCSPをHTTPレスポンスヘッダーで返し、ブラウザが適用します。実際に届いたヘッダーは後述の手順で確認でき、設定の元となる手順も公開されています。',
+  deploymentSourceLink: 'デプロイの設定を見る',
   diagram: {
     title: '各ページの接続先と制限',
     page: 'ブラウザのページ',
@@ -52,7 +54,7 @@ export const strings = {
   localGuideLink: 'ローカルAIサーバーへの接続手順を見る',
   scopeTitle: '何を制限するのか',
   scope: 'ページのCSPにあるconnect-srcは、fetchやXMLHttpRequestなどを使うブラウザからのAPI通信先を制限します。スクリプトや画像などには別のCSP指示が適用されます。Hugging Faceなどの外部サービスからモデルを直接取得する通信はローカルのみ版の許可先にないため、必要な機能は失敗する場合があります。',
-  outsideScope: 'ローカルのみ版のサイト自体はインターネット経由で開きます。また、ローカルAIサーバーは独立したプロセスで、独自の権限や通信があります。ページのCSPはそのプロセスを制御しません。Naidan内の接続先設定を変えても、ブラウザが許可する先は増えません。',
+  outsideScope: 'ローカルのみ版の初回アクセスや、未保存のアプリファイルの取得には通信が必要です。このブラウザでPWAのアプリファイルを準備済みなら、同じアドレスからNaidanの画面をオフラインでも開けます。ローカルAIサーバーは独立したプロセスで、独自の権限や通信があります。ページのCSPはそのプロセスを制御しません。Naidan内の接続先設定を変えても、ブラウザが許可する先は増えません。',
   checkTitle: 'ブラウザで制限と実際の通信を確認する',
   checkSteps: [
     {
