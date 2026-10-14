@@ -27,6 +27,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2>{{ s.steps.enable.title }}</h2>
       <p><UiText :text="s.steps.enable.body" /></p>
       <figure class="guide-figure"><WikipediaSettingsStep stage="enabled" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.enable.caption" /></figcaption></figure>
+      <p><UiText :text="s.steps.enable.sysfs.before" /><a :href="docsHref({ locale, page: 'work/wesh-sysfs' })">{{ s.steps.enable.sysfs.link }}</a><UiText :text="s.steps.enable.sysfs.after" /></p>
     </section>
 
     <section class="walkthrough-step">

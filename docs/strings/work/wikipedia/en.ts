@@ -11,8 +11,9 @@ export const strings = {
     },
     enable: {
       title: '2. Turn on Wikipedia',
-      body: 'Turn on ［Wikipedia］, then close the tool sheet. Naidan also enables ［Shell］ and its Naidan file mount so the model can read parts of a long article saved in the browser. The ［Current chat］ choice limits chat history only: Shell can also list and read every saved binary file shown in Settings ［Files］, including files from other chats. It does not select a folder on your computer. With tool config persistence off, this temporary change lasts until you reload or close this page.',
+      body: 'Turn on ［Wikipedia］, then close the tool sheet. Naidan also enables ［Shell］ and its Naidan file mount so the model can read parts of a long article saved in the browser. This also lets Shell read saved files from other chats, even when ［Current chat］ is selected. It does not select a folder on your computer. With tool config persistence off, this temporary change lasts until you reload or close this page.',
       caption: 'Wikipedia and its required Shell path become active together.',
+      sysfs: { before: 'For details about what Shell can read, see ', link: 'how to read chats and saved files through Wesh sysfs', after: '.' },
     },
     search: {
       title: '3. Ask for a Wikipedia lookup',
@@ -27,7 +28,7 @@ export const strings = {
   },
   result: {
     title: 'What the model receives',
-    body: 'Search returns titles and page IDs, not article text. The page tool returns a plain-text extract. If the extract is longer than 80 lines, Naidan saves it in browser storage and gives the model a /sys/fs/naidan path; Shell can read the part it needs. The model’s answer is based on the result it uses, so check the source article if accuracy matters.',
+    body: 'Search returns titles and page IDs, not article text. The page tool returns a plain-text extract. For a long extract, Naidan saves the text in browser storage so Shell can read the part the model needs. The model’s answer is based on the result it uses, so check the source article if accuracy matters.',
     help: 'If there is no tool call, confirm Wikipedia is on in this chat and choose a model that supports tool calls. An enabled tool cannot force every model to use it.',
   },
   privacy: {

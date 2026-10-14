@@ -28,7 +28,8 @@ export const strings = {
   ],
   "permissions": {
     "title": "Reading a file and changing it are separate permissions",
-    "body": "A read-only mount is useful for reference material and project inspection. Allow writing only for a mounted file or folder you intend to edit. Folder selection, browser permissions and the effective mount configuration together determine access to device folders. Separately, when ［Shell］ and /sys/fs/naidan are mounted, Shell can list and read every saved binary file shown in Settings ［Files］, including files from other chats. ［Current chat］ limits chat history there, not those saved files; it does not open unselected device folders.",
+    "body": "A read-only mount is useful for reference material and project inspection. Allow writing only for a mounted file or folder you intend to edit. Folder selection, browser permissions and the effective mount configuration together determine access to device folders.",
+    "sysfs": { "before": "If the Naidan file mount is on, Shell can also read saved files from other chats. See ", "link": "how to read chats and saved files through Wesh sysfs", "after": "." },
   },
   "checklist": [
     {

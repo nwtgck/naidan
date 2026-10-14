@@ -28,6 +28,7 @@ describe('Wikipedia chat guide', () => {
     expect(steps[1]?.textContent).toContain('/sys/fs/naidan');
     expect(steps[1]?.textContent).toContain(s.demo.currentChat);
     expect(steps[1]?.textContent).toContain(s.demo.shell);
+    expect(steps[1]?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/work/wesh-sysfs/`);
     expect(steps[2]?.querySelector('.approval-preview')?.textContent).toContain(s.demo.searchTerm);
     expect(steps[3]?.querySelector('.approval-preview')?.textContent).toContain(s.demo.pageId);
     expect(steps[3]?.querySelector('.user-message')?.textContent).toBe(s.demo.prompt);

@@ -15,6 +15,7 @@ export type CompactGuideMessages = typeof import('../strings/chat/compact/en').s
 export type GroupsGuideMessages = typeof import('../strings/chat/groups/en').strings;
 export type SuperEditMessages = typeof import('../strings/chat/super-edit/en').strings;
 export type ShellMessages = typeof import('../strings/work/browser-shell/en').strings;
+export type WeshSysfsMessages = typeof import('../strings/work/wesh-sysfs/en').strings;
 export type WikipediaMessages = typeof import('../strings/work/wikipedia/en').strings;
 export type StandaloneMessages = typeof import('../strings/run/standalone/en').strings;
 export type OfflineGuideMessages = typeof import('../strings/run/offline/en').strings;

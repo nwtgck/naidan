@@ -30,7 +30,7 @@ describe('Files and folders Settings guide', () => {
     expect(article?.querySelector('[data-testid="files-settings-step-files"]')?.textContent).toContain(s.demo.filesHeading);
     expect(article?.querySelector('[data-testid="files-settings-step-files"] .files-focus')?.textContent).toContain(s.demo.fileName);
     expect(article?.querySelector('[data-testid="files-settings-step-files"] .files-focus')?.textContent).toContain(s.demo.download);
-    expect(article?.querySelector('#files-settings-files')?.parentElement?.textContent).toContain('/sys/fs/naidan');
+    expect(article?.querySelector('#files-settings-files')?.parentElement?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/work/wesh-sysfs/`);
     expect(article?.querySelector('[data-testid="files-settings-step-manage"]')?.textContent).toContain(s.demo.inUse);
     expect(article?.querySelector('[data-testid="files-settings-step-copy"]')?.textContent).toContain(s.demo.copied);
     expect(article?.querySelector('[data-testid="files-settings-step-manage"]')?.textContent).toContain(s.demo.copied);

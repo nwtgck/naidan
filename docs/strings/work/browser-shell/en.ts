@@ -55,8 +55,9 @@ export const strings = {
     },
     "enable": {
       "title": "2. Turn on Shell",
-      "body": "In the tool settings, find ［Shell］ (［Shell in browser］) and turn its switch on. If you already attached a folder and Shell is on, leave it on. ［Shell settings］ appears beneath the tools. The ordinary chat switch leaves the /sys/fs/naidan mount off by default. Turning on ［Mount］ /sys/fs/naidan exposes chat files and every saved binary file shown in Settings ［Files］ to Shell, including files from other chats; ［Current chat］ limits chat history only. It does not grant access to unselected folders on your device.",
+      "body": "In the tool settings, find ［Shell］ (［Shell in browser］) and turn its switch on. If you already attached a folder and Shell is on, leave it on. ［Shell settings］ appears beneath the tools. The ordinary chat switch leaves the Naidan file mount off by default.",
       "caption": "The ［Shell］ switch changes from ［OFF］ to ［ON］ in this Chat.",
+      "sysfs": { "before": "For the setup and access scope, see ", "link": "how to read chats and saved files through Wesh sysfs", "after": "." },
     },
     "use": {
       "before": "To work with a folder on your device, open the attachment menu beside ［Tools］ and choose ［Folder (copy)］ or ［Folder (link)］. See ",
@@ -89,10 +90,6 @@ export const strings = {
     {
       "title": "Check the folders Shell can use",
       "body": "Shell uses the Chat’s workspace and folders made available to it. Read-only access is enough for searches. Creating a file, as in the example, requires write access to its folder. Shell calls use those access settings without a separate approval prompt for every command.",
-    },
-    {
-      "title": "Let the AI read the conversation as files",
-      "body": "When you mount /sys/fs/naidan, Naidan projects Chat information as read-only Markdown and JSON files. Choose the current Chat, its Chat Group or the main Chat collection to control which chat history appears. The same mount also exposes every saved binary file shown in Settings ［Files］ for listing and reading, regardless of that chat-history choice.",
     }
   ],
   "commandsTitle": "Commands available inside the browser",
@@ -130,8 +127,6 @@ export const strings = {
     },
   ],
   "commandsHelp": "See the full command list and command-specific options:",
-  "exampleTitle": "Inspect the current Chat",
-  "exampleNote": "These commands read the current Chat when that scope is enabled. The metadata file describes the Chat; content-md and branches expose its messages and paths. This example does not modify data.",
   "next": "Choose which files and folders AI can read or edit",
   nextDescription: 'Choose the folder a browser tool may read and the changes it may make.',
   relatedWikipedia: {

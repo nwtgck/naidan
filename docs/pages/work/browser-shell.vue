@@ -8,9 +8,6 @@ import { docsHref, type DocsLocale } from '../../site/routes';
 import type { CommonMessages, ShellMessages } from '../../site/messages';
 
 defineProps<{ s: ShellMessages; locale: DocsLocale; common: CommonMessages }>();
-const example = `\
-ls /sys/fs/naidan/current-chat
-cat /sys/fs/naidan/current-chat/metadata.md`;
 
 
 defineExpose({
@@ -47,6 +44,7 @@ defineExpose({
         <h3>{{ s.walkthrough.enable.title }}</h3>
         <p><UiText :text="s.walkthrough.enable.body" /></p>
         <figure class="guide-figure"><ShellEnableStep stage="enable" :copy="s.walkthrough.demo" /><figcaption class="caption"><UiText :text="s.walkthrough.enable.caption" /></figcaption></figure>
+        <p><UiText :text="s.walkthrough.enable.sysfs.before" /><a :href="docsHref({ locale, page: 'work/wesh-sysfs' })">{{ s.walkthrough.enable.sysfs.link }}</a><UiText :text="s.walkthrough.enable.sysfs.after" /></p>
       </section>
       <p><UiText :text="s.walkthrough.use.before" /><a :href="docsHref({ locale, page: 'files/privacy' })">{{ s.walkthrough.use.filesLink }}</a><UiText :text="s.walkthrough.use.after" /></p>
     </section>
@@ -69,8 +67,6 @@ defineExpose({
       </ul>
       <p class="caption">{{ s.commandsHelp }} <code>help</code> · <code>help grep</code> · <code>grep --help</code></p>
     </section>
-    <h2>{{ s.exampleTitle }}</h2><pre lang="en"><code>{{ example }}</code></pre>
-    <p class="caption">{{ s.exampleNote }}</p>
     <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[
       { page: 'files/privacy', title: s.next, description: s.nextDescription },
       { page: 'work/wikipedia', title: s.relatedWikipedia.title, description: s.relatedWikipedia.description },

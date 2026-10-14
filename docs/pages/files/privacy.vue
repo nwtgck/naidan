@@ -45,6 +45,7 @@ defineExpose({
     </div>
     <h2>{{ s.permissions.title }}</h2>
     <p><UiText :text="s.permissions.body" /></p>
+    <p><UiText :text="s.permissions.sysfs.before" /><a :href="docsHref({ locale, page: 'work/wesh-sysfs' })">{{ s.permissions.sysfs.link }}</a><UiText :text="s.permissions.sysfs.after" /></p>
     <div class="decision-list"><section v-for="(item, index) in s.checklist" :key="item.title"><span aria-hidden="true">0{{ index + 1 }}</span><div><h3>{{ item.title }}</h3><p>{{ item.body }}</p></div></section></div>
     <h2>{{ s.stepsTitle }}</h2>
     <ol>

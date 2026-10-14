@@ -33,6 +33,7 @@ export const DOCS_PAGES = [
   { id: 'images/create', path: 'images/create/', source: 'pages/images/create.vue' },
   { id: 'audio/speech', path: 'audio/speech/', source: 'pages/audio/speech.vue' },
   { id: 'work/browser-shell', path: 'work/browser-shell/', source: 'pages/work/browser-shell.vue' },
+  { id: 'work/wesh-sysfs', path: 'work/wesh-sysfs/', source: 'pages/work/wesh-sysfs.vue' },
   { id: 'work/wikipedia', path: 'work/wikipedia/', source: 'pages/work/wikipedia.vue' },
 ] as const;
 export type DocsPageId = typeof DOCS_PAGES[number]['id'];

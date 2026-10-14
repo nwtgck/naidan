@@ -3,6 +3,7 @@ import AppEntryLink from '../../site/AppEntryLink.vue';
 import FilesSettingsStep from '../../site/demos/FilesSettingsStep.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
 import UiText from '../../site/UiText.vue';
+import { docsHref } from '../../site/routes';
 import type { DocsLocale } from '../../site/routes';
 import type { CommonMessages, FilesSettingsGuideMessages } from '../../site/messages';
 
@@ -24,6 +25,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <FilesSettingsStep :stage="stage" :copy="s.demo" />
         <figcaption class="caption"><UiText :text="s.steps[stage].caption" /></figcaption>
       </figure>
+      <p v-if="stage === 'files'"><UiText :text="s.steps.files.sysfs.before" /><a :href="docsHref({ locale, page: 'work/wesh-sysfs' })">{{ s.steps.files.sysfs.link }}</a><UiText :text="s.steps.files.sysfs.after" /></p>
     </section>
 
     <section class="guide-scope" aria-labelledby="files-settings-scope">

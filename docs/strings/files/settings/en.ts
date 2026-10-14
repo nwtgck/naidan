@@ -14,8 +14,9 @@ export const strings = {
     },
     files: {
       title: '2. Find a saved file',
-      body: 'Files saved with chat attachments, such as an image you sent, can appear here, including files from other chats. Inside ［Files］, the saved-file list is headed ［Binary Objects］. Search by name, ID, or file type; select a row to preview it. Use the download icon to keep a copy outside Naidan. You can also sort the columns, switch between list and grid, refresh the list, or delete a file after confirming. To add an image for a conversation, attach it in the chat and send the message. If ［Shell］ and its /sys/fs/naidan mount are enabled, Shell can list and read every saved binary file shown in this ［Files］ tab, even when chat visibility is ［Current chat］. That setting limits chat history, not these saved files.',
+      body: 'Files saved with chat attachments, such as an image you sent, can appear here, including files from other chats. Inside ［Files］, the saved-file list is headed ［Binary Objects］. Search by name, ID, or file type; select a row to preview it. Use the download icon to keep a copy outside Naidan. You can also sort the columns, switch between list and grid, refresh the list, or delete a file after confirming. To add an image for a conversation, attach it in the chat and send the message.',
       caption: 'The search narrows the saved-file list. A matching row remains available to preview or download.',
+      sysfs: { before: 'Shell can also read these saved files when the Naidan file mount is on. See ', link: 'how to read chats and saved files through Wesh sysfs', after: '.' },
     },
     choose: {
       title: '3. Choose a linked folder or a browser copy',
@@ -34,7 +35,7 @@ export const strings = {
     },
   },
   afterTitle: 'Before asking AI to work with files',
-  after: 'For a folder, check the global mount, the chat’s effective mounts, and whether the Shell tool is enabled. A linked folder needs browser permission as well. Shell access to saved files through /sys/fs/naidan does not grant access to unselected folders on your device. Delete a copied folder entry only when you no longer need its browser-held copy; removing a linked entry leaves the original device files untouched.',
+  after: 'For a folder, check the global mount, the chat’s effective mounts, and whether the Shell tool is enabled. A linked folder needs browser permission as well. Delete a copied folder entry only when you no longer need its browser-held copy; removing a linked entry leaves the original device files untouched.',
   relatedPrivacy: 'Choose which files and folders AI can read or edit',
   relatedPrivacyDescription: 'Compare copied and linked folders and decide where edits should go.',
   relatedShell: 'Use the browser Shell with working folders',

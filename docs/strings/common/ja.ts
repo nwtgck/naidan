@@ -59,6 +59,7 @@ export const strings = {
       'work/boundary': 'ブラウザの権限とローカルAI',
       'work/local-only': '通信先を制限する',
       'work/browser-shell': 'ブラウザ内シェルでファイルを扱う',
+      'work/wesh-sysfs': 'Weshのsysfsで会話と保存済みファイルを読む',
       'work/wikipedia': 'Wikipediaを検索',
       'chat/branching': '会話を分岐・編集する',
       'chat/compact': '長い会話を要約して続ける',

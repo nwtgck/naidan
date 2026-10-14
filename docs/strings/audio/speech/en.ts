@@ -1,7 +1,7 @@
 export const strings = {
   title: 'Generate speech on your device: Keep your text local',
   description: 'Use a local speech model to generate audio without sending text or reference voice to an inference server, then save the finished WAV.',
-  intro: '［Audio generation］ uses a local speech model to turn your text into a WAV on this device. The text you enter, and any optional reference audio, stay on your device during generation. Once the app, runtime and model files are available, no inference-server connection is needed; downloading missing files or updates still uses the network.',
+  intro: '［Audio generation］ uses a local speech model to turn your text into a WAV on this device. The text you enter, and any reference audio you provide, stay on your device during generation. Once the app, runtime and model files are available, no inference-server connection is needed; downloading missing files or updates still uses the network.',
   launch: { before: 'First, open ', after: ' to start in the audio workspace.' },
   steps: {
     open: {
@@ -11,8 +11,8 @@ export const strings = {
     },
     text: {
       title: '2. Enter text and choose its language',
-      body: 'Choose an ［Audio model］, enter ［Text to speak］, and set ［Language］ for the speech you want. The initial choice follows Naidan’s interface language; it does not detect the language of your text. Qwen’s ［Model default］ means English, while Pocket TTS language is determined by its weights. Reference audio is optional for a first result.',
-      caption: 'The model, input text and language are the main controls for a first WAV.',
+      body: 'Choose an ［Audio model］, enter ［Text to speak］, and set ［Language］ for the speech you want. The initial choice follows Naidan’s interface language; it does not detect the language of your text. Qwen’s ［Model default］ means English, while Pocket TTS language is determined by its weights. Qwen3-TTS Base can generate without reference audio; Pocket TTS requires a reference voice.',
+      caption: 'Choose a model, enter text and set a language. Pocket TTS also needs a reference voice.',
     },
     generate: {
       title: '3. Generate and follow progress',
@@ -25,8 +25,8 @@ export const strings = {
       caption: 'The finished result has a player and an explicit ［Save WAV］ action.',
     },
   },
-  referenceTitle: 'If you want to use a reference voice',
-  reference: 'The reference section accepts a local file, or a microphone recording when your browser and permissions allow it. A page-local reference library can keep several clips selected, up to 30 seconds total selected audio. The reference clips are not copied into generated-result history. The model must support the reference voice path; selection alone does not guarantee a particular voice or quality.',
+  referenceTitle: 'Add a reference voice when needed',
+  reference: 'Pocket TTS needs a reference voice; Qwen3-TTS Base can use one but does not require it. The reference section accepts a local file, or a microphone recording when your browser and permissions allow it. A page-local reference library can keep several clips selected, up to 30 seconds total selected audio. The reference clips are not copied into generated-result history. The model must support the reference voice path; selection alone does not guarantee a particular voice or quality.',
   readingTitle: 'Chat Read aloud is a separate feature',
   reading: '［Read aloud］ on a chat answer uses the browser’s Web Speech API. It does not create a WAV in this workspace. Where that voice is processed depends on the browser, operating system and selected voice, so its offline behavior is different from this local model generation.',
   demo: {

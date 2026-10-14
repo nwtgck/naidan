@@ -39,9 +39,11 @@ describe('shell guide tool-call demonstration', () => {
     expect(open?.querySelector('[data-testid="docs-shell-tools-trigger"]')).not.toBeNull();
     expect(enable?.querySelector('[data-testid="docs-shell-switch"]')?.textContent).toContain(strings.walkthrough.demo.on);
     expect(enable?.querySelector('[data-testid="docs-shell-settings-result"]')?.textContent).toContain(strings.walkthrough.demo.shellSettings);
-    expect(walkthrough?.textContent).toContain('/sys/fs/naidan');
+    expect(enable?.textContent).toContain('/sys/fs/naidan');
     expect(walkthrough?.querySelectorAll('.ui-label').length).toBeGreaterThan(4);
-    expect(walkthrough?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/files/privacy/`);
+    expect([...walkthrough?.querySelectorAll('a') ?? []].map(link => link.getAttribute('href'))).toEqual([
+      `/docs/${locale}/work/wesh-sysfs/`, `/docs/${locale}/files/privacy/`,
+    ]);
     expect(walkthrough?.textContent).toContain(strings.walkthrough.use.filesLink);
     expect(walkthrough?.querySelector('button, input, textarea, [tabindex], script')).toBeNull();
   });

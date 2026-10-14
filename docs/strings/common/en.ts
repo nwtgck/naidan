@@ -60,6 +60,7 @@ export const strings = {
       'work/boundary': 'Browser permissions and local AI',
       'work/local-only': 'Restrict external connections',
       'work/browser-shell': 'Work with files using a browser shell',
+      'work/wesh-sysfs': 'Read chats and saved files through Wesh sysfs',
       'work/wikipedia': 'Search Wikipedia',
       'chat/branching': 'Branch and edit conversations',
       'chat/compact': 'Continue a long conversation with a shorter context',
