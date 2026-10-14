@@ -13,7 +13,7 @@ const unsupportedStaticVueApis = new Set([
   'onBeforeMount', 'onMounted', 'onBeforeUpdate', 'onUpdated', 'onBeforeUnmount', 'onUnmounted',
   'onActivated', 'onDeactivated', 'onRenderTracked', 'onRenderTriggered',
   'watch', 'watchEffect', 'watchPostEffect', 'watchSyncEffect',
-  'h', 'createVNode', 'defineComponent',
+  'h', 'createVNode', 'defineComponent', 'Teleport', 'useTemplateRef',
 ]);
 
 function isStaticAuthoringFile({ filename }: { filename: string }): boolean {
@@ -59,16 +59,24 @@ function rejectUnsupportedStaticVueApi({ name, filename, script, ast, node }: {
   node: ts.Node;
 }): void {
   if (!unsupportedStaticVueApis.has(name)) return;
-  const reason = name.startsWith('watch')
-    ? `Vue ${name} is outside the supported static Docs script subset; its server execution does not provide browser reactivity.`
-    : ['h', 'createVNode', 'defineComponent'].includes(name)
-      ? `Vue ${name} is outside the supported static Docs script subset; render functions can hide inactive events.`
-      : `Vue ${name} is not called when a static Docs page is rendered.`;
-  const remedy = name.startsWith('watch')
-    ? 'Use computed for derived output, onServerPrefetch for async server data, or a registered island for browser updates.'
-    : ['h', 'createVNode', 'defineComponent'].includes(name)
-      ? 'Write static UI in an SFC template, and put interaction in a registered island.'
-      : 'Use computed or onServerPrefetch for server output, or move browser behavior into a registered island.';
+  const reason = name === 'Teleport'
+    ? 'Vue Teleport content is omitted from the static Docs page.'
+    : name === 'useTemplateRef'
+      ? 'Vue useTemplateRef has no DOM to reference in static Docs pages.'
+      : name.startsWith('watch')
+        ? `Vue ${name} is outside the supported static Docs script subset; its server execution does not provide browser reactivity.`
+        : ['h', 'createVNode', 'defineComponent'].includes(name)
+          ? `Vue ${name} is outside the supported static Docs script subset; render functions can hide inactive events.`
+          : `Vue ${name} is not called when a static Docs page is rendered.`;
+  const remedy = name === 'Teleport'
+    ? 'Render the content inline.'
+    : name === 'useTemplateRef'
+      ? 'Use server-rendered data, or put DOM access in a registered island.'
+      : name.startsWith('watch')
+        ? 'Use computed for derived output, onServerPrefetch for async server data, or a registered island for browser updates.'
+        : ['h', 'createVNode', 'defineComponent'].includes(name)
+          ? 'Write static UI in an SFC template, and put interaction in a registered island.'
+          : 'Use computed or onServerPrefetch for server output, or move browser behavior into a registered island.';
   staticScriptError({ filename, script, ast, node, reason, remedy });
 }
 

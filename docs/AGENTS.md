@@ -38,6 +38,12 @@ data, and a registered island for browser behavior. The only supported
 browser client modules or private island helpers as values. These rules run in
 both development and production builds; development keeps static pages
 server-rendered instead of hydrating them as Vue applications.
+Static templates do not use Teleport, template refs, or custom directives:
+Teleport content is omitted from rendered pages, browser directive hooks do
+not run, and template refs remain unset without hydration. Render Teleport
+content inline; use supported Vue directives for static markup and a registered
+island for browser behavior. Static Vue value imports and re-exports also
+exclude Teleport and useTemplateRef.
 
 For an interactive island, keep its `type`-alias `JsonObject` payload and
 boundary parser in `islands/<id>/contracts.ts`. Register its spec there, and

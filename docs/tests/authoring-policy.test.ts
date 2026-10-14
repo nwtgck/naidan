@@ -1,11 +1,13 @@
 import path from 'node:path';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
-import { createServer } from 'vite';
+import { build, createServer } from 'vite';
 import { validateDocsAuthoringSource } from '../build/authoring-policy';
+import { docsBuildConfig } from '../build/production';
 import { validateStaticComponent } from '../build/source-policy';
 import { createDocsModulesPlugin } from '../build/virtual-modules';
+import { createSiteFixture, startSiteDev } from './site.test-support';
 
 const root = '/docs';
 
@@ -238,6 +240,93 @@ onErrorCaptured(() => false);
     await expect(validate({ filename: 'site/helper.ts', source: 'function defineOptions(value: object) { return value; } defineOptions({ mounted: true });' }))
       .resolves.toBeUndefined();
   });
+
+  it('rejects Teleport, custom directives, and template refs only in static templates', () => {
+    for (const tag of ['Teleport', 'teleport']) {
+      expect(() => validateStaticComponent({
+        source: `\
+<template>
+  <${tag} to="body"><p>Missing content</p></${tag}>
+</template>`,
+        filename: 'pages/test/index.vue',
+        mode: 'static',
+      })).toThrow(/pages\/test\/index\.vue:2:3: Teleport content is omitted/u);
+    }
+    expect(() => validateStaticComponent({
+      source: `\
+<script setup lang="ts">const vFocus = { mounted(el: HTMLElement) { el.focus(); } };</script>
+<template>
+  <input v-focus>
+</template>`,
+      filename: 'pages/test/index.vue',
+      mode: 'static',
+    })).toThrow(/pages\/test\/index\.vue:3:10: Directive v-focus is unsupported/u);
+    for (const binding of ['ref="element"', ':ref="element"', 'v-bind:ref="element"']) {
+      expect(() => validateStaticComponent({
+        source: `\
+<template>
+  <p ${binding}>Heading</p>
+</template>`,
+        filename: 'pages/test/index.vue',
+        mode: 'static',
+      })).toThrow(/pages\/test\/index\.vue:2:6: Template refs are not populated/u);
+    }
+    expect(() => validateStaticComponent({
+      source: '<template><div v-if="true" v-show="true" v-text="\'Static\'" /></template>',
+      filename: 'pages/test/index.vue',
+      mode: 'static',
+    })).not.toThrow();
+    expect(() => validateStaticComponent({
+      source: '<template><Teleport to="body"><input v-focus ref="element"></Teleport></template>',
+      filename: 'islands/branching/BranchingDemo.vue',
+      mode: 'island',
+    })).not.toThrow();
+  });
+
+  it('rejects Teleport and useTemplateRef value imports and re-exports in static authoring', async () => {
+    for (const name of ['Teleport', 'useTemplateRef']) {
+      await expect(validate({ filename: 'site/helper.ts', source: `import { ${name} as alias } from 'vue';` }))
+        .rejects.toThrow(new RegExp(`site/helper\\.ts:1:\\d+: Vue ${name} `, 'u'));
+      await expect(validate({ filename: 'site/helper.ts', source: `export { ${name} as alias } from 'vue';` }))
+        .rejects.toThrow(new RegExp(`site/helper\\.ts:1:\\d+: Vue ${name} `, 'u'));
+      await expect(validate({ filename: 'site/helper.ts', source: `import type { ${name} } from 'vue';` }))
+        .resolves.toBeUndefined();
+    }
+    await expect(validate({
+      filename: 'islands/branching/BranchingDemo.vue',
+      source: '<script setup lang="ts">import { Teleport, useTemplateRef } from "vue";</script><template><Teleport to="body"><p>Island</p></Teleport></template>',
+    })).resolves.toBeUndefined();
+  });
+
+  it.each([
+    { name: 'Teleport', script: '', template: '<Teleport to="body"><p>Lost text</p></Teleport>', reason: 'Teleport content is omitted' },
+    { name: 'custom directive', script: 'const vFocus = { mounted(el: HTMLElement) { el.focus(); } };', template: '<input v-focus>', reason: 'Directive v-focus is unsupported' },
+    { name: 'template ref', script: "import { ref } from 'vue'; const element = ref<HTMLElement | null>(null);", template: '<p ref="element">Heading</p>', reason: 'Template refs are not populated' },
+  ])('rejects $name in production and shows a recoverable development error', async ({ script, template, reason }) => {
+    await using fixture = await createSiteFixture();
+    const file = path.join(fixture.docs, 'pages/file-access/index.vue');
+    const source = await readFile(file, 'utf8');
+    const invalid = source.replace('<script setup lang="ts">', `<script setup lang="ts">\n${script}`)
+      .replace('<template>', `<template>\n  ${template}`);
+    expect(invalid).not.toBe(source);
+    await writeFile(file, invalid);
+    await expect(build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' }))
+      .rejects.toThrow(reason);
+
+    await using dev = await startSiteDev({ root: fixture.root });
+    const failed = await dev.request({ url: '/docs/en/file-access/' });
+    expect(failed.status).toBe(500);
+    expect(failed.headers.get('content-type')).toContain('text/html');
+    const details = await failed.text();
+    expect(details).toContain('pages/file-access/index.vue');
+    expect(details).toContain(reason);
+    expect((await dev.request({ url: '/docs/en/chat-branching/' })).status).toBe(200);
+
+    await writeFile(file, source);
+    dev.server.watcher.emit('change', file);
+    await expect.poll(async () => (await dev.request({ url: '/docs/en/file-access/' })).status)
+      .toBe(200);
+  }, 60_000);
 
   it('rejects unsupported Vue script syntax and render functions only in static authoring', async () => {
     for (const source of [
