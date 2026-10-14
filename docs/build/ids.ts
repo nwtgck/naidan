@@ -1,7 +1,20 @@
 import type { DocsPageId } from '../site/routes';
+import { islandSpecs } from '../islands/registry';
+import type { DocsIslandId } from '../islands/registry';
 
 export const REGISTRY_ID = 'virtual:naidan-docs/registry';
-export const ISLAND_ENTRIES = { branching: 'islands/branching/client.ts', search: 'islands/search/client.ts', 'browser-ai-availability': 'islands/browser-ai-availability/client.ts' } as const;
+
+export function islandEntryId({ id }: { id: DocsIslandId }): string {
+  return `virtual:naidan-docs/island/${id}`;
+}
+
+export function islandDevHref({ id }: { id: DocsIslandId }): string {
+  return `/@id/__x00__${islandEntryId({ id })}`;
+}
+
+export const ISLAND_ENTRIES = Object.fromEntries(
+  Object.keys(islandSpecs).map(id => [id, `virtual:naidan-docs/island/${id}`]),
+) as Record<DocsIslandId, string>;
 export const APP_ENTRY_CLIENT = 'client/app-entry.ts';
 export const HOME_BRAND_CLIENT = 'client/home-brand.ts';
 

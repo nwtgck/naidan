@@ -1,4 +1,5 @@
 import type { BranchingCopy, ReplicaChromeCopy } from '../../site/messages';
+import { defineDocsIslandSpec } from '../spec';
 
 export type BranchingPayload = { copy: BranchingCopy; chrome: ReplicaChromeCopy };
 
@@ -41,3 +42,9 @@ export function parseBranchingPayload({ serialized }: { serialized: string }): B
   }
   return { copy: copy as BranchingCopy, chrome: chrome as ReplicaChromeCopy };
 }
+
+export const branchingSpec = defineDocsIslandSpec<BranchingPayload>({
+  id: 'branching',
+  parse: parseBranchingPayload,
+  start: 'interactive',
+});

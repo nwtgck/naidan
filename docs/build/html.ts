@@ -3,10 +3,8 @@ import { EXTERNAL_LINK_PATH, EXTERNAL_LINK_LABEL, isGitHubUrl } from '../site/ex
 import { DOCS_BASE, DOCS_LOCALES, DOCS_LOCALE_NAMES, docsHref } from '../site/routes';
 import { DOCS_ARTICLE_PREFETCH_ATTRIBUTE, isDocsArticleHref } from '../site/navigation-prefetch';
 import type { PageAssets, RenderedPage } from './contracts';
-import { ISLAND_ENTRIES } from './ids';
-import { parseBranchingPayload } from '../islands/branching/contracts';
-import { parseSearchPayload } from '../islands/search/contracts';
-import { parseBrowserAiAvailabilityPayload } from '../islands/browser-ai-availability/contracts';
+import { islandSpecs } from '../islands/registry';
+import type { DocsIslandId } from '../islands/registry';
 import { strings as entryEn } from '../strings/entry/en';
 import { strings as entryJa } from '../strings/entry/ja';
 import type { DocsLocale } from '../site/routes';
@@ -56,22 +54,26 @@ function appendBootstrap({ document, bootstrap }: { document: Document; bootstra
   document.head.append(script);
 }
 
-const islandPayloadParsers = { branching: parseBranchingPayload, search: parseSearchPayload, 'browser-ai-availability': parseBrowserAiAvailabilityPayload } satisfies Record<keyof typeof ISLAND_ENTRIES, ({ serialized }: { serialized: string }) => unknown>;
-
-function isIslandName(name: string): name is keyof typeof ISLAND_ENTRIES {
-  return Object.hasOwn(ISLAND_ENTRIES, name);
+function isIslandName(name: string): name is DocsIslandId {
+  return Object.hasOwn(islandSpecs, name);
 }
 
-export function findIslands({ body }: { body: string }): Array<keyof typeof ISLAND_ENTRIES> {
+export function findIslands({ body }: { body: string }): DocsIslandId[] {
   const fragment = JSDOM.fragment(body);
-  const result = new Set<keyof typeof ISLAND_ENTRIES>();
+  const ids = new Set<string>();
+  for (const element of fragment.querySelectorAll('[id]')) {
+    const id = element.id;
+    if (ids.has(id)) throw new Error(`Duplicate Docs HTML ID: ${id}`);
+    ids.add(id);
+  }
+  const result = new Set<DocsIslandId>();
   for (const element of fragment.querySelectorAll('[data-docs-island]')) {
     const name = element.getAttribute('data-docs-island');
     if (!name || !isIslandName(name)) throw new Error(`Unknown Docs island: ${String(name)}`);
     if (element.parentElement?.closest('[data-docs-island]')) throw new Error('Nested Docs islands are not supported');
     const serialized = element.getAttribute('data-docs-props');
     if (!serialized) throw new Error(`Missing props for Docs island ${name}`);
-    islandPayloadParsers[name]({ serialized });
+    islandSpecs[name].parse({ serialized });
     result.add(name);
   }
   return [...result];

@@ -5,7 +5,8 @@ import AppEntryLink from '../../site/AppEntryLink.vue';
 import ChromeModelFlow from '../../site/demos/ChromeModelFlow.vue';
 import BrowserProvidedSettingsStep from '../../site/demos/BrowserProvidedSettingsStep.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
-import BrowserAiAvailability from '../../islands/browser-ai-availability/BrowserAiAvailability.vue';
+import DocsIsland from '../../site/DocsIsland.vue';
+import { browserAiAvailabilityIsland } from '../../islands/browser-ai-availability/definition';
 import { checkerCopy } from '../../islands/browser-ai-availability/copy';
 import type { DocsLocale } from '../../site/routes';
 import type { BrowserProvidedGuideMessages, CommonMessages } from '../../site/messages';
@@ -24,9 +25,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <figure class="guide-figure"><ChromeModelFlow :copy="s.flow.demo" /><figcaption class="caption"><UiText :text="s.flow.caption" /></figcaption></figure>
     </section>
 
-    <div data-docs-island="browser-ai-availability" :data-docs-props="JSON.stringify({ copy: checkerCopy[locale] })">
-      <BrowserAiAvailability :copy="checkerCopy[locale]" />
-    </div>
+    <DocsIsland :entry="browserAiAvailabilityIsland({ copy: checkerCopy[locale] })" />
 
     <details class="requirements-details">
       <summary>{{ s.requirementsSummary }}</summary>

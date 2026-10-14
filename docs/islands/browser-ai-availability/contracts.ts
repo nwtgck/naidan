@@ -1,4 +1,5 @@
 import type { BrowserAiAvailabilityCopy } from '../../pages/endpoint-type-browser-provided-lm/strings/checker/en';
+import { defineDocsIslandSpec } from '../spec';
 
 export type BrowserAiAvailabilityPayload = { copy: BrowserAiAvailabilityCopy };
 
@@ -19,3 +20,9 @@ export function parseBrowserAiAvailabilityPayload({ serialized }: { serialized: 
   }
   return { copy: copy as BrowserAiAvailabilityCopy };
 }
+
+export const browserAiAvailabilitySpec = defineDocsIslandSpec<BrowserAiAvailabilityPayload>({
+  id: 'browser-ai-availability',
+  parse: parseBrowserAiAvailabilityPayload,
+  start: 'interactive',
+});

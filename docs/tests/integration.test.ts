@@ -9,6 +9,19 @@ import { DOCS_LOCALES, DOCS_PAGES, docsHref } from '../site/routes';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
 describe('Docs development and static output', () => {
+  it('serves a generated client entry for a used island in development', async () => {
+    await using fixture = await createSiteFixture();
+    await using dev = await startSiteDev({ root: fixture.root });
+    using page = parsePage({ html: await (await dev.request({ url: '/docs/en/chat-branching/' })).text() });
+    const src = page.document.querySelector<HTMLScriptElement>('script[src*="virtual:naidan-docs/island/branching"]')?.getAttribute('src');
+    if (!src) throw new Error('Missing branching client entry');
+    const response = await dev.request({ url: src });
+    expect(response.status).toBe(200);
+    const code = await response.text();
+    expect(code).toContain('startDocsIslandHydration');
+    expect(code).toContain('islands/branching/definition.ts');
+  });
+
   it('renders the same localized Vue body and scoped styles in development and production', async () => {
     await using fixture = await createSiteFixture();
     await using dev = await startSiteDev({ root: fixture.root });
@@ -212,13 +225,10 @@ import HiddenEvent from "../../site/HiddenEvent.vue";`).replace('<template>', '<
 });
 
 describe('Docs authoring boundaries', () => {
-  it('rejects a translation registry import from a client entry', async () => {
+  it('rejects a translation registry import from an island definition', async () => {
     await using fixture = await createSiteFixture();
-    const file = path.join(fixture.docs, 'islands/branching/client.ts');
-    await writeFile(file, `\
-import { pages } from 'virtual:naidan-docs/registry';
-console.log(pages);
-`);
+    const file = path.join(fixture.docs, 'islands/branching/definition.ts');
+    await writeFile(file, `${await readFile(file, 'utf8')}\nimport { pages } from 'virtual:naidan-docs/registry';\nconsole.log(pages);\n`);
     await expect(build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' })).rejects.toThrow('server-only');
   });
 

@@ -10,9 +10,10 @@ import DocsLink from './DocsLink.vue';
 import LocalAnchorLink from './LocalAnchorLink.vue';
 import DocsGuideMenu from './DocsGuideMenu.vue';
 import DocsGuideTree from './DocsGuideTree.vue';
+import DocsIsland from './DocsIsland.vue';
 import DocsSymbols from './DocsSymbols.vue';
 import { purposeGuides } from './search-purpose';
-import SearchIsland from '../islands/search/SearchIsland.vue';
+import { searchIsland } from '../islands/search/definition';
 
 const props = defineProps<{ locale: DocsLocale; page: DocsPageId; s: CommonMessages }>();
 const searchPurpose = computed(() => purposeGuides({
@@ -64,9 +65,7 @@ defineExpose({
         <span class="brand-sep" aria-hidden="true" /><span class="brand-docs" aria-hidden="true">DOCS</span>
       </div>
       <DocsGuideMenu :locale="locale" :page="page" :copy="s.navigation" />
-      <div data-docs-island="search" :data-docs-props="JSON.stringify({ locale, currentPage: page, copy: s.searchUi, purpose: searchPurpose })">
-        <SearchIsland :locale="locale" :current-page="page" :copy="s.searchUi" :purpose="searchPurpose" />
-      </div>
+      <DocsIsland :entry="searchIsland({ locale, currentPage: page, copy: s.searchUi, purpose: searchPurpose })" />
       <div class="nav-controls">
         <details class="locale-menu" name="docs-header-menu" data-testid="docs-language-menu">
           <summary class="control locale-trigger" :aria-label="`${s.languageMenu}: ${DOCS_LOCALE_NAMES[locale]}`" :title="s.languageMenu">

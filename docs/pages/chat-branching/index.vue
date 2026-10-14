@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import DocsLink from '../../site/DocsLink.vue';
-import BranchingDemo from '../../islands/branching/BranchingDemo.vue';
+import DocsIsland from '../../site/DocsIsland.vue';
+import { branchingIsland } from '../../islands/branching/definition';
 import AppEntryLink from '../../site/AppEntryLink.vue';
 import RelatedGuide from '../../site/RelatedGuide.vue';
 import UiText from '../../site/UiText.vue';
@@ -40,12 +41,7 @@ defineExpose({
       ><UiText :text="step" /></li>
     </ol>
     <h2>{{ s.demoTitle }}</h2>
-    <div
-      data-docs-island="branching"
-      :data-docs-props="JSON.stringify({ copy: s.demo, chrome: common.chrome })"
-    >
-      <BranchingDemo :copy="s.demo" :chrome="common.chrome" />
-    </div>
+    <DocsIsland :entry="branchingIsland({ copy: s.demo, chrome: common.chrome })" />
     <h2>{{ s.detail.title }}</h2>
     <p><UiText :text="s.detail.body" /></p>
     <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'chat-super-edit', title: s.next, description: s.nextDescription }]" />

@@ -29,6 +29,18 @@ Keep complete per-language HTML at build time and shared development rendering.
 Hydrate only explicitly registered demonstrations. Maintain the independent
 `build:docs` output and the normal development server's `/docs/` entry.
 
+For an interactive island, keep its `type`-alias `JsonObject` payload and
+boundary parser in `islands/<id>/contracts.ts`. Register its spec there, and
+directly import its concrete Vue component in `islands/<id>/definition.ts` for
+`defineDocsIsland`.
+Static pages import that factory and pass props once through
+`<DocsIsland :entry="branchingIsland({ ... })" />`. Do not handwrite the island
+data attributes, pass slots or extra attributes to `DocsIsland`, or import a raw
+island component into static Docs. Island components must not use `useId`,
+`provide`, or `inject`, or depend on a parent page's scoped CSS or setup context.
+Keep document IDs unique. `build:docs` runs `typecheck:docs` before the Vite build;
+the type check is part of the authoring contract.
+
 Treat the article ID and public URL slug as one stable identifier for the
 article's subject. Do not rename it merely because a title, introduction, or
 navigation label changes. Register each ID in `site/routes.ts` and place its

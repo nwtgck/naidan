@@ -1,17 +1,17 @@
-import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Plugin } from 'vite';
 import { DOCS_PAGES } from '../site/routes';
-import { REGISTRY_ID, styleEntryId } from './ids';
-import { validateStaticComponent } from './source-policy';
+import { ISLAND_ENTRIES, REGISTRY_ID, styleEntryId } from './ids';
+import { validateDocsAuthoringSource } from './authoring-policy';
 
 export function createDocsModulesPlugin({ root }: { root: string }): Plugin {
   const stylePages = new Map(DOCS_PAGES.map(page => [styleEntryId({ page: page.id }), page]));
+  const clientEntries = new Map(Object.entries(ISLAND_ENTRIES).map(([id, entry]) => [entry, id]));
   return {
     name: 'naidan-docs-modules',
     enforce: 'pre',
     resolveId(id) {
-      if (id === REGISTRY_ID || stylePages.has(id)) return `\0${id}`;
+      if (id === REGISTRY_ID || stylePages.has(id) || clientEntries.has(id)) return `\0${id}`;
       return undefined;
     },
     async load(id, options) {
@@ -44,6 +44,10 @@ export function createDocsModulesPlugin({ root }: { root: string }): Plugin {
         lines.push(`export const pages = { ${records.join(',')} };`);
         return lines.join('\n');
       }
+      const island = clientEntries.get(name);
+      if (island) {
+        return `import { startDocsIslandHydration } from "/islands/core.ts"; import { ${island.replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase())}Island } from "/islands/${island}/definition.ts"; startDocsIslandHydration({ factory: ${island.replaceAll(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase())}Island, document });`;
+      }
       const page = stylePages.get(name);
       if (page) {
         // Use normal SFC imports. Vue/Vite own CSS extraction, scoped IDs, nested
@@ -54,15 +58,21 @@ export function createDocsModulesPlugin({ root }: { root: string }): Plugin {
       }
       return undefined;
     },
-    async transform(_source, id) {
+    async transform(source, id) {
       // These are filesystem IDs, not request URLs. Preserve drive letters,
       // spaces and literal percent signs; generated Vue subrequests have queries.
-      if (id.includes('\0') || id.includes('?') || !id.endsWith('.vue')) return undefined;
+      if (id.includes('\0') || id.includes('?') || !/\.(?:vue|ts|js)$/u.test(id)) return undefined;
       const filename = id;
       const relative = path.relative(root, filename);
       if (relative.startsWith('..') || path.isAbsolute(relative)) return undefined;
-      const source = await readFile(filename, 'utf8');
-      validateStaticComponent({ source, filename: relative.split(path.sep).join('/'), mode: relative.startsWith(`islands${path.sep}`) ? 'island' : 'static' });
+      const docsFile = relative.split(path.sep).join('/');
+      if (/^(?:build|tests|\.cache|dist)\//u.test(docsFile) || /(?:^|\/)\w+\.config\.[jt]s$/u.test(docsFile)) return undefined;
+      await validateDocsAuthoringSource({
+        source,
+        filename: docsFile,
+        root,
+        resolve: async ({ specifier, importer }) => (await this.resolve(specifier, importer, { skipSelf: true }))?.id,
+      });
       return undefined;
     },
   };

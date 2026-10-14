@@ -2,9 +2,9 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { checkBrowserAiAvailability } from './native';
 import type { BrowserAiAvailabilityStatus } from './native';
-import type { BrowserAiAvailabilityCopy } from '../../pages/endpoint-type-browser-provided-lm/strings/checker/en';
+import type { BrowserAiAvailabilityPayload } from './contracts';
 
-const props = defineProps<{ copy: BrowserAiAvailabilityCopy }>();
+const props = defineProps<BrowserAiAvailabilityPayload>();
 type Status = 'unchecked' | 'checking' | BrowserAiAvailabilityStatus;
 const status = ref<Status>('unchecked');
 let active = false;

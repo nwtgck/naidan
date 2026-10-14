@@ -19,7 +19,7 @@
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p pwa/tsconfig.json",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
-    "build:docs": "vite build --config docs/vite.config.ts",
+    "build:docs": "npm run typecheck:docs && vite build --config docs/vite.config.ts",
     "typecheck:docs": "vue-tsc --noEmit -p docs/tsconfig.json",
     "test:docs": "vitest run --config docs/vitest.config.ts docs",
     "lint:docs": "eslint docs build/docs-dev-bridge.ts --max-warnings 0"

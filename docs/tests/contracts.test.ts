@@ -118,6 +118,7 @@ describe('HTML composition and locale contracts', () => {
     expect(findIslands({ body: '<p>&lt;div data-docs-island="branching"&gt;</p>' })).toEqual([]);
     expect(() => findIslands({ body: '<div data-docs-island="unknown"></div>' })).toThrow();
     expect(() => findIslands({ body: '<div data-docs-island="branching" data-docs-props="{}"></div>' })).toThrow();
+    expect(() => findIslands({ body: '<div id="repeated"></div><div id="repeated"></div>' })).toThrow('Duplicate Docs HTML ID: repeated');
   });
 
   it.each([

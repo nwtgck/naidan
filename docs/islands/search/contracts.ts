@@ -3,6 +3,7 @@ import { DOCS_PAGES, docsHref } from '../../site/routes';
 import type { DocsLocale, DocsPageId } from '../../site/routes';
 import { PURPOSE_PAGES } from '../../site/search-purpose';
 import type { PurposeGuide } from '../../site/search-purpose';
+import { defineDocsIslandSpec } from '../spec';
 
 export type SearchPayload = { locale: DocsLocale; currentPage: DocsPageId; copy: CommonMessages['searchUi']; purpose: PurposeGuide[] };
 
@@ -29,3 +30,9 @@ export function parseSearchPayload({ serialized }: { serialized: string }): Sear
   }
   return value as SearchPayload;
 }
+
+export const searchSpec = defineDocsIslandSpec<SearchPayload>({
+  id: 'search',
+  parse: parseSearchPayload,
+  start: 'dom-content-loaded',
+});

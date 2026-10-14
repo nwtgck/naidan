@@ -94,7 +94,7 @@ describe('Docs search', () => {
         expect(templatePayload.currentPage).toBe('index');
         expect(Array.from(root.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-search-results"] a'), link => link.getAttribute('href'))).toEqual(templatePayload.purpose.map(item => item.href));
       }
-      expect(neutral.document.querySelector('script[src="/docs/islands/search/client.ts"]')).not.toBeNull();
+      expect(neutral.document.querySelector('script[src="/docs/@id/__x00__virtual:naidan-docs/island/search"]')).not.toBeNull();
       expect(neutral.document.querySelector('script[src="/docs/client/home-brand.ts"]')).not.toBeNull();
       expect(neutral.document.querySelector('script[src="/docs/client/app-entry.ts"]')).not.toBeNull();
     }
@@ -392,7 +392,8 @@ describe('Docs search', () => {
     const dom = new JSDOM(await readFile(path.join(dist, 'index.html'), 'utf8'), { url: 'https://naidan.invalid/docs/', runScripts: 'outside-only' });
     using _browser = { [Symbol.dispose]: () => dom.window.close() };
     const document = dom.window.document;
-    Object.defineProperty(document, 'readyState', { configurable: true, get: () => 'loading' });
+    let readyState: DocumentReadyState = 'loading';
+    Object.defineProperty(document, 'readyState', { configurable: true, get: () => readyState });
     Object.defineProperty(dom.window.navigator, 'languages', { configurable: true, value: ['ja'] });
     for (const template of document.querySelectorAll<HTMLTemplateElement>('template[data-docs-locale]')) {
       const searchRoot = template.content.querySelector('[data-docs-island="search"]');
@@ -419,7 +420,10 @@ describe('Docs search', () => {
     });
     vi.stubGlobal('Worker', workerConstructor);
     using _cleanup = { [Symbol.dispose]: () => vi.unstubAllGlobals() };
+    readyState = 'interactive';
     await import(pathToFileURL(path.join(dist, search.slice('/docs/'.length))).href);
+    expect(document.querySelector('[data-docs-island="search"]')).toBeNull();
+    expect(document.querySelector('[data-docs-language-fallback]')).not.toBeNull();
     document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
     await vi.waitFor(() => expect(document.querySelector('[data-docs-island="search"]')?.getAttribute('data-docs-hydrated')).toBe('ready'));
     expect(document.documentElement.lang).toBe('ja');

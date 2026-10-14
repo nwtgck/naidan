@@ -22,6 +22,8 @@ npm run test:docs
 npm run lint:docs
 ```
 
+`build:docs` runs `typecheck:docs` before compiling the static output.
+
 The normal development server serves the app at `/` and Docs at `/docs/` on the
 same port. Docs initialize lazily on the first Docs request. The normal application
 `build`, `build:all`, Hosted ZIP and Standalone builds do not build or package Docs.
@@ -183,12 +185,23 @@ markers do not denote a button or keyboard shortcut.
 
 ## Interactive demonstrations
 
-Put interactive components under `islands/`, give the data passed to the browser
-an island-owned parser at its serialization boundary, and register the client
-entry in `build/ids.ts`. The current
-branching example uses `data-docs-island` and escaped `data-docs-props` attributes.
-The HTML compositor discovers and validates these with jsdom. Extend that
-registry and validation together when adding a new demonstration type.
+Put interactive components under `islands/`. Keep a typed JSON payload and its
+island-owned boundary parser in `contracts.ts`, define its ID and startup policy
+with `defineDocsIslandSpec`, and bind the spec to a directly imported Vue
+component in `definition.ts` with `defineDocsIsland`. In a static page, import
+`site/DocsIsland.vue` and that factory, then pass the props once:
+
+```vue
+<DocsIsland :entry="branchingIsland({ copy: s.demo, chrome: common.chrome })" />
+```
+
+The shared host renders the component and its serialized props from that entry.
+The build creates a client entry for each registered island and attaches only
+those found in the page HTML. Do not write `data-docs-island` or
+`data-docs-props` by hand, add children or extra attributes to `DocsIsland`, or
+import the raw interactive component into a static page. The HTML compositor
+discovers and validates island markers with jsdom. Island components may use
+shared site styles but cannot rely on parent Vue context or scoped CSS.
 
 A component can be pre-rendered without making the whole page interactive.
 Only discovered island entries and their transitive styles are attached. The

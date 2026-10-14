@@ -17,7 +17,7 @@ import { createSearchIndex } from './search';
 export function docsBuildConfig({ root }: { root: string }): UserConfig {
   const inputs: Record<string, string> = {};
   for (const page of DOCS_PAGES) inputs[styleEntryName({ page: page.id })] = styleEntryId({ page: page.id });
-  for (const [name, file] of Object.entries(ISLAND_ENTRIES)) inputs[`island-${name}`] = path.resolve(root, file);
+  for (const [name, entry] of Object.entries(ISLAND_ENTRIES)) inputs[`island-${name}`] = entry;
   inputs['app-entry'] = path.resolve(root, APP_ENTRY_CLIENT);
   inputs['home-brand'] = path.resolve(root, HOME_BRAND_CLIENT);
   return mergeConfig(docsCompilerConfig({ root }), {
