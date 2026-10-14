@@ -22,7 +22,7 @@ Browser-enforced [Content Security Policy (CSP)](https://developer.mozilla.org/e
 
 <https://naidan-local-only.pages.dev>
 
-This version allows connections only to Naidan's own origin and services running locally on your device.
+Its CSP limits the page's API request destinations to Naidan's own origin and local HTTP services on your device.
 
 The CSP `connect-src` directive permits:
 
@@ -62,20 +62,16 @@ Naidan is derived from the Japanese word for "private talk" or "confidential dis
 
 ## Philosophy: Why `file://`?
 
-The core mission of this project is **radical privacy through minimal trust**.
+The core mission of this project is **privacy through fewer permissions and a smaller trust boundary**.
 
-In security, the strongest defense is to minimize the number of entities you must rely on. However, most local AI tools run as desktop applications, CLIs, or background servers (like Python scripts or Docker containers). While convenient, these native processes operate with **broad system privileges** that are difficult for users to audit or control. Unlike a web app confined to a browser sandbox, a typical desktop app or CLI generally has access to:
+Many local AI tools run as desktop applications, CLIs, or background servers. An ordinary desktop process often uses the signed-in user's access to files and system information, subject to operating-system protections and any app sandbox. A browser page instead receives files and device capabilities through browser APIs and permissions; it cannot directly scan arbitrary files or list operating-system processes. The page can still send information it obtains through browser networking APIs, under the browser's rules and the site's policies.
 
--   **Unrestricted File System:** Reading personal documents, SSH keys, and configuration files.
--   **System Introspection:** Monitoring running processes, installed applications, and clipboard contents.
--   **Low-Level Networking:** Establishing background connections or opening ports that evade standard browser security policies (CORS/CSP).
+Naidan's Standalone edition opens from `file://` and can run supported models in the browser without installing a separate native app or setting up an app server. You trust your browser and Naidan's application code and assets; if you choose an external engine, that separate process has its own permissions and connections.
 
-To us, **true serverless means no native process at all**. By running entirely inside the browser via `file://`, Naidan voluntarily accepts the browser's strict security model. It cannot access your arbitrary files or "phone home" without your explicit action.
-
-By supporting the `file://` protocol, we achieve true accessibility and security:
-- **Minimal Trust Model**: Security is transparent. You only need to trust your browser and the code within the HTML file itself. There are no opaque background server processes to audit or manage.
-- **Zero Configuration**: No server setup, no command line, and no environment to manage. It is the ultimate portable application.
-- **Freedom from Port Friction**: Ports are arbitrary numbers, difficult to associate with specific apps, and prone to collisions. By bypassing the server layer, we eliminate port management and the frustration of "Address already in use" errors entirely.
+The `file://` option keeps setup simple:
+- **Browser-mediated access**: File and device access follows the browser's APIs and applicable permissions.
+- **No app-server setup for browser-run models**: Extract the ZIP and open `index.html` without an installer or terminal.
+- **No app-server port to manage**: A browser-run model needs no server for the interface or inference. A separately running engine uses its own endpoint when you choose one.
 
 ## Getting Started
 
@@ -83,35 +79,37 @@ https://github.com/user-attachments/assets/277e8469-bc11-4391-aadd-89e3384f2017
 
 Naidan provides multiple ways to run the application, allowing you to choose the balance of convenience and control that fits your needs.
 
+Storage depends on the provider you select. OPFS and Local Storage write Naidan's conversations and settings to browser storage tied to the current profile and site origin; Ephemeral keeps them only until reload or tab closure. Export a backup before changing browsers, profiles, origins, or a file-based installation.
+
 ### Option 1: Standalone
-Download the zip package containing the HTML file and assets, then open it directly in your browser as `file://`. No installation, no terminal, no background processes.
+Download the ZIP containing `index.html` and its assets, then open it directly in your browser as `file://`. A browser-run model needs no installer, terminal, or app server.
 
 - **Download:** [naidan-standalone.zip](https://naidan.pages.dev/naidan-standalone.zip)
-- **Mirrors:** [GitHub Releases](https://github.com/nwtgck/naidan/releases/download/v0.24.1/naidan-standalone-v0.24.1.zip) or GitHub Actions Artifacts.
+- **Mirror:** [Latest GitHub release](https://github.com/nwtgck/naidan/releases/latest) or GitHub Actions artifacts.
 - **Usage:** Unzip and just double-click `index.html`.
-- **Update:** Just delete the old standalone folder and replace it with the new one. Your data is stored in your browser, so it's safe to swap versions.
+- **Update:** Extract the new ZIP into its own folder, keeping `index.html` and its assets together.
 
 ### Option 2: Self-Hosted Static Files
 **For those who require a standard HTTP Origin.**
-Using `file://` results in `Origin: null`, which some backend CORS policies may reject. Use this optimized static build if you need a valid Origin (e.g., `http://localhost:8080`) or simply prefer using your own tools like `python3 -m http.server`, `npx serve`, or Nginx.
+A `file://` page can send `Origin: null`, which some backend CORS policies may reject. Use this optimized static build if you need a normal HTTP origin (e.g., `http://localhost:8080`) or simply prefer using your own tools like `python3 -m http.server`, `npx serve`, or Nginx.
 
-- **Download:** [naidan-hosted.zip](https://github.com/nwtgck/naidan/releases/download/v0.24.1/naidan-hosted-v0.24.1.zip)
+- **Download:** [Latest GitHub release](https://github.com/nwtgck/naidan/releases/latest) (choose the Hosted ZIP asset).
 - **Usage:** Serve the extracted directory with your preferred HTTP server. See [static-hosting-examples/](./static-hosting-examples/) for Nginx and Caddy configurations.
-- **Update:** Replace the old files with the new version. Your data stays safely in your browser.
+- **Update:** Serve the new files at the same URL and port to keep the same site origin.
 
 ### Option 3: Dedicated Server Binary
 A portable executable that serves the application locally without requiring Python, Node.js, or any other runtime.
 
 - **Download:** [naidan-server](https://github.com/nwtgck/naidan/releases)
-- **Update:** Replace the old binary with the new one. Your data is preserved in your browser.
+- **Update:** Replace the old binary and keep the app at the same URL and port.
 
 ### Option 4: Online Version
 **Instant access with zero setup.**
-Run Naidan directly from the web. Your data remains local, stored in your browser.
+Run Naidan directly from the web. Conversations and settings use the browser storage provider you select; browser-run models can process inputs on your device.
 
 - https://naidan.pages.dev or https://naidan.nwtgck.org
-- https://naidan-local-only.pages.dev: A hardened version with a Content-Security-Policy (CSP) that *only* allows connections to localhost APIs.
-- **Update:** Just refresh the page. Your data remains in your browser.
+- https://naidan-local-only.pages.dev: A version whose CSP limits page API requests to its own origin and HTTP services on `localhost` or `127.0.0.1`.
+- **Update:** Refresh the page when the new version is ready, using the same browser profile and site address.
 
 ## Key Features
 

@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import UiText from '../../site/UiText.vue';
-import type { DocsLocale } from '../../site/routes';
-import type { CommonMessages, WeshSysfsMessages } from '../../site/messages';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import RenderText from '../../components/RenderText';
+import type { DocsLocale } from '../../navigation/routes';
+import type { CommonMessages, WeshSysfsMessages } from '../../messages/types';
 
 defineProps<{ s: WeshSysfsMessages; locale: DocsLocale; common: CommonMessages }>();
 
@@ -19,86 +18,86 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-wesh-sysfs">
     <h1>{{ s.title }}</h1>
-    <p class="lead">{{ s.intro }} <code>/sys/fs/naidan</code>{{ s.introAfter }}</p>
-    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
+    <p class="lead"><RenderText :node="s.intro()" /></p>
+    <p class="app-entry-intro"><RenderText :node="s.open_sysfs_chat({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
 
     <section aria-labelledby="sysfs-purpose">
-      <h2 id="sysfs-purpose">{{ s.purpose.title }}</h2>
-      <p>{{ s.purpose.body }}</p>
+      <h2 id="sysfs-purpose">{{ s.past_decisions_title }}</h2>
+      <p>{{ s.past_decisions_body }}</p>
     </section>
 
     <section aria-labelledby="sysfs-filesystem">
-      <h2 id="sysfs-filesystem">{{ s.filesystem.title }}</h2>
-      <p>{{ s.filesystem.body }}</p>
+      <h2 id="sysfs-filesystem">{{ s.history_as_filesystem_title }}</h2>
+      <p>{{ s.history_as_filesystem_body }}</p>
     </section>
 
     <section aria-labelledby="sysfs-example" data-testid="docs-wesh-sysfs-example">
-      <h2 id="sysfs-example">{{ s.example.title }}</h2>
-      <p>{{ s.example.request }}</p>
-      <p><UiText :text="s.example.scope" /></p>
-      <pre><code>{{ s.example.command }}</code></pre>
-      <p>{{ s.example.resultBefore }}<code>branches/leaves-md/</code>{{ s.example.resultBetween }}<code>current-chat/content-md/</code>{{ s.example.resultAfter }}</p>
+      <h2 id="sysfs-example">{{ s.search_history_example_title }}</h2>
+      <p>{{ s.search_history_example_request }}</p>
+      <p><RenderText :node="s.search_history_example_scope()" /></p>
+      <pre><code>{{ s.search_history_command }}</code></pre>
+      <p><RenderText :node="s.search_result_explanation()" /></p>
     </section>
 
     <section aria-labelledby="sysfs-scope">
-      <h2 id="sysfs-scope">{{ s.scope.title }}</h2>
-      <p>{{ s.scope.intro }}</p>
+      <h2 id="sysfs-scope">{{ s.conversation_visibility_title }}</h2>
+      <p><RenderText :node="s.conversation_visibility_intro()" /></p>
       <div class="scope-scroll">
         <table class="scope-table" data-testid="docs-wesh-sysfs-scope">
-          <thead><tr><th scope="col">{{ s.scope.columns.choice }}</th><th scope="col">{{ s.scope.columns.chats }}</th><th scope="col">{{ s.scope.columns.saved }}</th></tr></thead>
+          <thead><tr><th scope="col">{{ s.visibility_choice_column }}</th><th scope="col">{{ s.chat_data_column }}</th><th scope="col">{{ s.saved_objects_column }}</th></tr></thead>
           <tbody>
-            <tr v-for="row in s.scope.rows" :key="row.choice">
-              <th scope="row"><UiText :text="row.choice" /></th>
+            <tr v-for="(row, index) in [{ choice: s.mount_off_choice(), chats: s.mount_off_chats, saved: s.mount_off_saved_objects }, { choice: s.current_chat_choice(), chats: s.current_chat_scope, saved: s.current_chat_saved_objects }, { choice: s.chat_group_choice(), chats: s.chat_group_scope, saved: s.chat_group_saved_objects }, { choice: s.all_chats_choice(), chats: s.all_chats_scope, saved: s.all_chats_saved_objects }]" :key="index">
+              <th scope="row"><RenderText :node="row.choice" /></th>
               <td>{{ row.chats }}</td>
               <td>{{ row.saved }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p><UiText :text="s.scope.detail" /></p>
+      <p><RenderText :node="s.conversation_visibility_detail()" /></p>
     </section>
 
     <section aria-labelledby="sysfs-start">
-      <h2 id="sysfs-start">{{ s.start.title }}</h2>
-      <p><UiText :text="s.start.settingsBefore" /><code>/sys/fs/naidan</code><UiText :text="s.start.settingsAfter" /></p>
-      <p><UiText :text="s.start.terminal" /></p>
-      <p class="session-note"><UiText :text="s.start.session" /></p>
+      <h2 id="sysfs-start">{{ s.enable_sysfs_title }}</h2>
+      <p><RenderText :node="s.enable_sysfs_settings()" /></p>
+      <p><RenderText :node="s.open_wesh_terminal()" /></p>
+      <p class="session-note"><RenderText :node="s.terminal_session_scope()" /></p>
     </section>
 
     <section aria-labelledby="sysfs-paths">
-      <h2 id="sysfs-paths">{{ s.paths.title }}</h2>
-      <p>{{ s.paths.intro }}</p>
+      <h2 id="sysfs-paths">{{ s.sysfs_paths_title }}</h2>
+      <p>{{ s.sysfs_paths_intro }}</p>
       <dl class="path-list" data-testid="docs-wesh-sysfs-paths">
-        <div v-for="row in s.paths.rows" :key="row.path">
+        <div v-for="row in [{ path: s.current_chat_path, detail: s.current_chat_path_detail }, { path: s.chats_path, detail: s.chats_path_detail }, { path: s.current_chat_group_path, detail: s.current_chat_group_path_detail() }, { path: s.chat_groups_path, detail: s.chat_groups_path_detail() }, { path: s.hierarchy_path, detail: s.hierarchy_path_detail }, { path: s.binary_objects_path, detail: s.binary_objects_path_detail }, { path: s.version_path, detail: s.version_path_detail }]" :key="row.path">
           <dt><code>{{ row.path }}</code></dt>
-          <dd>{{ row.detail }}</dd>
+          <dd><RenderText v-if="typeof row.detail !== 'string'" :node="row.detail" /><template v-else>{{ row.detail }}</template></dd>
         </div>
       </dl>
     </section>
 
     <section aria-labelledby="sysfs-read">
-      <h2 id="sysfs-read">{{ s.read.title }}</h2>
-      <p>{{ s.read.chat }}</p>
+      <h2 id="sysfs-read">{{ s.verify_readable_files_title }}</h2>
+      <p>{{ s.read_chat_files }}</p>
       <pre lang="en"><code>{{ chatCommands }}</code></pre>
-      <p>{{ s.read.binary }}</p>
+      <p>{{ s.read_saved_objects }}</p>
       <pre lang="en"><code>{{ binaryCommands }}</code></pre>
-      <p>{{ s.read.binaryPath }}</p>
+      <p>{{ s.saved_object_path_patterns }}</p>
       <p class="path-example"><code>/sys/fs/naidan/binary-objects/by-id/{id}/metadata.md</code><br><code>/sys/fs/naidan/binary-objects/by-id/{id}/data</code></p>
     </section>
 
     <section aria-labelledby="sysfs-connections">
-      <h2 id="sysfs-connections">{{ s.connections.title }}</h2>
-      <p><UiText :text="s.connections.shell" /></p>
-      <p><UiText :text="s.connections.wikipedia" /></p>
-      <p>{{ s.connections.folders }}</p>
-      <p><UiText :text="s.connections.explorer" /></p>
+      <h2 id="sysfs-connections">{{ s.other_mounts_title }}</h2>
+      <p><RenderText :node="s.shell_mount_relationship()" /></p>
+      <p><RenderText :node="s.wikipedia_mount_relationship()" /></p>
+      <p>{{ s.device_folders_relationship }}</p>
+      <p><RenderText :node="s.file_explorer_relationship()" /></p>
     </section>
 
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[
-      { page: 'tool-browser-shell', ...s.related.shell },
-      { page: 'tool-wikipedia', ...s.related.wikipedia },
-      { page: 'files-and-folders-settings', ...s.related.files },
-      { page: 'file-explorer', ...s.related.explorer },
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[
+      { page: 'tool-browser-shell', title: s.shell_guide_title, description: s.shell_guide_description },
+      { page: 'tool-wikipedia', title: s.wikipedia_guide_title, description: s.wikipedia_guide_description },
+      { page: 'files-and-folders-settings', title: s.file_settings_guide_title, description: s.file_settings_guide_description },
+      { page: 'file-explorer', title: s.file_explorer_guide_title, description: s.file_explorer_guide_description },
     ]" />
   </article>
 </template>

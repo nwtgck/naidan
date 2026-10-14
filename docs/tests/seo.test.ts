@@ -5,7 +5,7 @@ import { build } from 'vite';
 import { describe, expect, it } from 'vitest';
 import { docsBuildConfig } from '../build/production';
 import { createDocsSitemap, DOCS_PUBLIC_ORIGIN, docsSeoLinks } from '../build/seo';
-import { DOCS_LOCALES, DOCS_PAGES, docsHref } from '../site/routes';
+import { DOCS_LOCALES, DOCS_PAGES, docsHref } from '../navigation/routes';
 import { SITE_METADATA } from '../../src/logic/document-metadata';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 

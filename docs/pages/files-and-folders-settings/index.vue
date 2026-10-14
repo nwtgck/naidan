@@ -1,13 +1,19 @@
 <script setup lang="ts">
-import DocsLink from '../../site/DocsLink.vue';
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import FilesSettingsStep from '../../site/demos/FilesSettingsStep.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import UiText from '../../site/UiText.vue';
-import type { DocsLocale } from '../../site/routes';
-import type { CommonMessages, FilesSettingsGuideMessages } from '../../site/messages';
+import FilesSettingsStep from '../../components/demos/FilesSettingsStep.vue';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import RenderText from '../../components/RenderText';
+import { computed } from 'vue';
+import type { DocsLocale } from '../../navigation/routes';
+import type { CommonMessages, FilesSettingsGuideMessages } from '../../messages/types';
 
-defineProps<{ s: FilesSettingsGuideMessages; locale: DocsLocale; common: CommonMessages }>();
+const props = defineProps<{ s: FilesSettingsGuideMessages; locale: DocsLocale; common: CommonMessages }>();
+const stages = computed(() => ([
+  { stage: 'open', title: props.s.open_settings_title, body: props.s.open_settings_body(), caption: props.s.open_settings_caption },
+  { stage: 'files', title: props.s.inspect_saved_files_title, body: props.s.inspect_saved_files_body(), caption: props.s.inspect_saved_files_caption },
+  { stage: 'choose', title: props.s.link_working_folder_title, body: props.s.link_working_folder_body(), caption: props.s.link_working_folder_caption },
+  { stage: 'copy', title: props.s.copy_working_folder_title, body: props.s.copy_working_folder_body(), caption: props.s.copy_working_folder_caption },
+  { stage: 'manage', title: props.s.manage_working_folder_title, body: props.s.manage_working_folder_body(), caption: props.s.manage_working_folder_caption },
+] as const));
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -15,26 +21,26 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-files-settings">
     <h1>{{ s.title }}</h1>
-    <p class="lead"><UiText :text="s.intro" /></p>
-    <p class="launch-line">{{ s.launch }} <AppEntryLink :locale="locale" :destination="{ kind: 'screen', screen: 'files-settings' }" display="label">{{ s.filesLink }}</AppEntryLink> / <AppEntryLink :locale="locale" :destination="{ kind: 'screen', screen: 'folders-settings' }" display="label">{{ s.foldersLink }}</AppEntryLink> {{ s.launchEnd }}</p>
+    <p class="lead"><RenderText :node="s.intro()" /></p>
+    <p class="launch-line"><RenderText :node="s.open_file_and_folder_settings({ locale, filesDestination: { kind: 'screen', screen: 'files-settings' }, foldersDestination: { kind: 'screen', screen: 'folders-settings' } })" /></p>
 
-    <section v-for="stage in (['open', 'files', 'choose', 'copy', 'manage'] as const)" :key="stage" class="walkthrough-step" :aria-labelledby="`files-settings-${stage}`">
-      <h2 :id="`files-settings-${stage}`">{{ s.steps[stage].title }}</h2>
-      <p><UiText :text="s.steps[stage].body" /></p>
+    <section v-for="step in stages" :key="step.stage" class="walkthrough-step" :aria-labelledby="`files-settings-${step.stage}`">
+      <h2 :id="`files-settings-${step.stage}`">{{ step.title }}</h2>
+      <p><RenderText :node="step.body" /></p>
       <figure class="guide-figure">
-        <FilesSettingsStep :stage="stage" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps[stage].caption" /></figcaption>
+        <FilesSettingsStep :stage="step.stage" :messages="s" />
+        <figcaption class="caption">{{ step.caption }}</figcaption>
       </figure>
-      <p v-if="stage === 'files'"><UiText :text="s.steps.files.sysfs.before" /><DocsLink :locale="locale" page="wesh-sysfs">{{ s.steps.files.sysfs.link }}</DocsLink><UiText :text="s.steps.files.sysfs.after" /></p>
+      <p v-if="step.stage === 'files'"><RenderText :node="s.saved_files_shell_access({ locale, page: 'wesh-sysfs' })" /></p>
     </section>
 
     <section class="guide-scope" aria-labelledby="files-settings-scope">
-      <h2 id="files-settings-scope">{{ s.afterTitle }}</h2>
-      <p><UiText :text="s.after" /></p>
+      <h2 id="files-settings-scope">{{ s.after_adding_a_folder_title }}</h2>
+      <p>{{ s.after_adding_a_folder }}</p>
     </section>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[
-      { page: 'file-access', title: s.relatedPrivacy, description: s.relatedPrivacyDescription },
-      { page: 'tool-browser-shell', title: s.relatedShell, description: s.relatedShellDescription },
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[
+      { page: 'file-access', title: s.file_access_guide, description: s.file_access_guide_description },
+      { page: 'tool-browser-shell', title: s.shell_guide, description: s.shell_guide_description },
     ]" />
   </article>
 </template>

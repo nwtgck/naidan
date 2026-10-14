@@ -2,6 +2,7 @@ import path from 'node:path';
 import ts from 'typescript';
 import { parse } from '@vue/compiler-sfc';
 import { validateStaticComponent } from './source-policy';
+import { validateDocsRichTsx, validatePlainLocaleMessageKeys } from './tsx-policy';
 
 type ResolveImport = ({ specifier, importer }: { specifier: string; importer: string }) => Promise<string | undefined>;
 type ImportEdge = { specifier: string; kind: 'static' | 'dynamic'; node: ts.Node };
@@ -15,11 +16,32 @@ const unsupportedStaticVueApis = new Set([
   'watch', 'watchEffect', 'watchPostEffect', 'watchSyncEffect',
   'h', 'createVNode', 'defineComponent', 'Teleport', 'useTemplateRef',
 ]);
+const richTsxComponents = new Set([
+  'components/DocsLink.vue', 'components/AppEntryLink.vue', 'components/ExternalLink.vue', 'components/UiLabel.vue',
+]);
+
+function isArticleMessageTsx({ filename }: { filename: string }): boolean {
+  return /^pages\/[^/]+\/messages\/(?:en|ja)\.tsx$/u.test(filename);
+}
+
+function isBranchingMessageTsx({ filename }: { filename: string }): boolean {
+  return /^islands\/branching\/messages\/(?:en|ja)\.tsx$/u.test(filename);
+}
+
+function isBrowserAiMessageTs({ filename }: { filename: string }): boolean {
+  return /^islands\/browser-ai-availability\/messages\/(?:en|ja|index)\.ts$/u.test(filename);
+}
+
+function isPlainLocaleMessageTs({ filename }: { filename: string }): boolean {
+  return /^messages\/(?:[^/]+\/)+(?:en|ja)\.ts$/u.test(filename)
+    || /^islands\/[^/]+\/messages\/(?:en|ja)\.ts$/u.test(filename);
+}
 
 function isStaticAuthoringFile({ filename }: { filename: string }): boolean {
   if (filename === 'server.ts' || filename.startsWith('client/')) return false;
   if (filename.startsWith('islands/')) {
     return filename === 'islands/spec.ts' || filename === 'islands/registry.ts'
+      || isBranchingMessageTsx({ filename }) || isBrowserAiMessageTs({ filename })
       || /^islands\/[^/]+\/(?:definition|contracts|copy)\.ts$/u.test(filename);
   }
   return true;
@@ -27,12 +49,19 @@ function isStaticAuthoringFile({ filename }: { filename: string }): boolean {
 
 function isPublicIslandValueEdge({ filename, target }: { filename: string; target: string }): boolean {
   if (!filename.startsWith('islands/')) {
-    return /^islands\/[^/]+\/definition\.ts$/u.test(target) || target === 'islands/browser-ai-availability/copy.ts';
+    return /^islands\/[^/]+\/definition\.ts$/u.test(target);
   }
   if (filename === 'islands/registry.ts') return /^islands\/[^/]+\/contracts\.ts$/u.test(target);
+  if (filename === 'islands/browser-ai-availability/messages/index.ts') {
+    return /^islands\/browser-ai-availability\/messages\/(?:en|ja)\.ts$/u.test(target);
+  }
   const name = islandName({ file: filename });
   if (name === undefined) return false;
-  if (filename === `islands/${name}/definition.ts`) return target === `islands/${name}/contracts.ts`;
+  if (filename === `islands/${name}/definition.ts`) {
+    return target === `islands/${name}/contracts.ts`
+      || target === `islands/${name}/messages/index.ts`
+      || target === `islands/${name}/messages.ts`;
+  }
   if (filename === `islands/${name}/contracts.ts`) return target === 'islands/spec.ts';
   return false;
 }
@@ -81,8 +110,17 @@ function rejectUnsupportedStaticVueApi({ name, filename, script, ast, node }: {
 }
 
 function docsRelative({ root, file }: { root: string; file: string }): string | undefined {
-  const relative = path.relative(root, file.split('?')[0] ?? file).split(path.sep).join('/');
+  const relative = path.relative(root, file.split(/[?#]/u, 1)[0] ?? file).split(path.sep).join('/');
   return relative === '..' || relative.startsWith('../') || path.isAbsolute(relative) ? undefined : relative;
+}
+
+function isRepositoryRuntimeOutsideDocs({ root, file }: { root: string; file: string }): boolean {
+  const resolved = file.split(/[?#]/u, 1)[0] ?? file;
+  if (!path.isAbsolute(resolved) || docsRelative({ root, file: resolved }) !== undefined
+    || !/\.(?:vue|[cm]?[jt]sx?)$/u.test(resolved)) return false;
+  const relative = path.relative(path.dirname(root), resolved).split(path.sep).join('/');
+  return relative !== '..' && !relative.startsWith('../') && !path.isAbsolute(relative)
+    && relative !== 'node_modules' && !relative.startsWith('node_modules/');
 }
 
 function islandName({ file }: { file: string }): string | undefined {
@@ -139,7 +177,8 @@ function inspectScript({ script, filename }: { script: ScriptSource; filename: s
   ast: ts.SourceFile;
   edges: ImportEdge[];
 } {
-  const ast = ts.createSourceFile(filename, script.content, ts.ScriptTarget.Latest, true, filename.endsWith('.js') ? ts.ScriptKind.JS : ts.ScriptKind.TS);
+  const kind = filename.endsWith('.tsx') ? ts.ScriptKind.TSX : filename.endsWith('.js') ? ts.ScriptKind.JS : ts.ScriptKind.TS;
+  const ast = ts.createSourceFile(filename, script.content, ts.ScriptTarget.Latest, true, kind);
   const edges: ImportEdge[] = [];
   const vueNamespaces = new Set<string>();
   const staticAuthoring = isStaticAuthoringFile({ filename });
@@ -287,12 +326,16 @@ function inspectScript({ script, filename }: { script: ScriptSource; filename: s
           remedy: 'Use named Vue imports for server-rendered values, or a registered island for browser behavior.',
         });
       }
+      if (ts.isIdentifier(node.expression) && node.expression.text === 'require'
+        && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
+        edges.push({ specifier: node.arguments[0].text, kind: 'dynamic', node });
+      }
     }
     if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)
       && vueNamespaces.has(node.expression.text) && disallowedContextApis.has(node.name.text)) {
       throw new Error(`Vue context API ${node.name.text} is unsupported in Docs islands: ${filename}`);
     }
-    if (ts.isObjectLiteralExpression(node) && filename !== 'site/DocsIsland.vue') {
+    if (ts.isObjectLiteralExpression(node) && filename !== 'components/DocsIsland.vue') {
       for (const property of node.properties) {
         if ((ts.isPropertyAssignment(property) || ts.isMethodDeclaration(property)) && reservedIslandAttributes.has(propertyName({ name: property.name }) ?? '')) {
           throw new Error(`Reserved Docs island attribute in script ${filename}`);
@@ -370,9 +413,10 @@ function checkDefinition({ ast, filename }: { ast: ts.SourceFile; filename: stri
       const entries = new Map(argument.properties.filter(ts.isPropertyAssignment).map(property => [propertyName({ name: property.name }), property.initializer]));
       const component = entries.get('component');
       const spec = entries.get('spec');
-      if (argument.properties.length !== 2 || !component || !ts.isIdentifier(component) || !componentImports.has(component.text)
-        || !spec || !ts.isIdentifier(spec) || !specImports.has(spec.text)) {
-        throw new Error(`Docs island definition must use directly imported component and spec identifiers: ${filename}`);
+      const prepare = entries.get('prepare');
+      if (argument.properties.length !== 3 || !component || !ts.isIdentifier(component) || !componentImports.has(component.text)
+        || !spec || !ts.isIdentifier(spec) || !specImports.has(spec.text) || !prepare) {
+        throw new Error(`Docs island definition must use directly imported component and spec identifiers with prepare: ${filename}`);
       }
       factoryCount++;
     }
@@ -406,6 +450,11 @@ export async function validateDocsAuthoringSource({ source, filename, root, reso
   root: string;
   resolve: ResolveImport;
 }): Promise<void> {
+  const articleMessage = isArticleMessageTsx({ filename });
+  const branchingMessage = isBranchingMessageTsx({ filename });
+  if ((filename.endsWith('.tsx') || filename.endsWith('.jsx')) && !articleMessage && !branchingMessage) {
+    throw new Error(`Docs JSX is supported only in article and branching island locale messages: ${filename}`);
+  }
   const name = islandName({ file: filename });
   if (filename.endsWith('.vue')) {
     validateStaticComponent({ source, filename, mode: name === undefined ? 'static' : 'island' });
@@ -413,6 +462,8 @@ export async function validateDocsAuthoringSource({ source, filename, root, reso
   const importer = path.resolve(root, filename);
   for (const script of scripts({ source, filename })) {
     const { ast, edges } = inspectScript({ script, filename });
+    const componentImports = new Set<string>();
+    if (isPlainLocaleMessageTs({ filename })) validatePlainLocaleMessageKeys({ ast, filename });
     if (name !== undefined && filename.endsWith('/definition.ts')) checkDefinition({ ast, filename });
     if (name !== undefined && filename === `islands/${name}/contracts.ts`) checkSpec({ ast, filename });
     for (const edge of edges) {
@@ -420,6 +471,31 @@ export async function validateDocsAuthoringSource({ source, filename, root, reso
       if (resolved === undefined) continue;
       const target = docsRelative({ root, file: resolved });
       const staticAuthoring = isStaticAuthoringFile({ filename });
+      if (staticAuthoring && !isTypeOnlyEdge({ node: edge.node }) && isRepositoryRuntimeOutsideDocs({ root, file: resolved })) {
+        staticScriptError({
+          filename,
+          script,
+          ast,
+          node: edge.node,
+          reason: `Static Docs cannot import repository runtime code outside Docs from ${edge.specifier}.`,
+          remedy: 'Keep Docs output in a Docs-owned helper, or import only types from application code.',
+        });
+      }
+      if (target && isArticleMessageTsx({ filename: target }) && !isTypeOnlyEdge({ node: edge.node })) {
+        staticScriptError({
+          filename,
+          script,
+          ast,
+          node: edge.node,
+          reason: `Article locale JSX ${target} is server registry only.`,
+          remedy: 'Receive the selected strings through the server-rendered page props, or import only its types.',
+        });
+      }
+      if ((articleMessage || branchingMessage) && target && richTsxComponents.has(target)
+        && ts.isImportDeclaration(edge.node) && !isTypeOnlyEdge({ node: edge.node })) {
+        const clause = edge.node.importClause;
+        if (clause?.name && !clause.isTypeOnly) componentImports.add(clause.name.text);
+      }
       if (staticAuthoring && target?.startsWith('client/') && !isTypeOnlyEdge({ node: edge.node })) {
         staticScriptError({
           filename,
@@ -431,7 +507,7 @@ export async function validateDocsAuthoringSource({ source, filename, root, reso
         });
       }
       if (target === 'islands/core.ts' && !isTypeOnlyEdge({ node: edge.node })) {
-        const hostImport = filename === 'site/DocsIsland.vue' && importsOnlyCoreValue({ node: edge.node, exportName: 'readDocsIslandEntry' });
+        const hostImport = filename === 'components/DocsIsland.vue' && importsOnlyCoreValue({ node: edge.node, exportName: 'readDocsIslandEntry' });
         const definitionImport = name !== undefined && filename === `islands/${name}/definition.ts`
           && importsOnlyCoreValue({ node: edge.node, exportName: 'defineDocsIsland' });
         if (!hostImport && !definitionImport) {
@@ -468,6 +544,9 @@ export async function validateDocsAuthoringSource({ source, filename, root, reso
         }
         throw new Error(`Import raw Docs island component through its definition instead: ${filename} -> ${target}`);
       }
+    }
+    if (articleMessage || branchingMessage) {
+      validateDocsRichTsx({ ast, filename, componentImports, role: articleMessage ? 'article' : 'branching-island' });
     }
   }
 }

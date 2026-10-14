@@ -1,11 +1,27 @@
 <script setup lang="ts">
-import DocsLink from '../../site/DocsLink.vue';
-import UiText from '../../site/UiText.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import type { DocsLocale } from '../../site/routes';
-import type { CommonMessages, LocalEnginesMessages } from '../../site/messages';
+import { computed } from 'vue';
+import DocsLink from '../../components/DocsLink.vue';
+import RenderText from '../../components/RenderText';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import type { DocsLocale } from '../../navigation/routes';
+import type { CommonMessages, LocalEnginesMessages } from '../../messages/types';
 
-defineProps<{ s: LocalEnginesMessages; locale: DocsLocale; common: CommonMessages }>();
+const props = defineProps<{ s: LocalEnginesMessages; locale: DocsLocale; common: CommonMessages }>();
+
+const engines = computed(() => [
+  { title: props.s.ollama_heading, guide: 'endpoint-type-ollama' as const, provider: props.s.ollama_provider_label, preset: props.s.ollama_preset, body: props.s.ollama_description },
+  { title: props.s.llama_cpp_server_heading, guide: 'endpoint-type-openai' as const, provider: props.s.llama_cpp_server_provider_label, preset: props.s.llama_cpp_server_preset, body: props.s.llama_cpp_server_description },
+]);
+const steps = computed(() => [
+  { title: props.s.start_engine_heading, body: props.s.start_engine_instructions },
+  { title: props.s.choose_provider_and_url_heading, body: props.s.choose_provider_and_url_instructions },
+  { title: props.s.check_connection_and_model_heading, body: props.s.check_connection_and_model_instructions },
+]);
+const troubleItems = computed(() => [
+  { title: props.s.wrong_address_or_api_heading, body: props.s.wrong_address_or_api_description },
+  { title: props.s.browser_blocks_request_heading, body: props.s.browser_blocks_request_description },
+  { title: props.s.empty_model_list_heading, body: props.s.empty_model_list_description },
+]);
 
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
@@ -15,47 +31,47 @@ defineExpose({
 <template>
   <article class="prose" data-testid="docs-models-local-engines">
     <h1>{{ s.title }}</h1>
-    <p v-for="paragraph in s.intro" :key="paragraph" class="lead"><UiText :text="paragraph" /></p>
+    <p v-for="paragraph in s.intro()" :key="paragraph" class="lead">{{ paragraph }}</p>
 
     <figure class="guide-figure model-flow" data-docs-animation="local-engine-flow">
       <div class="flow-track" aria-hidden="true">
-        <span class="flow-node">{{ s.flow.browser }}</span>
+        <span class="flow-node">{{ s.browser_chat }}</span>
         <span class="flow-arrow">↔</span>
-        <span class="flow-node flow-focus">{{ s.flow.connection }}</span>
+        <span class="flow-node flow-focus">{{ s.local_api_request }}</span>
         <span class="flow-arrow">↔</span>
-        <span class="flow-node">{{ s.flow.engine }}</span>
+        <span class="flow-node">{{ s.model_server }}</span>
       </div>
-      <figcaption class="caption"><UiText :text="s.flow.caption" /></figcaption>
+      <figcaption class="caption">{{ s.local_server_flow_caption }}</figcaption>
     </figure>
 
-    <h2>{{ s.enginesTitle }}</h2>
+    <h2>{{ s.local_engine_choices_heading }}</h2>
     <div class="pair-grid">
-      <section v-for="engine in s.engines" :key="engine.title" class="panel engine-card">
+      <section v-for="engine in engines" :key="engine.title" class="panel engine-card">
         <h3>{{ engine.title }}</h3>
-        <p class="engine-provider"><UiText :text="engine.provider" /></p>
+        <p class="engine-provider">{{ engine.provider }}</p>
         <code class="engine-preset">{{ engine.preset }}</code>
-        <p><UiText :text="engine.body" /></p>
-        <DocsLink class="card-guide-link" :locale="locale" :page="engine.guide" :aria-label="`${engine.title}: ${s.openGuide}`">{{ s.openGuide }} <span aria-hidden="true">→</span></DocsLink>
+        <p><RenderText :node="engine.body()" /></p>
+        <DocsLink class="card-guide-link" :locale="locale" :page="engine.guide" :aria-label="`${engine.title}: ${s.view_setup_guide}`">{{ s.view_setup_guide }} <span aria-hidden="true">→</span></DocsLink>
       </section>
     </div>
 
-    <h2>{{ s.stepsTitle }}</h2>
+    <h2>{{ s.first_run_connection_heading }}</h2>
     <ol class="guide-steps">
-      <li v-for="step in s.steps" :key="step.title"><h3>{{ step.title }}</h3><p><UiText :text="step.body" /></p></li>
+      <li v-for="step in steps" :key="step.title"><h3>{{ step.title }}</h3><p><RenderText :node="step.body()" /></p></li>
     </ol>
 
-    <h2>{{ s.laterTitle }}</h2>
-    <p><UiText :text="s.later" /></p>
+    <h2>{{ s.change_connection_heading }}</h2>
+    <p><RenderText :node="s.change_connection_instructions()" /></p>
 
-    <h2>{{ s.troubleTitle }}</h2>
+    <h2>{{ s.connection_troubleshooting_heading }}</h2>
     <div class="decision-list">
-      <section v-for="(item, index) in s.trouble" :key="item.title">
+      <section v-for="(item, index) in troubleItems" :key="item.title">
         <span aria-hidden="true">0{{ index + 1 }}</span>
-        <div><h3>{{ item.title }}</h3><p><UiText :text="item.body" /></p></div>
+        <div><h3>{{ item.title }}</h3><p><RenderText :node="item.body()" /></p></div>
       </section>
     </div>
-    <p class="connection-boundary"><UiText :text="s.boundary" /></p>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'in-browser-models', title: s.next, description: s.nextDescription }]" />
+    <p class="connection-boundary">{{ s.local_server_data_boundary }}</p>
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'in-browser-models', title: s.browser_model_guide_title, description: s.browser_model_guide_description }]" />
   </article>
 </template>
 

@@ -1,8 +1,8 @@
 import { JSDOM } from 'jsdom';
-import { DOCS_PAGES, docsHref } from '../site/routes';
-import type { DocsLocale } from '../site/routes';
+import { DOCS_PAGES, docsHref } from '../navigation/routes';
+import type { DocsLocale } from '../navigation/routes';
 import type { RenderedPage } from './contracts';
-import type { SearchEntry, SearchIndex } from '../site/search';
+import type { SearchEntry, SearchIndex } from '../search/search';
 
 function cleanText({ element }: { element: Element }): string {
   return (element.textContent ?? '').replace(/\s+/gu, ' ').trim();

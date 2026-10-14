@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderDocument, renderProductionDocument, renderProductionLocaleRoot } from '../build/html';
-import { isDocsArticleHref } from '../site/navigation-prefetch';
+import { isDocsArticleHref } from '../navigation/navigation-prefetch';
 import { parsePage } from './site.test-support';
 
 const assets = { styles: [], scripts: [], favicon: '/docs/assets/favicon.svg' };

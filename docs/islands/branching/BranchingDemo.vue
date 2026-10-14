@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import BranchingMethod from './BranchingMethod.vue';
-import UiText from '../../site/UiText.vue';
-import type { BranchingCopy, ReplicaChromeCopy } from '../../site/messages';
+import RenderText from '../../components/RenderText';
+import { readBranchingMessages } from './messages';
+import type { DocsLocale } from '../../navigation/routes';
 
-defineProps<{ copy: BranchingCopy; chrome: ReplicaChromeCopy }>();
+const { locale } = defineProps<{ locale: DocsLocale }>();
+const { messages, chrome } = readBranchingMessages({ locale });
 
 const methods = ['edit', 'resend', 'regenerate', 'fork'] as const;
 
@@ -18,8 +20,8 @@ defineExpose({
 
 <template>
   <div class="branch-sections" data-testid="branch-demo">
-    <p class="branch-note"><UiText :text="copy.note" /></p>
-    <BranchingMethod v-for="method in methods" :key="method" :variant="method" :copy="copy" :chrome="chrome" />
+    <p class="branch-note"><RenderText :node="messages.note()" /></p>
+    <BranchingMethod v-for="method in methods" :key="method" :variant="method" :copy="messages" :chrome="chrome" />
   </div>
 </template>
 

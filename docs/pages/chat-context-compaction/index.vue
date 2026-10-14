@@ -1,14 +1,12 @@
 <script setup lang="ts">
-import DocsLink from '../../site/DocsLink.vue';
-import UiText from '../../site/UiText.vue';
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import CompactStep from '../../site/demos/CompactStep.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import type { DocsLocale } from '../../site/routes';
-import type { CommonMessages } from '../../site/messages';
-import type { strings as compactStrings } from '../../pages/chat-context-compaction/strings/en';
+import RenderText from '../../components/RenderText';
+import CompactStep from '../../components/demos/CompactStep.vue';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import type { DocsLocale } from '../../navigation/routes';
+import type { CommonMessages } from '../../messages/types';
+import type { messages as compactMessages } from './messages/en';
 
-defineProps<{ s: typeof compactStrings; locale: DocsLocale; common: CommonMessages }>();
+const { s } = defineProps<{ s: typeof compactMessages; locale: DocsLocale; common: CommonMessages }>();
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -16,47 +14,47 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-chat-compact">
     <h1>{{ s.title }}</h1>
-    <p class="lead"><UiText :text="s.intro" /></p>
-    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" /><UiText :text="s.launch.after" /></p>
-    <p class="prerequisite"><UiText :text="s.prerequisite" /> {{ s.setup.before }}<DocsLink :locale="locale" page="local-ai-servers">{{ s.setup.link }}</DocsLink>{{ s.setup.between }}<DocsLink :locale="locale" page="in-browser-models">{{ s.setup.browserLink }}</DocsLink>{{ s.setup.after }}</p>
+    <p class="lead"><RenderText :node="s.shorten_a_long_conversation()" /></p>
+    <p class="app-entry-intro"><RenderText :node="s.open_chat_to_compact({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
+    <p class="prerequisite">{{ s.check_model_and_summary }} <RenderText :node="s.model_setup_guides({ locale })" /></p>
 
     <section class="walkthrough-step" aria-labelledby="compact-open">
-      <h2 id="compact-open">{{ s.steps.open.title }}</h2>
-      <p><UiText :text="s.steps.open.body" /></p>
+      <h2 id="compact-open">{{ s.open_compact_context_heading }}</h2>
+      <p><RenderText :node="s.open_compact_context_instructions()" /></p>
       <figure class="guide-figure">
-        <CompactStep stage="open" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.open.caption" /></figcaption>
+        <CompactStep stage="open" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.compact_context_menu_caption()" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="compact-keep">
-      <h2 id="compact-keep">{{ s.steps.keep.title }}</h2>
-      <p><UiText :text="s.steps.keep.body" /></p>
+      <h2 id="compact-keep">{{ s.choose_recent_messages_heading }}</h2>
+      <p><RenderText :node="s.choose_recent_messages_instructions()" /></p>
       <figure class="guide-figure">
-        <CompactStep stage="keep" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.keep.caption" /></figcaption>
+        <CompactStep stage="keep" :messages="s" />
+        <figcaption class="caption">{{ s.recent_messages_selection_caption }}</figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="compact-run">
-      <h2 id="compact-run">{{ s.steps.run.title }}</h2>
-      <p><UiText :text="s.steps.run.body" /></p>
+      <h2 id="compact-run">{{ s.start_summary_heading }}</h2>
+      <p><RenderText :node="s.start_summary_instructions()" /></p>
       <figure class="guide-figure">
-        <CompactStep stage="run" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.run.caption" /></figcaption>
+        <CompactStep stage="run" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.summary_progress_caption()" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="compact-result">
-      <h2 id="compact-result">{{ s.steps.result.title }}</h2>
-      <p><UiText :text="s.steps.result.body" /></p>
+      <h2 id="compact-result">{{ s.review_shorter_path_heading }}</h2>
+      <p>{{ s.review_shorter_path_instructions }}</p>
       <figure class="guide-figure">
-        <CompactStep stage="result" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.result.caption" /></figcaption>
+        <CompactStep stage="result" :messages="s" />
+        <figcaption class="caption">{{ s.shorter_path_caption }}</figcaption>
       </figure>
     </section>
 
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'chat-branching', title: s.related, description: s.nextDescription }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'chat-branching', title: s.branch_and_edit_conversations, description: s.keep_original_path_while_branching }]" />
   </article>
 </template>
 

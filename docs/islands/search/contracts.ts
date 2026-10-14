@@ -1,20 +1,15 @@
-import type { CommonMessages } from '../../site/messages';
-import { DOCS_PAGES, docsHref } from '../../site/routes';
-import type { DocsLocale, DocsPageId } from '../../site/routes';
-import { PURPOSE_PAGES } from '../../site/search-purpose';
-import type { PurposeGuide } from '../../site/search-purpose';
+import { DOCS_PAGES, docsHref } from '../../navigation/routes';
+import type { DocsLocale, DocsPageId } from '../../navigation/routes';
+import { PURPOSE_PAGES } from '../../search/search-purpose';
+import type { PurposeGuide } from '../../search/search-purpose';
 import { defineDocsIslandSpec } from '../spec';
 
-export type SearchPayload = { locale: DocsLocale; currentPage: DocsPageId; copy: CommonMessages['searchUi']; purpose: PurposeGuide[] };
-
-const copyFields = ['open', 'close', 'title', 'placeholder', 'purposeTitle', 'loading', 'noResults', 'count', 'previousResults', 'error', 'retry'] as const satisfies readonly (keyof CommonMessages['searchUi'])[];
+export type SearchPayload = { locale: DocsLocale; currentPage: DocsPageId; purpose: PurposeGuide[] };
 
 export function parseSearchPayload({ serialized }: { serialized: string }): SearchPayload {
   const value: unknown = JSON.parse(serialized);
   if (typeof value !== 'object' || value === null || !('locale' in value) || (value.locale !== 'en' && value.locale !== 'ja')
     || !('currentPage' in value) || !DOCS_PAGES.some(page => page.id === value.currentPage)
-    || !('copy' in value) || typeof value.copy !== 'object' || value.copy === null
-    || !copyFields.every(field => typeof (value.copy as Record<string, unknown>)[field] === 'string')
     || !('purpose' in value) || !Array.isArray(value.purpose) || value.purpose.length !== PURPOSE_PAGES.length) {
     throw new Error('Invalid Docs search props');
   }
@@ -28,7 +23,7 @@ export function parseSearchPayload({ serialized }: { serialized: string }): Sear
   })) {
     throw new Error('Invalid Docs search props');
   }
-  return value as SearchPayload;
+  return { locale, currentPage: value.currentPage as DocsPageId, purpose: value.purpose as PurposeGuide[] };
 }
 
 export const searchSpec = defineDocsIslandSpec<SearchPayload>({

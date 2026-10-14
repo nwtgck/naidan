@@ -5,12 +5,14 @@ import { releaseSearchWorker, wrapSearchWorker } from './transport';
 import type { SearchWorkerRemote } from './transport';
 import { parseWorkerResponse } from './worker-contracts';
 import type { SearchHit, SearchWorkerRequest } from './worker-contracts';
-import { isDocsArticleHref } from '../../site/navigation-prefetch';
-import DocsLink from '../../site/DocsLink.vue';
-import { DOCS_PAGES, docsHref } from '../../site/routes';
-import type { DocsPageId } from '../../site/routes';
+import { isDocsArticleHref } from '../../navigation/navigation-prefetch';
+import { readSearchMessages } from './messages';
+import DocsLink from '../../components/DocsLink.vue';
+import { DOCS_PAGES, docsHref } from '../../navigation/routes';
+import type { DocsPageId } from '../../navigation/routes';
 
 const props = defineProps<SearchPayload>();
+const messages = readSearchMessages({ locale: props.locale });
 const active = ref(false);
 const query = ref('');
 const status = ref<'idle' | 'loading' | 'ready' | 'error'>('ready');
@@ -30,10 +32,10 @@ function pageForResult({ href }: { href: string }): DocsPageId {
 const resultsLabel = computed(() => {
   const typed = query.value.trim();
   if (typed !== displayedQuery.value) {
-    if (displayedQuery.value) return `${props.copy.previousResults} ${displayedQuery.value}`;
-    return props.copy.purposeTitle;
+    if (displayedQuery.value) return messages.search_ui_previous_results({ query: displayedQuery.value });
+    return messages.search_ui_purpose_title;
   }
-  return typed ? props.copy.title : props.copy.purposeTitle;
+  return typed ? messages.search_ui_title : messages.search_ui_purpose_title;
 });
 let previousFocus: HTMLElement | undefined;
 let previousOverflow: string | undefined;
@@ -214,14 +216,14 @@ function moveResult({ event, offset }: { event: KeyboardEvent; offset: number })
       class="control docs-search-trigger"
       type="button"
       :disabled="!active"
-      :aria-label="copy.open"
-      :title="copy.open"
+      :aria-label="messages.search_ui_open_search"
+      :title="messages.search_ui_open_search"
       data-testid="docs-search-trigger"
       @click="openSearch"
     ><svg class="icon sm" aria-hidden="true"><use href="#i-search" /></svg></button>
-    <dialog ref="dialog" class="docs-search-dialog" :aria-label="copy.title" @cancel="onCancel({ event: $event })" @click="onBackdrop({ event: $event })">
+    <dialog ref="dialog" class="docs-search-dialog" :aria-label="messages.search_ui_title" @cancel="onCancel({ event: $event })" @click="onBackdrop({ event: $event })">
       <div class="docs-search-head">
-        <label class="sr-only" for="docs-search-input">{{ copy.title }}</label>
+        <label class="sr-only" for="docs-search-input">{{ messages.search_ui_title }}</label>
         <svg class="icon sm" aria-hidden="true"><use href="#i-search" /></svg>
         <input
           id="docs-search-input"
@@ -229,22 +231,22 @@ function moveResult({ event, offset }: { event: KeyboardEvent; offset: number })
           v-model="query"
           type="search"
           autocomplete="off"
-          :placeholder="copy.placeholder"
+          :placeholder="messages.search_ui_placeholder"
           data-testid="docs-search-input"
           @input="submitSearch"
           @keydown="onInputKeydown({ event: $event })"
         >
-        <button class="docs-search-close" type="button" :aria-label="copy.close" :title="copy.close" data-testid="docs-search-close" @click="closeSearch">×</button>
+        <button class="docs-search-close" type="button" :aria-label="messages.search_ui_close_search" :title="messages.search_ui_close_search" data-testid="docs-search-close" @click="closeSearch">×</button>
       </div>
       <div class="docs-search-content">
         <p class="search-status" :role="status === 'error' ? 'alert' : 'status'">
-          <span v-if="status === 'loading'">{{ copy.loading }}<template v-if="results.length"> · <template v-if="displayedQuery">{{ copy.previousResults }} “{{ displayedQuery }}”</template><template v-else>{{ copy.purposeTitle }}</template></template></span>
-          <span v-else-if="status === 'error'">{{ copy.error }}</span>
-          <span v-else-if="!query.trim()">{{ copy.purposeTitle }}</span>
-          <span v-else-if="status === 'ready' && !results.length">{{ copy.noResults }}</span>
-          <span v-else-if="status === 'ready'">{{ results.length }} {{ copy.count }}</span>
+          <span v-if="status === 'loading'">{{ messages.search_ui_loading }}<template v-if="results.length"> · <template v-if="displayedQuery">{{ messages.search_ui_previous_results({ query: displayedQuery }) }}</template><template v-else>{{ messages.search_ui_purpose_title }}</template></template></span>
+          <span v-else-if="status === 'error'">{{ messages.search_ui_error }}</span>
+          <span v-else-if="!query.trim()">{{ messages.search_ui_purpose_title }}</span>
+          <span v-else-if="status === 'ready' && !results.length">{{ messages.search_ui_no_results }}</span>
+          <span v-else-if="status === 'ready'">{{ messages.search_ui_result_count({ count: results.length }) }}</span>
         </p>
-        <button v-if="status === 'error'" class="docs-search-retry" type="button" @click="submitSearch">{{ copy.retry }}</button>
+        <button v-if="status === 'error'" class="docs-search-retry" type="button" @click="submitSearch">{{ messages.search_ui_retry }}</button>
         <ul v-show="results.length" ref="resultList" class="search-results" :aria-label="resultsLabel" data-testid="docs-search-results">
           <li v-for="result in results" :key="result.href">
             <DocsLink :locale="locale" :page="pageForResult({ href: result.href })" :data-docs-guide-prefetch="isDocsArticleHref({ href: result.href }) && result.href !== currentHref ? '' : undefined" @keydown.down="moveResult({ event: $event, offset: 1 })" @keydown.up="moveResult({ event: $event, offset: -1 })">

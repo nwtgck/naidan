@@ -1,4 +1,4 @@
-import type { DocsPageId } from '../site/routes';
+import type { DocsPageId } from '../navigation/routes';
 import { islandSpecs } from '../islands/registry';
 import type { DocsIslandId } from '../islands/registry';
 

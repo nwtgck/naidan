@@ -26,21 +26,21 @@ export function createDocsDevBridge(): Plugin {
       const docsRoot = path.resolve(server.config.root, 'docs');
       server.watcher.add([
         path.resolve(docsRoot, 'build'),
-        path.resolve(docsRoot, 'site/routes.ts'),
-        path.resolve(docsRoot, 'site/external-link.ts'),
+        path.resolve(docsRoot, 'navigation/routes.ts'),
+        path.resolve(docsRoot, 'navigation/external-link.ts'),
         path.resolve(docsRoot, 'islands/registry.ts'),
-        path.resolve(docsRoot, 'strings/entry/en.ts'),
-        path.resolve(docsRoot, 'strings/entry/ja.ts'),
+        path.resolve(docsRoot, 'messages/entry/en.ts'),
+        path.resolve(docsRoot, 'messages/entry/ja.ts'),
       ]);
       server.watcher.on('all', (event, file) => {
         if (event !== 'change' && event !== 'add' && event !== 'unlink') return;
         const relative = path.relative(docsRoot, file);
         if (relative.startsWith(`build${path.sep}`) && relative.endsWith('.ts')
-          || relative === path.join('site', 'routes.ts')
-          || relative === path.join('site', 'external-link.ts')
+          || relative === path.join('navigation', 'routes.ts')
+          || relative === path.join('navigation', 'external-link.ts')
           || relative === path.join('islands', 'registry.ts')
-          || relative === path.join('strings', 'entry', 'en.ts')
-          || relative === path.join('strings', 'entry', 'ja.ts')) retire();
+          || relative === path.join('messages', 'entry', 'en.ts')
+          || relative === path.join('messages', 'entry', 'ja.ts')) retire();
       });
       server.middlewares.use(async (request, response, next) => {
         let url: URL;

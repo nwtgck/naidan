@@ -5,7 +5,7 @@ import path from 'node:path';
 import { build } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import { docsBuildConfig } from '../build/production';
-import { DOCS_LOCALES, DOCS_PAGES, docsHref } from '../site/routes';
+import { DOCS_LOCALES, DOCS_PAGES, docsHref } from '../navigation/routes';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
 describe('Docs development and static output', () => {
@@ -77,11 +77,14 @@ describe('Docs development and static output', () => {
         const appEntryClient = production.document.querySelector('[data-docs-app-entry-path]') ? 1 : 0;
         const homeBrandClient = production.document.querySelector('[data-docs-hero-brand]') ? 1 : 0;
         expect(scripts.length).toBe(1 + islands.size + appEntryClient + homeBrandClient);
+        const richStyleTarget = locale === 'en' && page.id === 'chat-super-edit';
+        let developmentCss = '', productionCss = '';
         for (const element of development.document.querySelectorAll('link[rel="stylesheet"]')) {
           const asset = element.getAttribute('href');
           const css = await dev.request({ url: asset ?? '' });
           expect(css.status, asset ?? '').toBe(200);
           expect(css.headers.get('content-type'), asset ?? '').toContain('text/css');
+          if (richStyleTarget) developmentCss += await css.text();
         }
         expect(development.document.querySelectorAll('link[rel="stylesheet"]').length).toBeGreaterThan(0);
         for (const element of production.document.querySelectorAll('link[rel="stylesheet"], script[src], img[src]')) {
@@ -89,7 +92,14 @@ describe('Docs development and static output', () => {
           expect(href.startsWith('/docs/assets/'), href).toBe(true);
           const content = await readFile(path.join(fixture.docs, 'dist', href.slice('/docs/'.length)), 'utf8');
           expect(content.length, href).toBeGreaterThan(20);
+          if (richStyleTarget && element.tagName === 'LINK') productionCss += content;
           if (href.endsWith('.svg')) expect(content).toContain('<svg');
+        }
+        if (richStyleTarget) {
+          for (const css of [developmentCss, productionCss]) {
+            expect(css).toContain('.ui-label[data-v-');
+            expect(css).toContain('[data-docs-app-entry-path-text][data-v-');
+          }
         }
       }
     }
@@ -131,7 +141,7 @@ describe('Docs adversarial lifecycle behavior', () => {
       if (locale === 'ja') expect(heading).toBe('安全性を徹底追求した、簡単に使えるAI環境。');
       else expect(heading).toBe('An easy-to-use AI environment, built around privacy.');
     }));
-    const file = path.join(fixture.docs, 'pages/index/strings/ja.ts');
+    const file = path.join(fixture.docs, 'pages/index/messages/ja.tsx');
     const source = await readFile(file, 'utf8');
     await writeFile(file, source.replace('知りたい機能から探す', 'Updated Japanese guide heading'));
     await vi.waitFor(async () => {
@@ -146,7 +156,7 @@ describe('Docs adversarial lifecycle behavior', () => {
     const config = { ...docsBuildConfig({ root: fixture.docs }), configFile: false as const, logLevel: 'error' as const };
     await build(config);
     await writeFile(path.join(fixture.docs, 'dist', 'stale.html'), 'previous route');
-    const file = path.join(fixture.docs, 'pages/index/strings/en.ts');
+    const file = path.join(fixture.docs, 'pages/index/messages/en.tsx');
     await writeFile(file, (await readFile(file, 'utf8')).replace('Find what you want to do.', 'Updated production heading'));
     await build(config);
     const html = await readFile(path.join(fixture.docs, 'dist/en/index.html'), 'utf8');
@@ -159,13 +169,16 @@ describe('Docs adversarial lifecycle behavior', () => {
       const code = await readFile(path.join(fixture.docs, 'dist/assets', file), 'utf8');
       expect(code).not.toContain('Updated production heading');
       expect(code).not.toContain('安全性を徹底追求した');
+      // Island imports of named common messages must not pull in page-wide navigation.
+      expect(code).not.toContain('Guide home');
+      expect(code).not.toContain('ブラウザ内でモデルを動かす');
     }
   });
 
   it('fails Docs builds on invalid dictionaries while leaving the normal app build independent', async () => {
     await using fixture = await createSiteFixture();
-    const file = path.join(fixture.docs, 'pages/index/strings/ja.ts');
-    await writeFile(file, 'export const strings = { title: "Incomplete" };');
+    const file = path.join(fixture.docs, 'pages/index/messages/ja.tsx');
+    await writeFile(file, 'export const messages = { title: "Incomplete" };');
     await expect(build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' })).rejects.toThrow();
     expect(await readdir(path.join(fixture.docs, 'dist')).catch(() => [])).not.toContain('index.html');
     await build({ root: fixture.root, configFile: false, plugins: [createDocsDevBridge()], logLevel: 'silent' });
@@ -179,14 +192,14 @@ describe('Docs adversarial lifecycle behavior', () => {
     const child = `\
 <template><div class="nested-native" data-testid="nested-native">Native nested component</div></template>
 <style scoped>@import './nested.css'; .nested-native { background-image: url('../assets/naidan.svg'); }</style>`;
-    await writeFile(path.join(fixture.docs, 'site/NestedNative.vue'), child);
-    await writeFile(path.join(fixture.docs, 'site/nested.css'), '.nested-native { --native-css-probe: 617px; }');
+    await writeFile(path.join(fixture.docs, 'components/NestedNative.vue'), child);
+    await writeFile(path.join(fixture.docs, 'components/nested.css'), '.nested-native { --native-css-probe: 617px; }');
     const page = path.join(fixture.docs, 'pages/file-access/index.vue');
     const declaration = kind === 'static'
-      ? 'import NestedNative from "../../site/NestedNative.vue";'
+      ? 'import NestedNative from "../../components/NestedNative.vue";'
       : `\
 import { defineAsyncComponent } from 'vue';
-const NestedNative = defineAsyncComponent(() => import('../../site/NestedNative.vue'));`;
+const NestedNative = defineAsyncComponent(() => import('../../components/NestedNative.vue'));`;
     await writeFile(page, (await readFile(page, 'utf8')).replace('<script setup lang="ts">', `\
 <script setup lang="ts">
 ${declaration}`).replace('<template>', '<template><NestedNative />'));
@@ -215,11 +228,11 @@ ${declaration}`).replace('<template>', '<template><NestedNative />'));
 
   it('rejects interactions hidden inside an imported static child', async () => {
     await using fixture = await createSiteFixture();
-    await writeFile(path.join(fixture.docs, 'site/HiddenEvent.vue'), '<template><button @focus="() => {}">Hidden event</button></template>');
+    await writeFile(path.join(fixture.docs, 'components/HiddenEvent.vue'), '<template><button @focus="() => {}">Hidden event</button></template>');
     const file = path.join(fixture.docs, 'pages/index/index.vue');
     await writeFile(file, (await readFile(file, 'utf8')).replace('<script setup lang="ts">', `\
 <script setup lang="ts">
-import HiddenEvent from "../../site/HiddenEvent.vue";`).replace('<template>', '<template><HiddenEvent />'));
+import HiddenEvent from "../../components/HiddenEvent.vue";`).replace('<template>', '<template><HiddenEvent />'));
     await expect(build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' })).rejects.toThrow('Interactive binding');
   });
 });
@@ -244,6 +257,23 @@ onMounted(() => {});`));
     await expect(build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' })).rejects.toThrow('server-only');
   });
 
+  it('keeps article translation source off direct browser URLs and client graphs', async () => {
+    await using fixture = await createSiteFixture();
+    await using dev = await startSiteDev({ root: fixture.root });
+    const absoluteSource = path.join(fixture.docs, 'pages/index/messages/en.tsx');
+    for (const url of ['/docs/pages/index/messages/en.tsx', '/docs/pages/index/messages/en.tsx?raw', `/docs/@fs${absoluteSource}?raw`]) {
+      const response = await dev.request({ url });
+      expect(response.status, url).toBeGreaterThanOrEqual(400);
+      expect(await response.text(), url).not.toContain('export const messages');
+    }
+    expect((await dev.request({ url: '/docs/en/' })).status).toBe(200);
+
+    const client = path.join(fixture.docs, 'client/home-brand.ts');
+    await writeFile(client, `${await readFile(client, 'utf8')}\nimport '../pages/index/messages/en.tsx';\n`);
+    await expect(build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' }))
+      .rejects.toThrow(/server-only|server registry only/u);
+  });
+
   it('isolates accidental component mutations from subsequent and concurrent renders', async () => {
     await using fixture = await createSiteFixture();
     const file = path.join(fixture.docs, 'pages/index/index.vue');
@@ -252,7 +282,10 @@ onMounted(() => {});`));
       'defineProps<{ s: HomeMessages; locale: DocsLocale; common: CommonMessages }>();',
       `\
 const props = defineProps<{ s: HomeMessages; locale: DocsLocale; common: CommonMessages }>();
-props.s.intro[0] += ' One isolated render.';`,
+const originalIntro = props.s.intro_paragraphs;
+const discarded = originalIntro();
+discarded[0] += ' A stale list leaked.';
+props.s.intro_paragraphs = () => originalIntro().map((text, index) => index === 0 ? text + ' One isolated render.' : text);`,
     );
     expect(mutated).not.toBe(original);
     await writeFile(file, mutated);
@@ -262,6 +295,7 @@ props.s.intro[0] += ' One isolated render.';`,
       expect(response.status).toBe(200);
       using page = parsePage({ html: await response.text() });
       expect(page.document.querySelector('[data-testid="docs-hero"]')?.textContent?.split('One isolated render.')).toHaveLength(2);
+      expect(page.document.querySelector('[data-testid="docs-hero"]')?.textContent).not.toContain('A stale list leaked.');
     };
     await assertCopy({ locale: 'ja' });
     await assertCopy({ locale: 'ja' });

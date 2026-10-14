@@ -102,7 +102,7 @@ const mainConfig = tseslint.config(
   ...tseslint.configs.recommended,
   ...pluginVue.configs['flat/essential'],
   {
-    files: ['**/*.ts', '**/*.vue'],
+    files: ['**/*.ts', '**/*.tsx', '**/*.vue'],
     languageOptions: {
       parserOptions: {
         parser: tseslint.parser,
@@ -259,13 +259,13 @@ export default [
   },
   {
     name: 'naidan/docs-typechecking',
-    files: ['docs/**/*.{ts,vue}', 'build/docs-dev-bridge.ts'],
+    files: ['docs/**/*.{ts,tsx,vue}', 'build/docs-dev-bridge.ts'],
     languageOptions: { parserOptions: { project: ['./docs/tsconfig.json'] } },
   },
   {
     ...requireNamedArgs,
     name: 'naidan/docs-named-arguments',
-    files: ['docs/**/*.ts', 'docs/**/*.vue', 'build/docs-dev-bridge.ts'],
+    files: ['docs/**/*.ts', 'docs/**/*.tsx', 'docs/**/*.vue', 'build/docs-dev-bridge.ts'],
     ignores: ['docs/**/*.test.ts', 'docs/**/*.spec.ts'],
   },
   testResourceManagement,

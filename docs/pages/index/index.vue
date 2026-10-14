@@ -1,26 +1,27 @@
 <script setup lang="ts">
-import DocsLink from '../../site/DocsLink.vue';
+import DocsLink from '../../components/DocsLink.vue';
 import { GithubIcon } from 'lucide-vue-next';
 import logo from '../../assets/naidan.svg';
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import BrowserMock from '../../site/BrowserMock.vue';
-import ExternalLink from '../../site/ExternalLink.vue';
-import BoundaryDiagram from '../../site/demos/BoundaryDiagram.vue';
-import StandaloneDemo from '../../site/demos/StandaloneDemo.vue';
-import StorageChoiceDemo from '../../site/demos/StorageChoiceDemo.vue';
-import type { HomeMessages, CommonMessages } from '../../site/messages';
-import type { DocsLocale, DocsPageId } from '../../site/routes';
+import AppEntryLink from '../../components/AppEntryLink.vue';
+import BrowserMock from '../../components/BrowserMock.vue';
+import ExternalLink from '../../components/ExternalLink.vue';
+import BoundaryDiagram from '../../components/demos/BoundaryDiagram.vue';
+import StandaloneDemo from '../../components/demos/StandaloneDemo.vue';
+import StorageChoiceDemo from '../../components/demos/StorageChoiceDemo.vue';
+import type { HomeMessages, CommonMessages } from '../../messages/types';
+import type { DocsLocale, DocsPageId } from '../../navigation/routes';
+import RenderText from '../../components/RenderText';
 
 const guideCards = [
-  { key: 'gguf', page: 'endpoint-type-llama-cpp-browser', icon: '#i-model' },
-  { key: 'image', page: 'image-generation', icon: '#i-image' },
-  { key: 'audio', page: 'audio-generation', icon: '#i-audio' },
-  { key: 'branching', page: 'chat-branching', icon: '#i-branch' },
-  { key: 'shell', page: 'tool-browser-shell', icon: '#i-terminal' },
-  { key: 'groups', page: 'chat-groups', icon: '#i-grid' },
-  { key: 'wikipedia', page: 'tool-wikipedia', icon: '#i-search' },
-  { key: 'offline', page: 'pwa', icon: '#i-download' },
-] as const satisfies readonly { key: keyof HomeMessages['guides']; page: DocsPageId; icon: string }[];
+  { titleKey: 'chat_with_gguf_guide_title', bodyKey: 'chat_with_gguf_guide_description', page: 'endpoint-type-llama-cpp-browser', icon: '#i-model' },
+  { titleKey: 'create_images_guide_title', bodyKey: 'create_images_guide_description', page: 'image-generation', icon: '#i-image' },
+  { titleKey: 'make_speech_guide_title', bodyKey: 'make_speech_guide_description', page: 'audio-generation', icon: '#i-audio' },
+  { titleKey: 'branch_conversation_guide_title', bodyKey: 'branch_conversation_guide_description', page: 'chat-branching', icon: '#i-branch' },
+  { titleKey: 'selected_files_guide_title', bodyKey: 'selected_files_guide_description', page: 'tool-browser-shell', icon: '#i-terminal' },
+  { titleKey: 'organize_chats_guide_title', bodyKey: 'organize_chats_guide_description', page: 'chat-groups', icon: '#i-grid' },
+  { titleKey: 'wikipedia_guide_title', bodyKey: 'wikipedia_guide_description', page: 'tool-wikipedia', icon: '#i-search' },
+  { titleKey: 'offline_pwa_guide_title', bodyKey: 'offline_pwa_guide_description', page: 'pwa', icon: '#i-download' },
+] as const satisfies readonly { titleKey: keyof HomeMessages; bodyKey: keyof HomeMessages; page: DocsPageId; icon: string }[];
 
 defineProps<{ s: HomeMessages; locale: DocsLocale; common: CommonMessages }>();
 
@@ -47,9 +48,9 @@ defineExpose({
           <img :src="logo" width="130" height="130" alt="">
           <span class="brand-wordmark">Naidan</span>
         </div>
-        <h1 id="home-title"><span>{{ s.headline[0] }}</span><span class="accent">{{ s.headline[1] }}</span></h1>
+        <h1 id="home-title"><span>{{ s.headline_opening }}</span><span class="accent">{{ s.headline_emphasis }}</span></h1>
         <p
-          v-for="(paragraph, index) in s.intro"
+          v-for="(paragraph, index) in s.intro_paragraphs()"
           :key="paragraph"
           class="hero-lead"
         ><strong v-if="index === 1">{{ paragraph }}</strong><template v-else>{{ paragraph }}</template></p>
@@ -60,17 +61,17 @@ defineExpose({
             :locale="locale"
             display="label"
             data-testid="docs-hero-launch"
-          >{{ common.launch }}<svg class="icon sm" aria-hidden="true"><use href="#i-arrow" /></svg></AppEntryLink>
+          >{{ common.use_naidan }}<svg class="icon sm" aria-hidden="true"><use href="#i-arrow" /></svg></AppEntryLink>
           <ExternalLink
             class="btn btn-secondary hero-action"
             href="https://github.com/nwtgck/naidan"
             :locale="locale"
             data-testid="docs-hero-source"
-          ><GithubIcon class="icon sm" aria-hidden="true" />{{ common.source }}</ExternalLink>
+          ><GithubIcon class="icon sm" aria-hidden="true" />{{ common.source_code }}</ExternalLink>
         </div>
       </div>
       <figure class="home-mock">
-        <BrowserMock :copy="s.demo" :chrome="common.chrome" />
+        <BrowserMock :messages="s" :common="common" />
       </figure>
     </div>
   </section>
@@ -84,76 +85,53 @@ defineExpose({
         <h2
           id="how-title"
           class="section-title"
-        >{{ s.howTitle }}</h2>
-        <p class="section-description">{{ s.howLead }}</p>
+        >{{ s.browser_boundaries_heading }}</h2>
+        <p class="section-description">{{ s.browser_boundaries_introduction }}</p>
       </div>
       <div class="how-grid">
-        <BoundaryDiagram :copy="s.boundary" />
+        <BoundaryDiagram :messages="s" />
         <div class="mechanism-list">
-          <section
-            v-for="(item, index) in s.mechanisms"
-            :key="item.title"
-            class="mechanism-item"
-          ><span
-             class="mechanism-index"
-             aria-hidden="true"
-           >0{{ index + 1 }}</span>
-            <div>
-              <h3>{{ item.title }}</h3>
-              <p>{{ item.body }} <DocsLink
-                v-if="index === 2"
-                class="mechanism-detail-link"
-                data-testid="docs-local-only-guide"
-                :locale="locale" page="csp-editions"
-              >{{ s.localOnlyLink }}</DocsLink></p>
-            </div>
-          </section>
+          <section class="mechanism-item"><span class="mechanism-index" aria-hidden="true">01</span><div><h3>{{ s.browser_access_heading }}</h3><p>{{ s.browser_access_description }}</p></div></section>
+          <section class="mechanism-item"><span class="mechanism-index" aria-hidden="true">02</span><div><h3>{{ s.local_model_processing_heading }}</h3><p>{{ s.local_model_processing_description }}</p></div></section>
+          <section class="mechanism-item"><span class="mechanism-index" aria-hidden="true">03</span><div><h3>{{ s.network_scope_heading }}</h3><p><RenderText :node="s.network_scope_description({ locale, page: 'csp-editions' })" /></p></div></section>
         </div>
       </div>
-      <p class="boundary-footnote">{{ s.boundaryNote }}</p>
+      <p class="boundary-footnote">{{ s.model_downloads_and_external_connections }}</p>
       <DocsLink
         class="home-guide-entry"
         data-testid="docs-app-permissions-guide"
         :locale="locale" page="web-and-native-app-permissions"
       >
         <span class="home-guide-copy">
-          <strong>{{ s.appPermissionsLink }}</strong>
-          <span>{{ s.appPermissionsDescription }}</span>
+          <strong>{{ s.compare_app_permissions }}</strong>
+          <span>{{ s.compare_app_permissions_description }}</span>
         </span>
         <span class="home-guide-arrow" aria-hidden="true">→</span>
       </DocsLink>
       <div class="models-section">
-        <h2 class="section-title">{{ s.modelsTitle }}</h2>
+        <h2 class="section-title">{{ s.model_locations_heading }}</h2>
         <div class="pair-grid">
-          <DocsLink
-            v-for="(model, index) in s.models"
-            :key="model.title"
-            :locale="locale" :page="index === 0 ? 'in-browser-models' : 'local-ai-servers'"
-            class="model-card panel"
-            data-testid="docs-model-guide"
-          >
-            <h3><span>{{ model.title }}</span><span aria-hidden="true">→</span></h3>
-            <p>{{ model.body }}</p>
-          </DocsLink>
+          <DocsLink :locale="locale" page="in-browser-models" class="model-card panel" data-testid="docs-model-guide"><h3><span>{{ s.run_model_in_browser_heading }}</span><span aria-hidden="true">→</span></h3><p>{{ s.run_model_in_browser_description }}</p></DocsLink>
+          <DocsLink :locale="locale" page="local-ai-servers" class="model-card panel" data-testid="docs-model-guide"><h3><span>{{ s.connect_local_engine_heading }}</span><span aria-hidden="true">→</span></h3><p>{{ s.connect_local_engine_description }}</p></DocsLink>
         </div>
       </div>
     </div>
   </section>
   <section class="standalone-section wrap" aria-labelledby="standalone-title" data-testid="docs-home-standalone">
-    <div><h2 id="standalone-title" class="section-title">{{ s.standalone.title }}</h2><p>{{ s.standalone.body }}</p>
+    <div><h2 id="standalone-title" class="section-title">{{ s.standalone_preview_heading }}</h2><p>{{ s.standalone_preview_description }}</p>
       <DocsLink
         class="home-guide-entry"
         data-testid="docs-standalone-guide"
         :locale="locale" page="standalone"
       >
         <span class="home-guide-copy">
-          <strong>{{ s.standaloneLink }}</strong>
-          <span>{{ s.standaloneDescription }}</span>
+          <strong>{{ s.standalone_guide_link }}</strong>
+          <span>{{ s.standalone_guide_description }}</span>
         </span>
         <span class="home-guide-arrow" aria-hidden="true">→</span>
       </DocsLink>
     </div>
-    <figure class="standalone-preview"><StandaloneDemo :copy="s.standaloneDemo" /></figure>
+    <figure class="standalone-preview"><StandaloneDemo :messages="s" /></figure>
   </section>
   <section
     class="storage-section"
@@ -165,12 +143,12 @@ defineExpose({
         <h2
           id="storage-title"
           class="section-title"
-        >{{ s.storageTitle }}</h2>
-        <p class="section-description">{{ s.storageLead }}</p>
-        <div class="storage-explanation"><section v-for="item in s.storage" :key="item.title"><h3>{{ item.title }}</h3><p>{{ item.body }}</p></section></div>
-        <p class="storage-detail-hint">{{ s.storageNote }}</p>
+        >{{ s.conversation_storage_heading }}</h2>
+        <p class="section-description">{{ s.conversation_storage_introduction }}</p>
+        <div class="storage-explanation"><section><h3>{{ s.save_in_browser_heading }}</h3><p>{{ s.save_in_browser_description }}</p></section><section><h3>{{ s.use_memory_only_heading }}</h3><p>{{ s.use_memory_only_description }}</p></section></div>
+        <p class="storage-detail-hint">{{ s.storage_lifetimes_note }}</p>
       </div>
-      <figure class="storage-preview"><StorageChoiceDemo :copy="s.storageDemo" /><figcaption class="caption">{{ s.storageCaption }}</figcaption></figure>
+      <figure class="storage-preview"><StorageChoiceDemo :messages="s" /><figcaption class="caption">{{ s.storage_diagram_caption }}</figcaption></figure>
     </div>
   </section>
   <section
@@ -185,8 +163,8 @@ defineExpose({
           <h2
             id="guides-title"
             class="section-title"
-          >{{ s.guidesTitle }}</h2>
-          <p class="section-description">{{ s.guidesLead }}</p>
+          >{{ s.guides_heading }}</h2>
+          <p class="section-description">{{ s.guides_introduction }}</p>
         </div>
       </div>
       <div class="article-grid">
@@ -198,8 +176,8 @@ defineExpose({
           :locale="locale" :page="guide.page"
         >
           <span class="card-top"><span class="card-icon"><svg class="icon lg" aria-hidden="true"><use :href="guide.icon" /></svg></span><span class="card-arrow" aria-hidden="true">→</span></span>
-          <h3 class="card-title">{{ s.guides[guide.key].title }}</h3>
-          <p class="card-desc">{{ s.guides[guide.key].body }}</p>
+          <h3 class="card-title">{{ s[guide.titleKey] }}</h3>
+          <p class="card-desc">{{ s[guide.bodyKey] }}</p>
         </DocsLink>
       </div>
     </div>

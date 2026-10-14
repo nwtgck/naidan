@@ -3,19 +3,18 @@ import { createSSRApp, defineComponent, h, nextTick, onMounted } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
-import DocsIsland from '../site/DocsIsland.vue';
+import DocsIsland from '../components/DocsIsland.vue';
 import { branchingIsland } from '../islands/branching/definition';
+import { parseBranchingPayload } from '../islands/branching/contracts';
+import { prepareBranchingMessages, readBranchingMessages } from '../islands/branching/messages';
 import { hydrateDocsIsland } from '../islands/core';
 import { defineDocsIsland } from '../islands/core';
 import { defineDocsIslandSpec } from '../islands/spec';
-import { strings as english } from '../pages/chat-branching/strings/en';
-import { strings as japanese } from '../pages/chat-branching/strings/ja';
-import { strings as englishCommon } from '../strings/common/en';
-import { strings as japaneseCommon } from '../strings/common/ja';
-import type { BranchingCopy, ReplicaChromeCopy } from '../site/messages';
+import type { DocsLocale } from '../navigation/routes';
 
-async function appendDemo({ copy, chrome }: { copy: BranchingCopy; chrome: ReplicaChromeCopy }): Promise<HTMLElement> {
-  const html = await renderToString(createSSRApp({ render: () => h(DocsIsland, { entry: branchingIsland({ copy, chrome }) }) }));
+async function appendDemo({ locale }: { locale: DocsLocale }): Promise<HTMLElement> {
+  await prepareBranchingMessages({ locale });
+  const html = await renderToString(createSSRApp({ render: () => h(DocsIsland, { entry: branchingIsland({ locale }) }) }));
   document.body.append(document.importNode(JSDOM.fragment(html), true));
   const root = document.body.querySelector<HTMLElement>('[data-docs-island="branching"]:last-of-type');
   if (!root) throw new Error('Missing branching island root');
@@ -23,8 +22,11 @@ async function appendDemo({ copy, chrome }: { copy: BranchingCopy; chrome: Repli
 }
 
 describe('compiled branching island hydration', () => {
-  it.each([{ copy: english.demo, chrome: englishCommon.chrome }, { copy: japanese.demo, chrome: japaneseCommon.chrome }])('retains static messages and enables source-derived branching controls in both locales', async ({ copy, chrome }) => {
-    const root = await appendDemo({ copy, chrome });
+  it.each(['en', 'ja'] as const)('retains static %s messages and enables source-derived branching controls', async locale => {
+    const root = await appendDemo({ locale });
+    const { messages } = readBranchingMessages({ locale });
+    expect(parseBranchingPayload({ serialized: root.getAttribute('data-docs-props') ?? '' })).toEqual({ locale });
+    expect(Object.keys(JSON.parse(root.getAttribute('data-docs-props') ?? '') as object)).toEqual(['locale']);
     const resend = root.querySelector<HTMLElement>('[data-testid="branch-method-resend"]');
     if (!resend) throw new Error('Missing resend section');
     const getButton = ({ id }: { id: string }) => {
@@ -34,9 +36,9 @@ describe('compiled branching island hydration', () => {
     };
     expect(getButton({ id: 'branch-resend' }).disabled).toBe(true);
     expect(resend.querySelector('[data-testid="branch-user-versions"]')?.textContent).toBe('2 / 2');
-    expect(resend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(copy.replies[1]);
+    expect(resend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(messages.replies[1]);
     const warning = vi.spyOn(console, 'warn');
-    const apps = hydrateDocsIsland({ factory: branchingIsland, document });
+    const apps = await hydrateDocsIsland({ factory: branchingIsland, document });
     using _cleanup = {
       [Symbol.dispose]() {
         apps.forEach(app => app.unmount()); document.body.replaceChildren(); warning.mockRestore();
@@ -44,32 +46,37 @@ describe('compiled branching island hydration', () => {
     };
     await nextTick();
     expect(getButton({ id: 'branch-resend' }).disabled).toBe(false);
-    expect(resend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(copy.replies[0]);
+    expect(resend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(messages.replies[0]);
     getButton({ id: 'branch-resend' }).click();
     await nextTick();
-    expect(resend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(copy.replies[1]);
+    expect(resend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(messages.replies[1]);
     expect(resend.querySelector('[data-testid="branch-user-versions"]')?.textContent).toBe('2 / 2');
     getButton({ id: 'branch-original' }).click();
     await nextTick();
-    expect(resend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(copy.replies[0]);
+    expect(resend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(messages.replies[0]);
     getButton({ id: 'branch-alternative' }).click();
     await nextTick();
-    expect(resend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(copy.replies[1]);
+    expect(resend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(messages.replies[1]);
     getButton({ id: 'branch-reset' }).click();
     await nextTick();
-    expect(resend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(copy.replies[0]);
-    expect(hydrateDocsIsland({ factory: branchingIsland, document })).toEqual([]);
+    expect(resend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(messages.replies[0]);
+    expect(await hydrateDocsIsland({ factory: branchingIsland, document })).toEqual([]);
     expect(warning).not.toHaveBeenCalled();
   });
 
-  it('keeps instances independent and treats HTML-like copy as text', async () => {
-    const copy = { ...english.demo, replies: ['</p><script>bad()</script>', 'A & B <img src=x onerror=bad()>'] satisfies [string, string] };
-    const first = await appendDemo({ copy, chrome: englishCommon.chrome });
-    const second = await appendDemo({ copy: japanese.demo, chrome: japaneseCommon.chrome });
+  it('keeps locale instances independent and preserves rich caption labels', async () => {
+    const first = await appendDemo({ locale: 'en' });
+    const second = await appendDemo({ locale: 'ja' });
+    const english = readBranchingMessages({ locale: 'en' }).messages;
+    const japanese = readBranchingMessages({ locale: 'ja' }).messages;
     const firstResend = first.querySelector<HTMLElement>('[data-testid="branch-method-resend"]');
     const secondResend = second.querySelector<HTMLElement>('[data-testid="branch-method-resend"]');
     if (!firstResend || !secondResend) throw new Error('Missing resend section');
-    const apps = hydrateDocsIsland({ factory: branchingIsland, document });
+    expect(first.querySelector('.branch-note .ui-label')?.textContent).toBe('Replay this method');
+    expect(second.querySelector('.branch-note .ui-label')?.textContent).toBe('この方法を再生');
+    expect(firstResend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(english.replies[1]);
+    expect(secondResend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(japanese.replies[1]);
+    const apps = await hydrateDocsIsland({ factory: branchingIsland, document });
     using _cleanup = {
       [Symbol.dispose]() {
         apps.forEach(app => app.unmount()); document.body.replaceChildren();
@@ -78,21 +85,16 @@ describe('compiled branching island hydration', () => {
     await nextTick();
     (firstResend.querySelector('[data-testid="branch-resend"]') as HTMLButtonElement).click();
     await nextTick();
-    expect(firstResend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(copy.replies[1]);
-    expect(firstResend.querySelector('[data-testid="branch-reply"]')?.querySelector('img, script')).toBeNull();
-    expect(first.querySelector('[onerror], img[src="x"]')).toBeNull();
-    expect(secondResend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(japanese.demo.replies[0]);
+    expect(firstResend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(english.replies[1]);
+    expect(secondResend.querySelector('[data-testid="branch-reply"]')?.textContent).toBe(japanese.replies[0]);
   });
 
   it('leaves invalid payloads readable and still starts a following valid island', async () => {
-    const invalid = await appendDemo({ copy: english.demo, chrome: englishCommon.chrome });
-    invalid.setAttribute('data-docs-props', JSON.stringify({
-      copy: { ...english.demo, stages: [['missing nested steps']] },
-      chrome: englishCommon.chrome,
-    }));
-    const valid = await appendDemo({ copy: japanese.demo, chrome: japaneseCommon.chrome });
+    const invalid = await appendDemo({ locale: 'en' });
+    invalid.setAttribute('data-docs-props', JSON.stringify({ locale: 'fr' }));
+    const valid = await appendDemo({ locale: 'ja' });
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const apps = hydrateDocsIsland({ factory: branchingIsland, document });
+    const apps = await hydrateDocsIsland({ factory: branchingIsland, document });
     using _cleanup = {
       [Symbol.dispose]() {
         apps.forEach(app => app.unmount()); document.body.replaceChildren(); error.mockRestore();
@@ -100,7 +102,7 @@ describe('compiled branching island hydration', () => {
     };
     await nextTick();
     expect(apps).toHaveLength(1);
-    expect(invalid.querySelector('[data-testid="branch-method-edit"] [data-testid="branch-reply"]')?.textContent).toBe(english.demo.editedReply);
+    expect(invalid.querySelector('[data-testid="branch-method-edit"] [data-testid="branch-reply"]')?.textContent).toBe(readBranchingMessages({ locale: 'en' }).messages.editedReply);
     expect((invalid.querySelector('button') as HTMLButtonElement).disabled).toBe(true);
     expect(invalid.dataset.docsHydrated).toBeUndefined();
     expect(valid.dataset.docsHydrated).toBe('ready');
@@ -126,7 +128,7 @@ describe('compiled branching island hydration', () => {
         return () => h('span', { 'data-testid': 'failure-probe-copy' }, props.text);
       },
     });
-    const factory = defineDocsIsland({ spec, component });
+    const factory = defineDocsIsland({ spec, component, prepare: () => Promise.resolve() });
     for (const text of ['broken', 'working']) {
       const html = await renderToString(createSSRApp({ render: () => h(DocsIsland, { entry: factory({ text }) }) }));
       document.body.append(document.importNode(JSDOM.fragment(html), true));
@@ -135,7 +137,7 @@ describe('compiled branching island hydration', () => {
     if (!broken || !working) throw new Error('Missing failure probe roots');
     const staticHtml = broken.innerHTML;
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const apps = hydrateDocsIsland({ factory, document });
+    const apps = await hydrateDocsIsland({ factory, document });
     using _cleanup = {
       [Symbol.dispose]() {
         apps.forEach(app => app.unmount()); document.body.replaceChildren(); error.mockRestore();

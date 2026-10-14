@@ -1,14 +1,12 @@
 <script setup lang="ts">
-import DocsLink from '../../site/DocsLink.vue';
-import UiText from '../../site/UiText.vue';
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import SettingsInheritanceDiagram from '../../site/demos/SettingsInheritanceDiagram.vue';
-import SettingsInheritanceStep from '../../site/demos/SettingsInheritanceStep.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import type { DocsLocale } from '../../site/routes';
-import type { CommonMessages, InheritanceGuideMessages } from '../../site/messages';
+import RenderText from '../../components/RenderText';
+import SettingsInheritanceDiagram from '../../components/demos/SettingsInheritanceDiagram.vue';
+import SettingsInheritanceStep from '../../components/demos/SettingsInheritanceStep.vue';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import type { DocsLocale } from '../../navigation/routes';
+import type { CommonMessages, InheritanceGuideMessages } from '../../messages/types';
 
-defineProps<{ s: InheritanceGuideMessages; locale: DocsLocale; common: CommonMessages }>();
+const { s } = defineProps<{ s: InheritanceGuideMessages; locale: DocsLocale; common: CommonMessages }>();
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -18,73 +16,73 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <h1>{{ s.title }}</h1>
 
     <section class="guide-purpose" aria-labelledby="inheritance-why">
-      <h2 id="inheritance-why">{{ s.why.title }}</h2>
-      <p class="lead"><UiText :text="s.why.body" /></p>
+      <h2 id="inheritance-why">{{ s.why_set_a_group_model_heading }}</h2>
+      <p class="lead">{{ s.why_set_a_group_model }}</p>
     </section>
 
     <section class="guide-concept" aria-labelledby="inheritance-concept-heading">
-      <h2 id="inheritance-concept-heading">{{ s.concept.title }}</h2>
-      <p><UiText :text="s.concept.definition" /></p>
-      <p><UiText :text="s.concept.lead" /></p>
+      <h2 id="inheritance-concept-heading">{{ s.which_model_answers_heading }}</h2>
+      <p>{{ s.how_model_inheritance_works }}</p>
+      <p>{{ s.model_choice_scenes_introduction }}</p>
       <figure class="guide-figure">
-        <SettingsInheritanceDiagram :copy="s.concept.diagram" />
-        <figcaption class="caption"><UiText :text="s.concept.caption" /></figcaption>
+        <SettingsInheritanceDiagram :messages="s" />
+        <figcaption class="caption">{{ s.model_choice_diagram_caption }}</figcaption>
       </figure>
-      <p><UiText :text="s.concept.after" /></p>
+      <p>{{ s.model_lookup_order }}</p>
     </section>
 
-    <h2 class="setup-heading">{{ s.setupTitle }}</h2>
-    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
-    <p class="sample-note"><UiText :text="s.example" /></p>
+    <h2 class="setup-heading">{{ s.set_values_in_naidan_heading }}</h2>
+    <p class="app-entry-intro"><RenderText :node="s.open_naidan_for_settings({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
+    <p class="sample-note">{{ s.example_addresses_and_models }}</p>
 
     <section class="walkthrough-step" aria-labelledby="inheritance-global">
-      <h3 id="inheritance-global">{{ s.steps.global.title }}</h3>
-      <p><UiText :text="s.steps.global.body" /></p>
+      <h3 id="inheritance-global">{{ s.set_global_starting_point_heading }}</h3>
+      <p><RenderText :node="s.set_global_starting_point_instructions()" /></p>
       <figure class="guide-figure">
-        <SettingsInheritanceStep stage="global" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.global.caption" /></figcaption>
+        <SettingsInheritanceStep stage="global" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.global_connection_caption()" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="inheritance-group">
-      <h3 id="inheritance-group">{{ s.steps.group.title }}</h3>
-      <p class="group-preparation">{{ s.groupPreparation.before }}<DocsLink :locale="locale" page="chat-groups">{{ s.groupsLink }}</DocsLink>{{ s.groupPreparation.after }}</p>
-      <p><UiText :text="s.steps.group.body" /></p>
+      <h3 id="inheritance-group">{{ s.set_group_model_and_endpoint_heading }}</h3>
+      <p class="group-preparation"><RenderText :node="s.prepare_a_chat_group({ locale })" /></p>
+      <p><RenderText :node="s.set_group_model_and_endpoint_instructions()" /></p>
       <figure class="guide-figure">
-        <SettingsInheritanceStep stage="group" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.group.caption" /></figcaption>
+        <SettingsInheritanceStep stage="group" :messages="s" />
+        <figcaption class="caption">{{ s.group_endpoint_caption }}</figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="inheritance-chat">
-      <h3 id="inheritance-chat">{{ s.steps.inheritedChat.title }}</h3>
-      <p><UiText :text="s.steps.inheritedChat.body" /></p>
+      <h3 id="inheritance-chat">{{ s.read_inherited_chat_values_heading }}</h3>
+      <p><RenderText :node="s.read_inherited_chat_values_instructions()" /></p>
       <figure class="guide-figure">
-        <SettingsInheritanceStep stage="inheritedChat" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.inheritedChat.caption" /></figcaption>
+        <SettingsInheritanceStep stage="inheritedChat" :messages="s" />
+        <figcaption class="caption">{{ s.inherited_chat_values_caption }}</figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="inheritance-chat-model">
-      <h3 id="inheritance-chat-model">{{ s.steps.chatModel.title }}</h3>
-      <p><UiText :text="s.steps.chatModel.body" /></p>
+      <h3 id="inheritance-chat-model">{{ s.change_one_chat_model_heading }}</h3>
+      <p><RenderText :node="s.change_one_chat_model_instructions()" /></p>
       <figure class="guide-figure">
-        <SettingsInheritanceStep stage="chatModel" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.chatModel.caption" /></figcaption>
+        <SettingsInheritanceStep stage="chatModel" :messages="s" />
+        <figcaption class="caption">{{ s.chat_model_override_caption }}</figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="inheritance-reset">
-      <h3 id="inheritance-reset">{{ s.steps.reset.title }}</h3>
-      <p><UiText :text="s.steps.reset.body" /></p>
+      <h3 id="inheritance-reset">{{ s.change_endpoint_then_inherit_heading }}</h3>
+      <p><RenderText :node="s.change_endpoint_then_inherit_instructions()" /></p>
       <figure class="guide-figure">
-        <SettingsInheritanceStep stage="reset" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.reset.caption" /></figcaption>
+        <SettingsInheritanceStep stage="reset" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.return_to_inherited_endpoint_caption()" /></figcaption>
       </figure>
     </section>
 
-    <p class="closing-note"><UiText :text="s.after" /></p>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'chat-groups', title: s.groupsLink, description: s.groupsDescription }, { page: 'endpoint-type-ollama', title: s.ollamaLink, description: s.nextDescription }]" />
+    <p class="closing-note"><RenderText :node="s.restore_inherited_settings()" /></p>
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'chat-groups', title: s.chat_groups_guide, description: s.organize_chats_and_settings_by_purpose }, { page: 'endpoint-type-ollama', title: s.connect_to_ollama_guide, description: s.choose_ollama_connection_and_model }]" />
   </article>
 </template>
 

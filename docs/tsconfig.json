@@ -1,10 +1,12 @@
 {
   "extends": "../tsconfig.node.json",
-  "include": ["**/*.ts", "**/*.vue", "../build/docs-dev-bridge.ts"],
+  "include": ["**/*.ts", "**/*.tsx", "**/*.vue", "../build/docs-dev-bridge.ts"],
   "exclude": ["dist", ".cache"],
   "compilerOptions": {
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["node", "vite/client"],
+    "jsx": "preserve",
+    "jsxImportSource": "vue",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,

@@ -2,6 +2,14 @@ import vue from '@vitejs/plugin-vue';
 import type { PluginOption, UserConfig } from 'vite';
 import { createDocsModulesPlugin } from './virtual-modules';
 
+export function docsCompilerPlugins({ root, allowTestArticleTranslations = false }: { root: string; allowTestArticleTranslations?: boolean }): PluginOption[] {
+  return [
+    createDocsModulesPlugin({ root, allowTestArticleTranslations }),
+    // Public plugin-vue option; identical IDs across dev/server/client builds.
+    vue({ features: { componentIdGenerator: 'filepath' } }),
+  ];
+}
+
 export function docsCompilerConfig({ root }: { root: string }): UserConfig {
   return {
     root,
@@ -12,11 +20,7 @@ export function docsCompilerConfig({ root }: { root: string }): UserConfig {
     // Do not load the app's Tailwind/PostCSS pipeline into isolated Docs builds.
     css: { postcss: { plugins: [] } },
     optimizeDeps: { noDiscovery: true, include: [] },
-    plugins: [
-      createDocsModulesPlugin({ root }),
-      // Public plugin-vue option; identical IDs across dev/server/client builds.
-      vue({ features: { componentIdGenerator: 'filepath' } }),
-    ] satisfies PluginOption[],
+    plugins: docsCompilerPlugins({ root }),
     build: { assetsInlineLimit: 0, minify: true, cssCodeSplit: true, sourcemap: false },
   };
 }

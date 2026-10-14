@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import UiText from '../../site/UiText.vue';
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import ExternalLink from '../../site/ExternalLink.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import NaidanRpcStep from '../../site/demos/NaidanRpcStep.vue';
-import type { CommonMessages, NaidanRpcMessages } from '../../site/messages';
-import type { DocsLocale } from '../../site/routes';
+import { computed } from 'vue';
+import RenderText from '../../components/RenderText';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import NaidanRpcStep from '../../components/demos/NaidanRpcStep.vue';
+import type { CommonMessages, NaidanRpcMessages } from '../../messages/types';
+import type { DocsLocale } from '../../navigation/routes';
 
-defineProps<{ s: NaidanRpcMessages; locale: DocsLocale; common: CommonMessages }>();
+const props = defineProps<{ s: NaidanRpcMessages; locale: DocsLocale; common: CommonMessages }>();
+
+const steps = computed(() => ({
+  enable: { title: props.s.enable_peer_connection_heading, body: props.s.enable_peer_connection_instructions, caption: props.s.enable_peer_connection_figure_caption },
+  pair: { title: props.s.pair_browsers_heading, body: props.s.pair_browsers_instructions, caption: props.s.pair_browsers_figure_caption },
+  verify: { title: props.s.verify_peer_heading, body: props.s.verify_peer_instructions, caption: props.s.verify_peer_figure_caption },
+  provide: { title: props.s.grant_peer_methods_heading, body: props.s.grant_peer_methods_instructions, caption: props.s.grant_peer_methods_figure_caption },
+  use: { title: props.s.select_peer_for_chat_heading, body: props.s.select_peer_for_chat_instructions, caption: props.s.select_peer_for_chat_figure_caption },
+}));
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -15,22 +22,22 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-models-naidan-rpc">
     <h1>{{ s.title }}</h1>
-    <p class="lead"><UiText :text="s.intro" /></p>
-    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
-    <p class="hosted-example"><UiText :text="s.hostedExample.body" /> <ExternalLink href="https://naidan.pages.dev/" :locale="locale">{{ s.hostedExample.link }}</ExternalLink></p>
+    <p class="lead">{{ s.intro }}</p>
+    <p class="app-entry-intro"><RenderText :node="s.open_app_on_each_device({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
+    <p class="hosted-example"><RenderText :node="s.hosted_edition_requirement({ locale, href: 'https://naidan.pages.dev/' })" /></p>
 
-    <section v-for="(step, key) in s.steps" :key="key" class="rpc-step" :aria-labelledby="`rpc-${key}`" data-testid="rpc-guide-step">
+    <section v-for="(step, key) in steps" :key="key" class="rpc-step" :aria-labelledby="`rpc-${key}`" data-testid="rpc-guide-step">
       <h2 :id="`rpc-${key}`">{{ step.title }}</h2>
-      <p><UiText :text="step.body" /></p>
-      <p v-if="key === 'pair'" class="relay-origin"><UiText :text="s.relayIntro" /> <code>{{ s.demo.serverSample }}</code> <ExternalLink href="https://github.com/nwtgck/piping-server#public-servers" :locale="locale">{{ s.relaySource }}</ExternalLink></p>
-      <figure class="guide-figure"><NaidanRpcStep :stage="key" :copy="s.demo" /><figcaption class="caption"><UiText :text="step.caption" /></figcaption></figure>
+      <p><RenderText :node="step.body()" /></p>
+      <p v-if="key === 'pair'" class="relay-origin"><RenderText :node="s.piping_server_relay_example({ locale, href: 'https://github.com/nwtgck/piping-server#public-servers', serverSample: s.sample_relay_origin })" /></p>
+      <figure class="guide-figure"><NaidanRpcStep :stage="key" :messages="s" /><figcaption class="caption"><RenderText :node="step.caption()" /></figcaption></figure>
     </section>
 
-    <section class="rpc-note"><h2>{{ s.imageTitle }}</h2><p><UiText :text="s.image" /></p></section>
-    <section class="rpc-note"><h2>{{ s.boundaryTitle }}</h2><p><UiText :text="s.boundary" /></p></section>
-    <section class="rpc-note"><h2>{{ s.availabilityTitle }}</h2><p><UiText :text="s.availability" /></p></section>
+    <section class="rpc-note"><h2>{{ s.peer_image_generation_heading }}</h2><p><RenderText :node="s.peer_image_generation_instructions()" /></p></section>
+    <section class="rpc-note"><h2>{{ s.peer_data_boundary_heading }}</h2><p>{{ s.peer_data_boundary }}</p></section>
+    <section class="rpc-note"><h2>{{ s.peer_inference_availability_heading }}</h2><p><RenderText :node="s.peer_inference_availability()" /></p></section>
 
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'endpoint-type-llama-cpp-browser', title: s.relatedTitle, description: s.relatedDescription }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'endpoint-type-llama-cpp-browser', title: s.serving_browser_model_guide_title, description: s.serving_browser_model_guide_description }]" />
   </article>
 </template>
 

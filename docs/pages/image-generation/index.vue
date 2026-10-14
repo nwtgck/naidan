@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import UiText from '../../site/UiText.vue';
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import ImageCreationStep from '../../site/demos/ImageCreationStep.vue';
-import type { CommonMessages, ImageCreateMessages } from '../../site/messages';
-import type { DocsLocale } from '../../site/routes';
+import RenderText from '../../components/RenderText';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import ImageCreationStep from '../../components/demos/ImageCreationStep.vue';
+import type { CommonMessages, ImageCreateMessages } from '../../messages/types';
+import type { DocsLocale } from '../../navigation/routes';
 
 defineProps<{ s: ImageCreateMessages; locale: DocsLocale; common: CommonMessages }>();
 
@@ -14,36 +13,36 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-images-create">
     <h1>{{ s.title }}</h1>
-    <p class="lead"><UiText :text="s.intro" /></p>
-    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'image-generation' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
+    <p class="lead">{{ s.make_your_first_image_with_a_local_model }}</p>
+    <p class="app-entry-intro"><RenderText :node="s.start_in_the_image_workspace({ locale, destination: { kind: 'screen', screen: 'image-generation' } })" /></p>
 
     <section class="media-step" aria-labelledby="image-open">
-      <h2 id="image-open">{{ s.steps.open.title }}</h2>
-      <p><UiText :text="s.steps.open.body" /></p>
-      <figure class="guide-figure"><ImageCreationStep stage="open" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.open.caption" /></figcaption></figure>
+      <h2 id="image-open">{{ s.open_the_image_workspace }}</h2>
+      <p><RenderText :node="s.find_the_image_workspace()" /></p>
+      <figure class="guide-figure"><ImageCreationStep stage="open" :messages="s" /><figcaption class="caption">{{ s.sidebar_opens_the_image_workspace }}</figcaption></figure>
     </section>
 
     <section class="media-step" aria-labelledby="image-model">
-      <h2 id="image-model">{{ s.steps.model.title }}</h2>
-      <p><UiText :text="s.steps.model.body" /></p>
-      <figure class="guide-figure"><ImageCreationStep stage="model" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.model.caption" /></figcaption></figure>
+      <h2 id="image-model">{{ s.prepare_and_select_an_image_model }}</h2>
+      <p><RenderText :node="s.choose_and_prepare_an_image_model()" /></p>
+      <figure class="guide-figure"><ImageCreationStep stage="model" :messages="s" /><figcaption class="caption"><RenderText :node="s.return_with_a_prepared_model()" /></figcaption></figure>
     </section>
 
     <section class="media-step" aria-labelledby="image-generate">
-      <h2 id="image-generate">{{ s.steps.generate.title }}</h2>
-      <p><UiText :text="s.steps.generate.body" /></p>
-      <figure class="guide-figure"><ImageCreationStep stage="generate" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.generate.caption" /></figcaption></figure>
+      <h2 id="image-generate">{{ s.enter_a_prompt_and_generate_an_image }}</h2>
+      <p><RenderText :node="s.generate_and_review_an_image()" /></p>
+      <figure class="guide-figure"><ImageCreationStep stage="generate" :messages="s" /><figcaption class="caption">{{ s.image_generation_progress }}</figcaption></figure>
     </section>
 
     <section class="media-step" aria-labelledby="image-reuse">
-      <h2 id="image-reuse">{{ s.steps.reuse.title }}</h2>
-      <p><UiText :text="s.steps.reuse.body" /></p>
-      <figure class="guide-figure"><ImageCreationStep stage="reuse" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.reuse.caption" /></figcaption></figure>
+      <h2 id="image-reuse">{{ s.inspect_and_try_another_version }}</h2>
+      <p><RenderText :node="s.reuse_the_prompt_or_saved_settings()" /></p>
+      <figure class="guide-figure"><ImageCreationStep stage="reuse" :messages="s" /><figcaption class="caption">{{ s.reuse_from_the_result_viewer }}</figcaption></figure>
     </section>
 
-    <section class="media-note" aria-labelledby="image-storage"><h2 id="image-storage">{{ s.storageTitle }}</h2><p><UiText :text="s.storage" /></p></section>
-    <section class="media-note" aria-labelledby="image-next"><h2 id="image-next">{{ s.nextTitle }}</h2><p><UiText :text="s.next" /></p></section>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'endpoint-type-llama-cpp-browser', title: s.relatedTitle, description: s.relatedDescription }]" />
+    <section class="media-note" aria-labelledby="image-storage"><h2 id="image-storage">{{ s.keep_work_for_later }}</h2><p><RenderText :node="s.image_session_storage_and_exports()" /></p></section>
+    <section class="media-note" aria-labelledby="image-next"><h2 id="image-next">{{ s.after_your_first_image }}</h2><p>{{ s.more_ways_to_work_with_images }}</p></section>
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'endpoint-type-llama-cpp-browser', title: s.run_a_gguf_model_in_your_browser, description: s.start_a_chat_with_a_local_gguf_model }]" />
   </article>
 </template>
 

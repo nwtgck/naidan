@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import DocsLink from '../../site/DocsLink.vue';
-import BoundaryDiagram from '../../site/demos/BoundaryDiagram.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import type { DocsLocale } from '../../site/routes';
-import type { BoundaryMessages, CommonMessages } from '../../site/messages';
+import DocsLink from '../../components/DocsLink.vue';
+import BoundaryDiagram from '../../components/demos/BoundaryDiagram.vue';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import type { DocsLocale } from '../../navigation/routes';
+import type { BoundaryMessages, CommonMessages } from '../../messages/types';
 
 defineProps<{ s: BoundaryMessages; locale: DocsLocale; common: CommonMessages }>();
 
@@ -25,21 +25,17 @@ defineExpose({
   >
     <h1>{{ s.title }}</h1>
     <p
-      v-for="paragraph in s.intro"
+      v-for="paragraph in s.intro_paragraphs()"
       :key="paragraph"
       class="lead"
     >{{ paragraph }}</p>
-    <h2>{{ s.diagramTitle }}</h2>
-    <figure class="guide-figure"><BoundaryDiagram :copy="s.demo" /><figcaption class="caption">{{ s.motionNote }}</figcaption></figure>
-    <section
-      v-for="section in s.sections"
-      :key="section.title"
-    >
-      <h2>{{ section.title }}</h2>
-      <p>{{ section.body }}</p>
-    </section>
-    <p class="network-guide"><DocsLink :locale="locale" page="csp-editions">{{ s.localOnlyGuide }} <span aria-hidden="true">→</span></DocsLink></p>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'file-access', title: s.next, description: s.nextDescription }, { page: 'web-and-native-app-permissions', title: s.appPermissionsTitle, description: s.appPermissionsDescription }]" />
+    <h2>{{ s.os_and_browser_boundaries_heading }}</h2>
+    <figure class="guide-figure"><BoundaryDiagram :messages="s" /><figcaption class="caption">{{ s.os_and_browser_boundaries_caption }}</figcaption></figure>
+    <section><h2>{{ s.choose_the_input_heading }}</h2><p>{{ s.choose_the_input_description }}</p></section>
+    <section><h2>{{ s.browser_runs_the_model_heading }}</h2><p>{{ s.browser_runs_the_model_description }}</p></section>
+    <section><h2>{{ s.connections_have_a_purpose_heading }}</h2><p>{{ s.connections_have_a_purpose_description }}</p></section>
+    <p class="network-guide"><DocsLink :locale="locale" page="csp-editions">{{ s.local_only_guide_link }} <span aria-hidden="true">→</span></DocsLink></p>
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'file-access', title: s.file_access_guide_title, description: s.file_access_guide_description }, { page: 'web-and-native-app-permissions', title: s.app_permissions_guide_title, description: s.app_permissions_guide_description }]" />
   </article>
 </template>
 

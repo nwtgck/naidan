@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import UiText from '../../site/UiText.vue';
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import StorageSettingsStep from '../../site/demos/StorageSettingsStep.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import type { DocsLocale } from '../../site/routes';
-import type { CommonMessages, StorageGuideMessages } from '../../site/messages';
+import RenderText from '../../components/RenderText';
+import StorageSettingsStep from '../../components/demos/StorageSettingsStep.vue';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import type { DocsLocale } from '../../navigation/routes';
+import type { CommonMessages, StorageGuideMessages } from '../../messages/types';
 
-defineProps<{ s: StorageGuideMessages; locale: DocsLocale; common: CommonMessages }>();
+const { s } = defineProps<{ s: StorageGuideMessages; locale: DocsLocale; common: CommonMessages }>();
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -14,23 +13,41 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-data-storage">
     <h1>{{ s.title }}</h1>
-    <p class="lead"><UiText :text="s.intro" /></p>
-    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" /><UiText :text="s.launch.after" /></p>
+    <p class="lead"><RenderText :node="s.choose_conversation_storage()" /></p>
+    <p class="app-entry-intro"><RenderText :node="s.open_storage_settings({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
 
-    <section v-for="stage in (['open', 'choose', 'persist'] as const)" :key="stage" class="walkthrough-step" :aria-labelledby="`storage-${stage}`">
-      <h2 :id="`storage-${stage}`">{{ s.steps[stage].title }}</h2>
-      <p><UiText :text="s.steps[stage].body" /></p>
+    <section class="walkthrough-step" aria-labelledby="storage-open">
+      <h2 id="storage-open">{{ s.open_storage_settings_heading }}</h2>
+      <p><RenderText :node="s.open_storage_settings_instructions()" /></p>
       <figure class="guide-figure">
-        <StorageSettingsStep :stage="stage" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps[stage].caption" /></figcaption>
+        <StorageSettingsStep stage="open" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.storage_navigation_caption()" /></figcaption>
+      </figure>
+    </section>
+
+    <section class="walkthrough-step" aria-labelledby="storage-choose">
+      <h2 id="storage-choose">{{ s.choose_storage_provider_heading }}</h2>
+      <p><RenderText :node="s.choose_storage_provider_instructions()" /></p>
+      <figure class="guide-figure">
+        <StorageSettingsStep stage="choose" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.switch_provider_caption()" /></figcaption>
+      </figure>
+    </section>
+
+    <section class="walkthrough-step" aria-labelledby="storage-persist">
+      <h2 id="storage-persist">{{ s.request_persistent_storage_heading }}</h2>
+      <p><RenderText :node="s.request_persistent_storage_instructions()" /></p>
+      <figure class="guide-figure">
+        <StorageSettingsStep stage="persist" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.persistent_storage_request_caption()" /></figcaption>
       </figure>
     </section>
 
     <section class="guide-limits" aria-labelledby="storage-limits">
-      <h2 id="storage-limits">{{ s.limitsTitle }}</h2>
-      <ul><li v-for="item in s.limits" :key="item"><UiText :text="item" /></li></ul>
+      <h2 id="storage-limits">{{ s.before_relying_on_one_browser_copy }}</h2>
+      <ul><li>{{ s.browser_data_loss_risks }}</li><li><RenderText :node="s.provider_switching_limits()" /></li><li><RenderText :node="s.ephemeral_storage_limits()" /></li></ul>
     </section>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'data-backup', title: s.backupLink, description: s.nextDescription }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'data-backup', title: s.backup_conversations_guide, description: s.export_and_restore_a_zip }]" />
   </article>
 </template>
 

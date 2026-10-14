@@ -1,9 +1,7 @@
-import type { BrowserAiAvailabilityCopy } from '../../pages/endpoint-type-browser-provided-lm/strings/checker/en';
+import type { DocsLocale } from '../../navigation/routes';
 import { defineDocsIslandSpec } from '../spec';
 
-export type BrowserAiAvailabilityPayload = { copy: BrowserAiAvailabilityCopy };
-
-const copyFields = ['title', 'scope', 'initial', 'checking', 'available', 'downloadable', 'downloading', 'unavailable', 'apiAbsent', 'unknown', 'rejected', 'recheck', 'limits'] as const satisfies readonly (keyof BrowserAiAvailabilityCopy)[];
+export type BrowserAiAvailabilityPayload = { locale: DocsLocale };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -11,14 +9,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function parseBrowserAiAvailabilityPayload({ serialized }: { serialized: string }): BrowserAiAvailabilityPayload {
   const value: unknown = JSON.parse(serialized);
-  if (!isRecord(value) || !isRecord(value.copy)) {
+  if (!isRecord(value) || Object.keys(value).length !== 1 || (value.locale !== 'en' && value.locale !== 'ja')) {
     throw new Error('Invalid browser AI availability props');
   }
-  const copy = value.copy;
-  if (!copyFields.every(field => typeof copy[field] === 'string')) {
-    throw new Error('Invalid browser AI availability props');
-  }
-  return { copy: copy as BrowserAiAvailabilityCopy };
+  return { locale: value.locale };
 }
 
 export const browserAiAvailabilitySpec = defineDocsIslandSpec<BrowserAiAvailabilityPayload>({

@@ -1,6 +1,6 @@
-import { parseSearchIndex, purposeDocs, searchDocs, searchIndexHref } from '../../site/search';
-import type { SearchIndex } from '../../site/search';
-import type { DocsLocale } from '../../site/routes';
+import { parseSearchIndex, purposeDocs, searchDocs, searchIndexHref } from '../../search/search';
+import type { SearchIndex } from '../../search/search';
+import type { DocsLocale } from '../../navigation/routes';
 import { parseWorkerRequest } from './worker-contracts';
 import type { SearchWorkerApi } from './worker-contracts';
 import { exposeSearchWorker } from './transport';

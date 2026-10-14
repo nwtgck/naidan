@@ -2,7 +2,7 @@ import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import { describe, expect, it, vi } from 'vitest';
 import BrowserAiAvailability from '../islands/browser-ai-availability/BrowserAiAvailability.vue';
-import { checkerCopy } from '../islands/browser-ai-availability/copy';
+import { prepareBrowserAiMessages, readBrowserAiMessages } from '../islands/browser-ai-availability/messages';
 import { parseBrowserAiAvailabilityPayload } from '../islands/browser-ai-availability/contracts';
 import { checkBrowserAiAvailability } from '../islands/browser-ai-availability/native';
 import { findIslands } from '../build/html';
@@ -40,17 +40,19 @@ describe('browser AI availability checker', () => {
     expect(await checkBrowserAiAvailability({ nativeScope })).toBe('rejected');
   });
 
-  it.each(['en', 'ja'] as const)('renders a useful %s fallback and validates only the checker copy at the island boundary', async locale => {
-    const copy = checkerCopy[locale];
-    const html = await renderToString(createSSRApp({ render: () => h(BrowserAiAvailability, { copy }) }));
+  it.each(['en', 'ja'] as const)('renders a useful %s fallback from island messages and validates the locale-only payload', async locale => {
+    await prepareBrowserAiMessages({ locale });
+    const messages = readBrowserAiMessages({ locale });
+    const html = await renderToString(createSSRApp({ render: () => h(BrowserAiAvailability, { locale }) }));
     using page = parsePage({ html });
-    expect(page.document.querySelector('h2')?.textContent).toBe(copy.title);
-    expect(page.document.querySelector('[data-testid="browser-ai-availability-status"]')?.textContent).toBe(copy.initial);
+    expect(page.document.querySelector('h2')?.textContent).toBe(messages.check_this_browser_heading);
+    expect(page.document.querySelector('[data-testid="browser-ai-availability-status"]')?.textContent).toBe(messages.not_checked_yet);
     expect(page.document.querySelector('button')?.disabled).toBe(true);
-    expect(page.document.body.textContent).toContain(copy.scope);
-    const serialized = JSON.stringify({ copy });
-    expect(parseBrowserAiAvailabilityPayload({ serialized })).toEqual({ copy });
+    expect(page.document.body.textContent).toContain(messages.browser_scope);
+    const serialized = JSON.stringify({ locale });
+    expect(parseBrowserAiAvailabilityPayload({ serialized })).toEqual({ locale });
     expect(findIslands({ body: `<div data-docs-island="browser-ai-availability" data-docs-props='${serialized}'>${html}</div>` })).toEqual(['browser-ai-availability']);
-    expect(() => parseBrowserAiAvailabilityPayload({ serialized: JSON.stringify({ copy: { title: copy.title } }) })).toThrow();
+    expect(() => parseBrowserAiAvailabilityPayload({ serialized: JSON.stringify({ locale: 'fr' }) })).toThrow();
+    expect(() => parseBrowserAiAvailabilityPayload({ serialized: JSON.stringify({ locale, copy: messages }) })).toThrow();
   });
 });

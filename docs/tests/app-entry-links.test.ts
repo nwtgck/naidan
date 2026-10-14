@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { JSDOM } from 'jsdom';
-import AppEntryLink from '../site/AppEntryLink.vue';
-import { appDestinationPath, appEntryFallbackUrl, appEntryUrl } from '../site/app-entry';
+import AppEntryLink from '../components/AppEntryLink.vue';
+import { appDestinationPath, appEntryFallbackUrl, appEntryUrl } from '../navigation/app-entry';
 import { updateAppEntryLinks } from '../client/app-entry-enhancement';
 import { createSiteFixture, startSiteDev } from './site.test-support';
 

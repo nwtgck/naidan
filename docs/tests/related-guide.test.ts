@@ -3,13 +3,13 @@ import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
 import BranchingPage from '../pages/chat-branching/index.vue';
 import StandalonePage from '../pages/standalone/index.vue';
-import RelatedGuide from '../site/RelatedGuide.vue';
-import { strings as branchingEn } from '../pages/chat-branching/strings/en';
-import { strings as branchingJa } from '../pages/chat-branching/strings/ja';
-import { strings as english } from '../strings/common/en';
-import { strings as japanese } from '../strings/common/ja';
-import { strings as standaloneEn } from '../pages/standalone/strings/en';
-import { strings as standaloneJa } from '../pages/standalone/strings/ja';
+import RelatedGuide from '../components/RelatedGuide.vue';
+import { messages as branchingEn } from '../pages/chat-branching/messages/en';
+import { messages as branchingJa } from '../pages/chat-branching/messages/ja';
+import { messages as english } from '../messages/common/en';
+import { messages as japanese } from '../messages/common/ja';
+import { messages as standaloneEn } from '../pages/standalone/messages/en';
+import { messages as standaloneJa } from '../pages/standalone/messages/ja';
 import { parsePage } from './site.test-support';
 
 describe('related guide links', () => {
@@ -20,7 +20,7 @@ describe('related guide links', () => {
     const html = await renderToString(createSSRApp({
       render: () => h(RelatedGuide, {
         locale,
-        eyebrow: common.relatedGuides,
+        eyebrow: common.related_guides,
         guides: [
           { page: 'endpoint-type-ollama', title: titles[0] ?? '', description: descriptions[0] ?? '' },
           { page: 'in-browser-models', title: titles[1] ?? '', description: descriptions[1] ?? '' },
@@ -30,7 +30,7 @@ describe('related guide links', () => {
     using page = parsePage({ html });
     const nav = page.document.querySelector('[data-docs-related-guide]');
     expect(nav?.tagName).toBe('NAV');
-    expect(nav?.getAttribute('aria-label')).toBe(common.relatedGuides);
+    expect(nav?.getAttribute('aria-label')).toBe(common.related_guides);
     const links = [...(nav?.querySelectorAll('a') ?? [])];
     expect(links.map(link => link.getAttribute('href'))).toEqual([`/docs/${locale}/endpoint-type-ollama/`, `/docs/${locale}/in-browser-models/`]);
     for (const [index, link] of links.entries()) {
@@ -49,8 +49,8 @@ describe('related guide links', () => {
     using page = parsePage({ html });
     const related = page.document.querySelector('[data-docs-related-guide]');
     expect(related?.querySelector('a')?.getAttribute('href')).toBe(`/docs/${locale}/chat-super-edit/`);
-    expect(related?.textContent).toContain(copy.next);
-    expect(related?.textContent).toContain(copy.nextDescription);
+    expect(related?.textContent).toContain(copy.rewrite_a_conversation_path);
+    expect(related?.textContent).toContain(copy.edit_and_reorder_a_path);
   });
 
   it.each([
@@ -67,13 +67,13 @@ describe('related guide links', () => {
       `/docs/${locale}/web-and-native-app-permissions/`,
       `/docs/${locale}/browser-boundaries/`,
     ]);
-    expect(links[0]?.textContent).toContain(copy.offlineGuideTitle);
-    expect(links[0]?.textContent).toContain(copy.offlineGuideDescription);
-    expect(links[1]?.textContent).toContain(copy.hostedGuideTitle);
-    expect(links[1]?.textContent).toContain(copy.hostedGuideDescription);
-    expect(links[2]?.textContent).toContain(copy.permissionsGuideTitle);
-    expect(links[2]?.textContent).toContain(copy.permissionsGuideDescription);
-    expect(links[3]?.textContent).toContain(copy.next);
-    expect(links[3]?.textContent).toContain(copy.nextDescription);
+    expect(links[0]?.textContent).toContain(copy.offline_pwa_guide_title);
+    expect(links[0]?.textContent).toContain(copy.offline_pwa_guide_description);
+    expect(links[1]?.textContent).toContain(copy.hosted_zip_guide_title);
+    expect(links[1]?.textContent).toContain(copy.hosted_zip_guide_description);
+    expect(links[2]?.textContent).toContain(copy.app_permissions_guide_title);
+    expect(links[2]?.textContent).toContain(copy.app_permissions_guide_description);
+    expect(links[3]?.textContent).toContain(copy.browser_boundaries_guide_title);
+    expect(links[3]?.textContent).toContain(copy.browser_boundaries_guide_description);
   });
 });

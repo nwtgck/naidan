@@ -1,13 +1,28 @@
 <script setup lang="ts">
-import DocsLink from '../../site/DocsLink.vue';
-import ExternalLink from '../../site/ExternalLink.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import UiText from '../../site/UiText.vue';
-import ConnectionPolicyDiagram from '../../site/demos/ConnectionPolicyDiagram.vue';
-import type { DocsLocale } from '../../site/routes';
-import type { CommonMessages, LocalOnlyMessages } from '../../site/messages';
+import { computed } from 'vue';
+import ExternalLink from '../../components/ExternalLink.vue';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import RenderText from '../../components/RenderText';
+import ConnectionPolicyDiagram from '../../components/demos/ConnectionPolicyDiagram.vue';
+import type { DocsLocale } from '../../navigation/routes';
+import type { CommonMessages, LocalOnlyMessages } from '../../messages/types';
 
-defineProps<{ s: LocalOnlyMessages; locale: DocsLocale; common: CommonMessages }>();
+const props = defineProps<{ s: LocalOnlyMessages; locale: DocsLocale; common: CommonMessages }>();
+const versions = computed(() => [
+  { title: props.s.versions_local_only_title, body: props.s.versions_local_only_body, link: props.s.versions_local_only_link, url: 'https://naidan-local-only.pages.dev' },
+  { title: props.s.versions_curated_title, body: props.s.versions_curated_body, link: props.s.versions_curated_link, url: 'https://naidan-curated.pages.dev' },
+  { title: props.s.versions_standard_title, body: props.s.versions_standard_body, link: props.s.versions_standard_link, url: 'https://naidan.pages.dev' },
+]);
+const allowed = computed(() => [
+  { address: "'self'", meaning: props.s.own_origin_meaning },
+  { address: "http://localhost:*", meaning: props.s.localhost_meaning },
+  { address: "http://127.0.0.1:*", meaning: props.s.loopback_meaning },
+]);
+const checkSteps = computed(() => [
+  { title: props.s.read_received_policy_title, body: props.s.read_received_policy_instructions },
+  { title: props.s.inspect_local_connection_title, body: props.s.inspect_local_connection_instructions },
+  { title: props.s.diagnose_blocked_request_title, body: props.s.diagnose_blocked_request_instructions },
+]);
 
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
@@ -17,50 +32,50 @@ defineExpose({
 <template>
   <article class="prose" data-testid="docs-local-only">
     <h1>{{ s.title }}</h1>
-    <p class="lead">{{ s.intro }}</p>
+    <p class="lead">{{ s.introduction }}</p>
 
     <section>
-      <h2>{{ s.versionsTitle }}</h2>
+      <h2>{{ s.choose_hosted_version_title }}</h2>
       <div class="version-grid">
-        <div v-for="version in [s.versions.localOnly, s.versions.curated, s.versions.standard]" :key="version.url" class="panel version-card">
+        <div v-for="version in versions" :key="version.url" class="panel version-card">
           <h3>{{ version.title }}</h3>
           <p>{{ version.body }}</p>
           <code class="version-url">{{ version.url }}</code>
           <ExternalLink :href="version.url" :locale="locale">{{ version.link }}</ExternalLink>
         </div>
       </div>
-      <p class="switching-note">{{ s.switching }} <DocsLink :locale="locale" page="data-backup">{{ s.backupLink }}</DocsLink></p>
-      <figure class="policy-figure"><ConnectionPolicyDiagram :s="s" /><figcaption>{{ s.diagram.caption }}</figcaption></figure>
-      <p>{{ s.deploymentPolicy }} <ExternalLink href="https://github.com/nwtgck/naidan/blob/develop/.github/workflows/main.yml" :locale="locale">{{ s.deploymentSourceLink }}</ExternalLink></p>
+      <p class="switching-note"><RenderText :node="s.switching_editions_and_backup({ locale })" /></p>
+      <figure class="policy-figure"><ConnectionPolicyDiagram :messages="s" /><figcaption>{{ s.connection_policy_caption }}</figcaption></figure>
+      <p><RenderText :node="s.deployment_policy_source({ locale })" /></p>
     </section>
 
     <section>
-      <h2>{{ s.localTitle }}</h2>
-      <p>{{ s.localIntro }}</p>
+      <h2>{{ s.connect_local_server_title }}</h2>
+      <p>{{ s.connect_local_server_introduction }}</p>
       <dl class="allowed-destinations">
-        <div v-for="item in s.allowed" :key="item.address">
+        <div v-for="item in allowed" :key="item.address">
           <dt><code>{{ item.address }}</code></dt>
           <dd>{{ item.meaning }}</dd>
         </div>
       </dl>
-      <p>{{ s.localConditions }} <DocsLink :locale="locale" page="local-ai-servers">{{ s.localGuideLink }}</DocsLink></p>
+      <p><RenderText :node="s.local_server_conditions({ locale })" /></p>
     </section>
 
     <section>
-      <h2>{{ s.scopeTitle }}</h2>
-      <p>{{ s.scope }}</p>
-      <p>{{ s.outsideScope }}</p>
+      <h2>{{ s.connection_policy_scope_title }}</h2>
+      <p>{{ s.connection_policy_scope }}</p>
+      <p>{{ s.outside_connection_policy_scope }}</p>
     </section>
 
     <section>
-      <h2>{{ s.checkTitle }}</h2>
+      <h2>{{ s.inspect_policy_and_traffic_title }}</h2>
       <ol class="guide-steps">
-        <li v-for="step in s.checkSteps" :key="step.title"><h3>{{ step.title }}</h3><p><UiText :text="step.body" /></p></li>
+        <li v-for="step in checkSteps" :key="step.title"><h3>{{ step.title }}</h3><p><RenderText :node="step.body()" /></p></li>
       </ol>
-      <p class="check-note"><UiText :text="s.checkNote" /></p>
+      <p class="check-note"><RenderText :node="s.network_log_limitations()" /></p>
     </section>
 
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'local-ai-servers', title: s.relatedLocalTitle, description: s.relatedLocalDescription }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'local-ai-servers', title: s.local_server_guide_title, description: s.local_server_guide_description }]" />
   </article>
 </template>
 

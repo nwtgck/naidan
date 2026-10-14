@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import UiText from '../../site/UiText.vue';
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import AudioCreationStep from '../../site/demos/AudioCreationStep.vue';
-import type { AudioSpeechMessages, CommonMessages } from '../../site/messages';
-import type { DocsLocale } from '../../site/routes';
+import RenderText from '../../components/RenderText';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import AudioCreationStep from '../../components/demos/AudioCreationStep.vue';
+import type { AudioSpeechMessages, CommonMessages } from '../../messages/types';
+import type { DocsLocale } from '../../navigation/routes';
 
 defineProps<{ s: AudioSpeechMessages; locale: DocsLocale; common: CommonMessages }>();
 
@@ -14,36 +13,36 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-audio-speech">
     <h1>{{ s.title }}</h1>
-    <p class="lead"><UiText :text="s.intro" /></p>
-    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'audio-generation' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
+    <p class="lead"><RenderText :node="s.generate_speech_with_a_local_model()" /></p>
+    <p class="app-entry-intro"><RenderText :node="s.start_in_the_audio_workspace({ locale, destination: { kind: 'screen', screen: 'audio-generation' } })" /></p>
 
     <section class="media-step" aria-labelledby="audio-open">
-      <h2 id="audio-open">{{ s.steps.open.title }}</h2>
-      <p><UiText :text="s.steps.open.body" /></p>
-      <figure class="guide-figure"><AudioCreationStep stage="open" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.open.caption" /></figcaption></figure>
+      <h2 id="audio-open">{{ s.open_audio_generation_and_prepare_a_model }}</h2>
+      <p><RenderText :node="s.find_and_prepare_an_audio_model()" /></p>
+      <figure class="guide-figure"><AudioCreationStep stage="open" :messages="s" /><figcaption class="caption">{{ s.download_and_select_an_audio_model }}</figcaption></figure>
     </section>
 
     <section class="media-step" aria-labelledby="audio-text">
-      <h2 id="audio-text">{{ s.steps.text.title }}</h2>
-      <p><UiText :text="s.steps.text.body" /></p>
-      <figure class="guide-figure"><AudioCreationStep stage="text" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.text.caption" /></figcaption></figure>
+      <h2 id="audio-text">{{ s.enter_text_and_choose_its_language }}</h2>
+      <p><RenderText :node="s.set_the_speech_text_and_language()" /></p>
+      <figure class="guide-figure"><AudioCreationStep stage="text" :messages="s" /><figcaption class="caption">{{ s.choose_a_model_text_and_language }}</figcaption></figure>
     </section>
 
     <section class="media-step" aria-labelledby="audio-generate">
-      <h2 id="audio-generate">{{ s.steps.generate.title }}</h2>
-      <p><UiText :text="s.steps.generate.body" /></p>
-      <figure class="guide-figure"><AudioCreationStep stage="generate" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.generate.caption" /></figcaption></figure>
+      <h2 id="audio-generate">{{ s.generate_and_follow_progress }}</h2>
+      <p><RenderText :node="s.generate_speech_and_capture_progress()" /></p>
+      <figure class="guide-figure"><AudioCreationStep stage="generate" :messages="s" /><figcaption class="caption">{{ s.speech_generation_progress }}</figcaption></figure>
     </section>
 
     <section class="media-step" aria-labelledby="audio-save">
-      <h2 id="audio-save">{{ s.steps.save.title }}</h2>
-      <p><UiText :text="s.steps.save.body" /></p>
-      <figure class="guide-figure"><AudioCreationStep stage="save" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.save.caption" /></figcaption></figure>
+      <h2 id="audio-save">{{ s.play_and_save_the_wav }}</h2>
+      <p><RenderText :node="s.save_the_completed_wav()" /></p>
+      <figure class="guide-figure"><AudioCreationStep stage="save" :messages="s" /><figcaption class="caption"><RenderText :node="s.explicit_wav_save_action()" /></figcaption></figure>
     </section>
 
-    <section class="media-note" aria-labelledby="audio-reference"><h2 id="audio-reference">{{ s.referenceTitle }}</h2><p><UiText :text="s.reference" /></p></section>
-    <section class="media-note" aria-labelledby="audio-reading"><h2 id="audio-reading">{{ s.readingTitle }}</h2><p><UiText :text="s.reading" /></p></section>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'endpoint-type-llama-cpp-browser', title: s.relatedTitle, description: s.relatedDescription }]" />
+    <section class="media-note" aria-labelledby="audio-reference"><h2 id="audio-reference">{{ s.add_a_reference_voice_when_needed }}</h2><p>{{ s.choose_a_reference_voice }}</p></section>
+    <section class="media-note" aria-labelledby="audio-reading"><h2 id="audio-reading">{{ s.chat_read_aloud_is_separate }}</h2><p><RenderText :node="s.chat_read_aloud_uses_web_speech()" /></p></section>
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'endpoint-type-llama-cpp-browser', title: s.run_a_gguf_model_in_your_browser, description: s.start_a_chat_with_a_local_gguf_model }]" />
   </article>
 </template>
 

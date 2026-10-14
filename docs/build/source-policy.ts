@@ -3,10 +3,10 @@ import { NodeTypes, parse as parseTemplate } from '@vue/compiler-dom';
 import type { TemplateChildNode } from '@vue/compiler-dom';
 
 const nativeAnchorComponents = new Set([
-  'site/DocsLink.vue',
-  'site/LocalAnchorLink.vue',
-  'site/ExternalLink.vue',
-  'site/AppEntryLink.vue',
+  'components/DocsLink.vue',
+  'components/LocalAnchorLink.vue',
+  'components/ExternalLink.vue',
+  'components/AppEntryLink.vue',
 ]);
 
 const reservedIslandAttributes = new Set(['data-docs-island', 'data-docs-props', 'data-docs-hydrated']);
@@ -39,6 +39,10 @@ export function validateStaticComponent({ source, filename, mode }: { source: st
     const { line, column } = descriptor.scriptSetup.loc.start;
     throw new Error(`${filename}:${line}:${column}: Static Docs <script setup> must be inline so its authoring rules can be checked. Move browser behavior into a registered island.`);
   }
+  if (mode === 'static' && descriptor.scriptSetup && ['tsx', 'jsx'].includes(descriptor.scriptSetup.lang ?? '')) {
+    const { line, column } = descriptor.scriptSetup.loc.start;
+    throw new Error(`${filename}:${line}:${column}: Static Docs JSX is supported only in locale message modules. Write page markup in the template.`);
+  }
   if (mode === 'static' && errors.some(error => String(error).includes('<script setup> cannot use the "src" attribute'))) {
     const beforeScript = source.slice(0, Math.max(0, source.search(/<script\b/u)));
     const line = beforeScript.split('\n').length;
@@ -62,7 +66,7 @@ export function validateStaticComponent({ source, filename, mode }: { source: st
         remedy: 'Render the content inline.',
       });
     }
-    if (mode === 'static' && (node.tag === 'DocsIsland' || node.tag === 'docs-island') && filename !== 'site/DocsIsland.vue') {
+    if (mode === 'static' && (node.tag === 'DocsIsland' || node.tag === 'docs-island') && filename !== 'components/DocsIsland.vue') {
       if (node.children.some(child => child.type !== NodeTypes.TEXT || child.content.trim() !== '')) {
         throw new Error(`DocsIsland does not accept slots in ${filename}`);
       }
@@ -84,7 +88,7 @@ export function validateStaticComponent({ source, filename, mode }: { source: st
         : prop.name === 'bind' && prop.arg?.type === NodeTypes.SIMPLE_EXPRESSION && prop.arg.isStatic
           ? prop.arg.content.toLowerCase()
           : undefined;
-      if (filename !== 'site/DocsIsland.vue'
+      if (filename !== 'components/DocsIsland.vue'
         && name !== undefined && reservedIslandAttributes.has(name)) {
         throw new Error(`Reserved Docs island attribute ${name} in ${filename}`);
       }
@@ -117,11 +121,11 @@ export function validateStaticComponent({ source, filename, mode }: { source: st
       if (prop.name === 'bind' && prop.arg?.type === NodeTypes.SIMPLE_EXPRESSION && prop.arg.isStatic && prop.arg.content.toLowerCase().startsWith('on')) {
         throw new Error(`Event property binding in ${filename}`);
       }
-      const hostCanonicalBind = filename === 'site/DocsIsland.vue' && node.tag === 'component'
+      const hostCanonicalBind = filename === 'components/DocsIsland.vue' && node.tag === 'component'
         && !prop.arg && prop.exp?.type === NodeTypes.SIMPLE_EXPRESSION && prop.exp.content.trim() === 'data.canonical'
         && node.props.some(candidate => candidate.type === NodeTypes.DIRECTIVE && candidate.name === 'bind'
           && candidate.arg?.type === NodeTypes.SIMPLE_EXPRESSION && candidate.arg.isStatic && candidate.arg.content === 'is'
-          && candidate.exp?.type === NodeTypes.SIMPLE_EXPRESSION && candidate.exp.content.trim() === 'data.component');
+          && candidate.exp?.type === NodeTypes.SIMPLE_EXPRESSION && candidate.exp.content.trim() === 'preparedComponent()');
       if (prop.name === 'bind' && (!prop.arg || prop.arg.type !== NodeTypes.SIMPLE_EXPRESSION || !prop.arg.isStatic) && !hostCanonicalBind) {
         throw new Error(`Docs bindings require an explicit static attribute name: ${filename}`);
       }

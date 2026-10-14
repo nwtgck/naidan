@@ -1,5 +1,5 @@
-import { DOCS_BASE, DOCS_LOCALES, DOCS_PAGES, docsHref } from '../site/routes';
-import type { DocsLocale, DocsPageId } from '../site/routes';
+import { DOCS_BASE, DOCS_LOCALES, DOCS_PAGES, docsHref } from '../navigation/routes';
+import type { DocsLocale, DocsPageId } from '../navigation/routes';
 
 export type DocsRoute =
   | { kind: 'outside' }
@@ -14,7 +14,7 @@ export type DocsRoute =
   | { kind: 'page'; locale: DocsLocale; page: DocsPageId };
 
 const requestOrigin = 'http://naidan-docs.invalid';
-const devDirectories = ['/@', '/site/', '/assets/', '/client/', '/islands/', '/pages/', '/node_modules/'];
+const devDirectories = ['/@', '/assets/', '/client/', '/components/', '/islands/', '/messages/', '/navigation/', '/pages/', '/search/', '/styles/', '/node_modules/'];
 
 export function resolveDocsRoute({ requestUrl }: { requestUrl: string }): DocsRoute {
   let url: URL;

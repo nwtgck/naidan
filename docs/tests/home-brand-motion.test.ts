@@ -3,7 +3,7 @@ import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
 import { homeBrandFrame } from '../client/home-brand-geometry';
 import { startHomeBrandMotion } from '../client/home-brand-motion';
-import { docsHref } from '../site/routes';
+import { docsHref } from '../navigation/routes';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
 const guidePages = [
@@ -159,7 +159,7 @@ describe('Docs home brand', () => {
   it('uses actual SVG and font sizes for the Safari hero instead of scaling header pixels', () => {
     const headerOuterLeft = 24;
     let headerPadding = 31;
-    const siteCss = readFileSync(new URL('../site/site.css', import.meta.url), 'utf8');
+    const siteCss = readFileSync(new URL('../styles/site.css', import.meta.url), 'utf8');
     const dom = new JSDOM(`\
 <!doctype html><html><head><style>${siteCss}</style><style>
 .topbar-inner { padding-left: ${headerPadding}px; }
@@ -429,7 +429,7 @@ describe('Docs home brand', () => {
   });
 
   it('hides only the visual startup brand while keeping its space, native link, and keyboard focus', () => {
-    const css = readFileSync(new URL('../site/site.css', import.meta.url), 'utf8');
+    const css = readFileSync(new URL('../styles/site.css', import.meta.url), 'utf8');
     const dom = new JSDOM(`<!doctype html><html data-docs-home-brand-startup="pending"><head><style>${css}</style></head><body>
 <header class="topbar"><div class="topbar-inner"><div class="brand-group"><a data-docs-brand-link href="/docs/en/">Naidan</a></div><details class="docs-guide-menu"><summary>Guides</summary></details><div class="docs-search"><button type="button">Search</button></div><div class="nav-controls"><a href="/">Use Naidan</a></div></div></header>
 <div data-docs-hero-brand aria-hidden="true">Naidan</div><input id="docs-pause-motion" type="checkbox">
@@ -518,7 +518,7 @@ describe('Docs home brand', () => {
   });
 
   it('keeps the paired leading controls aligned and raises an open native guide above the moving brand', () => {
-    const css = readFileSync(new URL('../site/site.css', import.meta.url), 'utf8');
+    const css = readFileSync(new URL('../styles/site.css', import.meta.url), 'utf8');
     const dom = new JSDOM(`\
 <!doctype html><html><head><style>${css}</style></head><body>
 <header class="topbar"><div class="topbar-inner">

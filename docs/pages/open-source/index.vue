@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import ExternalLink from '../../site/ExternalLink.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import type { OpenSourceMessages, CommonMessages } from '../../site/messages';
-import type { DocsLocale } from '../../site/routes';
+import ExternalLink from '../../components/ExternalLink.vue';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import type { OpenSourceMessages, CommonMessages } from '../../messages/types';
+import type { DocsLocale } from '../../navigation/routes';
 
 defineProps<{ s: OpenSourceMessages; locale: DocsLocale; common: CommonMessages }>();
 
@@ -12,64 +12,64 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-open-source">
     <h1>{{ s.title }}</h1>
-    <p class="lead">{{ s.intro }}</p>
+    <p class="lead">{{ s.introduction }}</p>
 
     <section class="open-source-section" aria-labelledby="open-source-repository">
-      <h2 id="open-source-repository">{{ s.repository.title }}</h2>
+      <h2 id="open-source-repository">{{ s.repository_title }}</h2>
       <ExternalLink href="https://github.com/nwtgck/naidan" :locale="locale">https://github.com/nwtgck/naidan</ExternalLink>
     </section>
 
     <section class="open-source-section" aria-labelledby="open-source-license">
-      <h2 id="open-source-license">{{ s.license.title }}</h2>
-      <p>{{ s.license.body }}</p>
-      <ExternalLink href="https://github.com/nwtgck/naidan/blob/develop/LICENSE" :locale="locale">{{ s.license.link }}</ExternalLink>
-      <p class="open-source-note">{{ s.license.note }}</p>
+      <h2 id="open-source-license">{{ s.license_title }}</h2>
+      <p>{{ s.license_body }}</p>
+      <ExternalLink href="https://github.com/nwtgck/naidan/blob/develop/LICENSE" :locale="locale">{{ s.license_link }}</ExternalLink>
+      <p class="open-source-note">{{ s.license_note }}</p>
     </section>
 
     <section class="open-source-section" aria-labelledby="open-source-source">
-      <h2 id="open-source-source">{{ s.source.title }}</h2>
-      <p>{{ s.source.body }}</p>
+      <h2 id="open-source-source">{{ s.source_title }}</h2>
+      <p>{{ s.source_body }}</p>
       <div class="open-source-links">
-        <ExternalLink href="https://github.com/nwtgck/naidan" :locale="locale">{{ s.source.link }}</ExternalLink>
-        <ExternalLink href="https://github.com/nwtgck/naidan/commits" :locale="locale">{{ s.source.historyLink }}</ExternalLink>
+        <ExternalLink href="https://github.com/nwtgck/naidan" :locale="locale">{{ s.source_link }}</ExternalLink>
+        <ExternalLink href="https://github.com/nwtgck/naidan/commits" :locale="locale">{{ s.source_history_link }}</ExternalLink>
       </div>
     </section>
 
     <section class="open-source-section" aria-labelledby="open-source-build">
-      <h2 id="open-source-build">{{ s.build.title }}</h2>
-      <p>{{ s.build.body }}</p>
-      <p class="open-source-note">{{ s.build.note }}</p>
+      <h2 id="open-source-build">{{ s.build_title }}</h2>
+      <p>{{ s.build_body }}</p>
+      <p class="open-source-note">{{ s.build_note }}</p>
       <div class="open-source-links">
-        <ExternalLink href="https://github.com/nwtgck/naidan/blob/develop/.github/workflows/main.yml" :locale="locale">{{ s.build.workflowLink }}</ExternalLink>
-        <ExternalLink href="https://github.com/nwtgck/naidan/actions/workflows/main.yml" :locale="locale">{{ s.build.runsLink }}</ExternalLink>
+        <ExternalLink href="https://github.com/nwtgck/naidan/blob/develop/.github/workflows/main.yml" :locale="locale">{{ s.build_workflow_link }}</ExternalLink>
+        <ExternalLink href="https://github.com/nwtgck/naidan/actions/workflows/main.yml" :locale="locale">{{ s.build_runs_link }}</ExternalLink>
       </div>
       <figure class="guide-figure open-source-figure" data-docs-animation="open-source-flow">
-        <ol class="open-source-flow" :aria-label="s.build.diagramCaption">
-          <li>{{ s.build.diagram.source }}</li>
-          <li>{{ s.build.diagram.build }}</li>
-          <li>{{ s.build.diagram.release }}</li>
+        <ol class="open-source-flow" :aria-label="s.source_build_release_caption">
+          <li>{{ s.public_source }}</li>
+          <li>{{ s.github_actions_build }}</li>
+          <li>{{ s.published_release }}</li>
         </ol>
-        <figcaption class="caption">{{ s.build.diagramCaption }}</figcaption>
+        <figcaption class="caption">{{ s.source_build_release_caption }}</figcaption>
       </figure>
     </section>
 
     <section class="open-source-section" aria-labelledby="open-source-use">
-      <h2 id="open-source-use">{{ s.use.title }}</h2>
-      <p>{{ s.use.body }}</p>
+      <h2 id="open-source-use">{{ s.use_title }}</h2>
+      <p>{{ s.use_body }}</p>
       <div class="pair-grid">
         <section class="panel open-source-choice-card">
-          <h3>{{ s.use.selfBuild.title }}</h3>
-          <p>{{ s.use.selfBuild.body }}</p>
-          <ExternalLink class="open-source-choice-link" href="https://github.com/nwtgck/naidan/blob/develop/README.md#development" :locale="locale">{{ s.use.selfBuild.link }}</ExternalLink>
+          <h3>{{ s.use_self_build_title }}</h3>
+          <p>{{ s.use_self_build_body }}</p>
+          <ExternalLink class="open-source-choice-link" href="https://github.com/nwtgck/naidan/blob/develop/README.md#development" :locale="locale">{{ s.use_self_build_link }}</ExternalLink>
         </section>
         <section class="panel open-source-choice-card">
-          <h3>{{ s.use.release.title }}</h3>
-          <p>{{ s.use.release.body }}</p>
-          <ExternalLink class="open-source-choice-link" href="https://github.com/nwtgck/naidan/releases/latest" :locale="locale">{{ s.use.release.link }}</ExternalLink>
+          <h3>{{ s.use_release_title }}</h3>
+          <p>{{ s.use_release_body }}</p>
+          <ExternalLink class="open-source-choice-link" href="https://github.com/nwtgck/naidan/releases/latest" :locale="locale">{{ s.use_release_link }}</ExternalLink>
         </section>
       </div>
     </section>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'standalone', title: s.use.relatedTitle, description: s.use.relatedDescription }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'standalone', title: s.standalone_setup_guide_title, description: s.standalone_setup_guide_description }]" />
   </article>
 </template>
 

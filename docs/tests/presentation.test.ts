@@ -7,10 +7,10 @@ import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import { docsBuildConfig } from '../build/production';
 import { renderDocument } from '../build/html';
-import { EXTERNAL_LINK_LABEL, EXTERNAL_LINK_PATH } from '../site/external-link';
-import { DOCS_LOCALES, DOCS_PAGES, docsHref } from '../site/routes';
-import type { DocsLocale } from '../site/routes';
-import ExternalLink from '../site/ExternalLink.vue';
+import { EXTERNAL_LINK_LABEL, EXTERNAL_LINK_PATH } from '../navigation/external-link';
+import { DOCS_LOCALES, DOCS_PAGES, docsHref } from '../navigation/routes';
+import type { DocsLocale } from '../navigation/routes';
+import ExternalLink from '../components/ExternalLink.vue';
 import { createSiteFixture, parsePage } from './site.test-support';
 
 function compose({ body, locale }: { body: string; locale: DocsLocale }): string {

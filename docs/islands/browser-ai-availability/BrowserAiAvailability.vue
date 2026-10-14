@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { checkBrowserAiAvailability } from './native';
+import { readBrowserAiMessages } from './messages';
 import type { BrowserAiAvailabilityStatus } from './native';
 import type { BrowserAiAvailabilityPayload } from './contracts';
 
 const props = defineProps<BrowserAiAvailabilityPayload>();
+const messages = readBrowserAiMessages({ locale: props.locale });
 type Status = 'unchecked' | 'checking' | BrowserAiAvailabilityStatus;
 const status = ref<Status>('unchecked');
 let active = false;
@@ -12,15 +14,15 @@ let revision = 0;
 
 const message = computed(() => {
   switch (status.value) {
-  case 'unchecked': return props.copy.initial;
-  case 'checking': return props.copy.checking;
-  case 'available': return props.copy.available;
-  case 'downloadable': return props.copy.downloadable;
-  case 'downloading': return props.copy.downloading;
-  case 'unavailable': return props.copy.unavailable;
-  case 'apiAbsent': return props.copy.apiAbsent;
-  case 'unknown': return props.copy.unknown;
-  case 'rejected': return props.copy.rejected;
+  case 'unchecked': return messages.not_checked_yet;
+  case 'checking': return messages.checking_browser_model;
+  case 'available': return messages.browser_model_available;
+  case 'downloadable': return messages.browser_model_downloadable;
+  case 'downloading': return messages.browser_model_downloading;
+  case 'unavailable': return messages.browser_model_unavailable;
+  case 'apiAbsent': return messages.language_model_api_is_not_exposed;
+  case 'unknown': return messages.unrecognized_browser_status;
+  case 'rejected': return messages.browser_check_failed;
   default: { const unreachable: never = status.value; throw new Error(`Unknown browser AI availability status: ${unreachable}`); }
   }
 });
@@ -69,13 +71,13 @@ defineExpose({
 
 <template>
   <section class="browser-ai-availability" data-testid="browser-ai-availability">
-    <h2>{{ copy.title }}</h2>
-    <p class="scope">{{ copy.scope }}</p>
+    <h2>{{ messages.check_this_browser_heading }}</h2>
+    <p class="scope">{{ messages.browser_scope }}</p>
     <div class="result" :data-tone="tone">
       <p role="status" aria-live="polite" aria-atomic="true" data-testid="browser-ai-availability-status">{{ message }}</p>
-      <button type="button" :disabled="status === 'unchecked' || status === 'checking'" @click="recheck">{{ copy.recheck }}</button>
+      <button type="button" :disabled="status === 'unchecked' || status === 'checking'" @click="recheck">{{ messages.check_again }}</button>
     </div>
-    <p class="limits">{{ copy.limits }}</p>
+    <p class="limits">{{ messages.availability_check_limits }}</p>
   </section>
 </template>
 

@@ -4,9 +4,9 @@ Docs owns independent presentation replicas of Naidan. This duplication is
 intentional. Do not share or import application UI components, stores, providers,
 model runtimes or permission handlers into Docs. Maintain important visual and
 interaction details by inspecting the current `src/` implementation and its
-behavior tests. Use `site/demos/README.md` to locate the relevant counterparts.
+behavior tests. Use `components/demos/README.md` to locate the relevant counterparts.
 
-Use one page structure for English and Japanese. Locally authored strings use
+Use one page structure for English and Japanese. Locally authored messages use
 the English message object as their canonical TypeScript shape, with other
 locales checked using `satisfies` against that derived type. Do not duplicate the
 shape in a separate interface. Do not validate local dictionaries with Zod or
@@ -14,16 +14,78 @@ replace that validation with custom runtime checks. Read JSON island
 props through the island-owned serialization boundary parser; do not duplicate
 the local translation shape in a separate runtime schema.
 
-Interface labels, sample conversation content, diagrams and accessible text must
-follow the page locale. Pass the required localized copy as typed build-time
-props. Preserve genuine commands, paths, filenames and technical identifiers.
-Do not load page-wide translation dictionaries in the browser.
+Keep each article's English and Japanese copy in `pages/<id>/messages/en.tsx`
+and `ja.tsx`, exporting `messages`. Use flat, natural English `snake_case` keys
+for message meanings; keep routes, fixed step order, and demonstration state in
+the page. `title` and `description` are fixed metadata fields in the same flat
+object. Write plain text without arguments directly as a string literal or a
+template literal without interpolation. When plain text needs named arguments,
+write an inline arrow or function expression with an explicit `: string` return
+type. Write each rich or list-producing value directly as an inline arrow or
+function expression in the catalog; do not assign a helper, imported function,
+or shared value to a message key. Prose with inline
+links or names of visible controls is a JSX function returning a fresh VNode when
+called, with a named-argument object when it needs page-owned values. Use
+`components/RenderText.ts` in the static page to render that VNode. Check Japanese
+copy with `satisfies typeof import('./en').messages` without a runtime import
+of English copy. A language-dependent list may be a function returning a fresh
+array; its length and order need not match between languages. Do not share
+mutable arrays, objects, or VNodes from module scope or a function closure
+between renders. Pass article messages as one explicit prop to static demos;
+read the authored keys directly in the demo instead of manually mapping them
+to same-typed aliases. Do not use `v-bind="messages"` to expand the entire
+catalog into component attributes. Pass only JSON data required for an island;
+keep article JSX and page-wide catalogs out of the browser.
 
-In English and Japanese guide prose and figure captions, mark names of visible
-controls with full-width brackets (`［Save］`). Render those strings through
-`site/UiText.vue`, which emits an inert, localized SSR span for each marked name.
-Do not pass commands, code, paths, technical identifiers or metadata through
-`UiText`, and do not present these labels as buttons or keyboard shortcuts.
+Common UI messages use `messages/common/{en,ja}.ts`. Author the reusable
+Chrome and search copy once in `messages/replica-chrome/{en,ja}.ts` and
+`messages/search-ui/{en,ja}.ts`. Island loaders dynamically import only the
+selected locale's small modules; they must not import the common catalog to
+obtain those groups. Common imports the same-language groups as `chrome` and
+`searchUi` and spreads their **same keys** into its flat `messages` object.
+Use meaningful scoped `snake_case` keys such as `chrome_new_chat` and
+`search_ui_open_search`, without a second string-to-string map or nested
+`messages.chrome`/`messages.searchUi` copies. Other common UI messages also
+use natural `snake_case`. The article file already gives its messages a
+subject, so do not add a mechanical page or role prefix to every article key.
+Route- and category-keyed navigation and search-purpose metadata remain
+domain records.
+
+Plain locale modules under `messages/` and plain island message directories
+directly export `const messages = { ... }`; Japanese modules check that object
+with `satisfies typeof import('./en').messages`. Their root message values are
+string literals, template literals without interpolation, or inline functions
+with an explicit `: string` return type. TypeScript checks the string result;
+the source check limits the authoring syntax, not arbitrary function purity.
+Common's
+`navigation` and `search_purpose_descriptions` are domain-object exceptions;
+common may spread only the same-language `chrome` and `searchUi` groups.
+
+Write short JSX sentences and component props on one line when they fit. Avoid
+breaking inline argument types across lines without a readability reason. For
+example, `<>Open <AppEntryLink locale={locale} destination={destination} display="path" />.</>`
+is clearer as one line than as a fragment spread over several lines.
+
+When migrating prose, preserve its meaning, factual information, instructions,
+and link destinations. The languages may use different word order and natural
+connections between clauses. A comparison with prior rendered HTML helps find
+omissions or unintended changes; it does not require verbatim old wording.
+
+Interface labels, sample conversation content, diagrams and accessible text must
+follow the page locale. Static demos read typed article messages during SSR.
+Interactive islands load their own small messages for the selected locale;
+the other locale's message module must not be an eager dependency. Pass locale
+and any genuinely required plain data through the typed JSON island boundary.
+Preserve genuine commands, paths, filenames and technical identifiers. Do not
+load page-wide article dictionaries in the browser.
+
+In English and Japanese guide prose and figure captions, render names of
+visible controls through `components/UiLabel.vue` inside the localized JSX sentence.
+An island-owned rich message may do the same when its server and client renders
+use the prepared messages for the same locale. The label emits an inert span.
+Do not treat commands, code, paths, technical identifiers, or metadata as
+control names, and do not present labels as buttons or keyboard shortcuts.
+Plain copy does not parse full-width brackets.
 
 Keep complete per-language HTML at build time and shared development rendering.
 Hydrate only explicitly registered demonstrations. Maintain the independent
@@ -38,6 +100,21 @@ data, and a registered island for browser behavior. The only supported
 browser client modules or private island helpers as values. These rules run in
 both development and production builds; development keeps static pages
 server-rendered instead of hydrating them as Vue applications.
+Static Docs authoring also does not value-import executable `.vue`, `.ts`,
+`.tsx`, `.js`, `.jsx`, `.mts`, `.cts`, `.mjs`, or `.cjs` files from elsewhere in
+this repository. Type-only imports, assets such as SVG, and package imports
+remain supported. The source check does not prove arbitrary function purity;
+keep message functions free of shared mutable state.
+
+The small `components/RenderText.ts` VNode bridge and article locale TSX functions
+are the supported exceptions for SSR-only rich copy. In article TSX, use JSX
+fragments, text, inert inline elements, and approved typed Docs links and
+`UiLabel`. Do not write native anchors, active elements, Teleport, event or
+directive attributes, refs, HTML injection, attribute spreads, or arbitrary
+component tags. Article locale modules must not enter the client value graph;
+type-only imports are permitted. An island-owned locale TSX module may enter
+only that island's client graph and must not import an article locale module
+as a value.
 Static templates do not use Teleport, template refs, or custom directives:
 Teleport content is omitted from rendered pages, browser directive hooks do
 not run, and template refs remain unset without hydration. Render Teleport
@@ -48,10 +125,18 @@ exclude Teleport and useTemplateRef.
 For an interactive island, keep its `type`-alias `JsonObject` payload and
 boundary parser in `islands/<id>/contracts.ts`. Register its spec there, and
 directly import its concrete Vue component in `islands/<id>/definition.ts` for
-`defineDocsIsland`.
+`defineDocsIsland`. Give that definition a required `prepare({ payload })`
+callback that loads only `payload.locale`'s island-owned messages. The shared
+host waits for it before server-rendering the island. Client hydration waits
+for the same locale while leaving the static HTML in place; the island component
+then reads the prepared messages synchronously. Use the shared
+`messages/loader.ts` helper for locale-keyed loading, and do not eagerly import
+both languages.
 Static pages import that factory and pass props once through
-`<DocsIsland :entry="branchingIsland({ ... })" />`. Do not handwrite the island
-data attributes, pass slots or extra attributes to `DocsIsland`, or import a raw
+`<DocsIsland :entry="branchingIsland({ locale })" />`. The island may resolve
+its own locale messages without a hand-authored mapping from article messages
+into JSON props. Do not handwrite island data attributes, pass slots or extra
+attributes to `DocsIsland`, or import a raw
 island component into static Docs. Island components must not use `useId`,
 `provide`, or `inject`, or depend on a parent page's scoped CSS or setup context.
 Keep document IDs unique. `build:docs` runs `typecheck:docs` before the Vite build;
@@ -59,12 +144,13 @@ the type check is part of the authoring contract.
 
 Treat the article ID and public URL slug as one stable identifier for the
 article's subject. Do not rename it merely because a title, introduction, or
-navigation label changes. Register each ID in `site/routes.ts` and place its
-entry component at `pages/<id>/index.vue`, with article-owned strings and
-assets under that directory. In Vue templates use `site/DocsLink.vue` with a
-`DocsPageId`; other code uses `docsHref`. Native anchors belong only in the
-link components. Use `site/LocalAnchorLink.vue` for the page's skip link,
-`site/AppEntryLink.vue` for app entry, and `site/ExternalLink.vue` for absolute
+navigation label changes. Register each ID in `navigation/routes.ts` and place its
+entry component at `pages/<id>/index.vue`, with article-owned messages and
+assets under that directory. In Vue templates and article JSX use
+`components/DocsLink.vue` with a `DocsPageId`; other code uses `docsHref`. Native
+anchors belong only in the link components. Use `components/LocalAnchorLink.vue` for
+the page's skip link,
+`components/AppEntryLink.vue` for app entry, and `components/ExternalLink.vue` for absolute
 HTTP(S) destinations. Add compatibility aliases when an
 intentional public URL migration needs them; do not accumulate aliases from
 intermediate feature branch revisions.

@@ -2,10 +2,10 @@ import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
 import LocalOnlyPage from '../pages/csp-editions/index.vue';
-import { strings as english } from '../pages/csp-editions/strings/en';
-import { strings as japanese } from '../pages/csp-editions/strings/ja';
-import { strings as commonEnglish } from '../strings/common/en';
-import { strings as commonJapanese } from '../strings/common/ja';
+import { messages as english } from '../pages/csp-editions/messages/en';
+import { messages as japanese } from '../pages/csp-editions/messages/ja';
+import { messages as commonEnglish } from '../messages/common/en';
+import { messages as commonJapanese } from '../messages/common/ja';
 import { parsePage } from './site.test-support';
 
 describe('Local-only connection guide', () => {
@@ -18,10 +18,10 @@ describe('Local-only connection guide', () => {
     const article = page.document.querySelector('[data-testid="docs-local-only"]');
     expect(article?.querySelector('h1')?.textContent).toBe(s.title);
     expect([...article?.querySelectorAll('h2') ?? []].map(heading => heading.textContent)).toEqual([
-      s.versionsTitle,
-      s.localTitle,
-      s.scopeTitle,
-      s.checkTitle,
+      s.choose_hosted_version_title,
+      s.connect_local_server_title,
+      s.connection_policy_scope_title,
+      s.inspect_policy_and_traffic_title,
     ]);
 
     const hostedLinks = [...article?.querySelectorAll<HTMLAnchorElement>('.version-card a[data-docs-external]') ?? []];
@@ -44,9 +44,9 @@ describe('Local-only connection guide', () => {
     expect([...diagram?.querySelectorAll('[data-destination="external"]') ?? []].map(route => route.getAttribute('data-state'))).toEqual([
       'blocked', 'allowed', 'standard',
     ]);
-    expect(diagram?.textContent).toContain(s.diagram.curatedServices);
-    expect(diagram?.textContent).toContain(s.diagram.noAddedLimit);
-    expect(article?.querySelector('.policy-figure figcaption')?.textContent).toBe(s.diagram.caption);
+    expect(diagram?.textContent).toContain(s.curated_external_services);
+    expect(diagram?.textContent).toContain(s.standard_connection_limit);
+    expect(article?.querySelector('.policy-figure figcaption')?.textContent).toBe(s.connection_policy_caption);
     expect(article?.querySelectorAll('.allowed-destinations > div')).toHaveLength(3);
     expect([...article?.querySelectorAll('.allowed-destinations code') ?? []].map(element => element.textContent)).toEqual([
       "'self'", 'http://localhost:*', 'http://127.0.0.1:*',

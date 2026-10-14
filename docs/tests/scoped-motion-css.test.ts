@@ -69,11 +69,11 @@ describe('Docs scoped motion CSS', () => {
   });
 
   it.each([
-    { file: 'site/BrowserMock.vue', selector: `html:has(#docs-pause-motion:checked) .demo-send-stop[${scopeId}]`, property: 'visibility', value: 'hidden' },
-    { file: 'site/demos/SettingsCameraFrame.vue', selector: `html:has(#docs-pause-motion:checked) .focus-open .camera-canvas[${scopeId}]`, property: 'transform', value: undefined },
-    { file: 'site/demos/NaidanRpcStep.vue', selector: `html:has(#docs-pause-motion:checked) .camera .canvas[${scopeId}]`, property: 'transform', value: undefined },
-    { file: 'site/demos/BackupSettingsStep.vue', selector: `html:has(#docs-pause-motion:checked) .pointer[${scopeId}]`, property: 'display', value: 'none' },
-    { file: 'site/demos/BackupSettingsStep.vue', selector: `html:has(#docs-light-theme:checked) .backup-viewport[${scopeId}]`, property: '--demo-warning', value: undefined },
+    { file: 'components/BrowserMock.vue', selector: `html:has(#docs-pause-motion:checked) .demo-send-stop[${scopeId}]`, property: 'visibility', value: 'hidden' },
+    { file: 'components/demos/SettingsCameraFrame.vue', selector: `html:has(#docs-pause-motion:checked) .focus-open .camera-canvas[${scopeId}]`, property: 'transform', value: undefined },
+    { file: 'components/demos/NaidanRpcStep.vue', selector: `html:has(#docs-pause-motion:checked) .camera .canvas[${scopeId}]`, property: 'transform', value: undefined },
+    { file: 'components/demos/BackupSettingsStep.vue', selector: `html:has(#docs-pause-motion:checked) .pointer[${scopeId}]`, property: 'display', value: 'none' },
+    { file: 'components/demos/BackupSettingsStep.vue', selector: `html:has(#docs-light-theme:checked) .backup-viewport[${scopeId}]`, property: '--demo-warning', value: undefined },
   ])('preserves the $property declaration on $selector', ({ file, selector, property, value }) => {
     const rules: Rule[] = [];
     for (const { compiled } of scopedStyles({ file })) compiled.walkRules(rule => {

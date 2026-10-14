@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import UiText from '../../site/UiText.vue';
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import ConnectionSettingsStep from '../../site/demos/ConnectionSettingsStep.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import type { DocsLocale } from '../../site/routes';
-import type { CommonMessages, OllamaGuideMessages } from '../../site/messages';
+import RenderText from '../../components/RenderText';
+import ConnectionSettingsStep from '../../components/demos/ConnectionSettingsStep.vue';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import type { DocsLocale } from '../../navigation/routes';
+import type { CommonMessages, OllamaGuideMessages } from '../../messages/types';
 
 defineProps<{ s: OllamaGuideMessages; locale: DocsLocale; common: CommonMessages }>();
 
@@ -16,49 +15,49 @@ defineExpose({
 <template>
   <article class="prose" data-testid="docs-models-ollama">
     <h1>{{ s.title }}</h1>
-    <p class="lead"><UiText :text="s.intro" /></p>
-    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
-    <p class="before-step"><UiText :text="s.before" /></p>
+    <p class="lead">{{ s.intro }}</p>
+    <p class="app-entry-intro"><RenderText :node="s.open_app({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
+    <p class="before-step">{{ s.ollama_model_prerequisite }}</p>
 
     <section class="walkthrough-step" aria-labelledby="ollama-open">
-      <h2 id="ollama-open">{{ s.steps.open.title }}</h2>
-      <p><UiText :text="s.steps.open.body" /></p>
+      <h2 id="ollama-open">{{ s.open_connection_settings_heading }}</h2>
+      <p><RenderText :node="s.open_connection_settings_instructions()" /></p>
       <figure class="guide-figure">
-        <ConnectionSettingsStep stage="open" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.open.caption" /></figcaption>
+        <ConnectionSettingsStep stage="open" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.open_connection_settings_figure_caption()" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="ollama-provider">
-      <h2 id="ollama-provider">{{ s.steps.provider.title }}</h2>
-      <p><UiText :text="s.steps.provider.body" /></p>
+      <h2 id="ollama-provider">{{ s.choose_ollama_provider_heading }}</h2>
+      <p><RenderText :node="s.choose_ollama_provider_instructions()" /></p>
       <figure class="guide-figure">
-        <ConnectionSettingsStep stage="provider" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.provider.caption" /></figcaption>
+        <ConnectionSettingsStep stage="provider" :messages="s" />
+        <figcaption class="caption">{{ s.choose_ollama_provider_figure_caption }}</figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="ollama-check">
-      <h2 id="ollama-check">{{ s.steps.check.title }}</h2>
-      <p><UiText :text="s.steps.check.body" /></p>
+      <h2 id="ollama-check">{{ s.check_ollama_connection_heading }}</h2>
+      <p><RenderText :node="s.check_ollama_connection_instructions()" /></p>
       <figure class="guide-figure">
-        <ConnectionSettingsStep stage="check" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.check.caption" /></figcaption>
+        <ConnectionSettingsStep stage="check" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.check_ollama_connection_figure_caption()" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="ollama-model">
-      <h2 id="ollama-model">{{ s.steps.model.title }}</h2>
-      <p><UiText :text="s.steps.model.body" /></p>
+      <h2 id="ollama-model">{{ s.choose_ollama_model_heading }}</h2>
+      <p><RenderText :node="s.choose_ollama_model_instructions()" /></p>
       <figure class="guide-figure">
-        <ConnectionSettingsStep stage="model" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.model.caption" /></figcaption>
+        <ConnectionSettingsStep stage="model" :messages="s" />
+        <figcaption class="caption">{{ s.choose_ollama_model_figure_caption }}</figcaption>
       </figure>
     </section>
 
-    <h2>{{ s.troubleTitle }}</h2>
-    <p><UiText :text="s.trouble" /></p>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'local-ai-servers', title: s.next, description: s.nextDescription }]" />
+    <h2>{{ s.ollama_troubleshooting_heading }}</h2>
+    <p><RenderText :node="s.ollama_troubleshooting()" /></p>
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'local-ai-servers', title: s.local_server_guide_title, description: s.local_server_guide_description }]" />
   </article>
 </template>
 

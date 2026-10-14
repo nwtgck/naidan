@@ -2,10 +2,10 @@ import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
 import WeshSysfsGuide from '../pages/wesh-sysfs/index.vue';
-import { strings as english } from '../pages/wesh-sysfs/strings/en';
-import { strings as japanese } from '../pages/wesh-sysfs/strings/ja';
-import { strings as commonEnglish } from '../strings/common/en';
-import { strings as commonJapanese } from '../strings/common/ja';
+import { messages as english } from '../pages/wesh-sysfs/messages/en';
+import { messages as japanese } from '../pages/wesh-sysfs/messages/ja';
+import { messages as commonEnglish } from '../messages/common/en';
+import { messages as commonJapanese } from '../messages/common/ja';
 import { parsePage } from './site.test-support';
 
 describe('Wesh sysfs guide', () => {

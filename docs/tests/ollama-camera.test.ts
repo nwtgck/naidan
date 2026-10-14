@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import OllamaGuide from '../pages/endpoint-type-ollama/index.vue';
-import { strings as english } from '../pages/endpoint-type-ollama/strings/en';
-import { strings as japanese } from '../pages/endpoint-type-ollama/strings/ja';
+import { messages as english } from '../pages/endpoint-type-ollama/messages/en';
+import { messages as japanese } from '../pages/endpoint-type-ollama/messages/ja';
 import { parsePage } from './site.test-support';
-import type { CommonMessages } from '../site/messages';
+import type { CommonMessages } from '../messages/types';
 
 describe('Ollama camera guide', () => {
   it.each(['en', 'ja'] as const)('keeps one settings screen and the completed choices through the %s steps', async locale => {
@@ -42,10 +42,10 @@ describe('Ollama camera guide', () => {
     const provider = sections[1]?.querySelector('[data-docs-animation]');
     const check = sections[2]?.querySelector('[data-docs-animation]');
     const model = sections[3]?.querySelector('[data-docs-animation]');
-    expect(provider?.querySelector('.provider-menu')?.textContent).toContain(copy.demo.ollama);
+    expect(provider?.querySelector('.provider-menu')?.textContent).toContain(copy.ollama);
     expect(provider?.querySelector('.url-control')?.textContent).toContain('http://localhost:11434');
-    expect(check?.querySelector('.check-control')?.textContent).toContain(copy.demo.connected);
-    expect(model?.querySelector('.model-control')?.textContent).toContain(copy.demo.exampleModel);
-    expect(model?.querySelector('.save-button')?.textContent).toContain(copy.demo.settingsSaved);
+    expect(check?.querySelector('.check-control')?.textContent).toContain(copy.connected);
+    expect(model?.querySelector('.model-control')?.textContent).toContain(copy.sample_ollama_model);
+    expect(model?.querySelector('.save-button')?.textContent).toContain(copy.settings_saved);
   });
 });

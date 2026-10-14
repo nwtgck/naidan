@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import DocsLink from '../../site/DocsLink.vue';
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import UiText from '../../site/UiText.vue';
-import WikipediaChatStep from '../../site/demos/WikipediaChatStep.vue';
-import WikipediaSettingsStep from '../../site/demos/WikipediaSettingsStep.vue';
-import type { DocsLocale } from '../../site/routes';
-import type { CommonMessages, WikipediaMessages } from '../../site/messages';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import RenderText from '../../components/RenderText';
+import WikipediaChatStep from '../../components/demos/WikipediaChatStep.vue';
+import WikipediaSettingsStep from '../../components/demos/WikipediaSettingsStep.vue';
+import type { DocsLocale } from '../../navigation/routes';
+import type { CommonMessages, WikipediaMessages } from '../../messages/types';
 
 defineProps<{ s: WikipediaMessages; locale: DocsLocale; common: CommonMessages }>();
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
@@ -16,63 +14,63 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <article class="prose" data-testid="docs-wikipedia">
     <h1>{{ s.title }}</h1>
     <p class="lead">{{ s.intro }}</p>
-    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
-    <p class="prerequisite">{{ s.setup.before }}<DocsLink :locale="locale" page="in-browser-models">{{ s.setup.browserLink }}</DocsLink>{{ s.setup.between }}<DocsLink :locale="locale" page="local-ai-servers">{{ s.setup.engineLink }}</DocsLink>{{ s.setup.after }} {{ s.setup.exampleBefore }}<AppEntryLink :destination="{ kind: 'model', model: 'hf.co/lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M' }" :locale="locale" display="label">{{ s.setup.exampleLink }}</AppEntryLink>{{ s.setup.exampleAfter }}</p>
+    <p class="app-entry-intro"><RenderText :node="s.open_wikipedia_chat({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
+    <p class="prerequisite"><RenderText :node="s.choose_tool_capable_model({ locale, browserPage: 'in-browser-models', enginePage: 'local-ai-servers', modelDestination: { kind: 'model', model: 'hf.co/lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M' } })" /></p>
 
     <section class="walkthrough-step">
-      <h2>{{ s.steps.open.title }}</h2>
-      <p><UiText :text="s.steps.open.body" /></p>
-      <figure class="guide-figure"><WikipediaSettingsStep stage="open" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.open.caption" /></figcaption></figure>
+      <h2>{{ s.open_tool_settings_title }}</h2>
+      <p><RenderText :node="s.open_tool_settings_body()" /></p>
+      <figure class="guide-figure"><WikipediaSettingsStep stage="open" :messages="s" /><figcaption class="caption"><RenderText :node="s.open_tool_settings_caption()" /></figcaption></figure>
     </section>
 
     <section class="walkthrough-step">
-      <h2>{{ s.steps.enable.title }}</h2>
-      <p><UiText :text="s.steps.enable.body" /></p>
-      <figure class="guide-figure"><WikipediaSettingsStep stage="enabled" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.enable.caption" /></figcaption></figure>
-      <p><UiText :text="s.steps.enable.sysfs.before" /><DocsLink :locale="locale" page="wesh-sysfs">{{ s.steps.enable.sysfs.link }}</DocsLink><UiText :text="s.steps.enable.sysfs.after" /></p>
+      <h2>{{ s.enable_wikipedia_title }}</h2>
+      <p><RenderText :node="s.enable_wikipedia_body()" /></p>
+      <figure class="guide-figure"><WikipediaSettingsStep stage="enabled" :messages="s" /><figcaption class="caption">{{ s.enable_wikipedia_caption }}</figcaption></figure>
+      <p><RenderText :node="s.wikipedia_sysfs_guide({ locale, page: 'wesh-sysfs' })" /></p>
     </section>
 
     <section class="walkthrough-step">
-      <h2>{{ s.steps.search.title }}</h2>
-      <p>{{ s.privacy.editions }} <DocsLink :locale="locale" page="csp-editions">{{ s.privacy.editionsLink }}</DocsLink></p>
-      <p><UiText :text="s.steps.search.body" /></p>
-      <figure class="guide-figure"><WikipediaChatStep stage="search" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.search.caption" /></figcaption></figure>
+      <h2>{{ s.approve_search_title }}</h2>
+      <p><RenderText :node="s.wikipedia_editions_note({ locale, page: 'csp-editions' })" /></p>
+      <p><RenderText :node="s.approve_search_body()" /></p>
+      <figure class="guide-figure"><WikipediaChatStep stage="search" :messages="s" /><figcaption class="caption">{{ s.approve_search_caption }}</figcaption></figure>
     </section>
 
     <section class="walkthrough-step">
-      <h2>{{ s.steps.page.title }}</h2>
-      <p><UiText :text="s.steps.page.body" /></p>
-      <figure class="guide-figure"><WikipediaChatStep stage="page" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.page.caption" /></figcaption></figure>
+      <h2>{{ s.approve_page_title }}</h2>
+      <p><RenderText :node="s.approve_page_body()" /></p>
+      <figure class="guide-figure"><WikipediaChatStep stage="page" :messages="s" /><figcaption class="caption">{{ s.approve_page_caption }}</figcaption></figure>
     </section>
 
     <section class="result-section">
-      <h2>{{ s.result.title }}</h2>
-      <p>{{ s.result.body }}</p>
-      <figure class="guide-figure"><WikipediaChatStep stage="result" :copy="s.demo" /></figure>
-      <p>{{ s.result.help }}</p>
+      <h2>{{ s.use_search_results_title }}</h2>
+      <p>{{ s.use_search_results_body }}</p>
+      <figure class="guide-figure"><WikipediaChatStep stage="result" :messages="s" /></figure>
+      <p>{{ s.use_search_results_help }}</p>
     </section>
 
     <section class="privacy-section">
-      <h2>{{ s.privacy.title }}</h2>
-      <p>{{ s.privacy.body }}</p>
+      <h2>{{ s.wikipedia_privacy_title }}</h2>
+      <p>{{ s.wikipedia_privacy_body }}</p>
       <figure class="privacy-figure">
-        <div class="privacy-flow" role="img" :aria-label="s.privacy.diagram.caption">
-          <div class="flow-node">{{ s.privacy.diagram.chat }}</div>
+        <div class="privacy-flow" role="img" :aria-label="s.request_flow_caption">
+          <div class="flow-node">{{ s.request_flow_chat }}</div>
           <span class="flow-arrow" aria-hidden="true">→</span>
-          <div class="flow-node broker">{{ s.privacy.diagram.broker }}</div>
+          <div class="flow-node broker">{{ s.request_flow_broker }}</div>
           <span class="flow-arrow" aria-hidden="true">→</span>
-          <div class="flow-node">{{ s.privacy.diagram.wiki }}</div>
-          <div class="flow-label sent">{{ s.privacy.diagram.sent }}</div>
-          <div class="flow-label origin">{{ s.privacy.diagram.origin }}</div>
+          <div class="flow-node">{{ s.request_flow_wikipedia }}</div>
+          <div class="flow-label sent">{{ s.request_flow_sent_data }}</div>
+          <div class="flow-label origin">{{ s.request_flow_origin }}</div>
         </div>
-        <figcaption class="caption">{{ s.privacy.diagram.caption }}</figcaption>
+        <figcaption class="caption">{{ s.request_flow_caption }}</figcaption>
       </figure>
-      <p>{{ s.privacy.detail }}</p>
+      <p>{{ s.wikipedia_privacy_detail }}</p>
     </section>
 
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[
-      { page: 'tool-browser-shell', ...s.related.shell },
-      { page: 'csp-editions', ...s.related.localOnly },
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[
+      { page: 'tool-browser-shell', title: s.shell_guide_title, description: s.shell_guide_description },
+      { page: 'csp-editions', title: s.local_only_guide_title, description: s.local_only_guide_description },
     ]" />
   </article>
 </template>

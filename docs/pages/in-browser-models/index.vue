@@ -1,11 +1,24 @@
 <script setup lang="ts">
-import DocsLink from '../../site/DocsLink.vue';
-import UiText from '../../site/UiText.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import type { DocsLocale } from '../../site/routes';
-import type { CommonMessages, InBrowserModelsMessages } from '../../site/messages';
+import { computed } from 'vue';
+import DocsLink from '../../components/DocsLink.vue';
+import RenderText from '../../components/RenderText';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import type { DocsLocale } from '../../navigation/routes';
+import type { CommonMessages, InBrowserModelsMessages } from '../../messages/types';
 
-defineProps<{ s: InBrowserModelsMessages; locale: DocsLocale; common: CommonMessages }>();
+const props = defineProps<{ s: InBrowserModelsMessages; locale: DocsLocale; common: CommonMessages }>();
+
+const choices = computed(() => [
+  { title: props.s.llama_cpp_heading, guide: 'endpoint-type-llama-cpp-browser' as const, availability: props.s.llama_cpp_availability, body: props.s.llama_cpp_description },
+  { title: props.s.transformers_js_heading, guide: 'endpoint-type-transformers-js' as const, availability: props.s.transformers_js_availability, body: props.s.transformers_js_description },
+  { title: props.s.browser_provided_model_heading, guide: 'endpoint-type-browser-provided-lm' as const, availability: props.s.browser_provided_model_availability, body: props.s.browser_provided_model_description },
+]);
+const steps = computed(() => [
+  { title: props.s.select_llama_cpp_heading, body: props.s.select_llama_cpp_instructions },
+  { title: props.s.prepare_model_files_heading, body: props.s.prepare_model_files_instructions },
+  { title: props.s.choose_conversation_model_heading, body: props.s.choose_conversation_model_instructions },
+  { title: props.s.send_first_message_heading, body: props.s.send_first_message_instructions },
+]);
 
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}),
@@ -15,39 +28,39 @@ defineExpose({
 <template>
   <article class="prose" data-testid="docs-models-in-browser">
     <h1>{{ s.title }}</h1>
-    <p v-for="paragraph in s.intro" :key="paragraph" class="lead"><UiText :text="paragraph" /></p>
+    <p v-for="paragraph in s.intro()" :key="paragraph" class="lead">{{ paragraph }}</p>
 
     <figure class="guide-figure model-flow" data-docs-animation="browser-model-flow">
       <div class="flow-track" aria-hidden="true">
-        <span class="flow-node">{{ s.flow.input }}</span>
+        <span class="flow-node">{{ s.chat_message }}</span>
         <span class="flow-arrow">→</span>
-        <span class="flow-node flow-focus">{{ s.flow.execution }}</span>
+        <span class="flow-node flow-focus">{{ s.browser_runtime_and_model }}</span>
         <span class="flow-arrow">→</span>
-        <span class="flow-node">{{ s.flow.output }}</span>
+        <span class="flow-node">{{ s.chat_answer }}</span>
       </div>
-      <figcaption class="caption"><UiText :text="s.flow.caption" /></figcaption>
+      <figcaption class="caption">{{ s.browser_model_flow_caption }}</figcaption>
     </figure>
 
-    <h2>{{ s.choicesTitle }}</h2>
+    <h2>{{ s.browser_runtime_choices_heading }}</h2>
     <div class="runtime-grid">
-      <section v-for="choice in s.choices" :key="choice.title" class="panel runtime-card">
+      <section v-for="choice in choices" :key="choice.title" class="panel runtime-card">
         <span class="runtime-availability">{{ choice.availability }}</span>
         <h3>{{ choice.title }}</h3>
-        <p><UiText :text="choice.body" /></p>
-        <DocsLink class="card-guide-link" :locale="locale" :page="choice.guide" :aria-label="`${choice.title}: ${s.openGuide}`">{{ s.openGuide }} <span aria-hidden="true">→</span></DocsLink>
+        <p><RenderText :node="choice.body()" /></p>
+        <DocsLink class="card-guide-link" :locale="locale" :page="choice.guide" :aria-label="`${choice.title}: ${s.view_setup_guide}`">{{ s.view_setup_guide }} <span aria-hidden="true">→</span></DocsLink>
       </section>
     </div>
 
-    <h2>{{ s.stepsTitle }}</h2>
+    <h2>{{ s.start_gguf_chat_heading }}</h2>
     <ol class="guide-steps">
-      <li v-for="step in s.steps" :key="step.title"><h3>{{ step.title }}</h3><p><UiText :text="step.body" /></p></li>
+      <li v-for="step in steps" :key="step.title"><h3>{{ step.title }}</h3><p><RenderText :node="step.body()" /></p></li>
     </ol>
 
-    <h2>{{ s.limitsTitle }}</h2>
+    <h2>{{ s.media_input_limits_heading }}</h2>
     <div class="guide-notes">
-      <p v-for="paragraph in s.limits" :key="paragraph"><UiText :text="paragraph" /></p>
+      <p v-for="paragraph in s.media_input_limits()" :key="paragraph">{{ paragraph }}</p>
     </div>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'local-ai-servers', title: s.next, description: s.nextDescription }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'local-ai-servers', title: s.local_server_guide_title, description: s.local_server_guide_description }]" />
   </article>
 </template>
 

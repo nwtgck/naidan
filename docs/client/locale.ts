@@ -1,5 +1,5 @@
-import { DOCS_BASE, DOCS_LOCALES } from '../site/routes';
-import { selectDocsLocale } from '../site/locale';
+import { DOCS_BASE, DOCS_LOCALES } from '../navigation/routes';
+import { selectDocsLocale } from '../navigation/locale';
 import { startDocsPreferences } from './preferences';
 
 // Every Docs page restores its native display controls before the body is painted.

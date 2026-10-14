@@ -1,23 +1,29 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { createSSRApp, nextTick } from 'vue';
+import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it, vi } from 'vitest';
 import BranchingDemo from '../islands/branching/BranchingDemo.vue';
-import { strings as english } from '../pages/chat-branching/strings/en';
-import { strings as japanese } from '../pages/chat-branching/strings/ja';
-import { strings as englishCommon } from '../strings/common/en';
-import { strings as japaneseCommon } from '../strings/common/ja';
-import { visibleGuideText } from './ui-label.test-support';
-import type { BranchingCopy, ReplicaChromeCopy } from '../site/messages';
+import { prepareBranchingMessages, readBranchingMessages } from '../islands/branching/messages';
+import { chrome as englishChrome } from '../messages/common/en';
+import { chrome as japaneseChrome } from '../messages/common/ja';
+import type { BranchingMessages, BranchingChrome } from '../islands/branching/messages';
 
-async function createDemo({ copy, chrome }: { copy: BranchingCopy; chrome: ReplicaChromeCopy }) {
-  const wrapper = mount(BranchingDemo, { props: { copy, chrome } });
+await prepareBranchingMessages({ locale: 'en' });
+await prepareBranchingMessages({ locale: 'ja' });
+const englishDemo = readBranchingMessages({ locale: 'en' }).messages;
+const japaneseDemo = readBranchingMessages({ locale: 'ja' }).messages;
+
+async function createDemo({ copy, chrome }: { copy: BranchingMessages; chrome: BranchingChrome }) {
+  const locale = copy === englishDemo ? 'en' : 'ja';
+  expect(readBranchingMessages({ locale }).chrome).toEqual(chrome);
+  const wrapper = mount(BranchingDemo, { props: { locale } });
   await nextTick();
   return { wrapper, [Symbol.dispose]: () => wrapper.unmount() };
 }
 
 describe('source-derived conversation branching methods', () => {
-  it.each([{ copy: english.demo, chrome: englishCommon.chrome }, { copy: japanese.demo, chrome: japaneseCommon.chrome }])('edits in place and switches the whole question and answer continuation', async ({ copy, chrome }) => {
+  it.each([{ copy: englishDemo, chrome: englishChrome }, { copy: japaneseDemo, chrome: japaneseChrome }])('edits in place and switches the whole question and answer continuation', async ({ copy, chrome }) => {
     using demo = await createDemo({ copy, chrome });
     const wrapper = demo.wrapper.get('[data-testid="branch-method-edit"]');
     await wrapper.get('[data-testid="branch-edit"]').trigger('click');
@@ -38,41 +44,41 @@ describe('source-derived conversation branching methods', () => {
   });
 
   it('keeps an edited path selected while the separate fork example advances', async () => {
-    using demo = await createDemo({ copy: english.demo, chrome: englishCommon.chrome });
+    using demo = await createDemo({ copy: englishDemo, chrome: englishChrome });
     const edit = demo.wrapper.get('[data-testid="branch-method-edit"]');
     const fork = demo.wrapper.get('[data-testid="branch-method-fork"]');
     await edit.get('[data-testid="branch-edit"]').trigger('click');
-    await edit.get('[data-testid="branch-edit-textarea"]').setValue(english.demo.editedPrompt);
+    await edit.get('[data-testid="branch-edit-textarea"]').setValue(englishDemo.editedPrompt);
     await edit.get('[data-testid="branch-save-edit"]').trigger('click');
     await fork.get('[data-testid="branch-more-actions"]').trigger('click');
     await fork.get('[data-testid="branch-fork"]').trigger('click');
-    expect(edit.get('[data-testid="branch-prompt"]').text()).toBe(english.demo.editedPrompt);
-    expect(edit.get('[data-testid="branch-reply"]').text()).toBe(english.demo.editedReply);
-    expect(fork.get('[data-testid="branch-prompt"]').text()).toBe(english.demo.prompt);
+    expect(edit.get('[data-testid="branch-prompt"]').text()).toBe(englishDemo.editedPrompt);
+    expect(edit.get('[data-testid="branch-reply"]').text()).toBe(englishDemo.editedReply);
+    expect(fork.get('[data-testid="branch-prompt"]').text()).toBe(englishDemo.prompt);
     expect(fork.find('[data-testid="branch-reply"]').exists()).toBe(false);
     await fork.get('[data-testid="branch-original-chat"]').trigger('click');
-    expect(fork.get('[data-testid="branch-reply"]').text()).toBe(english.demo.replies[0]);
+    expect(fork.get('[data-testid="branch-reply"]').text()).toBe(englishDemo.replies[0]);
   });
 
   it('keeps the user-message version for resend and the assistant-message version for regenerate', async () => {
-    using demo = await createDemo({ copy: english.demo, chrome: englishCommon.chrome });
+    using demo = await createDemo({ copy: englishDemo, chrome: englishChrome });
     const resend = demo.wrapper.get('[data-testid="branch-method-resend"]');
     const regenerate = demo.wrapper.get('[data-testid="branch-method-regenerate"]');
     await resend.get('[data-testid="branch-resend"]').trigger('click');
-    expect(resend.get('[data-testid="branch-prompt"]').text()).toBe(english.demo.prompt);
-    expect(resend.get('[data-testid="branch-reply"]').text()).toBe(english.demo.replies[1]);
+    expect(resend.get('[data-testid="branch-prompt"]').text()).toBe(englishDemo.prompt);
+    expect(resend.get('[data-testid="branch-reply"]').text()).toBe(englishDemo.replies[1]);
     expect(resend.find('[data-testid="branch-user-versions"]').exists()).toBe(true);
     expect(resend.find('[data-testid="branch-assistant-versions"]').exists()).toBe(false);
     await regenerate.get('[data-testid="branch-regenerate"]').trigger('click');
-    expect(regenerate.get('[data-testid="branch-prompt"]').text()).toBe(english.demo.prompt);
+    expect(regenerate.get('[data-testid="branch-prompt"]').text()).toBe(englishDemo.prompt);
     expect(regenerate.find('[data-testid="branch-user-versions"]').exists()).toBe(false);
     expect(regenerate.get('[data-testid="branch-assistant-versions"]').text()).toBe('2 / 2');
     await regenerate.get('[data-testid="branch-original"]').trigger('click');
-    expect(regenerate.get('[data-testid="branch-reply"]').text()).toBe(english.demo.replies[0]);
-    expect(resend.get('[data-testid="branch-reply"]').text()).toBe(english.demo.replies[1]);
+    expect(regenerate.get('[data-testid="branch-reply"]').text()).toBe(englishDemo.replies[0]);
+    expect(resend.get('[data-testid="branch-reply"]').text()).toBe(englishDemo.replies[1]);
   });
 
-  it.each([{ copy: english.demo, chrome: englishCommon.chrome }, { copy: japanese.demo, chrome: japaneseCommon.chrome }])('forks directly from the real menu and copies only through the selected user message', async ({ copy, chrome }) => {
+  it.each([{ copy: englishDemo, chrome: englishChrome }, { copy: japaneseDemo, chrome: japaneseChrome }])('forks directly from the real menu and copies only through the selected user message', async ({ copy, chrome }) => {
     using demo = await createDemo({ copy, chrome });
     const wrapper = demo.wrapper.get('[data-testid="branch-method-fork"]');
     expect(wrapper.find('[data-testid="branch-fork"]').exists()).toBe(false);
@@ -97,7 +103,7 @@ describe('source-derived conversation branching methods', () => {
 });
 
 describe('walkthrough motion and user selection', () => {
-  it.each([{ copy: english.demo, chrome: englishCommon.chrome }, { copy: japanese.demo, chrome: japaneseCommon.chrome }])('keeps intrinsic conversation and caption reserves mounted as stages change', async ({ copy, chrome }) => {
+  it.each([{ copy: englishDemo, chrome: englishChrome }, { copy: japaneseDemo, chrome: japaneseChrome }])('keeps intrinsic conversation and caption reserves mounted as stages change', async ({ copy, chrome }) => {
     using demo = await createDemo({ copy, chrome });
     const methods = ['edit', 'resend', 'regenerate', 'fork'] as const;
     expect(demo.wrapper.findAll('[data-testid^="branch-method-"]')).toHaveLength(4);
@@ -121,25 +127,25 @@ describe('walkthrough motion and user selection', () => {
       await section.get('[data-testid="branch-step-2"]').trigger('click');
       await section.get('[data-testid="branch-step-3"]').trigger('click');
       expect(section.get('[data-testid="branch-conversation-reserve"]').element).toBe(element);
-      const captions = copy.stages[index];
-      if (!captions) throw new Error(`Missing captions for ${method}`);
-      expect(section.get('[data-testid="branch-stage-caption"]').text()).toBe(visibleGuideText({ text: captions[3] }));
+      const caption = copy.methods[method].stages[3];
+      const captionHtml = await renderToString(createSSRApp({ render: caption }));
+      expect(section.get('[data-testid="branch-stage-caption"]').text()).toBe(new DOMParser().parseFromString(captionHtml, 'text/html').body.textContent);
     }
   });
 
   it('automatically explains the chosen method, then holds a manually chosen branch until replay', async () => {
-    using demo = await createDemo({ copy: english.demo, chrome: englishCommon.chrome });
+    using demo = await createDemo({ copy: englishDemo, chrome: englishChrome });
     const wrapper = demo.wrapper.get('[data-testid="branch-method-edit"]');
     expect(wrapper.attributes('data-playback')).toBe('automatic');
     expect(wrapper.attributes('data-stage')).toBe('0');
     await wrapper.get('[data-testid="branch-clock"]').trigger('animationiteration');
     expect(wrapper.find('[data-testid="branch-editor"]').exists()).toBe(true);
     await wrapper.get('[data-testid="branch-clock"]').trigger('animationiteration');
-    expect(wrapper.get('[data-testid="branch-reply"]').text()).toBe(english.demo.editedReply);
+    expect(wrapper.get('[data-testid="branch-reply"]').text()).toBe(englishDemo.editedReply);
     await wrapper.get('[data-testid="branch-original"]').trigger('click');
     expect(wrapper.attributes('data-playback')).toBe('manual');
     await wrapper.get('[data-testid="branch-clock"]').trigger('animationiteration');
-    expect(wrapper.get('[data-testid="branch-reply"]').text()).toBe(english.demo.replies[0]);
+    expect(wrapper.get('[data-testid="branch-reply"]').text()).toBe(englishDemo.replies[0]);
     await wrapper.get('[data-testid="branch-replay"]').trigger('click');
     expect(wrapper.attributes('data-playback')).toBe('automatic');
     expect(wrapper.attributes('data-stage')).toBe('0');
@@ -150,7 +156,7 @@ describe('walkthrough motion and user selection', () => {
   });
 
   it('honors the page pause control and reduced motion, while keeping steps usable', async () => {
-    using demo = await createDemo({ copy: english.demo, chrome: englishCommon.chrome });
+    using demo = await createDemo({ copy: englishDemo, chrome: englishChrome });
     const wrapper = demo.wrapper.get('[data-testid="branch-method-edit"]');
     const pause = document.createElement('input');
     pause.type = 'checkbox';
@@ -164,14 +170,14 @@ describe('walkthrough motion and user selection', () => {
     };
     await wrapper.get('[data-testid="branch-clock"]').trigger('animationiteration');
     expect(wrapper.attributes('data-stage')).toBe('2');
-    expect(wrapper.get('[data-testid="branch-reply"]').text()).toBe(english.demo.editedReply);
+    expect(wrapper.get('[data-testid="branch-reply"]').text()).toBe(englishDemo.editedReply);
     pause.checked = false;
     vi.stubGlobal('matchMedia', () => ({ matches: true }));
     await wrapper.get('[data-testid="branch-replay"]').trigger('click');
     expect(wrapper.attributes('data-stage')).toBe('2');
     expect(wrapper.attributes('data-playback')).toBe('manual');
     await wrapper.get('[data-testid="branch-step-2"]').trigger('click');
-    expect(wrapper.get('[data-testid="branch-reply"]').text()).toBe(english.demo.editedReply);
+    expect(wrapper.get('[data-testid="branch-reply"]').text()).toBe(englishDemo.editedReply);
     expect(wrapper.attributes('data-playback')).toBe('manual');
   });
 
@@ -181,7 +187,7 @@ describe('walkthrough motion and user selection', () => {
     pause.id = 'docs-pause-motion';
     document.body.append(pause);
     using _cleanup = { [Symbol.dispose]: () => pause.remove() };
-    using demo = await createDemo({ copy: english.demo, chrome: englishCommon.chrome });
+    using demo = await createDemo({ copy: englishDemo, chrome: englishChrome });
     const wrapper = demo.wrapper.get('[data-testid="branch-method-edit"]');
     expect(wrapper.attributes('data-stage')).toBe('0');
     expect(wrapper.attributes('data-playback')).toBe('automatic');
@@ -191,6 +197,6 @@ describe('walkthrough motion and user selection', () => {
     await nextTick();
     expect(wrapper.attributes('data-stage')).toBe('2');
     expect(wrapper.attributes('data-playback')).toBe('manual');
-    expect(wrapper.get('[data-testid="branch-reply"]').text()).toBe(english.demo.editedReply);
+    expect(wrapper.get('[data-testid="branch-reply"]').text()).toBe(englishDemo.editedReply);
   });
 });

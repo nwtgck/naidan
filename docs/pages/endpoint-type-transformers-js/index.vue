@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import UiText from '../../site/UiText.vue';
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import BrowserModelSettingsStep from '../../site/demos/BrowserModelSettingsStep.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import type { DocsLocale } from '../../site/routes';
-import type { CommonMessages } from '../../site/messages';
-import type { strings as english } from '../../pages/endpoint-type-transformers-js/strings/en';
+import RenderText from '../../components/RenderText';
+import BrowserModelSettingsStep from '../../components/demos/BrowserModelSettingsStep.vue';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import type { DocsLocale } from '../../navigation/routes';
+import type { CommonMessages } from '../../messages/types';
+import type { messages as english } from '../../pages/endpoint-type-transformers-js/messages/en';
 
 defineProps<{ s: typeof english; locale: DocsLocale; common: CommonMessages }>();
 
@@ -15,50 +14,50 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-models-transformers-js">
     <h1>{{ s.title }}</h1>
-    <p class="lead"><UiText :text="s.intro" /></p>
-    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'transformers-js-manager' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
-    <p class="app-entry-onboarding"><UiText :text="s.onboarding" /></p>
-    <p class="guide-context"><UiText :text="s.availability" /></p>
+    <p class="lead">{{ s.intro }}</p>
+    <p class="app-entry-intro"><RenderText :node="s.open_model_manager({ locale, destination: { kind: 'screen', screen: 'transformers-js-manager' } })" /></p>
+    <p class="app-entry-onboarding"><RenderText :node="s.model_manager_first_run_note()" /></p>
+    <p class="guide-context">{{ s.availability }}</p>
 
     <section class="walkthrough-step" aria-labelledby="transformers-guide-open">
-      <h2 id="transformers-guide-open">{{ s.steps.open.title }}</h2>
-      <p><UiText :text="s.steps.open.body" /></p>
+      <h2 id="transformers-guide-open">{{ s.open_model_manager_heading }}</h2>
+      <p><RenderText :node="s.open_model_manager_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="transformers" stage="open" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.open.caption" /></figcaption>
+        <BrowserModelSettingsStep mode="transformers" stage="open" :messages="s" />
+        <figcaption class="caption">{{ s.open_model_manager_figure_caption }}</figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="transformers-guide-download">
-      <h2 id="transformers-guide-download">{{ s.steps.download.title }}</h2>
-      <p><UiText :text="s.steps.download.body" /></p>
+      <h2 id="transformers-guide-download">{{ s.download_onnx_model_heading }}</h2>
+      <p><RenderText :node="s.download_onnx_model_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="transformers" stage="download" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.download.caption" /></figcaption>
+        <BrowserModelSettingsStep mode="transformers" stage="download" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.download_onnx_model_figure_caption()" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="transformers-guide-resume">
-      <h2 id="transformers-guide-resume">{{ s.steps.resume.title }}</h2>
-      <p><UiText :text="s.steps.resume.body" /></p>
+      <h2 id="transformers-guide-resume">{{ s.load_or_resume_model_heading }}</h2>
+      <p><RenderText :node="s.load_or_resume_model_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="transformers" stage="resume" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.resume.caption" /></figcaption>
+        <BrowserModelSettingsStep mode="transformers" stage="resume" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.load_or_resume_model_figure_caption()" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="transformers-guide-save">
-      <h2 id="transformers-guide-save">{{ s.steps.save.title }}</h2>
-      <p><UiText :text="s.steps.save.body" /></p>
+      <h2 id="transformers-guide-save">{{ s.save_default_model_heading }}</h2>
+      <p><RenderText :node="s.save_default_model_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="transformers" stage="save" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.save.caption" /></figcaption>
+        <BrowserModelSettingsStep mode="transformers" stage="save" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.save_default_model_figure_caption()" /></figcaption>
       </figure>
     </section>
 
-    <h2>{{ s.noteTitle }}</h2>
-    <p><UiText :text="s.note" /></p>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'in-browser-models', title: s.next, description: s.nextDescription }]" />
+    <h2>{{ s.model_troubleshooting_heading }}</h2>
+    <p><RenderText :node="s.model_troubleshooting()" /></p>
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'in-browser-models', title: s.browser_model_guide_title, description: s.browser_model_guide_description }]" />
   </article>
 </template>
 

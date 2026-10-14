@@ -1,5 +1,5 @@
-import { DOCS_BASE, DOCS_LOCALES, DOCS_PAGES, docsHref } from '../site/routes';
-import type { DocsLocale, DocsPageId } from '../site/routes';
+import { DOCS_BASE, DOCS_LOCALES, DOCS_PAGES, docsHref } from '../navigation/routes';
+import type { DocsLocale, DocsPageId } from '../navigation/routes';
 
 export const DOCS_PUBLIC_ORIGIN = 'https://naidan.nwtgck.org' as const;
 

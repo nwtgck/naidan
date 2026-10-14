@@ -1,12 +1,12 @@
 import { createSSRApp, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
-import DocLayout from '../site/DocLayout.vue';
-import { DOCS_NAV_PAGES } from '../site/navigation';
-import { DOCS_LOCALES, DOCS_LOCALE_NAMES, DOCS_PAGES, docsHref } from '../site/routes';
-import type { DocsLocale, DocsPageId } from '../site/routes';
-import { strings as english } from '../strings/common/en';
-import { strings as japanese } from '../strings/common/ja';
+import DocLayout from '../components/DocLayout.vue';
+import { DOCS_NAV_PAGES } from '../navigation/navigation';
+import { DOCS_LOCALES, DOCS_LOCALE_NAMES, DOCS_PAGES, docsHref } from '../navigation/routes';
+import type { DocsLocale, DocsPageId } from '../navigation/routes';
+import { messages as english } from '../messages/common/en';
+import { messages as japanese } from '../messages/common/ja';
 import { parsePage } from './site.test-support';
 
 const copy = { en: english, ja: japanese };
@@ -55,7 +55,7 @@ describe('all-page Docs navigation', () => {
       } else {
         const sidebar = rendered.document.querySelector('[data-testid="docs-article-sidebar"]');
         expect(sidebar?.tagName).toBe('ASIDE');
-        expect(sidebar?.getAttribute('aria-label')).toBe(copy[locale].navigation.sidebarTitle);
+        expect(sidebar?.getAttribute('aria-label')).toBe(copy[locale].navigation.sidebar_title);
         expect(sidebar?.firstElementChild?.getAttribute('data-testid')).toBe('docs-guide-tree');
         expect(rendered.document.querySelector('[data-testid="docs-article-inline-nav"]')).toBeNull();
         expect(rendered.document.querySelector('.docs-article-body > article.prose')).not.toBeNull();
@@ -77,7 +77,7 @@ describe('all-page Docs navigation', () => {
       expect(languageMenu?.tagName).toBe('DETAILS');
       expect(languageMenu?.getAttribute('name')).toBe(menu?.getAttribute('name'));
       expect(languageMenu?.querySelector('summary')?.getAttribute('aria-label'))
-        .toBe(`${copy[locale].languageMenu}: ${DOCS_LOCALE_NAMES[locale]}`);
+        .toBe(`${copy[locale].choose_language}: ${DOCS_LOCALE_NAMES[locale]}`);
       expect(languageMenu?.querySelector('summary')?.textContent?.trim()).toBe(locale.toUpperCase());
       const languageLinks = [...(languageMenu?.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-language-link"]') ?? [])];
       expect(languageLinks).toHaveLength(DOCS_LOCALES.length);
@@ -87,7 +87,7 @@ describe('all-page Docs navigation', () => {
         expect(link?.getAttribute('hreflang')).toBe(option);
         expect(link?.getAttribute('aria-current')).toBe(option === locale ? 'page' : null);
         expect(link?.textContent).toContain(DOCS_LOCALE_NAMES[option]);
-        if (option === locale) expect(link?.textContent).toContain(copy[locale].currentLanguage);
+        if (option === locale) expect(link?.textContent).toContain(copy[locale].current_language);
       }
       expect(header?.querySelector('a[href="https://github.com/nwtgck/naidan"]')).toBeNull();
     }

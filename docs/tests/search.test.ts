@@ -8,16 +8,27 @@ import { JSDOM } from 'jsdom';
 import { build } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import { docsBuildConfig } from '../build/production';
-import { DOCS_PAGES, docsHref } from '../site/routes';
-import { parseSearchIndex, purposeDocs, searchDocs } from '../site/search';
-import type { SearchIndex } from '../site/search';
-import { PURPOSE_PAGES } from '../site/search-purpose';
+import { messages as enSearchMessages } from '../messages/search-ui/en';
+import { messages as jaSearchMessages } from '../messages/search-ui/ja';
+import { DOCS_PAGES, docsHref } from '../navigation/routes';
+import { parseSearchIndex, purposeDocs, searchDocs } from '../search/search';
+import type { SearchIndex } from '../search/search';
+import { PURPOSE_PAGES } from '../search/search-purpose';
 import { parseSearchPayload } from '../islands/search/contracts';
 import { parseWorkerRequest, parseWorkerResponse } from '../islands/search/worker-contracts';
 import type { SearchWorkerApi, SearchWorkerRequest, SearchWorkerResponse } from '../islands/search/worker-contracts';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
 describe('Docs search', () => {
+  it('renders complete English and Japanese result counts and previous-query labels', () => {
+    expect(enSearchMessages.search_ui_result_count({ count: 1 })).toBe('1 result');
+    expect(enSearchMessages.search_ui_result_count({ count: 2 })).toBe('2 results');
+    expect(jaSearchMessages.search_ui_result_count({ count: 1 })).toBe('1件');
+    expect(jaSearchMessages.search_ui_result_count({ count: 2 })).toBe('2件');
+    expect(enSearchMessages.search_ui_previous_results({ query: 'backup' })).toBe('Showing previous results for “backup”');
+    expect(jaSearchMessages.search_ui_previous_results({ query: 'バックアップ' })).toBe('「バックアップ」の前の検索結果を表示中');
+  });
+
   it('matches Japanese substrings and multiple terms while preferring titles and headings', () => {
     const index: SearchIndex = {
       locale: 'ja',
@@ -68,7 +79,9 @@ describe('Docs search', () => {
       expect(page.document.querySelector('[data-testid="docs-search-trigger"]')?.getAttribute('aria-label')).toBe(locale === 'ja' ? 'ドキュメントを検索' : 'Search docs');
       const searchHost = page.document.querySelector('[data-docs-island="search"]');
       if (!searchHost) throw new Error('Missing Docs search island');
-      const payload = parseSearchPayload({ serialized: searchHost.getAttribute('data-docs-props') ?? '' });
+      const serialized = searchHost.getAttribute('data-docs-props') ?? '';
+      expect(Object.keys(JSON.parse(serialized) as object).sort()).toEqual(['currentPage', 'locale', 'purpose']);
+      const payload = parseSearchPayload({ serialized });
       expect(payload.locale).toBe(locale);
       expect(payload.currentPage).toBe('file-access');
       expect(payload.purpose.map(item => item.href)).toEqual(PURPOSE_PAGES.map(purposePage => docsHref({ locale, page: purposePage })));
@@ -76,6 +89,7 @@ describe('Docs search', () => {
       expect(Array.from(searchHost.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-search-results"] a'), link => link.getAttribute('href'))).toEqual(payload.purpose.map(item => item.href));
       expect(() => parseSearchPayload({ serialized: JSON.stringify({ ...payload, purpose: [{ ...payload.purpose[0], href: docsHref({ locale: locale === 'en' ? 'ja' : 'en', page: PURPOSE_PAGES[0] }) }, ...payload.purpose.slice(1)] }) })).toThrow();
       expect(() => parseSearchPayload({ serialized: JSON.stringify({ ...payload, currentPage: 'not-a-page' }) })).toThrow();
+      expect(() => parseSearchPayload({ serialized: JSON.stringify({ ...payload, locale: 'fr' }) })).toThrow();
       using currentPurpose = parsePage({ html: await readFile(path.join(fixture.docs, 'dist', locale, 'standalone/index.html'), 'utf8') });
       const selfLink = currentPurpose.document.querySelector<HTMLAnchorElement>(`[data-docs-island="search"] [data-testid="docs-search-results"] a[href="${docsHref({ locale, page: 'standalone' })}"]`);
       expect(selfLink?.hasAttribute('data-docs-guide-prefetch')).toBe(false);
@@ -89,7 +103,9 @@ describe('Docs search', () => {
         const root = template.content.querySelector('[data-docs-island="search"]');
         if (!root) throw new Error('Missing neutral-home search island');
         const templateLocale = template.getAttribute('data-docs-locale');
-        const templatePayload = parseSearchPayload({ serialized: root.getAttribute('data-docs-props') ?? '' });
+        const serialized = root.getAttribute('data-docs-props') ?? '';
+        expect(Object.keys(JSON.parse(serialized) as object).sort()).toEqual(['currentPage', 'locale', 'purpose']);
+        const templatePayload = parseSearchPayload({ serialized });
         expect(templatePayload.locale).toBe(templateLocale);
         expect(templatePayload.currentPage).toBe('index');
         expect(Array.from(root.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-search-results"] a'), link => link.getAttribute('href'))).toEqual(templatePayload.purpose.map(item => item.href));
@@ -311,7 +327,8 @@ describe('Docs search', () => {
     input.value = '保存先';
     input.dispatchEvent(new dom.Event('input', { bubbles: true }));
     await vi.waitFor(() => expect(requests).toHaveLength(3));
-    await vi.waitFor(() => expect(root.querySelector('.search-status')?.textContent).toContain('前の検索結果: “バックアップ”'));
+    await vi.waitFor(() => expect(root.querySelector('.search-status')?.textContent).toContain('「バックアップ」の前の検索結果を表示中'));
+    expect(root.querySelector('[data-testid="docs-search-results"]')?.getAttribute('aria-label')).toBe('「バックアップ」の前の検索結果を表示中');
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     expect(root.querySelector('.search-status')).toBe(stableStatus);
     expect(content.scrollTop).toBe(50);
@@ -320,6 +337,7 @@ describe('Docs search', () => {
     const storageMatches = searchDocs({ index, query: '保存先' }).map(({ href, title, snippet }) => ({ href, title, snippet }));
     worker.emit({ response: { kind: 'results', requestId: requests[2]?.requestId ?? -1, results: storageMatches } });
     await vi.waitFor(() => expect(root.querySelector<HTMLAnchorElement>('[data-testid="docs-search-results"] a')?.getAttribute('href')).toBe('/docs/ja/data-storage/'));
+    expect(root.querySelector('.search-status')?.textContent).toBe(`${storageMatches.length}件`);
     expect(root.querySelector('[data-testid="docs-search-results"]')).toBe(stableList);
     expect(root.querySelector('.search-status')).toBe(stableStatus);
     expect(root.querySelector('.search-status')?.textContent).not.toContain('前の検索結果');

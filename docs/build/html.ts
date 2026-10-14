@@ -1,13 +1,13 @@
 import { JSDOM } from 'jsdom';
-import { EXTERNAL_LINK_PATH, EXTERNAL_LINK_LABEL, isGitHubUrl } from '../site/external-link';
-import { DOCS_BASE, DOCS_LOCALES, DOCS_LOCALE_NAMES, docsHref } from '../site/routes';
-import { DOCS_ARTICLE_PREFETCH_ATTRIBUTE, isDocsArticleHref } from '../site/navigation-prefetch';
+import { EXTERNAL_LINK_PATH, EXTERNAL_LINK_LABEL, isGitHubUrl } from '../navigation/external-link';
+import { DOCS_BASE, DOCS_LOCALES, DOCS_LOCALE_NAMES, docsHref } from '../navigation/routes';
+import { DOCS_ARTICLE_PREFETCH_ATTRIBUTE, isDocsArticleHref } from '../navigation/navigation-prefetch';
 import type { PageAssets, RenderedPage } from './contracts';
 import { islandSpecs } from '../islands/registry';
 import type { DocsIslandId } from '../islands/registry';
-import { strings as entryEn } from '../strings/entry/en';
-import { strings as entryJa } from '../strings/entry/ja';
-import type { DocsLocale } from '../site/routes';
+import { messages as entryEn } from '../messages/entry/en';
+import { messages as entryJa } from '../messages/entry/ja';
+import type { DocsLocale } from '../navigation/routes';
 import { DOCS_PUBLIC_ORIGIN, docsSeoLinks } from './seo';
 import type { DocsSeoRoute } from './seo';
 
@@ -244,7 +244,7 @@ function renderEntryDocument({ assets, bootstrap, kind }: { assets: PageAssets; 
       paragraph.lang = locale;
       switch (kind) {
       case 'language': paragraph.textContent = messages.choose; break;
-      case 'missing': paragraph.textContent = `${messages.missingTitle} — ${messages.missingBody}`; break;
+      case 'missing': paragraph.textContent = `${messages.missing_title} — ${messages.missing_body}`; break;
       default: { const unreachable: never = kind; throw new Error(`Unknown entry: ${unreachable}`); }
       }
       nav.before(paragraph);

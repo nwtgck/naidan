@@ -6,11 +6,11 @@ import { compileStyle, parse as parseSfc } from '@vue/compiler-sfc';
 import { parse as parseCss } from 'postcss';
 import { JSDOM } from 'jsdom';
 import ShellGuide from '../pages/tool-browser-shell/index.vue';
-import ShellWorkspaceDemo from '../site/demos/ShellWorkspaceDemo.vue';
-import { strings as english } from '../pages/tool-browser-shell/strings/en';
-import { strings as japanese } from '../pages/tool-browser-shell/strings/ja';
-import { strings as englishCommon } from '../strings/common/en';
-import { strings as japaneseCommon } from '../strings/common/ja';
+import ShellWorkspaceDemo from '../components/demos/ShellWorkspaceDemo.vue';
+import { messages as english } from '../pages/tool-browser-shell/messages/en';
+import { messages as japanese } from '../pages/tool-browser-shell/messages/ja';
+import { messages as englishCommon } from '../messages/common/en';
+import { messages as japaneseCommon } from '../messages/common/ja';
 
 const editions = [
   { locale: 'en', strings: english, common: englishCommon },
@@ -40,16 +40,16 @@ describe('shell guide tool-call demonstration', () => {
     expect([...walkthrough?.querySelectorAll('figure') ?? []]).toHaveLength(2);
     expect(open?.getAttribute('data-docs-animation')).toBe('shell-enable-open');
     expect(enable?.getAttribute('data-docs-animation')).toBe('shell-enable-enable');
-    expect(open?.textContent).toContain(strings.walkthrough.demo.optionsTools);
+    expect(open?.textContent).toContain(strings.options_tools_sheet);
     expect(open?.querySelector('[data-testid="docs-shell-tools-trigger"]')).not.toBeNull();
-    expect(enable?.querySelector('[data-testid="docs-shell-switch"]')?.textContent).toContain(strings.walkthrough.demo.on);
-    expect(enable?.querySelector('[data-testid="docs-shell-settings-result"]')?.textContent).toContain(strings.walkthrough.demo.shellSettings);
+    expect(enable?.querySelector('[data-testid="docs-shell-switch"]')?.textContent).toContain(strings.on_status);
+    expect(enable?.querySelector('[data-testid="docs-shell-settings-result"]')?.textContent).toContain(strings.shell_settings_label);
     expect(enable?.textContent).toContain('/sys/fs/naidan');
     expect(walkthrough?.querySelectorAll('.ui-label').length).toBeGreaterThan(4);
     expect([...walkthrough?.querySelectorAll('a') ?? []].map(link => link.getAttribute('href'))).toEqual([
       `/docs/${locale}/wesh-sysfs/`, `/docs/${locale}/file-access/`,
     ]);
-    expect(walkthrough?.textContent).toContain(strings.walkthrough.use.filesLink);
+    expect(walkthrough?.textContent).toContain(locale === 'en' ? 'how to choose files and access' : 'ファイルとフォルダの案内');
     expect(walkthrough?.querySelector('button, input, textarea, [tabindex], script')).toBeNull();
   });
 
@@ -75,37 +75,37 @@ describe('shell guide tool-call demonstration', () => {
       expect(call.getAttribute('data-tool-name')).toBe('shell_execute');
       expect(JSON.parse(call.getAttribute('data-tool-arguments') ?? '{}')).toEqual({ shell_script: scripts[index] });
     }
-    const [firstNote, secondNote] = strings.demo.noteLines;
+    const [firstNote, secondNote] = strings.project_note_lines();
     if (firstNote === undefined || secondNote === undefined) throw new Error('The example requires two project notes');
-    const summary = ['# ' + strings.demo.summaryTitle, '', '- ' + firstNote, '- ' + secondNote, ''].join('\n');
+    const summary = ['# ' + strings.task_summary_title, '', '- ' + firstNote, '- ' + secondNote, ''].join('\n');
     expect(scripts[3]).toBe(['cat <<EOF > /home/user/project/task-summary.md', summary.trimEnd(), 'EOF', ''].join('\n'));
     expect(scripts[4]).toBe(['cat /home/user/project/task-summary.md', 'git -C /home/user/project status --short'].join('\n'));
     const results = calls.map(call => call.querySelector('[data-testid="docs-shell-result"]')?.textContent);
     expect(results[0]).toBe('Exit Code: 0\n');
     expect(results[3]).toBe('Exit Code: 0\n');
     expect(results[1]).toBe(['Exit Code: 0', '', 'STDOUT:', '3:TODO: ' + firstNote, '7:TODO: ' + secondNote, '', ''].join('\n'));
-    expect(results[2]).toContain(strings.demo.reviewNote);
+    expect(results[2]).toContain(strings.project_review_note);
     expect(results[4]).toBe(['Exit Code: 0', '', 'STDOUT:', summary + '?? task-summary.md\n', ''].join('\n'));
     const finalScene = demo?.querySelector('[data-shell-step="review"] [data-testid="docs-shell-sequence"]');
     expect(finalScene?.querySelectorAll('[data-testid="docs-shell-history"]')).toHaveLength(4);
-    expect(finalScene?.textContent).toContain(strings.demo.sequenceSummaries.review);
-    expect(demo?.textContent).toContain(strings.demo.prompt);
+    expect(finalScene?.textContent).toContain(strings.review_tool_execution_summary);
+    expect(demo?.textContent).toContain(strings.project_task_prompt);
     const answer = demo?.querySelector('[data-testid="docs-shell-response"]');
-    expect(answer?.textContent).toContain(strings.demo.responseLead);
-    for (const item of strings.demo.responseItems) expect(answer?.textContent).toContain(item);
-    expect(document.querySelector('figcaption')?.textContent).toBe(strings.diagramCaption);
+    expect(answer?.textContent).toContain(strings.assistant_response_lead);
+    for (const item of strings.assistant_response_items()) expect(answer?.textContent).toContain(item);
+    expect(document.querySelector('figcaption')?.textContent).toBe(strings.shell_task_example_caption);
 
     const transcript = document.querySelector('[data-testid="docs-shell-transcript"]');
-    expect(transcript?.querySelector('summary')?.textContent).toContain(strings.demo.transcriptTitle);
+    expect(transcript?.querySelector('summary')?.textContent).toContain(strings.commands_and_results_title);
     expect(transcript?.closest('[aria-hidden="true"]')).toBeNull();
     expect(transcript?.querySelectorAll('section')).toHaveLength(5);
     for (const script of scripts) expect(transcript?.textContent).toContain(script);
     for (const result of results) expect(transcript?.textContent).toContain(result);
-    expect(transcript?.textContent).toContain(strings.demo.responseLead);
+    expect(transcript?.textContent).toContain(strings.assistant_response_lead);
     expect(transcript?.querySelector('[aria-live]')).toBeNull();
     const commands = document.querySelector('[data-testid="docs-shell-command-list"]');
     expect(commands?.querySelectorAll(':scope > li')).toHaveLength(6);
-    expect([...commands?.querySelectorAll('code') ?? []].map(element => element.textContent)).toEqual(english.commands.flatMap(group => group.names));
+    expect([...commands?.querySelectorAll('code') ?? []].map(element => element.textContent)).toEqual([english.find_and_organize_files_names(), english.search_and_process_text_names(), english.extract_structured_data_names(), english.pack_and_unpack_files_names(), english.compare_and_check_files_names(), english.review_changes_with_git_names()].flat());
 
     // The animated replica is presentation only; its transcript is a native disclosure.
     expect(demo?.getAttribute('aria-hidden')).toBe('true');
@@ -116,15 +116,15 @@ describe('shell guide tool-call demonstration', () => {
   it('preserves long Japanese text and unbroken file content in every result and the transcript', async () => {
     const longNote = '資料の内容と担当者を確認してから会場と参加者への連絡方法を決める。'.repeat(20);
     const unbrokenNote = 'project_notes_'.repeat(80);
-    const copy = {
-      ...japanese.demo,
-      title: longNote,
-      prompt: longNote,
-      noteLines: [longNote, unbrokenNote],
-      responseLead: longNote,
-      responseItems: [longNote, unbrokenNote],
+    const messages = {
+      ...japanese,
+      project_tasks_title: longNote,
+      project_task_prompt: longNote,
+      project_note_lines: () => [longNote, unbrokenNote],
+      assistant_response_lead: longNote,
+      assistant_response_items: () => [longNote, unbrokenNote],
     };
-    const html = await renderToString(createSSRApp({ render: () => h(ShellWorkspaceDemo, { copy, chrome: japaneseCommon.chrome }) }));
+    const html = await renderToString(createSSRApp({ render: () => h(ShellWorkspaceDemo, { messages, common: japaneseCommon }) }));
     using page = {
       window: new JSDOM(html).window,
       [Symbol.dispose]() {
@@ -138,15 +138,15 @@ describe('shell guide tool-call demonstration', () => {
       expect(result?.textContent).toContain(unbrokenNote);
     }
     const answer = document.querySelector('[data-testid="docs-shell-response"]');
-    expect([...answer?.querySelectorAll('li') ?? []].map(element => element.textContent)).toEqual(copy.responseItems);
+    expect([...answer?.querySelectorAll('li') ?? []].map(element => element.textContent)).toEqual(messages.assistant_response_items());
     const transcript = document.querySelector('[data-testid="docs-shell-transcript"]');
     expect(transcript?.textContent).toContain(longNote);
     expect(transcript?.textContent).toContain(unbrokenNote);
   });
 
   it.each(['pause', 'reduced'] as const)('shows the completed review and answer when motion is %s', async mode => {
-    const html = await renderToString(createSSRApp({ render: () => h(ShellWorkspaceDemo, { copy: english.demo, chrome: englishCommon.chrome }) }));
-    const source = await readFile(new URL('../site/demos/ShellWorkspaceDemo.vue', import.meta.url), 'utf8');
+    const html = await renderToString(createSSRApp({ render: () => h(ShellWorkspaceDemo, { messages: english, common: englishCommon }) }));
+    const source = await readFile(new URL('../components/demos/ShellWorkspaceDemo.vue', import.meta.url), 'utf8');
     const { descriptor } = parseSfc(source);
     const style = descriptor.styles[0];
     if (!style) throw new Error('Missing Shell demo style');
@@ -211,12 +211,12 @@ describe('shell guide tool-call demonstration', () => {
       '.demo-pointer',
     ]) expect(isVisible({ selector }), selector).toBe(false);
     expect(demo.querySelector('[data-shell-step="review"] [data-testid="docs-shell-result"]')?.textContent).toContain('STDOUT:');
-    expect(demo.querySelector('[data-testid="docs-shell-response"]')?.textContent).toContain(english.demo.responseLead);
+    expect(demo.querySelector('[data-testid="docs-shell-response"]')?.textContent).toContain(english.assistant_response_lead);
   });
 
   it('reserves intrinsic scene sizes and animates no layout properties', async () => {
     // This verifies the scaffold and CSS contract, not browser pixel layout.
-    const source = await readFile(new URL('../site/demos/ShellWorkspaceDemo.vue', import.meta.url), 'utf8');
+    const source = await readFile(new URL('../components/demos/ShellWorkspaceDemo.vue', import.meta.url), 'utf8');
     const { descriptor } = parseSfc(source);
     const css = parseCss(descriptor.styles.map(style => style.content).join('\n'));
     const animatedProperties = new Set<string>();

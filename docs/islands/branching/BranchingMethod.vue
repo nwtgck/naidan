@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { BirdIcon, UserIcon, CopyIcon, PencilIcon, RefreshCwIcon, GitForkIcon, SendIcon, MoreVerticalIcon, MoreHorizontalIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, FileEditIcon, Settings2Icon, XCircleIcon, Volume2Icon, HistoryIcon, LinkIcon, PaperclipIcon, MessageSquareIcon } from 'lucide-vue-next';
-import ReplicaChrome from '../../site/demos/ReplicaChrome.vue';
-import UiText from '../../site/UiText.vue';
-import type { BranchingCopy, ReplicaChromeCopy } from '../../site/messages';
+import ReplicaChrome from '../../components/demos/ReplicaChrome.vue';
+import RenderText from '../../components/RenderText';
+import type { BranchingMessages, BranchingChrome } from './messages';
 
 type Method = 'edit' | 'resend' | 'regenerate' | 'fork';
 type Stage = 0 | 1 | 2 | 3;
-const props = defineProps<{ copy: BranchingCopy; chrome: ReplicaChromeCopy; variant: Method }>();
+const props = defineProps<{ copy: BranchingMessages; chrome: BranchingChrome; variant: Method }>();
 const stages = [0, 1, 2, 3] as const;
 const method = ref<Method>(props.variant);
 // The server-rendered view is a complete example when scripts or motion are unavailable.
@@ -86,16 +86,6 @@ onUnmounted(() => {
   motionQuery?.removeEventListener('change', settleMotion);
 });
 
-const methodIndex = computed(() => {
-  const value = method.value;
-  switch (value) {
-  case 'edit': return 0;
-  case 'resend': return 1;
-  case 'regenerate': return 2;
-  case 'fork': return 3;
-  default: { const unreachable: never = value; return unreachable; }
-  }
-});
 const editing = computed(() => method.value === 'edit' && stage.value === 1);
 const generating = computed(() => (method.value === 'resend' || method.value === 'regenerate') && stage.value === 1);
 const hasVersions = computed(() => method.value !== 'fork' && (stage.value >= 2 || generating.value));
@@ -245,10 +235,10 @@ defineExpose({
 </script>
 
 <template>
-  <section class="branch-demo" :aria-label="`${copy.label}: ${copy.methods[methodIndex].title}`" :data-testid="`branch-method-${variant}`" data-docs-animation="branch-walkthrough" :data-playback="playback" :data-method="method" :data-stage="stage">
-    <h3 class="method-title">{{ copy.methods[methodIndex].title }}</h3>
-    <p class="method-description">{{ copy.methods[methodIndex].body }}</p>
-    <ReplicaChrome :title="activeTitle" address="https://naidan.pages.dev/" :sidebar="sidebar" :copy="chrome">
+  <section class="branch-demo" :aria-label="`${copy.label}: ${copy.methods[method].title}`" :data-testid="`branch-method-${variant}`" data-docs-animation="branch-walkthrough" :data-playback="playback" :data-method="method" :data-stage="stage">
+    <h3 class="method-title">{{ copy.methods[method].title }}</h3>
+    <p class="method-description">{{ copy.methods[method].body }}</p>
+    <ReplicaChrome :title="activeTitle" address="https://naidan.pages.dev/" :sidebar="sidebar" :messages="chrome">
       <template v-if="variant === 'fork'" #title>
         <span class="branch-title-stack"><span class="branch-title-reserve" aria-hidden="true">{{ copy.forkTitle }}</span><span>{{ activeTitle }}</span></span>
       </template>
@@ -364,12 +354,12 @@ defineExpose({
       </div>
     </ReplicaChrome>
     <div class="walkthrough-footer">
-      <div class="stage-choices" role="group" :aria-label="copy.controls.steps"><button v-for="value in stages" :key="value" type="button" :disabled="availability === 'static'" :aria-current="stage === value ? 'step' : undefined" :aria-label="`${value + 1}. ${copy.stages[methodIndex][value]}`" :data-testid="`branch-step-${value}`" @click="chooseStage({ value })">{{ value + 1 }}</button></div>
+      <div class="stage-choices" role="group" :aria-label="copy.controls.steps"><button v-for="value in stages" :key="value" type="button" :disabled="availability === 'static'" :aria-current="stage === value ? 'step' : undefined" :data-testid="`branch-step-${value}`" @click="chooseStage({ value })"><span aria-hidden="true">{{ value + 1 }}</span><span class="sr-only">{{ value + 1 }}. <RenderText :node="copy.methods[method].stages[value]()" /></span></button></div>
       <button type="button" class="replay" :disabled="availability === 'static'" data-testid="branch-replay" @click="replay"><RefreshCwIcon :size="12" />{{ copy.controls.replay }}</button>
     </div>
     <div class="caption-stack">
-      <p v-for="(caption, index) in copy.stages[methodIndex]" :key="index" class="stage-caption caption-reserve" aria-hidden="true"><UiText :text="caption" /></p>
-      <p class="stage-caption" :aria-live="playback === 'manual' ? 'polite' : 'off'" data-testid="branch-stage-caption"><UiText :text="copy.stages[methodIndex][stage]" /></p>
+      <p v-for="(caption, index) in copy.methods[method].stages" :key="index" class="stage-caption caption-reserve" aria-hidden="true"><RenderText :node="caption()" /></p>
+      <p class="stage-caption" :aria-live="playback === 'manual' ? 'polite' : 'off'" data-testid="branch-stage-caption"><RenderText :node="copy.methods[method].stages[stage]()" /></p>
     </div>
     <span :key="`${method}-${stage}-${playback}-${sequence}`" class="walkthrough-clock" :class="{ automatic: playback === 'automatic' }" aria-hidden="true" data-testid="branch-clock" @animationiteration="advance" />
     <button class="reset" :class="{ 'reset-reserve': !hasVersions && !hasFork }" type="button" :disabled="availability === 'static' || (!hasVersions && !hasFork)" :aria-hidden="!hasVersions && !hasFork" data-testid="branch-reset" @click="reset">{{ copy.reset }}</button>

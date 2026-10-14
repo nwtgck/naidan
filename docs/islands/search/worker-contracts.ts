@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { DOCS_PAGES, docsHref } from '../../site/routes';
-import type { DocsLocale } from '../../site/routes';
+import { DOCS_PAGES, docsHref } from '../../navigation/routes';
+import type { DocsLocale } from '../../navigation/routes';
 
 const searchHitSchema = z.object({ href: z.string(), title: z.string(), snippet: z.string() });
 export type SearchHit = z.infer<typeof searchHitSchema>;

@@ -1,12 +1,13 @@
 import { fileURLToPath } from 'node:url';
-import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vitest/config';
+import { docsCompilerPlugins } from './build/compiler';
 
 // Compile the actual Docs modules without initializing app/model build tooling.
+const docsRoot = fileURLToPath(new URL('.', import.meta.url));
 export default defineConfig({
   root: fileURLToPath(new URL('..', import.meta.url)),
   define: { __BUILD_MODE_IS_TEST__: 'true' },
-  plugins: [vue({ features: { componentIdGenerator: 'filepath' } })],
+  plugins: docsCompilerPlugins({ root: docsRoot, allowTestArticleTranslations: true }),
   css: { postcss: { plugins: [] } },
   test: {
     environment: 'node',

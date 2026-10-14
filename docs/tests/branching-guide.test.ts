@@ -1,11 +1,12 @@
+import { readBranchingMessages } from '../islands/branching/messages';
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { describe, expect, it } from 'vitest';
 import BranchingPage from '../pages/chat-branching/index.vue';
-import { strings as english } from '../pages/chat-branching/strings/en';
-import { strings as japanese } from '../pages/chat-branching/strings/ja';
-import { strings as englishCommon } from '../strings/common/en';
-import { strings as japaneseCommon } from '../strings/common/ja';
+import { messages as english } from '../pages/chat-branching/messages/en';
+import { messages as japanese } from '../pages/chat-branching/messages/ja';
+import { messages as englishCommon } from '../messages/common/en';
+import { messages as japaneseCommon } from '../messages/common/ja';
 import { parsePage } from './site.test-support';
 
 describe('conversation branching guide', () => {
@@ -19,16 +20,22 @@ describe('conversation branching guide', () => {
     if (!article) throw new Error('Missing branching guide');
     expect(article.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('Naidan');
     expect(article.querySelector('.app-entry-intro a[href] + a')?.getAttribute('href')).toBe(`/docs/${locale}/in-browser-models/`);
+    const demo = readBranchingMessages({ locale }).messages;
     const labels = [...article.querySelectorAll('.ui-label')].map(element => element.textContent);
-    for (const expected of [copy.demo.ui.sendAndBranch, copy.demo.ui.moreActions, copy.demo.ui.fork, copy.demo.controls.replay, update]) {
+    for (const expected of [demo.ui.sendAndBranch, demo.ui.moreActions, demo.ui.fork, demo.controls.replay, update]) {
       expect(labels).toContain(expected);
     }
-    expect(article.querySelector('ol .ui-label')?.textContent).toBe(copy.demo.ui.sendAndBranch);
+    expect(article.querySelector('ol .ui-label')?.textContent).toBe(demo.ui.sendAndBranch);
     expect(article.querySelector('.caption-reserve .ui-label')).not.toBeNull();
     expect(article.textContent).not.toContain('［');
     expect(article.textContent).not.toContain('］');
     for (const label of article.querySelectorAll('.ui-label')) {
-      expect(label.closest('button, a, kbd')).toBeNull();
+      expect(label.closest('a, kbd')).toBeNull();
+      const button = label.closest('button');
+      if (button) {
+        expect(button.matches('[data-testid^="branch-step-"]')).toBe(true);
+        expect(label.closest('.sr-only')).not.toBeNull();
+      }
     }
     expect(article.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/chat-super-edit/`);
   });

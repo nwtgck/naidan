@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Manifest } from 'vite';
-import { DOCS_BASE } from '../site/routes';
+import { DOCS_BASE } from '../navigation/routes';
 
 const chunkSchema = z.object({
   file: z.string(),

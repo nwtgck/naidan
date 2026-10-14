@@ -107,7 +107,7 @@ const broken = ; // </pre><img src=x onerror=alert(1)>`);
     expect(page.document.title).toBe('404 | Naidan Docs');
     expect(page.document.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex');
     const stylesheet = page.document.querySelector('link[rel="stylesheet"]')?.getAttribute('href');
-    expect(stylesheet).toBe('/docs/site/site.css?direct');
+    expect(stylesheet).toBe('/docs/styles/site.css?direct');
     const css = await dev.request({ url: stylesheet ?? '' });
     expect(css.status).toBe(200);
     expect(css.headers.get('content-type')).toContain('text/css');
@@ -199,9 +199,9 @@ const broken = ;`);
       expect((await renderer.renderPage({ locale: 'en', page: 'tool-browser-shell' })).body).toContain('<h1');
     }, { timeout: 5000, interval: 100 });
 
-    const japaneseFile = path.join(fixture, 'docs/pages/tool-browser-shell/strings/ja.ts');
+    const japaneseFile = path.join(fixture, 'docs/pages/tool-browser-shell/messages/ja.tsx');
     const japaneseSource = await readFile(japaneseFile, 'utf8');
-    await writeFile(japaneseFile, 'export const strings = { broken: ; };');
+    await writeFile(japaneseFile, 'export const messages = { broken: ; };');
     server.watcher.emit('change', japaneseFile);
     await vi.waitFor(async () => {
       await expect(renderer.renderPage({ locale: 'ja', page: 'tool-browser-shell' })).rejects.toThrow(/Docs ja\/tool-browser-shell failed/);

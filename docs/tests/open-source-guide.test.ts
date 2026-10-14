@@ -3,8 +3,8 @@ import path from 'node:path';
 import { build } from 'vite';
 import { describe, expect, it } from 'vitest';
 import { docsBuildConfig } from '../build/production';
-import { strings as en } from '../pages/open-source/strings/en';
-import { strings as ja } from '../pages/open-source/strings/ja';
+import { messages as en } from '../pages/open-source/messages/en';
+import { messages as ja } from '../pages/open-source/messages/ja';
 import { createSiteFixture, parsePage } from './site.test-support';
 
 describe('open source and releases guide', () => {
@@ -20,20 +20,20 @@ describe('open source and releases guide', () => {
       expect(article?.querySelector('h1')?.textContent).toBe(copy.title);
       const intro = article?.querySelector('.lead');
       const repository = article?.querySelector('#open-source-repository')?.closest('section');
-      expect(intro?.textContent).toBe(copy.intro);
+      expect(intro?.textContent).toBe(copy.introduction);
       expect(intro?.nextElementSibling).toBe(repository);
       const repositoryLink = repository?.querySelector('a[data-docs-external]');
       expect(repositoryLink?.getAttribute('href')).toBe('https://github.com/nwtgck/naidan');
       expect([...(repositoryLink?.childNodes ?? [])].filter(node => node.nodeType === 3).map(node => node.textContent).join('').trim()).toBe('https://github.com/nwtgck/naidan');
       expect(Array.from(article?.querySelectorAll('h2') ?? []).map(heading => heading.textContent)).toEqual([
-        copy.repository.title,
-        copy.license.title,
-        copy.source.title,
-        copy.build.title,
-        copy.use.title,
+        copy.repository_title,
+        copy.license_title,
+        copy.source_title,
+        copy.build_title,
+        copy.use_title,
       ]);
-      expect(article?.textContent).toContain(copy.build.note);
-      expect(article?.textContent).toContain(copy.use.selfBuild.body);
+      expect(article?.textContent).toContain(copy.build_note);
+      expect(article?.textContent).toContain(copy.use_self_build_body);
       expect(article?.querySelectorAll('.open-source-flow li')).toHaveLength(3);
       expect(article?.querySelectorAll('.pair-grid .panel')).toHaveLength(2);
       expect(article?.querySelector('[data-docs-related-guide] a')?.getAttribute('href')).toBe(`/docs/${locale}/standalone/`);

@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import UiText from '../../site/UiText.vue';
-import BrowserModelSettingsStep from '../../site/demos/BrowserModelSettingsStep.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import type { DocsLocale } from '../../site/routes';
-import type { CommonMessages } from '../../site/messages';
-import type { strings as english } from '../../pages/endpoint-type-llama-cpp-browser/strings/en';
+import RenderText from '../../components/RenderText';
+import AppEntryLink from '../../components/AppEntryLink.vue';
+import BrowserModelSettingsStep from '../../components/demos/BrowserModelSettingsStep.vue';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import type { DocsLocale } from '../../navigation/routes';
+import type { CommonMessages } from '../../messages/types';
+import type { messages as english } from '../../pages/endpoint-type-llama-cpp-browser/messages/en';
 
 defineProps<{ s: typeof english; locale: DocsLocale; common: CommonMessages }>();
 
@@ -31,70 +31,70 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-models-llama-cpp-browser">
     <h1>{{ s.title }}</h1>
-    <p class="lead"><UiText :text="s.intro" /></p>
+    <p class="lead"><RenderText :node="s.intro()" /></p>
     <section class="quick-models" aria-labelledby="llama-guide-quick-models">
-      <h2 id="llama-guide-quick-models">{{ s.quickModels.title }}</h2>
-      <p><UiText :text="s.quickModels.body" /></p>
+      <h2 id="llama-guide-quick-models">{{ s.suggested_models_heading }}</h2>
+      <p><RenderText :node="s.suggested_models_instructions()" /></p>
       <ul class="quick-model-list">
         <li v-for="item in quickModels" :key="item.model">
           <AppEntryLink :destination="{ kind: 'model', model: item.model }" :locale="locale" display="label">{{ item.name }}</AppEntryLink>
         </li>
       </ul>
-      <p>{{ s.quickModels.ownLink.before }}<code>llama-cpp-browser-model</code>{{ s.quickModels.ownLink.middle }}<code>hf.co/owner/repository:Q4_K_M</code>{{ s.quickModels.ownLink.after }}</p>
+      <p><RenderText :node="s.custom_model_link_instructions()" /></p>
     </section>
-    <p class="guide-context"><UiText :text="s.availability" /></p>
+    <p class="guide-context"><RenderText :node="s.availability()" /></p>
 
     <section class="walkthrough-step" aria-labelledby="llama-guide-open">
-      <h2 id="llama-guide-open">{{ s.steps.open.title }}</h2>
-      <p class="app-entry-intro">{{ s.manager.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'gguf-manager' }" :locale="locale" display="path" />{{ s.manager.after }}</p>
-      <p class="app-entry-onboarding"><UiText :text="s.manager.onboarding" /></p>
-      <p><UiText :text="s.steps.open.body" /></p>
+      <h2 id="llama-guide-open">{{ s.open_model_manager_heading }}</h2>
+      <p class="app-entry-intro"><RenderText :node="s.open_model_manager({ locale, destination: { kind: 'screen', screen: 'gguf-manager' } })" /></p>
+      <p class="app-entry-onboarding"><RenderText :node="s.model_manager_first_run_note()" /></p>
+      <p><RenderText :node="s.open_model_manager_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="llama" stage="open" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.open.caption" /></figcaption>
+        <BrowserModelSettingsStep mode="llama" stage="open" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.open_model_manager_figure_caption()" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="llama-guide-import">
-      <h2 id="llama-guide-import">{{ s.steps.import.title }}</h2>
-      <p><UiText :text="s.steps.import.body" /></p>
+      <h2 id="llama-guide-import">{{ s.import_gguf_heading }}</h2>
+      <p><RenderText :node="s.import_gguf_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="llama" stage="import" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.import.caption" /></figcaption>
+        <BrowserModelSettingsStep mode="llama" stage="import" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.import_gguf_figure_caption()" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="llama-guide-download">
-      <h2 id="llama-guide-download">{{ s.steps.download.title }}</h2>
-      <p><UiText :text="s.steps.download.body" /></p>
+      <h2 id="llama-guide-download">{{ s.download_gguf_heading }}</h2>
+      <p><RenderText :node="s.download_gguf_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="llama" stage="download" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.download.caption" /></figcaption>
+        <BrowserModelSettingsStep mode="llama" stage="download" :messages="s" />
+        <figcaption class="caption">{{ s.download_gguf_figure_caption }}</figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="llama-guide-default">
-      <h2 id="llama-guide-default">{{ s.steps.default.title }}</h2>
-      <p><UiText :text="s.steps.default.body" /></p>
+      <h2 id="llama-guide-default">{{ s.choose_default_model_heading }}</h2>
+      <p><RenderText :node="s.choose_default_model_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="llama" stage="default" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.default.caption" /></figcaption>
+        <BrowserModelSettingsStep mode="llama" stage="default" :messages="s" />
+        <figcaption class="caption">{{ s.choose_default_model_figure_caption }}</figcaption>
       </figure>
     </section>
 
-    <p><UiText :text="s.startChat" /></p>
+    <p><RenderText :node="s.start_chat_after_setup()" /></p>
 
     <section aria-labelledby="llama-guide-large-gguf">
-      <h2 id="llama-guide-large-gguf">{{ s.largeGguf.title }}</h2>
-      <p>{{ s.largeGguf.body }}</p>
+      <h2 id="llama-guide-large-gguf">{{ s.large_gguf_heading }}</h2>
+      <p>{{ s.large_gguf_explanation }}</p>
     </section>
 
-    <h2>{{ s.noteTitle }}</h2>
-    <p><UiText :text="s.note" /></p>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[
-      { page: 'in-browser-models', title: s.next, description: s.nextDescription },
-      { page: 'image-generation', ...s.related.image },
-      { page: 'audio-generation', ...s.related.speech },
+    <h2>{{ s.model_troubleshooting_heading }}</h2>
+    <p><RenderText :node="s.model_troubleshooting()" /></p>
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[
+      { page: 'in-browser-models', title: s.browser_model_guide_title, description: s.browser_model_guide_description },
+      { page: 'image-generation', title: s.image_generation_guide_title, description: s.image_generation_guide_description },
+      { page: 'audio-generation', title: s.speech_generation_guide_title, description: s.speech_generation_guide_description },
     ]" />
   </article>
 </template>

@@ -1,15 +1,12 @@
 <script setup lang="ts">
-import UiText from '../../site/UiText.vue';
-import ExternalLink from '../../site/ExternalLink.vue';
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import ChromeModelFlow from '../../site/demos/ChromeModelFlow.vue';
-import BrowserProvidedSettingsStep from '../../site/demos/BrowserProvidedSettingsStep.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import DocsIsland from '../../site/DocsIsland.vue';
+import RenderText from '../../components/RenderText';
+import ChromeModelFlow from '../../components/demos/ChromeModelFlow.vue';
+import BrowserProvidedSettingsStep from '../../components/demos/BrowserProvidedSettingsStep.vue';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import DocsIsland from '../../components/DocsIsland.vue';
 import { browserAiAvailabilityIsland } from '../../islands/browser-ai-availability/definition';
-import { checkerCopy } from '../../islands/browser-ai-availability/copy';
-import type { DocsLocale } from '../../site/routes';
-import type { BrowserProvidedGuideMessages, CommonMessages } from '../../site/messages';
+import type { DocsLocale } from '../../navigation/routes';
+import type { BrowserProvidedGuideMessages, CommonMessages } from '../../messages/types';
 
 defineProps<{ s: BrowserProvidedGuideMessages; locale: DocsLocale; common: CommonMessages }>();
 
@@ -19,53 +16,53 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-models-browser-provided">
     <h1>{{ s.title }}</h1>
-    <p class="lead"><UiText :text="s.intro" /></p>
+    <p class="lead">{{ s.intro }}</p>
     <section class="concept-section" aria-labelledby="browser-model-flow">
-      <h2 id="browser-model-flow">{{ s.flow.title }}</h2>
-      <figure class="guide-figure"><ChromeModelFlow :copy="s.flow.demo" /><figcaption class="caption"><UiText :text="s.flow.caption" /></figcaption></figure>
+      <h2 id="browser-model-flow">{{ s.chrome_model_flow_heading }}</h2>
+      <figure class="guide-figure"><ChromeModelFlow :messages="s" /><figcaption class="caption">{{ s.chrome_model_flow_caption }}</figcaption></figure>
     </section>
 
-    <DocsIsland :entry="browserAiAvailabilityIsland({ copy: checkerCopy[locale] })" />
+    <DocsIsland :entry="browserAiAvailabilityIsland({ locale })" />
 
     <details class="requirements-details">
-      <summary>{{ s.requirementsSummary }}</summary>
-      <p><UiText :text="s.before" /></p>
-      <p><UiText :text="s.languageSupport" /></p>
-      <p class="requirements-source"><ExternalLink href="https://developer.chrome.com/docs/ai/prompt-api" :locale="locale">{{ s.requirementsSource }}</ExternalLink> · <ExternalLink href="https://developer.chrome.com/docs/ai/get-started" :locale="locale">{{ s.languageSource }}</ExternalLink></p>
+      <summary>{{ s.chrome_requirements_heading }}</summary>
+      <p>{{ s.chrome_device_requirements }}</p>
+      <p>{{ s.japanese_language_support }}</p>
+      <p class="requirements-source"><RenderText :node="s.chrome_requirements_sources({ locale, requirementsHref: 'https://developer.chrome.com/docs/ai/prompt-api', languageHref: 'https://developer.chrome.com/docs/ai/get-started' })" /></p>
     </details>
 
-    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'connection' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
-    <p class="app-entry-onboarding"><UiText :text="s.onboarding" /></p>
+    <p class="app-entry-intro"><RenderText :node="s.open_connection_settings({ locale, destination: { kind: 'screen', screen: 'connection' } })" /></p>
+    <p class="app-entry-onboarding"><RenderText :node="s.connection_first_run_note()" /></p>
 
     <section class="walkthrough-step" aria-labelledby="browser-open">
-      <h2 id="browser-open">{{ s.steps.open.title }}</h2>
-      <p><UiText :text="s.steps.open.body" /></p>
-      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="open" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.open.caption" /></figcaption></figure>
+      <h2 id="browser-open">{{ s.open_connection_settings_heading }}</h2>
+      <p><RenderText :node="s.open_connection_settings_instructions()" /></p>
+      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="open" :messages="s" /><figcaption class="caption"><RenderText :node="s.open_connection_settings_figure_caption()" /></figcaption></figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="browser-select">
-      <h2 id="browser-select">{{ s.steps.select.title }}</h2>
-      <p><UiText :text="s.steps.select.body" /></p>
-      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="select" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.select.caption" /></figcaption></figure>
+      <h2 id="browser-select">{{ s.select_chrome_model_heading }}</h2>
+      <p><RenderText :node="s.select_chrome_model_instructions()" /></p>
+      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="select" :messages="s" /><figcaption class="caption"><RenderText :node="s.select_chrome_model_figure_caption()" /></figcaption></figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="browser-prepare">
-      <h2 id="browser-prepare">{{ s.steps.prepare.title }}</h2>
-      <p><UiText :text="s.steps.prepare.body" /></p>
-      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="prepare" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.prepare.caption" /></figcaption></figure>
+      <h2 id="browser-prepare">{{ s.prepare_chrome_model_heading }}</h2>
+      <p><RenderText :node="s.prepare_chrome_model_instructions()" /></p>
+      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="prepare" :messages="s" /><figcaption class="caption">{{ s.prepare_chrome_model_figure_caption }}</figcaption></figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="browser-save">
-      <h2 id="browser-save">{{ s.steps.save.title }}</h2>
-      <p><UiText :text="s.steps.save.body" /></p>
-      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="save" :copy="s.demo" /><figcaption class="caption"><UiText :text="s.steps.save.caption" /></figcaption></figure>
+      <h2 id="browser-save">{{ s.save_connection_heading }}</h2>
+      <p><RenderText :node="s.save_connection_instructions()" /></p>
+      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="save" :messages="s" /><figcaption class="caption">{{ s.save_connection_figure_caption }}</figcaption></figure>
     </section>
 
-    <p><UiText :text="s.startChat" /></p>
+    <p><RenderText :node="s.start_chat_with_chrome_model()" /></p>
 
-    <h2>{{ s.unavailableTitle }}</h2>
-    <p><UiText :text="s.unavailable" /></p>
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'in-browser-models', title: s.next, description: s.nextDescription }]" />
+    <h2>{{ s.chrome_model_unavailable_heading }}</h2>
+    <p>{{ s.chrome_model_unavailable_help }}</p>
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'in-browser-models', title: s.browser_model_guide_title, description: s.browser_model_guide_description }]" />
   </article>
 </template>
 

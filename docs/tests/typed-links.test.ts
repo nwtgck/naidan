@@ -4,14 +4,28 @@ import { renderToString } from 'vue/server-renderer';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { validateStaticComponent } from '../build/source-policy';
-import DocsLink from '../site/DocsLink.vue';
-import LocalAnchorLink from '../site/LocalAnchorLink.vue';
-import ExternalLink from '../site/ExternalLink.vue';
-import AppEntryLink from '../site/AppEntryLink.vue';
-import { docsHref } from '../site/routes';
+import DocsLink from '../components/DocsLink.vue';
+import LocalAnchorLink from '../components/LocalAnchorLink.vue';
+import ExternalLink from '../components/ExternalLink.vue';
+import AppEntryLink from '../components/AppEntryLink.vue';
+import RenderText from '../components/RenderText';
+import { messages as branchingEn } from '../pages/chat-branching/messages/en';
+import { messages as branchingJa } from '../pages/chat-branching/messages/ja';
+import { docsHref } from '../navigation/routes';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
 describe('typed Docs links', () => {
+  it.each([
+    { locale: 'en' as const, strings: branchingEn, label: 'browser model setup' },
+    { locale: 'ja' as const, strings: branchingJa, label: 'ブラウザ内でAIモデルを動かす手順' },
+  ])('renders a normal JSX DocsLink child in $locale article prose', async ({ locale, strings, label }) => {
+    const html = await renderToString(createSSRApp({ render: () => h(RenderText, { node: strings.in_browser_model_setup_guide({ locale }) }) }));
+    using parsed = parsePage({ html });
+    const anchor = parsed.document.querySelector<HTMLAnchorElement>('a');
+    expect(anchor?.getAttribute('href')).toBe(docsHref({ locale, page: 'in-browser-models' }));
+    expect(anchor?.textContent).toBe(label);
+  });
+
   it.each(['en', 'ja'] as const)('renders a registered %s page as a native anchor with forwarded attributes', async locale => {
     const html = await renderToString(createSSRApp({
       render: () => h(DocsLink, {
@@ -73,12 +87,12 @@ describe('typed Docs links', () => {
 });
 
 describe('native anchor authoring guard', () => {
-  it.each(['pages/index/index.vue', 'site/DocsGuideTree.vue', 'islands/search/SearchIsland.vue', 'site/DocsLinkCopy.vue'])('rejects a raw anchor in %s', filename => {
+  it.each(['pages/index/index.vue', 'components/DocsGuideTree.vue', 'islands/search/SearchIsland.vue', 'components/DocsLinkCopy.vue'])('rejects a raw anchor in %s', filename => {
     expect(() => validateStaticComponent({ source: '<template><a href="/docs/en/missing-page/">Missing</a></template>', filename, mode: filename.startsWith('islands/') ? 'island' : 'static' }))
       .toThrow('Use a typed Docs link component');
   });
 
-  it.each(['site/DocsLink.vue', 'site/LocalAnchorLink.vue', 'site/ExternalLink.vue', 'site/AppEntryLink.vue'])('allows a native anchor inside %s', filename => {
+  it.each(['components/DocsLink.vue', 'components/LocalAnchorLink.vue', 'components/ExternalLink.vue', 'components/AppEntryLink.vue'])('allows a native anchor inside %s', filename => {
     expect(() => validateStaticComponent({ source: '<template><a href="/">Link</a></template>', filename, mode: 'static' }))
       .not.toThrow();
   });

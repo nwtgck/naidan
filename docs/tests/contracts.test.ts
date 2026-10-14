@@ -3,9 +3,9 @@ import { resolveDocsRoute } from '../build/routes';
 import { validateStaticComponent } from '../build/source-policy';
 import { findIslands, renderDocument, renderLocaleRoot } from '../build/html';
 import { manifestEntry, parseManifest, publicAssetHref } from '../build/assets';
-import { selectDocsLocale } from '../site/locale';
-import { strings as homeEn } from '../pages/index/strings/en';
-import { strings as homeJa } from '../pages/index/strings/ja';
+import { selectDocsLocale } from '../navigation/locale';
+import { messages as homeEn } from '../pages/index/messages/en';
+import { messages as homeJa } from '../pages/index/messages/ja';
 import { isDocsUrl } from '../../pwa/docs-routing';
 import { parsePage } from './site.test-support';
 
@@ -129,8 +129,8 @@ describe('HTML composition and locale contracts', () => {
   });
 
   it('preserves approved headlines', () => {
-    expect(homeJa.headline.join('')).toBe('安全性を徹底追求した、簡単に使えるAI環境。');
-    expect(homeEn.headline.join('')).toBe('An easy-to-use AI environment, built around privacy.');
+    expect(homeJa.headline_opening + homeJa.headline_emphasis).toBe('安全性を徹底追求した、簡単に使えるAI環境。');
+    expect(homeEn.headline_opening + homeEn.headline_emphasis).toBe('An easy-to-use AI environment, built around privacy.');
   });
 });
 

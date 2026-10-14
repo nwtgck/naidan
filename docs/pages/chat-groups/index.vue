@@ -1,15 +1,13 @@
 <script setup lang="ts">
-import DocsLink from '../../site/DocsLink.vue';
-import UiText from '../../site/UiText.vue';
-import AppEntryLink from '../../site/AppEntryLink.vue';
-import GroupStep from '../../site/demos/GroupStep.vue';
-import GroupSettingsStep from '../../site/demos/GroupSettingsStep.vue';
-import RelatedGuide from '../../site/RelatedGuide.vue';
-import type { DocsLocale } from '../../site/routes';
-import type { CommonMessages } from '../../site/messages';
-import type { strings as groupsStrings } from '../../pages/chat-groups/strings/en';
+import RenderText from '../../components/RenderText';
+import GroupStep from '../../components/demos/GroupStep.vue';
+import GroupSettingsStep from '../../components/demos/GroupSettingsStep.vue';
+import RelatedGuide from '../../components/RelatedGuide.vue';
+import type { DocsLocale } from '../../navigation/routes';
+import type { CommonMessages } from '../../messages/types';
+import type { messages as groupsMessages } from './messages/en';
 
-defineProps<{ s: typeof groupsStrings; locale: DocsLocale; common: CommonMessages }>();
+const { s } = defineProps<{ s: typeof groupsMessages; locale: DocsLocale; common: CommonMessages }>();
 
 defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 </script>
@@ -17,66 +15,66 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 <template>
   <article class="prose" data-testid="docs-chat-groups">
     <h1>{{ s.title }}</h1>
-    <p class="lead"><UiText :text="s.intro" /></p>
-    <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" /><UiText :text="s.launch.after" /></p>
+    <p class="lead">{{ s.organize_chats_by_purpose }}</p>
+    <p class="app-entry-intro"><RenderText :node="s.open_naidan_to_create_group({ locale, destination: { kind: 'screen', screen: 'home' } })" /></p>
 
     <section class="walkthrough-step" aria-labelledby="groups-create">
-      <h2 id="groups-create">{{ s.steps.create.title }}</h2>
-      <p><UiText :text="s.steps.create.body" /></p>
+      <h2 id="groups-create">{{ s.create_group_heading }}</h2>
+      <p><RenderText :node="s.create_group_instructions()" /></p>
       <figure class="guide-figure">
-        <GroupStep stage="create" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.create.caption" /></figcaption>
+        <GroupStep stage="create" :messages="s" />
+        <figcaption class="caption">{{ s.group_creation_caption }}</figcaption>
       </figure>
     </section>
 
-    <p class="prerequisite">{{ s.setup.before }}<DocsLink :locale="locale" page="in-browser-models">{{ s.setup.browserLink }}</DocsLink>{{ s.setup.between }}<DocsLink :locale="locale" page="local-ai-servers">{{ s.setup.link }}</DocsLink>{{ s.setup.after }}</p>
+    <p class="prerequisite"><RenderText :node="s.model_setup_guides({ locale })" /></p>
 
     <section class="walkthrough-step" aria-labelledby="groups-model">
-      <h2 id="groups-model">{{ s.steps.model.title }}</h2>
-      <p><UiText :text="s.steps.model.body" /></p>
+      <h2 id="groups-model">{{ s.choose_group_model_heading }}</h2>
+      <p><RenderText :node="s.choose_group_model_instructions()" /></p>
       <figure class="guide-figure">
-        <GroupSettingsStep stage="model" :copy="s.settingsDemo" />
-        <figcaption class="caption"><UiText :text="s.steps.model.caption" /></figcaption>
+        <GroupSettingsStep stage="model" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.group_model_caption()" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="groups-prompt">
-      <h2 id="groups-prompt">{{ s.steps.prompt.title }}</h2>
-      <p><UiText :text="s.steps.prompt.body" /></p>
+      <h2 id="groups-prompt">{{ s.set_group_instructions_heading }}</h2>
+      <p><RenderText :node="s.set_group_instructions()" /></p>
       <figure class="guide-figure">
-        <GroupSettingsStep stage="prompt" :copy="s.settingsDemo" />
-        <figcaption class="caption"><UiText :text="s.steps.prompt.caption" /></figcaption>
+        <GroupSettingsStep stage="prompt" :messages="s" />
+        <figcaption class="caption">{{ s.group_instructions_caption }}</figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="groups-move">
-      <h2 id="groups-move">{{ s.steps.move.title }}</h2>
-      <p><UiText :text="s.steps.move.body" /></p>
+      <h2 id="groups-move">{{ s.move_chat_into_group_heading }}</h2>
+      <p><RenderText :node="s.move_chat_into_group_instructions()" /></p>
       <figure class="guide-figure">
-        <GroupStep stage="move" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.move.caption" /></figcaption>
+        <GroupStep stage="move" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.move_chat_caption()" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="groups-add">
-      <h2 id="groups-add">{{ s.steps.add.title }}</h2>
-      <p><UiText :text="s.steps.add.body" /></p>
+      <h2 id="groups-add">{{ s.start_chat_inside_group_heading }}</h2>
+      <p><RenderText :node="s.start_chat_inside_group_instructions()" /></p>
       <figure class="guide-figure">
-        <GroupStep stage="add" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.add.caption" /></figcaption>
+        <GroupStep stage="add" :messages="s" />
+        <figcaption class="caption"><RenderText :node="s.add_chat_caption()" /></figcaption>
       </figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="groups-tidy">
-      <h2 id="groups-tidy">{{ s.steps.tidy.title }}</h2>
-      <p><UiText :text="s.steps.tidy.body" /></p>
+      <h2 id="groups-tidy">{{ s.organize_sidebar_heading }}</h2>
+      <p>{{ s.organize_sidebar_instructions }}</p>
       <figure class="guide-figure">
-        <GroupStep stage="tidy" :copy="s.demo" />
-        <figcaption class="caption"><UiText :text="s.steps.tidy.caption" /></figcaption>
+        <GroupStep stage="tidy" :messages="s" />
+        <figcaption class="caption">{{ s.organized_sidebar_caption }}</figcaption>
       </figure>
     </section>
 
-    <RelatedGuide :locale="locale" :eyebrow="common.relatedGuides" :guides="[{ page: 'settings-inheritance', title: s.related, description: s.nextDescription }]" />
+    <RelatedGuide :locale="locale" :eyebrow="common.related_guides" :guides="[{ page: 'settings-inheritance', title: s.choose_models_per_chat, description: s.understand_model_inheritance }]" />
   </article>
 </template>
 

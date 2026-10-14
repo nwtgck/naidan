@@ -6,11 +6,11 @@ import { resolveDocsRoute } from './routes';
 import { findIslands, hasAppEntryLinks, hasHomeBrand, renderDocument, renderLocaleRoot, renderNotFound } from './html';
 import { APP_ENTRY_CLIENT, HOME_BRAND_CLIENT, islandDevHref, styleEntryId } from './ids';
 import type { DocsRenderer, RenderedPage } from './contracts';
-import type { DocsLocale } from '../site/routes';
+import type { DocsLocale } from '../navigation/routes';
 import { compileLocaleBootstrap } from './locale-bootstrap';
 import { createDocsSitemap } from './seo';
 import { createSearchIndex } from './search';
-import { DOCS_PAGES, docsHref } from '../site/routes';
+import { DOCS_PAGES, docsHref } from '../navigation/routes';
 import { publicAssetHref } from './assets';
 
 const favicon = publicAssetHref({ file: 'assets/favicon.svg' });
@@ -115,7 +115,7 @@ function createDocsRequestPlugin(): Plugin {
             sendBody({ body: 'Invalid Docs request' }); return;
           case 'missing': {
             response.statusCode = 404;
-            const styles = await devStyles({ server, entry: '/site/site.css' });
+            const styles = await devStyles({ server, entry: '/styles/site.css' });
             html = renderNotFound({ assets: { styles, scripts: ['/docs/@vite/client'], favicon }, bootstrap: '/docs/__locale.js' });
             break;
           }
