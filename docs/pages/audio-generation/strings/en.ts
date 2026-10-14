@@ -6,8 +6,8 @@ export const strings = {
   steps: {
     open: {
       title: '1. Open Audio generation and prepare a model',
-      body: 'The link above opens ［Audio generation］ directly. You can also open ［More Actions］ in the sidebar and choose ［Audio generation］. Pick a detected speech model, or open ［Models and runtime］ to import a matching backbone GGUF and audio mmproj together or obtain the pair from a repository. The backbone is the speech model; the matching mmproj handles audio generation, so an arbitrary pair may not work. Local-only cannot fetch the pair from an external repository; obtain both files separately and import them there. Detection reads local metadata; it does not download or load a model, and it does not prove compatibility.',
-      caption: 'Open the separate audio workspace and select a compatible local model pair.',
+      body: 'The link above opens ［Audio generation］ directly. You can also open ［More Actions］ in the sidebar and choose ［Audio generation］. For a first model, find ［Qwen3-TTS 0.6B Base］ in the open ［Model catalog］ and select ［Download］. This download includes the required audio mmproj. When it finishes, select ［Use this model］. If you already have a suitable model, select it directly. For other models, open ［Models and runtime］ to import a matching backbone GGUF and audio mmproj together or obtain the pair from a repository. Local-only cannot fetch from an external repository; obtain both files separately and import them there.',
+      caption: 'Download the suggested model with its required audio companion, then select it.',
     },
     text: {
       title: '2. Enter text and choose its language',
@@ -39,7 +39,9 @@ export const strings = {
     manageModels: 'Models and runtime',
     model: 'Audio model',
     modelName: 'Qwen3-TTS 0.6B Base',
-    modelFiles: 'GGUF backbone + audio mmproj',
+    modelFiles: 'Q4_K_M · Required companion included',
+    modelCatalog: 'Model catalog',
+    downloadModel: 'Download',
     selectModel: 'Use this model',
     chooseModel: 'Choose an imported model',
     filterModels: 'Filter models...',

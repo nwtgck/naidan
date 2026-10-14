@@ -28,6 +28,7 @@ export function createDocsDevBridge(): Plugin {
         path.resolve(docsRoot, 'build'),
         path.resolve(docsRoot, 'site/routes.ts'),
         path.resolve(docsRoot, 'site/external-link.ts'),
+        path.resolve(docsRoot, 'islands/registry.ts'),
         path.resolve(docsRoot, 'strings/entry/en.ts'),
         path.resolve(docsRoot, 'strings/entry/ja.ts'),
       ]);
@@ -37,6 +38,7 @@ export function createDocsDevBridge(): Plugin {
         if (relative.startsWith(`build${path.sep}`) && relative.endsWith('.ts')
           || relative === path.join('site', 'routes.ts')
           || relative === path.join('site', 'external-link.ts')
+          || relative === path.join('islands', 'registry.ts')
           || relative === path.join('strings', 'entry', 'en.ts')
           || relative === path.join('strings', 'entry', 'ja.ts')) retire();
       });

@@ -11,7 +11,7 @@ import { createSiteFixture, parsePage, startSiteDev } from './site.test-support'
 
 type BridgeMiddleware = (request: { url: string; method: string }, response: { statusCode: number; end: (body?: string) => void }, next: (error?: unknown) => void) => Promise<void>;
 
-it('replaces the Docs child after compiler edits before serving another request', async () => {
+it('replaces the Docs child after compiler and island registry edits before serving another request', async () => {
   const watcher = new EventEmitter();
   const events: string[] = [];
   let middleware: BridgeMiddleware | undefined;
@@ -40,6 +40,7 @@ it('replaces the Docs child after compiler edits before serving another request'
   const bridge = createDocsDevBridge();
   const configure = bridge.configureServer as (server: ViteDevServer) => void;
   configure(parent);
+  expect(parent.watcher.add).toHaveBeenCalledWith(expect.arrayContaining(['/tmp/docs-bridge-probe/docs/islands/registry.ts']));
   const request = async (): Promise<string> => {
     if (!middleware) throw new Error('Missing Docs bridge middleware');
     let finish: ((body: string) => void) | undefined;
@@ -57,11 +58,13 @@ it('replaces the Docs child after compiler edits before serving another request'
   expect(await request()).toBe('child 1');
   watcher.emit('all', 'change', '/tmp/docs-bridge-probe/docs/build/virtual-modules.ts');
   expect(await request()).toBe('child 2');
-  expect(events).toEqual(['create 1', 'close 1', 'create 2']);
-  expect(parent.ssrLoadModule).toHaveBeenCalledTimes(2);
+  watcher.emit('all', 'change', '/tmp/docs-bridge-probe/docs/islands/registry.ts');
+  expect(await request()).toBe('child 3');
+  expect(events).toEqual(['create 1', 'close 1', 'create 2', 'close 2', 'create 3']);
+  expect(parent.ssrLoadModule).toHaveBeenCalledTimes(3);
   const close = bridge.closeBundle as () => Promise<void>;
   await close();
-  expect(events.at(-1)).toBe('close 2');
+  expect(events.at(-1)).toBe('close 3');
 });
 
 describe('Docs development registry', () => {

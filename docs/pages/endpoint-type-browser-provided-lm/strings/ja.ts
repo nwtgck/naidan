@@ -3,7 +3,7 @@ import type { BrowserProvidedGuideMessages } from '../../../site/messages';
 export const strings = {
   title: 'Chrome組み込みのAI言語モデルでチャットをする',
   description: 'Chrome 148以降の端末内モデルをNaidanのチャットで使うために、利用条件を確認し、必要なら準備して接続設定を保存します。',
-  intro: 'デスクトップ版Chrome 148以降では、Chrome組み込みのAI言語モデルをNaidanのチャットに使えます。モデルはChromeが端末内で管理するため、サーバーURLやモデルファイルの指定は不要です。',
+  intro: 'デスクトップ版Chrome 148以降では、Chrome組み込みのAI言語モデルをNaidanのチャットに使えます。日本語での入力と回答にはChrome 149以降が必要です。モデルはChromeが端末内で管理するため、サーバーURLやモデルファイルの指定は不要です。',
   flow: {
     title: 'Chromeのモデルがチャットに答えるまで',
     caption: 'Naidanの質問をChromeの端末内モデルで処理し、届いた回答を順に表示します。初回はChromeがモデルをダウンロードして準備する場合があります。モデルファイルを自分で選ぶ必要はありません。',

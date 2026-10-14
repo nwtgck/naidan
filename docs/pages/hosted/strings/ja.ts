@@ -16,6 +16,8 @@ export const strings = {
   serve: {
     title: 'index.htmlがあるフォルダを配信する',
     before: '展開したフォルダのうち、index.htmlがある場所で端末のターミナルを開き、次を実行します。',
+    fallbackBefore: 'この手順ではPython 3が使える必要があります。Windowsでpython3コマンドが見つからない場合は、代わりに',
+    fallbackAfter: 'を実行します。',
     after: 'Naidanを使う間はターミナルを開いたままにします。配信を終えるときは、そのターミナルでCtrl+Cを押します。',
   },
   open: {

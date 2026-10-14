@@ -59,7 +59,9 @@ describe('conversation guides', () => {
     const { document } = page;
     expect(document.querySelector('.app-entry-intro a[data-docs-app-entry-path="/#/"]')?.textContent).toBe('Naidan');
     expect(document.querySelector('h1')?.textContent).toBe(copy.title);
-    expect(document.querySelector('.prerequisite a')?.getAttribute('href')).toBe(`/docs/${locale}/local-ai-servers/`);
+    expect([...document.querySelectorAll('.prerequisite a')].map(link => link.getAttribute('href'))).toEqual([
+      `/docs/${locale}/in-browser-models/`, `/docs/${locale}/local-ai-servers/`,
+    ]);
     expect([...document.querySelectorAll('section.walkthrough-step')].map(section => section.querySelector('h2')?.textContent)).toEqual([
       copy.steps.create.title, copy.steps.model.title, copy.steps.prompt.title,
       copy.steps.move.title, copy.steps.add.title, copy.steps.tidy.title,

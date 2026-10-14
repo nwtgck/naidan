@@ -57,9 +57,11 @@ export const strings = {
     moreActions: 'その他の操作',
   },
   setup: {
-    before: '接続先とモデルの準備がまだなら、先に',
+    before: '次の手順で使うモデルをまだ用意していなければ、',
+    browserLink: 'ブラウザ内モデルの設定ガイド',
+    between: 'または',
     link: 'ローカルエンジンの接続ガイド',
-    after: 'で利用できるモデルを用意し、準備済みなら次へ進みます。',
+    after: 'を参考にしてください。',
   },
   settingsDemo: {
     app: 'Naidan',

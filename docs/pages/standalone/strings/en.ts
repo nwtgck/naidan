@@ -49,7 +49,7 @@ export const strings = {
     },
     {
       "title": "Choose how to retain conversations",
-      "body": "Browser storage and the extracted application folder are separate. The Memory option keeps Naidan conversation data in application memory rather than writing it to persistent storage. Reloading then ends that session; downloaded files, model caches and OS memory management are separate.",
+      "body": "Browser storage and the extracted application folder are separate. The ［Ephemeral］ option keeps Naidan conversation data in application memory rather than writing it to persistent storage. Reloading then ends that session; downloaded files, model caches and OS memory management are separate.",
     },
     {
       "title": "Keep a backup before changing environments",

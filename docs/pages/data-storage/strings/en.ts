@@ -23,7 +23,7 @@ export const strings = {
   limitsTitle: 'Before you rely on one browser copy',
   limits: [
     'Clearing site data, losing this device, or using another browser can still leave you without your conversations. Export a fresh conversation backup ZIP when the data matters.',
-    'Changing providers copies the current conversation data and settings; copied working-folder contents are not migrated. The switch does not erase every trace in the old provider. Moving from OPFS or ［Ephemeral］ to ［Local Storage］ warns when attachments will become inaccessible.',
+    'Changing providers copies the current conversation data and settings; copied working-folder contents are not migrated. Switching away from OPFS or Local Storage leaves chats, groups, and settings in the old provider; switching away from OPFS also leaves its files there. Moving from OPFS or ［Ephemeral］ to ［Local Storage］ warns when attachments will become inaccessible.',
     '［Ephemeral］ applies to the selected Naidan storage provider, including chats and settings. Other browser preferences and model caches may still remain on this device.',
   ],
   backupLink: 'Back up and restore conversations with a ZIP',

@@ -34,7 +34,7 @@ defineExpose({
         <span class="runtime-availability">{{ choice.availability }}</span>
         <h3>{{ choice.title }}</h3>
         <p><UiText :text="choice.body" /></p>
-        <DocsLink class="card-guide-link" :locale="locale" :page="choice.guide">{{ s.openGuide }} <span aria-hidden="true">→</span></DocsLink>
+        <DocsLink class="card-guide-link" :locale="locale" :page="choice.guide" :aria-label="`${choice.title}: ${s.openGuide}`">{{ s.openGuide }} <span aria-hidden="true">→</span></DocsLink>
       </section>
     </div>
 

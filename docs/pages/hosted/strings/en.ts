@@ -14,6 +14,8 @@ export const strings = {
   serve: {
     title: 'Serve the folder containing index.html',
     before: 'Open a terminal in the extracted folder that contains index.html, then run:',
+    fallbackBefore: 'This step requires Python 3. On Windows, if the python3 command is unavailable, run',
+    fallbackAfter: 'instead.',
     after: 'Leave this terminal running while you use Naidan. Press Ctrl+C there to stop the server.',
   },
   open: {

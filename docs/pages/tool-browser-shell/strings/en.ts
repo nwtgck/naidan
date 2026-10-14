@@ -6,6 +6,7 @@ export const strings = {
     "The commands run in the browser’s shell, with access to the workspace and folders made available to the Chat. You choose the folder mounts and write access in advance."
   ],
   "launch": { "before": "Open ", "after": " and choose a chat with a model that supports tool calls." },
+  "setup": { "before": "If you still need to set up a model, see ", "browserLink": "browser model setup", "between": " or the ", "engineLink": "local engine connection guide", "after": ".", "exampleBefore": "For a model to try with tool calls, choose ", "exampleLink": "Qwen3.5 9B (Q4_K_M GGUF)", "exampleAfter": "." },
   "diagramCaption": "A sample task in a writable local project: the AI checks Git, searches with grep, reads with sed, creates task-summary.md with cat <<EOF and checks the saved file and Git state. The AI calls shell_execute repeatedly as the task progresses. Completed call headers stay in the conversation; the current call shows its script and result. The scene replays together, and the full transcript remains available to read. No model, command or file operation runs in this demonstration.",
   "demo": {
     "title": "Project tasks",

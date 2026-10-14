@@ -29,7 +29,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
             <div class="page-content">
               <div class="presets"><span class="field-label">{{ copy.quickPresets }}</span><span class="preset-pill">Ollama</span></div>
               <div class="field"><span class="field-label">{{ copy.endpointType }}</span><div class="field-value endpoint-control"><span class="value-stack"><span class="phase-start">{{ copy.globalOllama }}</span><span class="phase-end">{{ copy.ollama }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer endpoint-pointer" :size="23" /><span class="select-menu endpoint-menu"><span class="select-option">{{ copy.globalOllama }}</span><span class="select-option target-option">{{ copy.ollama }}</span></span></div></div>
-              <div class="field group-url"><span class="field-label">{{ copy.endpointUrl }}</span><div class="field-value mono"><span>http://localhost:11435</span></div></div>
+              <div class="field group-url"><span class="field-label">{{ copy.endpointUrl }}</span><div class="field-value mono"><span>http://localhost:11434</span></div></div>
               <div class="field"><span class="field-label">{{ copy.groupModel }}</span><div class="field-value model-control"><span class="value-stack"><span class="phase-start muted">{{ copy.globalModel }}</span><span class="phase-end">{{ copy.groupValue }}</span></span><ChevronDownIcon :size="18" /><MousePointer2Icon class="pointer group-model-pointer" :size="23" /><span class="select-menu model-menu"><span class="select-option">{{ copy.globalModel }}</span><span class="select-option target-option">{{ copy.groupValue }}</span></span></div></div>
             </div>
           </div>

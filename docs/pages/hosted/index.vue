@@ -28,6 +28,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <h3>{{ s.serve.title }}</h3>
         <p>{{ s.serve.before }}</p>
         <pre data-testid="hosted-python-command"><code>python3 -m http.server 8000 --bind 127.0.0.1</code></pre>
+        <p>{{ s.serve.fallbackBefore }} <code>py -m http.server 8000 --bind 127.0.0.1</code> {{ s.serve.fallbackAfter }}</p>
         <p>{{ s.serve.after }}</p>
       </li>
       <li>

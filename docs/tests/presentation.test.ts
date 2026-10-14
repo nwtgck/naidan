@@ -158,7 +158,8 @@ describe('accessible guide presentation', () => {
       expect(article?.textContent).toContain('file://');
       expect(article?.textContent).toContain('index.html');
       expect(article?.textContent).toContain('assets');
-      expect(article?.textContent).toContain(locale === 'ja' ? '一時保存方式' : 'Memory');
+      expect(article?.textContent).toContain(locale === 'ja' ? '一時保存方式' : 'Ephemeral');
+      if (locale === 'en') expect(article?.querySelector('.ui-label')?.textContent).toBe('Ephemeral');
       expect(article?.textContent).toContain('llama.cpp server');
       expect(article?.querySelector('a[href="https://naidan.pages.dev/naidan-standalone.zip"]')).not.toBeNull();
     }
@@ -257,6 +258,21 @@ describe('accessible guide presentation', () => {
       const links = [...document.document.querySelectorAll<HTMLAnchorElement>('.card-guide-link')];
       expect(links.map(link => link.getAttribute('href'))).toEqual(targets.map(target => docsHref({ locale, page: target })));
       expect(links.every(link => link.textContent?.trim())).toBe(true);
+      const cards = [...document.document.querySelectorAll<HTMLElement>('.runtime-card, .engine-card')];
+      expect(cards).toHaveLength(targets.length);
+      const accessibleNames: string[] = [];
+      for (const card of cards) {
+        const title = card.querySelector('h3')?.textContent?.trim();
+        const link = card.querySelector<HTMLAnchorElement>('.card-guide-link');
+        const visibleAction = link?.textContent?.replace('→', '').trim();
+        const accessibleName = link?.getAttribute('aria-label') ?? '';
+        expect(title).toBeTruthy();
+        expect(visibleAction).toBeTruthy();
+        expect(accessibleName).toContain(title);
+        expect(accessibleName).toContain(visibleAction);
+        accessibleNames.push(accessibleName);
+      }
+      expect(new Set(accessibleNames).size).toBe(cards.length);
     }
   });
 });

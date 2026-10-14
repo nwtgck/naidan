@@ -8,7 +8,7 @@ export const strings = {
   concept: {
     title: 'Which model answers this message?',
     definition: 'If this Chat has a model, it uses that model. Otherwise, it checks its group, then the Global model; a Chat outside a group goes straight to Global. The first place with a model decides which one answers. Using a setting from a broader scope this way is called inheritance. The connection is chosen separately in the same chat → group → Global order.',
-    lead: 'Each scene sends the same question independently. In this example, all three models are available through one Global connection; only the model setting changes.',
+    lead: 'Each scene sends the same question independently. In this example, all three models are available from the same Ollama server; only the model setting changes.',
     caption: 'The first two scenes both choose Gemma from Global, even though the second Chat belongs to a group. Setting a group model chooses Qwen; setting a Chat model chooses Llama.',
     after: 'The arrows show the order used to find a model setting. Once Naidan finds a model, it uses that model and stops looking higher up. The connection is chosen separately in the same order.',
     diagram: {
@@ -48,9 +48,9 @@ export const strings = {
       caption: 'Global ［Settings］ → ［Connection］ sets the endpoint and default model.',
     },
     group: {
-      title: '2. Give a chat group its own endpoint and model',
-      body: 'Select a chat group’s name in the sidebar to open its settings page. Choose its ［Endpoint Type］ and URL, then select a model returned by that endpoint in ［Model ID Override］. The group endpoint is a complete setting: its URL and HTTP headers do not come from Global after this override.',
-      caption: 'The group settings page stores its own endpoint and model. The URL field appears when an HTTP endpoint is selected locally.',
+      title: '2. Set a group model and, if needed, its endpoint',
+      body: 'Select a chat group’s name in the sidebar to open its settings page. For a different model on the same server, leave ［Endpoint Type］ inherited and select a model in ［Model ID Override］. The figure also selects Ollama as a group endpoint override: this copies the current Global URL and HTTP headers, so the URL stays the same unless you edit it. Later Global URL and header changes do not reach that group override.',
+      caption: 'The figure selects Ollama for the group, keeps the copied Global URL, and chooses a group model.',
     },
     inheritedChat: {
       title: '3. Read what a chat inherits',
@@ -96,7 +96,7 @@ export const strings = {
     ollama: 'Ollama',
     globalOllama: 'Global: Ollama',
     groupOllama: 'Chat Group: Ollama',
-    groupUrl: 'Chat Group: http://localhost:11435',
+    groupUrl: 'Chat Group: http://localhost:11434',
     globalModel: 'Global: gemma3n:e2b',
     groupModelValue: 'Chat Group: qwen3:4b',
     globalValue: 'gemma3n:e2b',

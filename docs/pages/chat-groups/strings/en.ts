@@ -55,9 +55,11 @@ export const strings = {
     moreActions: 'More actions',
   },
   setup: {
-    before: 'If you have not prepared a connection and model yet, follow the ',
+    before: 'If you still need a model for the next step, see ',
+    browserLink: 'browser model setup',
+    between: ' or the ',
     link: 'local engine connection guide',
-    after: ' first; if a model is already available, continue below.',
+    after: '.',
   },
   settingsDemo: {
     app: 'Naidan',

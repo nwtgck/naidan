@@ -17,6 +17,11 @@ describe('Wikipedia chat guide', () => {
     const article = page.document.querySelector('[data-testid="docs-wikipedia"]');
     expect(article?.querySelector('h1')?.textContent).toBe(s.title);
     expect(article?.querySelector('[data-docs-app-entry-path]')?.getAttribute('data-docs-app-entry-path')).toBe('/#/');
+    const modelEntry = article?.querySelector('.prerequisite [data-docs-app-entry-path]');
+    const modelPath = modelEntry?.getAttribute('data-docs-app-entry-path') ?? '';
+    expect(modelEntry?.textContent).toContain('Qwen3.5 9B');
+    expect(modelPath).toMatch(/^\/#\/\?/);
+    expect(new URLSearchParams(modelPath.split('?')[1]).get('llama-cpp-browser-model')).toBe('hf.co/lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M');
 
     const steps = [...(article?.querySelectorAll('.walkthrough-step') ?? [])];
     expect(steps.map(step => step.querySelector('[data-docs-animation]')?.getAttribute('data-docs-animation'))).toEqual([

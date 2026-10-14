@@ -5,6 +5,7 @@ export const strings = {
   description: 'ツール呼び出しに対応する端末内のチャット用モデルも、Wikipediaの記事を回答の参考にできます。APIキー不要の使い方と、Wikipediaに届く情報を説明します。',
   intro: 'ローカルLLMで調べものをするとき、ツール呼び出しに対応するモデルならWikipediaを検索し、関連する記事を読んで回答の参考にできます。NaidanはWikipediaの公式APIで検索と記事本文の取得を行うため、Wikipedia用のAPIキーやアクセストークンを用意する必要はありません。今回のみ許可を選ぶと、送信する検索語と取得する記事をリクエストごとに確認できます。',
   launch: { before: '', after: 'を開き、ツール呼び出しに対応するモデルのチャットを選びます。' },
+  setup: { before: 'モデルをまだ用意していなければ、', browserLink: 'ブラウザ内モデルの設定ガイド', between: 'または', engineLink: 'ローカルエンジンの接続ガイド', after: 'を参考にしてください。', exampleBefore: 'ツール呼び出しを試すモデルの例として、', exampleLink: 'Qwen3.5 9B（Q4_K_M GGUF）', exampleAfter: 'を選べます。' },
   steps: {
     open: {
       title: '1. チャットのツール設定を開く',

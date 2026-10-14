@@ -15,7 +15,7 @@ export const strings = {
     },
     pair: {
       title: '2. Bring the two browsers together',
-      body: 'In ［Naidan RPC］, select ［Connect to a new peer］ on both devices. Enter the same ［Piping Server origin］ and meeting code, then select ［Start pairing］ in each browser. You can also use your own HTTPS relay when the edition permits that connection; Naidan does not start one.',
+      body: 'One person chooses a meeting code and tells the other. In ［Naidan RPC］, select ［Connect to a new peer］ on both devices. Enter the same ［Piping Server origin］ and that code, then select ［Start pairing］ in each browser. You can also use your own HTTPS relay when the edition permits that connection; Naidan does not start one.',
       caption: 'The same relay origin and meeting code start pairing in both browsers.',
     },
     verify: {

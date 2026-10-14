@@ -29,7 +29,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       </figure>
     </section>
 
-    <p class="prerequisite">{{ s.setup.before }}<DocsLink :locale="locale" page="local-ai-servers">{{ s.setup.link }}</DocsLink>{{ s.setup.after }}</p>
+    <p class="prerequisite">{{ s.setup.before }}<DocsLink :locale="locale" page="in-browser-models">{{ s.setup.browserLink }}</DocsLink>{{ s.setup.between }}<DocsLink :locale="locale" page="local-ai-servers">{{ s.setup.link }}</DocsLink>{{ s.setup.after }}</p>
 
     <section class="walkthrough-step" aria-labelledby="groups-model">
       <h2 id="groups-model">{{ s.steps.model.title }}</h2>

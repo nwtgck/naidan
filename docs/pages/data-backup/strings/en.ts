@@ -16,7 +16,7 @@ export const strings = {
     },
     mode: {
       title: '3. Add data or restore by replacing it',
-      body: '［Append (Merge)］ keeps current chats and groups, adds imported items with new IDs, and by default keeps the current endpoint and model settings while adding imported profiles. ［Replace (Restore)］ clears current data and restores the ZIP state. If OPFS is the current storage provider, ［Replace (Restore)］ also deletes folders copied into that provider, which this ZIP cannot restore; download any files you need from those copies before replacing. You can adjust the settings fields shown below the mode choices. After selecting ［Import］, Naidan verifies the archive, imports it, then reloads the page.',
+      body: '［Append (Merge)］ keeps current chats and groups, adds imported items with new IDs, and by default keeps the current endpoint and model settings while adding imported profiles. You can adjust the settings fields below when appending. ［Replace (Restore)］ clears current data and restores the ZIP data and settings. If you need your current connection afterward, note its URL and required HTTP headers before replacing, then set them again after import. If OPFS is the current storage provider, ［Replace (Restore)］ also deletes folders copied into that provider, which this ZIP cannot restore; download any files you need from those copies before replacing. After selecting ［Import］, Naidan verifies the archive, imports it, then reloads the page.',
       caption: '［Append (Merge)］ is the initial choice; ［Replace (Restore)］ clears current data before restoring.',
     },
   },

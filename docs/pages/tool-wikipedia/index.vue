@@ -17,6 +17,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <h1>{{ s.title }}</h1>
     <p class="lead">{{ s.intro }}</p>
     <p class="app-entry-intro">{{ s.launch.before }}<AppEntryLink :destination="{ kind: 'screen', screen: 'home' }" :locale="locale" display="path" />{{ s.launch.after }}</p>
+    <p class="prerequisite">{{ s.setup.before }}<DocsLink :locale="locale" page="in-browser-models">{{ s.setup.browserLink }}</DocsLink>{{ s.setup.between }}<DocsLink :locale="locale" page="local-ai-servers">{{ s.setup.engineLink }}</DocsLink>{{ s.setup.after }} {{ s.setup.exampleBefore }}<AppEntryLink :destination="{ kind: 'model', model: 'hf.co/lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M' }" :locale="locale" display="label">{{ s.setup.exampleLink }}</AppEntryLink>{{ s.setup.exampleAfter }}</p>
 
     <section class="walkthrough-step">
       <h2>{{ s.steps.open.title }}</h2>

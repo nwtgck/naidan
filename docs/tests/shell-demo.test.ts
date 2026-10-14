@@ -29,6 +29,11 @@ describe('shell guide tool-call demonstration', () => {
     const document = page.window.document;
     const walkthrough = document.querySelector('[data-testid="docs-shell-walkthrough"]');
     expect(document.querySelector('[data-docs-app-entry-path]')?.getAttribute('data-docs-app-entry-path')).toBe('/#/');
+    const modelEntry = document.querySelector('.prerequisite [data-docs-app-entry-path]');
+    const modelPath = modelEntry?.getAttribute('data-docs-app-entry-path') ?? '';
+    expect(modelEntry?.textContent).toContain('Qwen3.5 9B');
+    expect(modelPath).toMatch(/^\/#\/\?/);
+    expect(new URLSearchParams(modelPath.split('?')[1]).get('llama-cpp-browser-model')).toBe('hf.co/lmstudio-community/Qwen3.5-9B-GGUF:Q4_K_M');
     const open = walkthrough?.querySelector('[data-testid="docs-shell-enable-open"]');
     const enable = walkthrough?.querySelector('[data-testid="docs-shell-enable-enable"]');
     expect(walkthrough?.previousElementSibling?.querySelector('[data-testid="docs-shell-demo"]')).not.toBeNull();

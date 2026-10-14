@@ -35,7 +35,7 @@ defineExpose({
         <p class="engine-provider"><UiText :text="engine.provider" /></p>
         <code class="engine-preset">{{ engine.preset }}</code>
         <p><UiText :text="engine.body" /></p>
-        <DocsLink class="card-guide-link" :locale="locale" :page="engine.guide">{{ s.openGuide }} <span aria-hidden="true">→</span></DocsLink>
+        <DocsLink class="card-guide-link" :locale="locale" :page="engine.guide" :aria-label="`${engine.title}: ${s.openGuide}`">{{ s.openGuide }} <span aria-hidden="true">→</span></DocsLink>
       </section>
     </div>
 
