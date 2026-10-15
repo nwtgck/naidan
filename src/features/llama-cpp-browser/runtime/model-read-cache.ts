@@ -1,4 +1,5 @@
-/** One load-scoped read window, shared by all model shards. Sources must remain
+/** One read window, shared by all model shards during load and retained only
+ * when the model reads file-backed rows during inference. Sources must remain
  * immutable until disposal (the callers hold exclusive OPFS sync handles).
  * Large tensor reads still go straight into the native destination. */
 const windowBytes = 64 * 1024;
