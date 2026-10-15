@@ -10,4 +10,4 @@ Read `README.md` to choose an article, static demonstration, or interactive isla
 - Use typed Docs link components for guide, app, local-anchor, and external destinations; keep external links visibly identified. Keep article IDs and public URLs stable when titles change.
 - Motion should explain a step in a stable layout. Pause and reduced motion must leave a complete readable view and preserve reader selections. An animation must not trigger a model download, permission request, or command.
 - Browser persistence belongs only to the existing theme and motion preferences in `client/preferences.ts`; do not create another storage path. Docs tests must not execute external commands or child processes, including through helpers.
-- Before committing, run the Docs verification in `README.md`, including `test:only-failed` with the Docs config.
+- For Docs-only changes, follow the verification in `README.md`: use scoped ESLint fixes instead of repository-wide `lint:fix`, and run `test:only-failed` with the Docs config before committing.
