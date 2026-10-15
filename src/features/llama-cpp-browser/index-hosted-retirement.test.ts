@@ -87,6 +87,8 @@ function measure({ signal, warm = false }: { signal?: AbortSignal, warm?: boolea
 
 beforeEach(async () => {
   vi.resetModules(); harness.events.length = 0; harness.workers.length = 0; snapshots.length = 0;
+  const { storageService } = await import('@/00-storage/service');
+  vi.spyOn(storageService, 'loadSettings').mockResolvedValue(null);
   harness.factoryGate = undefined; harness.generationGate = undefined; harness.transportGate = undefined; harness.fail = false;
   vi.stubGlobal('Worker', RetirementWorker);
   service = (await import('./index-hosted')).llamaCppBrowserService;

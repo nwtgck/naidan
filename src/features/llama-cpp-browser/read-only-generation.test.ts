@@ -19,13 +19,15 @@ let reader: ReturnType<typeof module.createReadOnlyLlamaCppClient>;
 
 beforeEach(async () => {
   vi.resetModules(); vi.clearAllMocks(); fixture.canReuse.mockReturnValue(true);
+  const { storageService } = await import('@/00-storage/service');
+  vi.spyOn(storageService, 'loadSettings').mockResolvedValue(null);
   fixture.prepareModel.mockResolvedValue(undefined);
   fixture.generate.mockResolvedValue({ content: 'text', reasoningContent: '', toolCalls: [], finishReason: 'stop' }); module = await import('./index-hosted');
   reader = module.createReadOnlyLlamaCppClient();
 });
 
 afterEach(async () => {
-  await reader.dispose(); module.llamaCppBrowserService.release();
+  await reader.dispose(); module.llamaCppBrowserService.release(); vi.restoreAllMocks();
 });
 
 function input(): Parameters<LlamaCppBrowserService['generate']>[0]['input'] {

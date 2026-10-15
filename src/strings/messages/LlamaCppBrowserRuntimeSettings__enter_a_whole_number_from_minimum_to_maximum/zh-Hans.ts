@@ -1,0 +1,1 @@
+export const LlamaCppBrowserRuntimeSettings__enter_a_whole_number_from_minimum_to_maximum = ({ minimum, maximum }: { minimum: number; maximum: number }): string => `请输入 ${minimum} 到 ${maximum} 之间的整数。`;

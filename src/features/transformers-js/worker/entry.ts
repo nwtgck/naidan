@@ -292,6 +292,7 @@ async function withDownloadedModelAccessMode<T>({
 }
 
 function debugLog({ event, details }: { event: string, details: Record<string, unknown> }): void {
+  if (__BUILD_MODE_IS_TEST__) return;
   console.log(`${QWEN_DEBUG_PREFIX} ${event}`, {
     at: new Date().toISOString(),
     ...details,

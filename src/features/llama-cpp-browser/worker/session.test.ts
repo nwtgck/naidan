@@ -947,3 +947,106 @@ describe('measurement-only loaded descriptor ownership', () => {
     expect(descriptors().map(value => value.layers)).toEqual([64, 64, 32]);
   });
 });
+
+function configurableContextFixture() {
+  const core = host.core;
+  if (!core) throw new Error('Expected native fixture');
+  let allocatedTarget = 0;
+  vi.mocked(core.api.llama_model_n_ctx_train).mockResolvedValue(131072);
+  vi.mocked(core.setField).mockImplementation(({ name, field, value }) => {
+    if (name === 'llama_context_params' && field === 'n_ctx') allocatedTarget = Number(value);
+  });
+  vi.mocked(core.api.llama_n_ctx).mockImplementation(async () => allocatedTarget);
+  const prepare = ({ contextTokens }: { contextTokens: number | undefined }) => prepareGenerationSession({
+    request: { ...request({ debug: 'off' }), options: { profile: 'cpu-wasm32', contextTokens } },
+    signal: undefined,
+    onProgress: () => {},
+  });
+  const targets = () => vi.mocked(core.setField).mock.calls.filter(([call]) => call.field === 'n_ctx').map(([call]) => call.value);
+  return { core, prepare, targets };
+}
+
+describe('chat context target changes without weight reload', () => {
+  it('retains the legacy target when no preference is set and reuses an explicit equivalent', async () => {
+    const { core, prepare, targets } = configurableContextFixture();
+    expect((await prepare({ contextTokens: undefined })).contextTokens).toBe(32768);
+    expect((await prepare({ contextTokens: 32768 })).contextTokens).toBe(32768);
+    expect(targets()).toEqual([32768]);
+    expect(core.api.llama_init_from_model).toHaveBeenCalledOnce();
+    expect(core.api.llama_free).not.toHaveBeenCalled();
+  });
+
+  it('changes only the context and releases stale prefix checkpoints exactly once', async () => {
+    const { core, prepare, targets } = configurableContextFixture();
+    const first = await prepare({ contextTokens: 65536 });
+    first.cache.tokens = [1, 2, 3];
+    first.cache.validity = 'valid';
+    first.cache.checkpoint = { pointer: 999n, bytes: 64, tokens: [1], positionMin: 0, positionMax: 0 };
+    const free = vi.spyOn(core, 'free');
+    const second = await prepare({ contextTokens: 131072 });
+    expect(second.contextTokens).toBe(131072);
+    expect(second.cache.tokens).toEqual([]);
+    expect(second.cache.checkpoint).toBeUndefined();
+    expect(free.mock.calls.filter(([call]) => call.pointer === 999n)).toHaveLength(1);
+    expect(core.api.llama_free).toHaveBeenCalledExactlyOnceWith(first.context);
+    expect(core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+    expect(core.api.llama_model_free).not.toHaveBeenCalled();
+    expect(core.api.llama_backend_free).not.toHaveBeenCalled();
+    expect(targets()).toEqual([65536, 131072]);
+    await prepare({ contextTokens: undefined });
+    expect(targets()).toEqual([65536, 131072, 32768]);
+    expect(core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+  });
+
+  it('clamps to training capacity without repeatedly rebuilding the same smaller context', async () => {
+    const { core, prepare, targets } = configurableContextFixture();
+    vi.mocked(core.api.llama_model_n_ctx_train).mockResolvedValue(32768);
+    expect((await prepare({ contextTokens: 131072 })).contextTokens).toBe(32768);
+    await prepare({ contextTokens: 131072 });
+    expect(targets()).toEqual([32768]);
+    expect(core.api.llama_init_from_model).toHaveBeenCalledOnce();
+  });
+
+  it('remembers the request after native allocation fallback instead of retrying on every generation', async () => {
+    const { core, prepare, targets } = configurableContextFixture();
+    vi.mocked(core.api.llama_init_from_model).mockResolvedValueOnce(0n).mockResolvedValueOnce(0n).mockResolvedValueOnce(20n);
+    expect((await prepare({ contextTokens: 65536 })).contextTokens).toBe(32768);
+    await prepare({ contextTokens: 65536 });
+    expect(targets()).toEqual([65536, 65536, 32768]);
+    expect(core.api.llama_init_from_model).toHaveBeenCalledTimes(3);
+    expect(core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+  });
+
+  it('reports actual native capacity rather than the requested size', async () => {
+    const { core, prepare } = configurableContextFixture();
+    vi.mocked(core.api.llama_n_ctx).mockResolvedValue(32768);
+    expect((await prepare({ contextTokens: 65536 })).contextTokens).toBe(32768);
+  });
+
+  it('retires a model/runtime whose context destructor throws during a resize', async () => {
+    const { core, prepare } = configurableContextFixture();
+    await prepare({ contextTokens: 65536 });
+    const failure = new Error('context destruction failed');
+    vi.mocked(core.api.llama_free).mockRejectedValueOnce(failure);
+    await expect(prepare({ contextTokens: 131072 })).rejects.toBe(failure);
+    expect(core.api.llama_free).toHaveBeenCalledOnce();
+    expect(core.api.llama_model_free).toHaveBeenCalledOnce();
+    expect(core.api.llama_backend_free).toHaveBeenCalledOnce();
+    await prepare({ contextTokens: 131072 });
+    expect(core.api.llama_model_load_from_file).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([0, -1, 511, 512.5, Infinity, NaN, 1048577])('rejects invalid direct worker target %s before loading weights', async contextTokens => {
+    const { core, prepare } = configurableContextFixture();
+    await expect(prepare({ contextTokens })).rejects.toThrow();
+    expect(core.api.llama_model_load_from_file).not.toHaveBeenCalled();
+    expect(core.api.llama_init_from_model).not.toHaveBeenCalled();
+  });
+
+  it('preserves the independently bounded audio context even with a larger chat option', async () => {
+    const { core, targets } = configurableContextFixture();
+    await prepareAudioSession({ request: { ...request({ debug: 'off' }), options: { profile: 'cpu-wasm32', contextTokens: 131072 } }, contextTokens: 4096, audioBackend: 'profile', signal: undefined, onProgress: () => {} });
+    expect(targets()).toEqual([4096]);
+    expect(core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+  });
+});

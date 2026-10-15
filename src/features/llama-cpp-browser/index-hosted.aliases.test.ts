@@ -22,7 +22,7 @@ const worker = vi.hoisted(() => ({
 }));
 const factory = vi.hoisted(() => vi.fn(() => ({ ...worker })));
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
-vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: vi.fn() } }));
+vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: vi.fn(), loadSettings: vi.fn() } }));
 vi.mock('./runtime/model-store', () => ({ listStoredModels: vi.fn(), removeStoredModel: vi.fn(), withModelMutationLock: ({ operation }: { operation: () => Promise<unknown> }) => operation() }));
 vi.mock('./runtime/detect-profile', () => ({ resolveRuntimeProfile: vi.fn(async () => 'cpu-wasm32') }));
 
@@ -89,6 +89,7 @@ function receivedModel({ entry }: { entry: Entry }) {
 
 beforeEach(async () => {
   vi.resetModules(); vi.resetAllMocks();
+  vi.mocked(storageService.loadSettings).mockResolvedValue(null);
   vi.mocked(storageService.loadHostModelDirectories).mockResolvedValue([directory({ id: 'root', name: 'Models' })]);
   vi.mocked(selectHostModel).mockImplementation(async ({ name }) => ({ id: name, name, modelPath: 'model.gguf', projectorPath: undefined, files: [] }));
   vi.mocked(resolveRepositoryModel).mockImplementation(async ({ name }) => ({ id: name, name, modelPath: 'model.gguf', projectorPath: undefined, files: [] }));
