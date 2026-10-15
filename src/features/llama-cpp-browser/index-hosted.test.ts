@@ -527,6 +527,25 @@ describe('idle model preparation', () => {
     expect(service.getProfileState().status).toBe('ready');
   });
 
+  it('owns a settings rejection when preparation is cancelled just after a shared probe settles', async () => {
+    const gate = Promise.withResolvers<ProfileCapabilities>();
+    worker.probeProfiles.mockReturnValueOnce(gate.promise);
+    const probe = service.probeProfiles({ signal: undefined });
+    await vi.waitFor(() => expect(worker.probeProfiles).toHaveBeenCalledOnce());
+    const controller = new AbortController();
+    vi.mocked(storage.loadSettings).mockRejectedValueOnce(new Error('settings unavailable'));
+    const preparation = service.prepareModel({ model: 'local.gguf', signal: controller.signal });
+    const rejected = expect(preparation).rejects.toThrow('aborted');
+    const cancelled = probe.then(() => controller.abort());
+    gate.resolve({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
+    await cancelled;
+    await rejected;
+    // Let Node report any unowned derived rejection to Vitest.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(worker.prepareModel).not.toHaveBeenCalled();
+    expect(worker.dispose).not.toHaveBeenCalled();
+  });
+
   it('does not revive a released engine after the advisory probe fails', async () => {
     const gate = Promise.withResolvers<ProfileCapabilities>(); worker.probeProfiles.mockReturnValueOnce(gate.promise);
     const probe = service.probeProfiles({ signal: undefined });

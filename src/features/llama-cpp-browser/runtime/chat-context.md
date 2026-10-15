@@ -13,7 +13,7 @@ The persisted settings DTO (Data Transfer Object) accepts an optional target:
 ```
 
 Change the target in Settings → llama.cpp browser → Inference settings → Context
-size (tokens). The input saves on change; Reset to default removes the saved
+size (tokens). Edit the value and choose Save. Reset to default removes the saved
 override and restores the 32,768-token target. Changes apply to the next independent
 chat operation, including model preparation, and do not resize an ongoing generation.
 

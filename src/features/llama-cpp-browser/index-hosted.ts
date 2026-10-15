@@ -161,6 +161,8 @@ async function run<T>({ signal, operation, kind, owner, ready }: {
   signal: AbortSignal | undefined,
   operation: ({ worker, signal }: { worker: LlamaCppWorkerClient, signal: AbortSignal }) => Promise<T>,
 }): Promise<T> {
+  // Cancellation can skip awaiting preflight work, which must still own its rejection.
+  void ready?.catch(() => {});
   if (signal?.aborted) throw new LlamaCppBrowserError({ code: 'aborted' });
   const epoch = profileEpoch;
   laneReservations++;

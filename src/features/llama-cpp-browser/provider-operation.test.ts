@@ -21,6 +21,8 @@ let provider: LmProvider;
 
 beforeEach(async () => {
   vi.resetModules();vi.clearAllMocks();await ensureAllStringsForTest({ locale: 'en' });worker.canReuse.mockReturnValue(true);
+  const { storageService } = await import('@/00-storage/service');
+  vi.spyOn(storageService, 'loadSettings').mockResolvedValue(null);
   worker.subscribeDisposed.mockReturnValue(() => {});
   worker.probeProfiles.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }, { profile: 'cpu-wasm64', status: 'available' }] });
   worker.generate.mockImplementation(async ({ onEvent }) => deliverNativeResult({ result: finalText({ text: 'answer' }), onEvent }));
@@ -29,7 +31,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  service.release();
+  service.release(); vi.restoreAllMocks();
 });
 
 function firstToolCall(): void {

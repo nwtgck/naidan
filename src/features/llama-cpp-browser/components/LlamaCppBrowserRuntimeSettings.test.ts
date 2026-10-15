@@ -66,6 +66,8 @@ describe('persisted chat context controls', () => {
     expect(input.element.value).toBe('65536');
     const accepted = await captureChatOptions({ options: { profile: 'auto' } });
     await input.setValue('131072');
+    expect(host.update).not.toHaveBeenCalled();
+    await view.wrapper.get('[data-testid="llama-cpp-browser-context-save"]').trigger('click');
     await flushPromises();
     expect(host.update).toHaveBeenCalledOnce();
     expect(settings.value.experimental).toMatchObject({
@@ -77,11 +79,13 @@ describe('persisted chat context controls', () => {
     expect(host.setOptions).not.toHaveBeenCalled();
   });
 
-  it('removes the override on reset while preserving other settings', async () => {
+  it('resets directly from an unsaved edit without saving the draft first', async () => {
     settings.value.experimental!.llamaCppBrowser!.contextTokens = 65536;
     using view = render({ disabled: false });
+    await view.wrapper.get('[data-testid="llama-cpp-browser-context-tokens"]').setValue('131072');
     await view.wrapper.get('[data-testid="llama-cpp-browser-context-reset"]').trigger('click');
     await flushPromises();
+    expect(host.update).toHaveBeenCalledOnce();
     expect(settings.value.experimental?.llamaCppBrowser?.contextTokens).toBeUndefined();
     expect(settings.value.experimental?.llamaCppBrowser?.modelDownloadDestination).toEqual({ kind: 'opfs' });
     expect(view.wrapper.get<HTMLInputElement>('[data-testid="llama-cpp-browser-context-tokens"]').element.value).toBe('32768');
@@ -92,6 +96,9 @@ describe('persisted chat context controls', () => {
     using view = render({ disabled: false });
     const input = view.wrapper.get('[data-testid="llama-cpp-browser-context-tokens"]');
     await input.setValue(value);
+    const save = view.wrapper.get('[data-testid="llama-cpp-browser-context-save"]');
+    expect(save.attributes('disabled')).toBeDefined();
+    await save.trigger('click');
     expect(input.attributes('aria-invalid')).toBe('true');
     expect(view.wrapper.get('[data-testid="llama-cpp-browser-context-invalid"]').text()).toBe('Enter a whole number from 512 to 1048576.');
     expect(host.update).not.toHaveBeenCalled();
@@ -100,6 +107,7 @@ describe('persisted chat context controls', () => {
   it.each(['512', '1048576'])('accepts the context size boundary %s', async value => {
     using view = render({ disabled: false });
     await view.wrapper.get('[data-testid="llama-cpp-browser-context-tokens"]').setValue(value);
+    await view.wrapper.get('[data-testid="llama-cpp-browser-context-save"]').trigger('click');
     await flushPromises();
     expect(settings.value.experimental?.llamaCppBrowser?.contextTokens).toBe(Number(value));
     expect(view.wrapper.find('[data-testid="llama-cpp-browser-context-invalid"]').exists()).toBe(false);
@@ -110,10 +118,12 @@ describe('persisted chat context controls', () => {
     using view = render({ disabled: false });
     const input = view.wrapper.get('[data-testid="llama-cpp-browser-context-tokens"]');
     await input.setValue('65536');
+    const save = view.wrapper.get('[data-testid="llama-cpp-browser-context-save"]');
+    await save.trigger('click');
     await flushPromises();
     expect(view.wrapper.get('[data-testid="llama-cpp-browser-context-save-failed"]').text()).toBe('Could not save the context size. Try again.');
     expect(settings.value.experimental?.llamaCppBrowser?.contextTokens).toBeUndefined();
-    await input.trigger('change');
+    await save.trigger('click');
     await flushPromises();
     expect(settings.value.experimental?.llamaCppBrowser?.contextTokens).toBe(65536);
     expect(view.wrapper.find('[data-testid="llama-cpp-browser-context-save-failed"]').exists()).toBe(false);
@@ -125,9 +135,11 @@ describe('persisted chat context controls', () => {
     using view = render({ disabled: false });
     const input = view.wrapper.get('[data-testid="llama-cpp-browser-context-tokens"]');
     await input.setValue('65536');
+    const save = view.wrapper.get('[data-testid="llama-cpp-browser-context-save"]');
+    await save.trigger('click');
     expect(input.attributes('disabled')).toBeDefined();
     expect(view.wrapper.get('[data-testid="llama-cpp-browser-context-reset"]').attributes('disabled')).toBeDefined();
-    await input.trigger('change');
+    await save.trigger('click');
     expect(host.update).toHaveBeenCalledOnce();
     pending.resolve('changed');
     await flushPromises();
@@ -147,6 +159,7 @@ describe('persisted chat context controls', () => {
     using view = render({ disabled: false });
     const input = view.wrapper.get<HTMLInputElement>('[data-testid="llama-cpp-browser-context-tokens"]');
     await input.setValue('65536');
+    await view.wrapper.get('[data-testid="llama-cpp-browser-context-save"]').trigger('click');
     current = false;
     settings.value = { ...DEFAULT_SETTINGS, endpoint: { type: 'llama_cpp_browser' }, storageType: 'local', experimental: { llamaCppBrowser: { contextTokens: 8192 } } };
     pending.resolve();
@@ -165,7 +178,7 @@ describe('persisted chat context controls', () => {
     expect(input.attributes('disabled')).toBeUndefined();
     await view.wrapper.setProps({ disabled: true });
     expect(input.attributes('disabled')).toBeDefined();
-    await input.trigger('change');
+    await view.wrapper.get('[data-testid="llama-cpp-browser-context-save"]').trigger('click');
     expect(host.update).not.toHaveBeenCalled();
   });
 });
