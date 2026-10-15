@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { ArrowUpIcon, BirdIcon, BotIcon, CloudIcon, SendIcon, UserIcon } from 'lucide-vue-next';
 import naidanLogo from '../../assets/naidan.svg';
 import HomeBrowserFrame from './HomeBrowserFrame.vue';
+import HomeLocalOverhead from './HomeLocalOverhead.vue';
 import HomeTypingText from './HomeTypingText.vue';
 
 const props = defineProps<{ messages: typeof import('../../pages/index/messages/en').messages }>();
@@ -18,7 +19,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <div class="chat-comparison" data-docs-animation="chat-route-comparison" data-testid="docs-chat-route-comparison">
     <section class="comparison-mode local-mode" :aria-label="messages.naidan_gguf_chat">
       <div class="local-route">
-        <div class="local-overhead"><span>{{ messages.no_prompt_sent }}</span></div>
+        <HomeLocalOverhead :claim="messages.no_prompt_sent" />
         <HomeBrowserFrame identity="naidan" tab-label="Naidan" class="comparison-browser" data-testid="docs-local-chat-browser">
           <div class="chat-screen local-screen">
             <div class="screen-header"><img :src="naidanLogo" width="27" height="27" alt=""><strong class="brand-wordmark">Naidan</strong><span>{{ messages.new_chat }}</span><small>{{ messages.gguf_model }}</small></div>
@@ -68,9 +69,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .comparison-browser { grid-column:1;grid-row:2;display:flex;flex-direction:column;width:100%;height:480px; }
 .local-mode .comparison-browser { border-color:color-mix(in srgb,var(--blue) 30%,var(--line-strong)); }
 .remote-mode .comparison-browser { border-color:var(--line);background:color-mix(in srgb,var(--surface-2) 94%,var(--surface));box-shadow:none; }
-.local-overhead { grid-column:1;grid-row:1;display:flex;align-items:center;justify-content:center;min-width:0; }
-.local-overhead span { display:inline-flex;align-items:center;gap:7px;max-width:100%;padding:7px 11px;border:1px solid color-mix(in srgb,var(--blue) 30%,var(--line-strong));border-radius:999px;background:color-mix(in srgb,var(--blue) 7%,var(--surface));color:var(--text);font-size:12px;line-height:1.35;font-weight:750;text-align:center;overflow-wrap:anywhere; }
-.local-overhead span::before { content:"";display:block;width:7px;height:7px;flex:none;border-radius:50%;background:var(--blue); }
 .remote-overhead { z-index:2;grid-column:1;grid-row:1;display:grid;grid-template-rows:86px 14px;justify-items:center;min-width:0; }
 .remote-server { display:flex;align-items:center;gap:8px;width:min(100%,300px);height:86px;min-width:0;padding:9px 11px;border:1px solid var(--line-strong);border-radius:25px;background:var(--surface-2);color:var(--muted);font-size:11px;line-height:1.35;overflow-wrap:anywhere; }
 .remote-server > svg { flex:none;color:var(--muted); }

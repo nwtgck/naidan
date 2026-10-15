@@ -3,6 +3,7 @@ import { ArrowUpIcon, BotIcon, CloudIcon, ImageIcon } from 'lucide-vue-next';
 import catArtwork from '../../assets/flying-kitten.webp';
 import naidanLogo from '../../assets/naidan.svg';
 import HomeBrowserFrame from './HomeBrowserFrame.vue';
+import HomeLocalOverhead from './HomeLocalOverhead.vue';
 import HomeTypingText from './HomeTypingText.vue';
 
 defineProps<{ messages: typeof import('../../pages/index/messages/en').messages }>();
@@ -14,7 +15,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <div class="image-comparison" data-docs-animation="image-route-comparison" data-testid="docs-image-route-comparison">
     <section class="comparison-mode local-mode" :aria-label="messages.naidan_image_generation">
       <div class="local-route">
-        <div class="local-overhead"><span>{{ messages.no_prompt_sent }}</span></div>
+        <HomeLocalOverhead :claim="messages.no_prompt_sent" />
         <HomeBrowserFrame identity="naidan" tab-label="Naidan" class="comparison-browser" data-testid="docs-local-image-browser">
           <div class="comparison-screen local-screen">
             <strong class="workspace-brand"><img :src="naidanLogo" width="28" height="28" alt=""><span class="brand-copy"><span class="brand-name brand-wordmark">Naidan</span><span class="brand-subtitle">{{ messages.image_generation_ui }}</span></span></strong>
@@ -75,9 +76,6 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .comparison-browser { grid-column:1;grid-row:2;display:flex;flex-direction:column;width:100%;height:440px; }
 .local-mode .comparison-browser { border-color:color-mix(in srgb,var(--blue) 30%,var(--line-strong)); }
 .remote-mode .comparison-browser { border-color:var(--line);background:color-mix(in srgb,var(--surface-2) 94%,var(--surface));box-shadow:none; }
-.local-overhead { grid-column:1;grid-row:1;display:flex;align-items:center;justify-content:center;min-width:0; }
-.local-overhead span { display:inline-flex;align-items:center;gap:7px;max-width:100%;padding:7px 11px;border:1px solid color-mix(in srgb,var(--blue) 30%,var(--line-strong));border-radius:999px;background:color-mix(in srgb,var(--blue) 7%,var(--surface));color:var(--text);font-size:12px;line-height:1.35;font-weight:750;text-align:center;overflow-wrap:anywhere; }
-.local-overhead span::before { content:"";display:block;width:7px;height:7px;flex:none;border-radius:50%;background:var(--blue); }
 .remote-overhead { grid-column:1;grid-row:1;display:grid;grid-template-rows:auto minmax(0,1fr);justify-items:center;min-width:0; }
 .remote-server { z-index:2;display:flex;align-items:center;gap:8px;width:min(100%,300px);height:82px;min-width:0;padding:9px 11px;border:1px solid var(--line-strong);border-radius:25px;background:var(--surface-2);color:var(--muted);font-size:11px;line-height:1.35;overflow-wrap:anywhere; }
 .remote-server > svg { flex:none;color:var(--muted); }
@@ -138,7 +136,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
 .remote-travel { position:relative;z-index:3;grid-column:1;grid-row:1 / 3;align-self:stretch; }
 .remote-travel .moving-prompt { animation:remote-prompt-travel 8s ease-in-out -3.5s infinite both; }
 .remote-travel .moving-image { animation:remote-image-travel 8s ease-in-out -3.5s infinite both; }
-@keyframes generate-press { 0%,8.5%,10%,100% { transform:none;filter:none; } 9% { transform:translateY(1px) scale(.96);filter:brightness(.8); } }
+@keyframes generate-press { 0%,8.5%,76%,100% { transform:none;filter:none;opacity:1; } 9% { transform:translateY(1px) scale(.96);filter:brightness(.8);opacity:1; } 10%,75% { transform:none;filter:none;opacity:.5; } }
 @keyframes send-press { 0%,8.5%,10%,100% { transform:none;filter:none; } 9% { transform:translateY(1px) scale(.9);filter:brightness(.8); } }
 @keyframes composer-presence { 0%,9.5% { opacity:1; } 10%,100% { opacity:0; } }
 @keyframes sent-prompt-presence { 0%,9.5% { opacity:0; } 10%,92% { opacity:1; } 92.01%,100% { opacity:0; } }
@@ -159,7 +157,7 @@ html:has(#docs-pause-motion:checked) .image-comparison .received-prompt { animat
 html:has(#docs-pause-motion:checked) .image-comparison .result-stage > img { animation:none!important;opacity:1; }
 html:has(#docs-pause-motion:checked) .image-comparison .prompt-bubble { animation:none!important;opacity:1; }
 html:has(#docs-pause-motion:checked) .image-comparison .prompt-composer { animation:none!important;opacity:0; }
-html:has(#docs-pause-motion:checked) .image-comparison .generate-action { animation:none!important;transform:none;filter:none; }
+html:has(#docs-pause-motion:checked) .image-comparison .generate-action { animation:none!important;transform:none;filter:none;opacity:1; }
 html:has(#docs-pause-motion:checked) .image-comparison .model-path { animation:none!important;opacity:0; }
 @media(max-width:1160px) { .image-comparison { grid-template-columns:minmax(0,1fr);gap:24px; } }
 @media(max-width:620px) {
@@ -187,7 +185,7 @@ html:has(#docs-pause-motion:checked) .image-comparison .model-path { animation:n
   .result-stage > img { animation:none!important;opacity:1; }
   .prompt-bubble { animation:none!important;opacity:1; }
   .prompt-composer { animation:none!important;opacity:0; }
-  .generate-action { animation:none!important;transform:none;filter:none; }
+  .generate-action { animation:none!important;transform:none;filter:none;opacity:1; }
   .model-path { animation:none!important;opacity:0; }
 }
 </style>

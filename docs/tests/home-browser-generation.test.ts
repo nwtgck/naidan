@@ -35,6 +35,7 @@ describe('home browser generation examples', () => {
       const localBrowser = example?.querySelector(`[data-testid="docs-local-${expected.scenario}-browser"]`);
       const remoteBrowser = example?.querySelector(`[data-testid="docs-remote-${expected.scenario}-browser"]`);
       const remoteServer = example?.querySelector(`[data-testid="docs-remote-${expected.scenario}-server"]`);
+      const localOverhead = example?.querySelector('.local-overhead');
       expect(example?.classList.contains('generation-comparison-example')).toBe(true);
       expect(heading?.querySelector('a')).toBeNull();
       expect(guide?.getAttribute('href')).toBe(docsHref({ locale, page: expected.page }));
@@ -50,7 +51,10 @@ describe('home browser generation examples', () => {
       expect(remoteServer?.textContent).toContain(messages.server);
       expect(localBrowser?.contains(remoteServer ?? null)).toBe(false);
       expect(remoteBrowser?.contains(remoteServer ?? null)).toBe(false);
-      expect(example?.querySelector('.local-overhead')).not.toBeNull();
+      expect(localOverhead?.querySelector('img')?.getAttribute('src')).toBe(localBrowser?.querySelector('.browser-tab img')?.getAttribute('src'));
+      expect(localOverhead?.querySelector('img')?.getAttribute('alt')).toBe('');
+      expect(localOverhead?.querySelector('.brand-wordmark')?.textContent).toBe('Naidan');
+      expect(localOverhead?.querySelector('.local-overhead-claim')?.textContent).toBe(expected.scenario === 'speech' ? messages.no_text_sent_to_server : messages.no_prompt_sent);
       expect(example?.querySelectorAll('.comparison-mode')).toHaveLength(2);
     }
 

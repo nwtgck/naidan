@@ -55,7 +55,7 @@ export const messages = {
   model_downloads_and_external_connections: "Model downloads contact their distribution service. When you choose an external engine or tool, its permissions and connections also become part of your setup.",
   compare_app_permissions: "Compare what web and native apps can access",
   compare_app_permissions_description: "See where each can reach on your device and what it can send afterward.",
-  gguf_answer_in_browser_heading: "Run a GGUF model inside your browser.",
+  gguf_answer_in_browser_heading: "Chat in your browser with GGUF models.",
   gguf_answer_in_browser_description: "Ask a question and get an answer from a GGUF model running in your browser.",
   local_ai_server_option: ({ locale }: { locale: DocsLocale }) => <>You can also connect Naidan to a <DocsLink locale={locale} page="local-ai-servers">local AI server</DocsLink> such as Ollama or llama.cpp server.</>,
   gguf_chat_guide_link: "How to chat with GGUF",

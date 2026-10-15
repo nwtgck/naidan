@@ -55,7 +55,7 @@ export const messages = {
   model_downloads_and_external_connections: "モデルの取得時は配信元と通信します。外部のエンジンやツールを選ぶ場合は、その実行環境の権限と通信先も含めて使い方を選べます。",
   compare_app_permissions: "Webアプリとネイティブアプリのアクセス範囲を比べる",
   compare_app_permissions_description: "端末のどこにアクセスでき、得た情報をどう送れるかを比べます。",
-  gguf_answer_in_browser_heading: "GGUFモデルを、ブラウザの中で動かす。",
+  gguf_answer_in_browser_heading: "ブラウザ内でチャット。GGUFモデル対応。",
   gguf_answer_in_browser_description: "ブラウザ内で動くGGUFモデルに質問し、回答を得られます。",
   local_ai_server_option: ({ locale }: { locale: DocsLocale }) => <>Ollamaやllama.cpp serverなどの<DocsLink locale={locale} page="local-ai-servers">ローカルのAIサーバー</DocsLink>に接続して使うこともできます。</>,
   gguf_chat_guide_link: "GGUFでチャットする方法",

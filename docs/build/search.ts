@@ -14,7 +14,7 @@ export function searchEntry({ page }: { page: RenderedPage }): SearchEntry {
   if (!main) throw new Error(`Missing search content for ${page.locale}/${page.page}`);
   const selectors = main.querySelector('article.prose')
     ? 'article.prose'
-    : '.hero-copy, .how-heading-row, .mechanism-list, .boundary-footnote, .models-section, .standalone-section > div:first-child, .storage-copy, #guides .section-top';
+    : '.hero-copy, .how-heading-row, .mechanism-list, .boundary-footnote, .browser-generation-copy, .models-section, .standalone-section > div:first-child, .storage-copy, #guides .section-top';
   const containers = [...main.querySelectorAll(selectors)];
   if (!containers.length) throw new Error(`Missing search prose for ${page.locale}/${page.page}`);
   const nodes = containers.flatMap(container => [...container.querySelectorAll('h1,h2,h3,p,li')]);
