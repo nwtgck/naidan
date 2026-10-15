@@ -13,7 +13,7 @@ import LlamaCppBrowserModelRecovery from '@/features/llama-cpp-browser/component
 import { ensureAllStringsForTest } from '@/strings/utils.test-support';
 import { useMissingLlamaCppBrowserModel } from './useMissingLlamaCppBrowserModel';
 
-const calls = vi.hoisted(() => ({ read: vi.fn(), plan: vi.fn(), installed: vi.fn(), download: vi.fn() }));
+const calls = vi.hoisted(() => ({ read: vi.fn(), resolve: vi.fn(), plan: vi.fn(), installed: vi.fn(), download: vi.fn() }));
 const settings = ref<Settings>({ ...DEFAULT_SETTINGS, endpoint: { type: 'llama_cpp_browser' }, storageType: 'opfs' });
 const current = shallowRef<Chat | null>(null);
 const resolved = ref<{ endpoint: Endpoint, modelId: string | undefined }>({ endpoint: { type: 'llama_cpp_browser' }, modelId: undefined });
@@ -42,7 +42,7 @@ vi.mock('@/00-storage/service', () => ({
 }));
 vi.mock('../runtime/model-store', () => ({ storedModelDirectory: calls.read }));
 vi.mock('../model-recovery/download-target', () => ({ resolveRecoveryDownload: calls.plan }));
-vi.mock('../hugging-face/storage', () => ({ installedSelection: calls.installed }));
+vi.mock('../hugging-face/storage', () => ({ installedSelection: calls.installed, resolveRepositoryModel: calls.resolve }));
 vi.mock('../hugging-face/download-queue', async importOriginal => ({ ...await importOriginal<typeof import('@/features/llama-cpp-browser/hugging-face/download-queue')>(), getDownloadQueue: () => queue }));
 vi.mock('@/features/llama-cpp-browser', () => ({
   llamaCppBrowserService: {
@@ -80,6 +80,7 @@ beforeEach(async () => {
   localModelAvailability.invalidate(); settings.value = { ...DEFAULT_SETTINGS, endpoint: { type: 'llama_cpp_browser' }, storageType: 'opfs' };
   current.value = { id: toChatId({ raw: 'ordinary-chat' }), title: null, root: { items: [] }, createdAt: 1, updatedAt: 1, debugEnabled: false };
   resolved.value = { endpoint: { type: 'llama_cpp_browser' }, modelId: target.modelId };
+  calls.resolve.mockImplementation(async ({ name }: { name: string }) => ({ id: name, name, modelPath: target.mainFilePath, projectorPath: undefined, files: [] }));
   calls.read.mockRejectedValue(new LlamaCppBrowserError({ code: 'missing-model' }));
   calls.plan.mockResolvedValue(target); calls.installed.mockResolvedValue(undefined); calls.download.mockResolvedValue(undefined);
   queue = createDownloadQueue({ download: calls.download });
@@ -95,8 +96,10 @@ describe('ordinary Chat model recovery', () => {
   it('renders the Chat first, inspects locally later, and never inspects remote metadata on mount', async () => {
     const before = structuredClone(current.value);
     const { state } = start();
+    expect(calls.resolve).not.toHaveBeenCalled();
     expect(calls.read).not.toHaveBeenCalled(); expect(state.visible.value).toBe(false);
     await checkNow();
+    expect(calls.resolve).toHaveBeenCalledExactlyOnceWith({ name: target.modelId });
     expect(state.availability.value).toBe('missing'); expect(state.visible.value).toBe(true); expect(state.maySend.value).toBe(false);
     expect(calls.plan).not.toHaveBeenCalled(); expect(calls.download).not.toHaveBeenCalled(); expect(current.value).toEqual(before);
     expect(state).not.toHaveProperty('composerVisibility');

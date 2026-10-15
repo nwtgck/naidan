@@ -109,7 +109,7 @@ describe('host alias reference boundaries', () => {
 
   it.each([
     'nested%2fmodel.gguf', '..%2Fmodel.gguf', '%2Fmodel.gguf',
-    'weights%5Cmodel.gguf', 'model.gguf%00', '%ZZ.gguf', '%E0%A4%A.gguf',
+    'weights%5Cmodel.gguf', 'model%00.gguf', '%ZZ.gguf', '%E0%A4%A.gguf',
     'weights:original/100% model 日本語.gguf',
   ])('treats the public selector %s as literal text instead of decoding its filename', modelPath => {
     const directories = [directory({ id: 'root', name: 'Models' })];
