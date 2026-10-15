@@ -24,9 +24,8 @@ export function quantizationChoices({ repository, models }: { repository: string
     const path = model.files[0]!.path;
     const quantization = quantizationName({ path });
     const variant = variantLabel({ repository, path });
-    // Presentation only: variantLabel is also used by stored model names and
-    // existing endpoint settings, so changing it would break saved references.
-    // Preserve modifiers, but lead with the quantization instead of truncating it.
+    // Download choices lead with the quantization. Public model names still
+    // use the complete variant, including directories and unknown modifiers.
     const token = quantization === undefined ? undefined : new RegExp(`(?:^|[-_.])${quantization}(?=[-.]|$)`, 'i');
     const qualifier = token ? variant.replace(token, '').replace(/^[-_.]+|[-_.]+$/g, '') : variant;
     const label = quantization && qualifier ? `${quantization} · ${qualifier}` : quantization ?? variant;

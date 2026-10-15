@@ -44,7 +44,7 @@ describe('independent HF variants in one repository', () => {
     }
     expect(await installedSelection({ selection: split })).toBeUndefined();
     await writer.finish();
-    expect(await installedSelection({ selection: split })).toMatchObject({ name: `hf.co/${repository}:Q4_K_M (split-00002)` });
+    expect(await installedSelection({ selection: split })).toMatchObject({ name: `hf.co/${repository}:Q4_K_M` });
     const folder = await repositoryFolder({ repository, create: false });
     await folder.removeEntry(projector.path);
     expect(await installedSelection({ selection: split })).toBeUndefined();
@@ -75,14 +75,18 @@ describe('independent HF variants in one repository', () => {
     await expect(resolveRepositoryModel({ name: `hf.co/${repository}` })).rejects.toThrow('unsupported-input');
   });
 
-  it('keeps a split model selector stable when a same-stem unsplit variant is added', async () => {
+  it('keeps exact downloaded selections available while hiding an ambiguous public name', async () => {
     const splitSelection: DownloadSelection = { repository, revision, files: [{ path: 'Model-Q4_K_M-00001-of-00002.gguf', size: 128 }, { path: 'Model-Q4_K_M-00002-of-00002.gguf', size: 128 }, projector] };
     await publish({ input: splitSelection });
-    const before = await resolveRepositoryModel({ name: `hf.co/${repository}` });
-    expect(before.name).toBe(`hf.co/${repository}:Q4_K_M (split-00002)`);
+    const before = await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` });
+    expect(before.files.map(file => file.path)).toEqual(splitSelection.files.map(file => file.path));
+
     await publish({ input: selection({ quant: 'Q4_K_M' }) });
-    const after = await resolveRepositoryModel({ name: before.name }); expect(after.id).toBe(before.id); expect(after.files.map(file => file.path)).toEqual(before.files.map(file => file.path));
-    expect((await resolveRepositoryModel({ name: `hf.co/${repository}:Q4_K_M` })).files).toHaveLength(2);
+    expect(await listHuggingFaceModels()).toEqual([]);
+    await expect(resolveRepositoryModel({ name: before.name })).rejects.toThrow('unsupported-input');
+    expect((await resolveRepositoryModel({ name: before.id })).files.map(file => file.path)).toEqual(before.files.map(file => file.path));
+    expect(await installedSelection({ selection: splitSelection })).toMatchObject({ id: before.id });
+    expect(await installedSelection({ selection: selection({ quant: 'Q4_K_M' }) })).toBeDefined();
   });
 
   it('verifies shared files byte by byte without overwriting them and restarts verification after pause', async () => {

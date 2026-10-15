@@ -48,7 +48,7 @@ describe('direct linked-folder model storage', () => {
     const folder = await root.getDirectoryHandle('owner').then(owner => owner.getDirectoryHandle('repository'));
     const saved = await folder.getDirectoryHandle('nested').then(nested => nested.getFileHandle('model.gguf')); expect(saved.data).toEqual(bytes());
     const models = await listHostStoredModels({ directories: [{ id: toHostModelDirectoryId({ raw: destination.directoryId }), name: 'models' }], signal: undefined });
-    expect(models).toHaveLength(1); expect(models[0]?.name).toBe('host/models/owner/repository:nested%2Fmodel');
+    expect(models).toHaveLength(1); expect(models[0]?.name).toBe('host/models/owner/repository:nested/model');
     expect(models[0]?.source).toMatchObject({ directoryName: 'models', path: 'nested/model.gguf' });
     const reference = resolveHostModelName({ name: models[0]!.name, directories: [{ id: toHostModelDirectoryId({ raw: destination.directoryId }), name: 'models' }] });
     const name = (await selectHostModel({ name: reference })).id;
@@ -68,7 +68,7 @@ describe('direct linked-folder model storage', () => {
     expect(models).toHaveLength(2);
     const deep = models.find(model => model.source?.path === path)!;
     expect(deep.name.length).toBeGreaterThan(512); expect(deep.name.length).toBeLessThanOrEqual(1024);
-    expect(deep.name).toBe(`host/models/owner/repository:${encodeURIComponent(path.replace(/\.gguf$/, ''))}`);
+    expect(deep.name).toBe(`host/models/owner/repository:${path.replace(/\.gguf$/, '')}`);
     const reference = resolveHostModelName({ name: deep.name, directories: [{ id: toHostModelDirectoryId({ raw: destination.directoryId }), name: 'models' }] });
     const name = (await selectHostModel({ name: reference })).id;
     expect(name).toBe(deep.id);
