@@ -37,6 +37,17 @@ bridge only. CI runs the same `npm run lint` command with a 6 GiB Node heap
 limit. Docs, string catalogs and the development bridge remain part of the normal
 lint target.
 
+Production Docs code does not access browser persistence APIs directly except
+for the existing theme and motion preferences' private read/write code in
+`client/preferences.ts`, stored as `naidan_docs:settings`; its two storage calls
+have local lint exceptions. There is no migration, fallback, or deletion for an
+older key. HTTP cache, prefetch, and the browser back-forward cache are separate
+from explicit JavaScript storage. Tests and test-support files are excluded.
+The lint rule catches ordinary direct and destructured persistence access and
+bans all computed access through `window[...]`, `globalThis[...]`, or
+`self[...]` in production Docs code; it does not prove the absence of other
+dynamic, reflective, or third-party effects.
+
 ## Shared development and production rendering
 
 The following files own the pipeline.

@@ -198,7 +198,7 @@ describe('language-neutral entrance without navigation', () => {
   ] as const)('does not hide the static brand when motion is $state', ({ narrow, reduced, paused }) => {
     using browser = createBrowser({ url: 'https://example.test/docs/ja/', languages: ['ja'] });
     setMotionMedia({ dom: browser.dom, narrow, reduced });
-    if (paused) browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'dark', motion: 'paused' }));
+    if (paused) browser.dom.window.localStorage.setItem('naidan_docs:settings', JSON.stringify({ theme: 'dark', motion: 'paused' }));
     new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
     expect(browser.dom.window.document.documentElement.dataset.docsHomeBrandStartup).toBe('ready');
   });
@@ -277,7 +277,7 @@ describe('language-neutral entrance without navigation', () => {
   it('restores preferences before an article body arrives and saves native control changes across locales', async () => {
     using en = createBrowser({ url: 'https://example.test/docs/en/', languages: ['ja'] });
     en.dom.window.document.documentElement.lang = 'en';
-    en.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'light', motion: 'paused' }));
+    en.dom.window.localStorage.setItem('naidan_docs:settings', JSON.stringify({ theme: 'light', motion: 'paused' }));
     new Script(entry().script).runInContext(en.dom.getInternalVMContext());
     expect(en.dom.window.document.documentElement.dataset.theme).toBe('light');
     expect(en.dom.window.document.documentElement.lang).toBe('en');
@@ -294,11 +294,11 @@ describe('language-neutral entrance without navigation', () => {
     light.checked = false;
     light.dispatchEvent(new en.dom.window.Event('change', { bubbles: true }));
     expect(en.dom.window.document.documentElement.dataset.theme).toBe('dark');
-    expect(JSON.parse(en.dom.window.localStorage.getItem('naidan-docs-preferences') ?? '')).toEqual({ theme: 'dark', motion: 'paused' });
+    expect(JSON.parse(en.dom.window.localStorage.getItem('naidan_docs:settings') ?? '')).toEqual({ theme: 'dark', motion: 'paused' });
 
     using ja = createBrowser({ url: 'https://example.test/docs/ja/', languages: ['en'] });
     ja.dom.window.document.documentElement.lang = 'ja';
-    ja.dom.window.localStorage.setItem('naidan-docs-preferences', en.dom.window.localStorage.getItem('naidan-docs-preferences') ?? '');
+    ja.dom.window.localStorage.setItem('naidan_docs:settings', en.dom.window.localStorage.getItem('naidan_docs:settings') ?? '');
     new Script(entry().script).runInContext(ja.dom.getInternalVMContext());
     parseBody({ target: ja.dom, source: entry().ja });
     await Promise.resolve();
@@ -312,7 +312,7 @@ describe('language-neutral entrance without navigation', () => {
 
   it('restores controls after mounting the language-neutral home template', async () => {
     using browser = createBrowser({ url: 'https://example.test/docs/', languages: ['ja'] });
-    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'light', motion: 'paused' }));
+    browser.dom.window.localStorage.setItem('naidan_docs:settings', JSON.stringify({ theme: 'light', motion: 'paused' }));
     new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
     expect(browser.dom.window.document.documentElement.dataset.theme).toBe('light');
     parseBody({ target: browser.dom, source: entry().html });
@@ -325,7 +325,7 @@ describe('language-neutral entrance without navigation', () => {
 
   it('refreshes a restored article from storage after a back-forward cache navigation', async () => {
     using browser = createBrowser({ url: 'https://example.test/docs/en/', languages: ['en'] });
-    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'dark', motion: 'auto' }));
+    browser.dom.window.localStorage.setItem('naidan_docs:settings', JSON.stringify({ theme: 'dark', motion: 'auto' }));
     new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
     parseBody({ target: browser.dom, source: entry().en });
     await Promise.resolve();
@@ -340,7 +340,7 @@ describe('language-neutral entrance without navigation', () => {
     const write = vi.spyOn(browser.dom.window.Storage.prototype, 'setItem');
     using _restoreWrite = { [Symbol.dispose]: () => write.mockRestore() };
 
-    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'light', motion: 'paused' }));
+    browser.dom.window.localStorage.setItem('naidan_docs:settings', JSON.stringify({ theme: 'light', motion: 'paused' }));
     restoreFromCache({ dom: browser.dom });
     expect(browser.dom.window.document.documentElement.dataset.theme).toBe('light');
     expect(light?.checked).toBe(true);
@@ -351,7 +351,7 @@ describe('language-neutral entrance without navigation', () => {
     restoreFromCache({ dom: browser.dom });
     expect(changes).toEqual(['theme', 'motion']);
     expect(write).toHaveBeenCalledTimes(1);
-    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'dark', motion: 'paused' }));
+    browser.dom.window.localStorage.setItem('naidan_docs:settings', JSON.stringify({ theme: 'dark', motion: 'paused' }));
     restoreFromCache({ dom: browser.dom });
     expect(changes).toEqual(['theme', 'motion', 'theme']);
     expect(write).toHaveBeenCalledTimes(2);
@@ -389,7 +389,7 @@ describe('language-neutral entrance without navigation', () => {
 
   it('keeps an unsaved selection instead of restoring an older stored value', async () => {
     using browser = createBrowser({ url: 'https://example.test/docs/en/', languages: ['en'] });
-    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'dark', motion: 'auto' }));
+    browser.dom.window.localStorage.setItem('naidan_docs:settings', JSON.stringify({ theme: 'dark', motion: 'auto' }));
     new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
     parseBody({ target: browser.dom, source: entry().en });
     await Promise.resolve();
@@ -405,7 +405,7 @@ describe('language-neutral entrance without navigation', () => {
     pause.checked = true;
     pause.dispatchEvent(new browser.dom.window.Event('change', { bubbles: true }));
     expect(write).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(browser.dom.window.localStorage.getItem('naidan-docs-preferences') ?? '')).toEqual({ theme: 'dark', motion: 'auto' });
+    expect(JSON.parse(browser.dom.window.localStorage.getItem('naidan_docs:settings') ?? '')).toEqual({ theme: 'dark', motion: 'auto' });
 
     restoreFromCache({ dom: browser.dom });
     expect(light.checked).toBe(true);
@@ -417,11 +417,11 @@ describe('language-neutral entrance without navigation', () => {
 
   it('keeps the current selection when stored data becomes invalid during cache restore', async () => {
     using browser = createBrowser({ url: 'https://example.test/docs/en/', languages: ['en'] });
-    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'light', motion: 'paused' }));
+    browser.dom.window.localStorage.setItem('naidan_docs:settings', JSON.stringify({ theme: 'light', motion: 'paused' }));
     new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
     parseBody({ target: browser.dom, source: entry().en });
     await Promise.resolve();
-    browser.dom.window.localStorage.setItem('naidan-docs-preferences', '{broken');
+    browser.dom.window.localStorage.setItem('naidan_docs:settings', '{broken');
     const write = vi.spyOn(browser.dom.window.Storage.prototype, 'setItem');
     using _restoreWrite = { [Symbol.dispose]: () => write.mockRestore() };
 
@@ -435,7 +435,7 @@ describe('language-neutral entrance without navigation', () => {
 
   it.each(['{broken', '{"theme":"blue","motion":"paused"}'])('keeps the article readable with invalid saved preferences: %s', async stored => {
     using browser = createBrowser({ url: 'https://example.test/docs/en/', languages: ['en'] });
-    browser.dom.window.localStorage.setItem('naidan-docs-preferences', stored);
+    browser.dom.window.localStorage.setItem('naidan_docs:settings', stored);
     new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
     parseBody({ target: browser.dom, source: entry().en });
     await Promise.resolve();
@@ -443,6 +443,18 @@ describe('language-neutral entrance without navigation', () => {
     expect(browser.dom.window.document.querySelector<HTMLInputElement>('#docs-light-theme')?.checked).toBe(false);
     expect(browser.dom.window.document.querySelector<HTMLInputElement>('#docs-pause-motion')?.checked).toBe(false);
     expect(browser.dom.window.document.querySelector('h1')?.textContent).toBeTruthy();
+    expect(browser.errors).toEqual([]);
+  });
+
+  it('does not read or migrate the retired Docs preference key', async () => {
+    using browser = createBrowser({ url: 'https://example.test/docs/en/', languages: ['en'] });
+    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'light', motion: 'paused' }));
+    new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
+    parseBody({ target: browser.dom, source: entry().en });
+    await Promise.resolve();
+    expect(browser.dom.window.document.documentElement.dataset.theme).toBe('dark');
+    expect(browser.dom.window.document.querySelector<HTMLInputElement>('#docs-pause-motion')?.checked).toBe(false);
+    expect(browser.dom.window.localStorage.getItem('naidan_docs:settings')).toBeNull();
     expect(browser.errors).toEqual([]);
   });
 
@@ -479,7 +491,7 @@ describe('language-neutral entrance without navigation', () => {
 
   it('applies the saved theme to the static 404 without mounting a locale template', () => {
     using browser = createBrowser({ url: 'https://example.test/docs/missing/', languages: ['ja'] });
-    browser.dom.window.localStorage.setItem('naidan-docs-preferences', JSON.stringify({ theme: 'light', motion: 'paused' }));
+    browser.dom.window.localStorage.setItem('naidan_docs:settings', JSON.stringify({ theme: 'light', motion: 'paused' }));
     new Script(entry().script).runInContext(browser.dom.getInternalVMContext());
     expect(browser.dom.window.document.documentElement.dataset.theme).toBe('light');
     expect(browser.dom.window.document.documentElement.hasAttribute('data-docs-starting')).toBe(false);

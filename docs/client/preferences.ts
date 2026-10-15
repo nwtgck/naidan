@@ -1,6 +1,6 @@
 import { z } from 'zod/mini';
 
-const STORAGE_KEY = 'naidan-docs-preferences';
+const STORAGE_KEY = 'naidan_docs:settings';
 const preferencesSchema = z.object({
   theme: z.enum(['dark', 'light']),
   motion: z.enum(['auto', 'paused']),
@@ -11,6 +11,7 @@ const defaults: Preferences = { theme: 'dark', motion: 'auto' };
 
 function readPreferences({ window }: { window: Window }): Preferences | undefined {
   try {
+    // eslint-disable-next-line no-restricted-syntax -- This typed theme/motion module is Docs' only browser persistence owner.
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored === null) return undefined;
     const result = preferencesSchema.safeParse(JSON.parse(stored) as unknown);
@@ -22,6 +23,7 @@ function readPreferences({ window }: { window: Window }): Preferences | undefine
 
 function writePreferences({ window, preferences }: { window: Window; preferences: Preferences }): 'saved' | 'failed' {
   try {
+    // eslint-disable-next-line no-restricted-syntax -- This typed theme/motion module is Docs' only browser persistence owner.
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(preferencesSchema.parse(preferences)));
     return 'saved';
   } catch {

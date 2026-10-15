@@ -33,6 +33,7 @@ import noXssProneBrowserApis from './eslint-local-rules/no-xss-prone-browser-api
 import preferRootAliasImports from './eslint-local-rules/prefer-root-alias-imports.js';
 import enforceDependencyDirections from './eslint-local-rules/enforce-dependency-directions.js';
 import testStructureSpacing from './eslint-local-rules/test-structure-spacing.js';
+import docsNoBrowserPersistence from './eslint-local-rules/docs-no-browser-persistence.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -262,6 +263,7 @@ export default [
     files: ['docs/**/*.{ts,tsx,vue}', 'build/docs-dev-bridge.ts'],
     languageOptions: { parserOptions: { project: ['./docs/tsconfig.json'] } },
   },
+  docsNoBrowserPersistence,
   {
     ...requireNamedArgs,
     name: 'naidan/docs-named-arguments',

@@ -106,6 +106,17 @@ this repository. Type-only imports, assets such as SVG, and package imports
 remain supported. The source check does not prove arbitrary function purity;
 keep message functions free of shared mutable state.
 
+Do not access browser persistence APIs directly in production Docs code except
+through the private read/write code in `client/preferences.ts`, which
+saves the existing theme and motion choices under `naidan_docs:settings`; its
+individual storage calls have local lint exceptions. Do not add another storage
+path or migrate, fall back to, or delete an older key. HTTP caching, prefetching,
+and the browser back-forward cache are separate browser behavior. Tests and
+test-support files are excluded. The rule catches ordinary direct and
+destructured persistence access and bans all computed access through
+`window[...]`, `globalThis[...]`, or `self[...]` in production Docs code; it
+does not prove the absence of other dynamic, reflective, or third-party effects.
+
 The small `components/RenderText.ts` VNode bridge and article locale TSX functions
 are the supported exceptions for SSR-only rich copy. In article TSX, use JSX
 fragments, text, inert inline elements, and approved typed Docs links and
