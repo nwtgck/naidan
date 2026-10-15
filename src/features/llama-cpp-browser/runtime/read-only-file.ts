@@ -49,6 +49,12 @@ export function mountReadOnlyFile({ core, path, source, maxChunkBytes }: {
       if ((stream.flags & 3) !== 0 || (stream.flags & 512) !== 0) fail({ code: 'EROFS' });
       opens++;
     },
+    // Emscripten dupStream calls dup, not open. The duplicated descriptor must
+    // keep the source mounted after the loader closes its original descriptor.
+    dup() {
+      if (removed) fail({ code: 'ENOENT' });
+      opens++;
+    },
     close() {
       opens--;
     },
