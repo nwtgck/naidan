@@ -8,7 +8,7 @@ import { gunzipSync } from 'node:zlib';
 import { createServer } from 'vite';
 import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
-import { createLlamaCppBrowserBuild, transformBrowserCore } from '../src/features/llama-cpp-browser/build-core';
+import { createLlamaCppBrowserBuild } from '../src/features/llama-cpp-browser/build-core';
 import { createLlamaCppRuntimeAssetsPlugin } from '../src/features/llama-cpp-browser/build-runtime-assets';
 
 const repo = process.cwd();
@@ -19,7 +19,7 @@ const callbackGetters = [
   'ggml_backend_dev_count', 'ggml_backend_dev_get', 'ggml_backend_dev_name', 'ggml_backend_dev_supports_op',
 ] as const;
 
-describe('shared browser core adapter', () => {
+describe('shared browser core package integration', () => {
   it('keeps the committed dependency and lock entry on the same immutable artifact', () => {
     const dependencyName = 'llama-cpp-browser-core';
     const packageFile = z.object({ dependencies: z.record(z.string(), z.string()) }).parse(JSON.parse(readFileSync(path.join(repo, 'package.json'), 'utf8')));
@@ -70,7 +70,7 @@ describe('shared browser core adapter', () => {
     }
   });
 
-  it.each(profiles)('transforms %s at the same virtual dev boundary used by production', async profile => {
+  it.each(profiles)('loads the package source for %s at the same virtual dev boundary used by production', async profile => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-core-dev-'));
     const server = await createServer({
       configFile: false,
@@ -94,23 +94,20 @@ describe('shared browser core adapter', () => {
     const importer = await server.transformRequest('/main.js');
     expect(importer?.code).toContain(`/@fs${realPath}`);
     const result = await server.transformRequest(`/@fs${realPath}`);
-    expect(result?.code).toContain('Browser core requires supplied wasmBinary');
+    expect(result?.code).not.toContain('Naidan fix:');
     expect(result?.code).not.toContain('node:module');
     expect(result?.code).not.toContain('node:crypto');
     expect(result?.code).not.toContain('core.wasm?');
     expect(result?.code).not.toContain('browser-external');
     const source = readFileSync(realPath, 'utf8');
-    const start = source.indexOf('var ENVIRONMENT_IS_WEB=');
-    const adapted = transformBrowserCore({ source, id: realPath, profile }).code;
-    const injection = 'var navigator=Module["naidanNavigator"]??globalThis.navigator;';
-    expect(adapted.split(injection)).toHaveLength(profile.startsWith('webgpu-') ? 2 : 1);
-    // All other loader prologue bytes remain untouched; the hash guard still
-    // rejects every unreviewed native artifact before this scoped insertion.
-    expect(adapted.replace(injection, '').slice(0, start)).toBe(source.slice(0, start));
-    expect(() => transformBrowserCore({ source: source + '\n', id: realPath, profile })).toThrow('Unreviewed');
+    expect(source).toContain('@vite-ignore');
+    expect(source.includes('hostNavigator')).toBe(profile.startsWith('webgpu-'));
+    const load = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'hosted' }).corePlugin.load;
+    if (typeof load !== 'function') throw new Error('Expected a load hook');
+    expect(await load.call({ addWatchFile() {} } as never, realPath)).toBe(source);
   });
 
-  it('rejects an unreviewed but internally consistent revision when creating the dev plugin, before the first import', () => {
+  it.each(['cpu-wasm32', 'webgpu-wasm64-jspi'] as const)('accepts a consistent package revision for %s and still rejects corrupted input', async profile => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'naidan-core-pin-'));
     using _cleanupResource = {
       [Symbol.dispose]() {
@@ -119,44 +116,64 @@ describe('shared browser core adapter', () => {
     };
     const artifact = path.join(root, 'node_modules/llama-cpp-browser-core');
     cpSync(path.join(repo, 'node_modules/llama-cpp-browser-core'), artifact, { recursive: true });
-    const relative = 'llama-cpp-browser-core/profiles/cpu-wasm32/browser/core.mjs';
-    const data = readFileSync(path.join(artifact, relative), 'utf8') + '\n';
-    writeFileSync(path.join(artifact, relative), data);
-    // Keep both inventories internally consistent so the exact-source guard
-    // rejects this unreviewed browser core rather than a corrupt fixture.
+    const relative = `llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`;
+    const data = Buffer.from(readFileSync(path.join(artifact, relative), 'utf8') + '\n');
+    const updates = [{ relative, data }];
+    const mode = profile === 'cpu-wasm32' ? 'hosted' : 'standalone';
+    if (mode === 'standalone') {
+      const wasmRelative = relative.replace('core.mjs', 'core.wasm');
+      // Append an empty custom section so the revised binary remains valid Wasm.
+      updates.push({ relative: wasmRelative, data: Buffer.concat([readFileSync(path.join(artifact, wasmRelative)), Buffer.from([0, 1, 0])]) });
+    }
     const inventory = z.object({ files: z.array(z.object({ path: z.string(), bytes: z.number(), sha256: z.string() })) }).passthrough();
     const innerPath = path.join(artifact, 'llama-cpp-browser-core/manifest.json');
     const inner = inventory.parse(JSON.parse(readFileSync(innerPath, 'utf8')));
-    const innerFile = inner.files.find(file => file.path === 'profiles/cpu-wasm32/browser/core.mjs');
-    if (!innerFile) throw new Error('Missing test core');
-    innerFile.bytes = Buffer.byteLength(data); innerFile.sha256 = createHash('sha256').update(data).digest('hex');
-    const innerData = JSON.stringify(inner); writeFileSync(innerPath, innerData);
     const rootPath = path.join(artifact, 'manifest.json');
     const rootManifest = inventory.parse(JSON.parse(readFileSync(rootPath, 'utf8')));
-    const coreFile = rootManifest.files.find(file => file.path === relative);
+    for (const update of updates) {
+      writeFileSync(path.join(artifact, update.relative), update.data);
+      const innerFile = inner.files.find(file => file.path === update.relative.slice('llama-cpp-browser-core/'.length));
+      const coreFile = rootManifest.files.find(file => file.path === update.relative);
+      if (!innerFile || !coreFile) throw new Error('Missing test inventory entries');
+      for (const file of [innerFile, coreFile]) {
+        file.bytes = update.data.length; file.sha256 = createHash('sha256').update(update.data).digest('hex');
+      }
+    }
+    const innerData = JSON.stringify(inner); writeFileSync(innerPath, innerData);
     const innerManifest = rootManifest.files.find(file => file.path === 'llama-cpp-browser-core/manifest.json');
-    if (!coreFile || !innerManifest) throw new Error('Missing test inventory entries');
-    coreFile.bytes = Buffer.byteLength(data); coreFile.sha256 = createHash('sha256').update(data).digest('hex');
+    if (!innerManifest) throw new Error('Missing test runtime manifest');
     innerManifest.bytes = Buffer.byteLength(innerData); innerManifest.sha256 = createHash('sha256').update(innerData).digest('hex');
     writeFileSync(rootPath, JSON.stringify(rootManifest));
-    expect(() => createLlamaCppBrowserBuild({ rootDir: root, mode: 'hosted' })).toThrow('Unreviewed browser core artifact');
+    const { corePlugin, embeddedBinaries } = createLlamaCppBrowserBuild({ rootDir: root, mode });
+    const load = corePlugin.load;
+    if (typeof load !== 'function') throw new Error('Expected a load hook');
+    expect(await load.call({ addWatchFile() {} } as never, path.join(artifact, relative))).toBe(data.toString('utf8'));
+    for (const binary of embeddedBinaries) {
+      const bytes = readFileSync(binary.filePath);
+      expect(binary.bytes).toBe(bytes.length);
+      expect(binary.sha256).toBe(createHash('sha256').update(bytes).digest('hex'));
+    }
+    writeFileSync(path.join(artifact, relative), Buffer.concat([data, Buffer.from(' ')]));
+    expect(() => load.call({ addWatchFile() {} } as never, path.join(artifact, relative))).toThrow('Core artifact integrity mismatch');
+    expect(() => createLlamaCppBrowserBuild({ rootDir: root, mode })).toThrow('Core artifact integrity mismatch');
   });
 
-  it('initializes real CPU Wasm from the original non-zero-offset byte view with no fetch or Node imports', async () => {
+  it.each(['complete-buffer', 'partial-view'] as const)('initializes real CPU Wasm from a supplied %s with no fetch or Node imports', async input => {
     const profile = 'cpu-wasm32';
     const id = path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`);
-    const source = transformBrowserCore({ source: readFileSync(id, 'utf8'), id, profile }).code;
+    const source = readFileSync(id, 'utf8');
     const binary = readFileSync(id.replace('core.mjs', 'core.wasm'));
     const storage = new Uint8Array(binary.length + 32);
     storage.set(binary, 16);
-    const supplied = storage.subarray(16, 16 + binary.length);
+    const selected = storage.subarray(16, 16 + binary.length);
+    const supplied = input === 'complete-buffer' ? new Uint8Array(selected).buffer : selected;
     const instantiate = vi.fn((bytes: BufferSource, imports: WebAssembly.Imports | undefined) => WebAssembly.instantiate(bytes, imports));
     const wasm = Object.create(WebAssembly);
     wasm.instantiate = instantiate;
     const fetcher = vi.fn(() => {
       throw new Error('Unexpected runtime fetch');
     });
-    // A browser-like VM proves the adapter rather than relying on a Node-only import branch.
+    // Exercise the installed browser factory without a Node-only loading branch.
     const context = createContext({
       WebAssembly: wasm,
       console,
@@ -194,11 +211,11 @@ describe('shared browser core adapter', () => {
     expect(typeof deviceCount).toBe('bigint'); // Not a Promise, even though the ordinary API may be asynchronous.
     expect(deviceCount).toBeGreaterThanOrEqual(0n);
     expect(instantiate).toHaveBeenCalledOnce();
-    expect(instantiate.mock.calls[0]?.[0]).toBe(supplied);
-    await expect(factory({ printErr() {} })).rejects.toThrow('Browser core requires supplied wasmBinary');
-    await expect(factory({ wasmBinary: new Uint8Array(), printErr() {} })).rejects.toThrow('Browser core requires supplied wasmBinary');
-    await expect(factory({ wasmBinary: supplied.buffer, printErr() {} })).rejects.toThrow('Expected Wasm byte view');
-    expect(instantiate).toHaveBeenCalledOnce();
+    const compiledBytes = instantiate.mock.calls[0]?.[0];
+    if (!ArrayBuffer.isView(compiledBytes)) throw new Error('Expected a compiled byte view');
+    // Compare the full Wasm payload without expanding its bytes into matcher entries.
+    expect(Buffer.from(compiledBytes.buffer, compiledBytes.byteOffset, compiledBytes.byteLength).equals(binary)).toBe(true);
+    if (input === 'complete-buffer') expect(compiledBytes.buffer).toBe(supplied);
     expect(fetcher).not.toHaveBeenCalled();
   });
 });

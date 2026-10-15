@@ -10,7 +10,7 @@ import { z } from 'zod';
 import JSZip from 'jszip';
 import { build, type Plugin, type Rollup } from 'vite';
 import { describe, expect, it } from 'vitest';
-import { createLlamaCppBrowserBuild, transformBrowserCore, TEST_ONLY } from '../src/features/llama-cpp-browser/build-core';
+import { createLlamaCppBrowserBuild, TEST_ONLY } from '../src/features/llama-cpp-browser/build-core';
 import { createStandaloneFacadeAliases } from './standalone-facades.js';
 import { createNaidanStandalonePlugin } from './file-protocol-standalone/plugin';
 import { createFileProtocolStandaloneWorkerDefinitions } from './file-protocol-standalone/worker-definitions';
@@ -62,19 +62,19 @@ function evaluateDataModule({ source }: { source: string }): Record<string, unkn
   return exported;
 }
 
-describe('pinned standalone native artifacts', () => {
-  it('uses the browser variant without upstream version guards and rejects an unreviewed generated core', () => {
+describe('manifest-verified standalone native artifacts', () => {
+  it('loads the published browser source unchanged without Node or version-guard dependencies', async () => {
     const source = readFileSync(coreId, 'utf8');
-    const transformed = transformBrowserCore({ source, id: coreId, profile: 'webgpu-wasm64-jspi' }).code;
-    const guardsEnd = source.indexOf('var ENVIRONMENT_IS_WEB=');
-    expect(transformed).toContain('var navigator=Module["naidanNavigator"]??globalThis.navigator;');
-    expect(transformed.replace('var navigator=Module["naidanNavigator"]??globalThis.navigator;', '').slice(0, guardsEnd)).toBe(source.slice(0, guardsEnd));
-    expect(transformed).not.toContain('This page was compiled without support for Safari browser');
-    expect(transformed).not.toContain('import("node:module")');
-    expect(transformed).not.toContain('require("node:fs")');
-    expect(transformed).not.toContain('new URL("core.wasm",import.meta.url)');
-    expect(transformed).toContain('Browser core requires supplied wasmBinary');
-    expect(() => transformBrowserCore({ source: source + '\n', id: coreId, profile: 'webgpu-wasm64-jspi' })).toThrow('Unreviewed');
+    const load = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' }).corePlugin.load;
+    if (typeof load !== 'function') throw new Error('Expected a load hook');
+    const loaded = await load.call({ addWatchFile() {} } as never, coreId);
+    expect(loaded).toBe(source);
+    expect(source).toContain('hostNavigator');
+    expect(source).toContain('@vite-ignore');
+    expect(source).not.toContain('This page was compiled without support for Safari browser');
+    expect(source).not.toContain('import("node:module")');
+    expect(source).not.toContain('require("node:fs")');
+    expect(source).not.toContain('Naidan fix:');
   });
 
   it.each(['cpu-wasm32', 'cpu-wasm64', 'webgpu-wasm32-asyncify'])('rejects importing %s even before tree shaking', async profile => {
@@ -85,7 +85,7 @@ describe('pinned standalone native artifacts', () => {
     expect(() => load.call({} as never, path.join(repo, 'node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/webgpu-wasm64-jspi/test/core.mjs'))).toThrow('Unavailable llama.cpp artifact');
   });
 
-  it('registers both reviewed JSPI binaries and core imports for standalone capability selection', () => {
+  it('registers both manifest-verified JSPI binaries and core imports for standalone capability selection', () => {
     const { corePlugin, embeddedBinaries } = createLlamaCppBrowserBuild({ rootDir: repo, mode: 'standalone' });
     expect(embeddedBinaries.map(binary => binary.virtualId)).toEqual([
       'virtual:file-protocol-standalone/binary/llama-cpp-browser',
@@ -96,7 +96,12 @@ describe('pinned standalone native artifacts', () => {
     for (const profile of ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi']) {
       expect(resolve.call({} as never, `virtual:llama-cpp-browser-core/${profile}`, undefined, {} as never))
         .toBe(path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.mjs`));
-      expect(embeddedBinaries.some(binary => binary.filePath === path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`))).toBe(true);
+      const filePath = path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`);
+      const bytes = readFileSync(filePath);
+      expect(embeddedBinaries.find(binary => binary.filePath === filePath)).toMatchObject({
+        bytes: bytes.length,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+      });
     }
   });
 

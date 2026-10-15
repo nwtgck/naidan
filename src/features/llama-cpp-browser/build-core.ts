@@ -1,76 +1,18 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import MagicString from 'magic-string';
 import { normalizePath, type Plugin } from 'vite';
-import { profileSchema, usesWebGpu, type LlamaCppProfile } from './types';
+import { profileSchema, type LlamaCppProfile } from './types';
 import { readLlamaArtifactPackage } from './build-artifact-package';
 // eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- This build entry is also checked by tsconfig.node.json, which has no @ alias.
 import type { StandaloneEmbeddedBinary } from '../file-protocol-standalone/build-types';
 
-// Pinned browser variant artifact commit: df2003c9b4772fc6d0a2bbfdbbe450b8e6431813.
-// This is an exact-source adapter, not a general JavaScript syntax transform.
-// Publication digests identify the inputs; the adapter boundaries must still match.
-const coreHashes = {
-  'webgpu-wasm64-jspi': '685ecc342443105cab84f6bfe001e0a9080108142297c1a8fdd15ebff46b7507',
-  'webgpu-wasm32-jspi': '196045c1dc5f0e3956280f6ce8d4ae59c8536561c9cda6685e2d97796151da75',
-  'webgpu-wasm32-asyncify': '5b832c71347848c70b09db1b0a8a249d44c47f594bb7bb3350c98e395c079169',
-  'cpu-wasm64': '7474eb6457e04fe1fe344d2ac3c9aae95e2aea1d2e23a9b286950b4db5c105e7',
-  'cpu-wasm32': 'ab3ac9452141cc21e99a26d34e44d182d0aa318c8c39d9d4187a0fb9a3ed4169',
-} as const satisfies Record<LlamaCppProfile, string>;
 // Standalone selects either embedded JSPI artifact through Worker capability checks.
 const standaloneProfiles = ['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi'] as const;
 const virtualPrefix = 'virtual:llama-cpp-browser-core/';
-const standaloneWasm = {
-  'webgpu-wasm64-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser', sha256: '08d5b6977ef9968953347f5da9e484313e8aea5deae7a78787201384a6313cff' },
-  'webgpu-wasm32-jspi': { virtualId: 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi', sha256: 'a7e00075e3423a52623be33c1704102df4a63f2049f70ed7b0a60880f949a796' },
+const standaloneBinaryIds = {
+  'webgpu-wasm64-jspi': 'virtual:file-protocol-standalone/binary/llama-cpp-browser',
+  'webgpu-wasm32-jspi': 'virtual:file-protocol-standalone/binary/llama-cpp-browser-wasm32-jspi',
 } as const;
-
-/** Version-bound adapter for the browser variant, which has no upstream version guards. */
-export function transformBrowserCore({ source, id, profile }: { source: string, id: string, profile: LlamaCppProfile }) {
-  if (createHash('sha256').update(source).digest('hex') !== coreHashes[profile]) {
-    throw new Error('Unreviewed llama.cpp browser core; review the pinned packaging adapter before updating it');
-  }
-  const transformed = new MagicString(source);
-  function replace({ before, after }: { before: string, after: string }): void {
-    const start = source.indexOf(before);
-    if (start < 0 || source.indexOf(before, start + before.length) >= 0) throw new Error('Browser core adapter boundary changed');
-    transformed.overwrite(start, start + before.length, after);
-  }
-  function replaceBetween({ start, end, replacement }: { start: string, end: string, replacement: string }): void {
-    const from = source.indexOf(start); const to = source.indexOf(end, from + start.length);
-    if (from < 0 || to < 0) throw new Error('Browser core adapter range changed');
-    replace({ before: source.slice(from, to), after: replacement });
-  }
-  replaceBetween({
-    start: 'var readAsync,readBinary;',
-    end: 'var out=console.log.bind(console);',
-    replacement: '/* Naidan fix: Naidan supplies wasmBinary in every build mode; external runtime reads must never be attempted. */var readBinary=()=>{throw new Error("Browser core requires supplied wasmBinary")};var readAsync=async()=>readBinary();',
-  });
-  replace({
-    before: 'function findWasmBinary(){if(Module["locateFile"]){return locateFile("core.wasm")}return new URL("core.wasm",import.meta.url).href}',
-    after: '/* Naidan fix: prevent external WASM emission, including when locateFile is not supplied. */function findWasmBinary(){assert(wasmBinary&&wasmBinary.byteLength,"Browser core requires supplied wasmBinary");return "naidan:supplied-core.wasm"}',
-  });
-  replaceBetween({
-    start: 'async function instantiateAsync(binary,binaryFile,imports){',
-    end: 'function getWasmImports(){',
-    replacement: '/* Naidan fix: both builds supply bytes; never fall back to network or file-fetch. */async function instantiateAsync(binary,binaryFile,imports){assert(binary&&binary.byteLength,"Browser core requires supplied wasmBinary");return instantiateArrayBuffer(binaryFile,imports)}',
-  });
-  replace({
-    before: 'if(file==wasmBinaryFile&&wasmBinary){return new Uint8Array(wasmBinary)}',
-    after: '/* Naidan fix: keep the supplied byte view, including its offset, without copying the complete Wasm. */if(file==wasmBinaryFile&&wasmBinary){assert(ArrayBuffer.isView(wasmBinary)&&wasmBinary.BYTES_PER_ELEMENT===1,"Expected Wasm byte view");return wasmBinary}',
-  });
-  if (usesWebGpu({ profile })) {
-    // Scope the compatibility facade to this native module. Never patch the
-    // browser's navigator or GPU prototypes, and never edit the supplied Wasm.
-    replace({
-      before: 'var _scriptName=import.meta.url;',
-      after: 'var _scriptName=import.meta.url;var navigator=Module["naidanNavigator"]??globalThis.navigator;',
-    });
-  }
-  return { code: transformed.toString(), map: transformed.generateMap({ source: id, includeContent: true, hires: true }) };
-}
-
 
 /** Preserve complete legal comment blocks instead of redistributing megabytes of
  * unrelated C/C++ header implementation just to include their embedded notices. */
@@ -95,22 +37,18 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
   })();
   const profiles: readonly LlamaCppProfile[] = isStandalone ? standaloneProfiles : profileSchema.options;
   const cores = profiles.map(profile => {
+    // Verify at plugin creation too: an optimizer cache must not hide corrupt input.
     const core = readArtifact({ relative: `profiles/${profile}/browser/core.mjs` });
-    if (core.sha256 !== coreHashes[profile]) throw new Error(`Unreviewed browser core artifact: ${profile}`);
-    // Validate at plugin creation too: an optimizer cache must not hide a changed input.
-    const transformed = transformBrowserCore({ source: core.data.toString('utf8'), id: core.filePath, profile });
-    return { profile, core, transformed };
+    return { profile, core };
   });
   const embeddedBinaries = isStandalone ? standaloneProfiles.map(profile => {
     const wasm = readArtifact({ relative: `profiles/${profile}/browser/core.wasm` });
-    const expected = standaloneWasm[profile];
-    if (wasm.sha256 !== expected.sha256) throw new Error('Unreviewed standalone Wasm artifact');
-    return { virtualId: expected.virtualId, filePath: wasm.filePath, bytes: wasm.bytes, sha256: wasm.sha256 };
+    return { virtualId: standaloneBinaryIds[profile], filePath: wasm.filePath, bytes: wasm.bytes, sha256: wasm.sha256 };
   }) : [];
   const profileRoot = normalizePath(artifactProfiles) + '/';
   const byId = new Map(cores.map(entry => [normalizePath(entry.core.filePath), entry]));
   const byVirtualId = new Map(cores.map(entry => [virtualPrefix + entry.profile, normalizePath(entry.core.filePath)]));
-  const identity = createHash('sha256').update(cores.map(entry => entry.transformed.code).join('\0')).digest('hex');
+  const identity = createHash('sha256').update(cores.map(entry => entry.core.sha256).join('\0')).digest('hex');
 
   const licenseFiles = [...files.keys()].filter(relative => relative === 'LICENSE' || relative.startsWith('licenses/'));
   const licenseText = [
@@ -131,7 +69,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
       enforce: 'pre',
       config() {
         // Keep the source behind this loader in dev as well as production.
-        return { optimizeDeps: { exclude: ['llama-cpp-browser-core', ...Object.keys(coreHashes).map(profile => virtualPrefix + profile)] } };
+        return { optimizeDeps: { exclude: ['llama-cpp-browser-core', ...profileSchema.options.map(profile => virtualPrefix + profile)] } };
       },
       resolveId(id) {
         if (!id.startsWith(virtualPrefix)) return;
@@ -152,7 +90,7 @@ export function createLlamaCppBrowserBuild({ rootDir, mode }: { rootDir: string,
         for (const manifestPath of manifestPaths) this.addWatchFile(manifestPath);
         this.addWatchFile(entry.core.filePath);
         for (const relative of licenseFiles) this.addWatchFile(path.join(packageRoot, 'llama-cpp-browser-core', relative));
-        return transformBrowserCore({ source: readFileSync(entry.core.filePath, 'utf8'), id, profile: entry.profile });
+        return readArtifact({ relative: `profiles/${entry.profile}/browser/core.mjs` }).data.toString('utf8');
       },
     },
   };
