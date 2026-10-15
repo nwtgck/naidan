@@ -1,6 +1,8 @@
 import { z } from 'zod';
+// eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build configuration consumes this schema before Vite aliases exist.
+import { huggingFaceModelId } from '../../01-models/llama-cpp-browser-model-launch';
 
-import { parseHostModelReference, parsePublicHostModelReference } from './runtime/model-destination-types';
+import { parseHostModelReference, parseHostModelSelector, parsePublicHostModelReference } from './runtime/model-destination-types';
 
 export const profileSchema = z.enum(['webgpu-wasm64-jspi', 'webgpu-wasm32-jspi', 'webgpu-wasm32-asyncify', 'cpu-wasm64', 'cpu-wasm32']);
 export type LlamaCppProfile = z.infer<typeof profileSchema>;
@@ -41,7 +43,13 @@ export const modelSchema = z.object({
   try {
     return parsePublicHostModelReference({ name }).selector !== undefined;
   } catch {
-    return false;
+    // Repository scans also return internal encoded selectors, before replacing
+    // the opaque root with its public alias. Keep that inventory boundary intact.
+    try {
+      return parseHostModelSelector({ name }).selector !== undefined;
+    } catch {
+      return false;
+    }
   }
 }, {
   path: ['name'],
@@ -123,7 +131,19 @@ export const generateInputSchema = z.object({
   model: z.string().min(1).max(1024).refine(value => {
     // Generation must admit every canonical linked name accepted by inventory,
     // without widening the existing limit for ordinary model names.
-    if (!value.startsWith('host/')) return value.length <= 512;
+    if (!value.startsWith('host/')) {
+      if (value.length <= 512) return true;
+      // A readable public selector can expand when captured as an encoded exact
+      // HF identity. Admit that canonical internal form within the ID limit.
+      if (!value.startsWith('hf.co/')) return false;
+      const colon = value.indexOf(':');
+      if (colon < 0) return false;
+      try {
+        return huggingFaceModelId({ repository: value.slice('hf.co/'.length, colon), modelPath: decodeURIComponent(value.slice(colon + 1)) }) === value;
+      } catch {
+        return false;
+      }
+    }
     try {
       parseHostModelReference({ name: value }); return true;
     } catch {

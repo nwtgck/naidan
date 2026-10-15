@@ -25,12 +25,28 @@ describe('Hugging Face candidate presentation', () => {
     }
   });
 
+  it.each(['-', '.', '_'])('removes the repository model prefix followed by the %s separator', separator => {
+    const repository = 'owner/Model-v0.2-GGUF';
+    expect(variantLabel({ repository, path: `model-v0.2${separator}Q4_K_M.gguf` })).toBe('Q4_K_M');
+  });
+
+  it('removes repeated variant directories while retaining a meaningful ancestor', () => {
+    expect(variantLabel({ repository: 'owner/Model-GGUF', path: 'imatrix/Model-UD-Q4_K_XL/Model-UD-Q4_K_XL-00001-of-00004.gguf' })).toBe('imatrix/UD-Q4_K_XL');
+  });
+
   it('does not strip partial model names, dotted versions or size components', () => {
     const repository = 'owner/Ornith-1.5-35B-A3B-GGUF';
     expect(variantLabel({ repository, path: 'OrnithExtra-1.5-35B-Q4_K_M.gguf' })).toBe('OrnithExtra-1.5-35B-Q4_K_M');
     expect(variantLabel({ repository, path: 'Ornith-1.50-35B-Q4_K_M.gguf' })).toBe('1.50-35B-Q4_K_M');
     expect(variantLabel({ repository, path: 'Ornith-1.5-35BExtra-Q4_K_M.gguf' })).toBe('35BExtra-Q4_K_M');
+    expect(variantLabel({ repository, path: 'Ornith-1.5.1-35B-Q4_K_M.gguf' })).toBe('1.5.1-35B-Q4_K_M');
     expect(variantLabel({ repository, path: 'Other-1.5-35B-Q4_K_M.gguf' })).toBe('Other-1.5-35B-Q4_K_M');
+  });
+
+  it('preserves a longer dotted version while accepting a dot before the variant', () => {
+    const repository = 'owner/Model-v0.2-GGUF';
+    expect(variantLabel({ repository, path: 'model-v0.2.1.Q4_K_M.gguf' })).toBe('v0.2.1.Q4_K_M');
+    expect(variantLabel({ repository, path: 'model-v0.2.Q4_K_M.gguf' })).toBe('Q4_K_M');
   });
 
   it('keeps separate file identities when shortened variant labels coincide', () => {

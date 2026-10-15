@@ -149,8 +149,7 @@ export function selectRepositoryModel({ models, repository, selectors }: { model
   return matching[0]!;
 }
 
-export async function resolveRepositoryModel({ name }: { name: string }): Promise<ModelDirectory> {
-  const { repository, variant } = parseModelReference({ name });
+function repositorySelectors({ variant }: { variant: string | undefined }): string[] | undefined {
   // OPFS historically exposes raw labels and percent-encoded file identities.
   // Match both spellings, rejecting collisions rather than preferring either.
   const selectors = variant === undefined ? undefined : [variant];
@@ -160,7 +159,12 @@ export async function resolveRepositoryModel({ name }: { name: string }): Promis
       if (encodeURIComponent(decoded) === variant) selectors!.push(decoded);
     } catch { /* A literal percent in an existing raw label is not URI encoding. */ }
   }
-  return selectRepositoryModel({ models: await repositoryDirectories({ repository }), repository, selectors });
+  return selectors;
+}
+
+export async function resolveRepositoryModel({ name }: { name: string }): Promise<ModelDirectory> {
+  const { repository, variant } = parseModelReference({ name });
+  return selectRepositoryModel({ models: await repositoryDirectories({ repository }), repository, selectors: repositorySelectors({ variant }) });
 }
 
 export async function listHuggingFaceModels({ destination, onIssue }: { destination?: ModelDestination, onIssue?: ({ repository, error }: { repository: string, error: unknown }) => void } = {}): Promise<LocalModel[]> {
@@ -169,7 +173,18 @@ export async function listHuggingFaceModels({ destination, onIssue }: { destinat
     destination,
     onIssue,
     visit: async ({ repository }) => {
-      result.push(...(await repositoryDirectories({ repository, destination })).map(directory => describeDirectory({ directory })));
+      const models = await repositoryDirectories({ repository, destination });
+      for (const directory of models) {
+        const variant = modelVariantName({ repository, path: directory.modelPath });
+        const selectors = isHostDestination(destination) ? [variant] : repositorySelectors({ variant });
+        try {
+          // Resolve against the complete inventory, including hidden collisions.
+          // Exact locators remain available to launch, availability and deletion.
+          if (selectRepositoryModel({ models, repository, selectors }).id === directory.id) result.push(describeDirectory({ directory }));
+        } catch (error) {
+          if (!(error instanceof LlamaCppBrowserError)) throw error;
+        }
+      }
     },
   });
   return result;

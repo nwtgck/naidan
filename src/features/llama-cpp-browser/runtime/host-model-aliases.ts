@@ -35,17 +35,22 @@ export function hostModelPublicName({ name, directories }: { name: string, direc
   const { destination, repository, selector } = parseHostModelSelector({ name });
   const alias = hostModelDirectoryAliases({ directories }).get(destination.directoryId);
   if (alias === undefined) throw new LlamaCppBrowserError({ code: 'missing-model' });
-  const canonical = hostModelSelector({ directoryId: 'root', repository, selector });
-  return `host/${encodeURIComponent(alias)}/${canonical.slice('host/root/'.length)}`;
+  return `host/${encodeURIComponent(alias)}/${repository}${selector === undefined ? '' : `:${selector}`}`;
 }
 
 export function resolveHostModelName({ name, directories }: { name: string, directories: Directories }): string {
   if (!name.startsWith('host/')) return name;
   try {
-    const { alias, repository, selector } = parsePublicHostModelReference({ name });
     const aliases = hostModelDirectoryAliases({ directories });
-    const directoryId = [...aliases].find(([, value]) => value === alias)?.[0]
-      ?? (aliases.has(alias) ? alias : undefined);
+    // Registered IDs are reserved from public aliases. Preserve an existing
+    // internal reference without interpreting its encoded selector as raw text.
+    const root = /^host\/([^/]+)\//.exec(name)?.[1];
+    if (root !== undefined && aliases.has(decodeURIComponent(root))) {
+      if (parseHostModelSelector({ name }).selector === undefined) throw new LlamaCppBrowserError({ code: 'missing-model' });
+      return name;
+    }
+    const { alias, repository, selector } = parsePublicHostModelReference({ name });
+    const directoryId = [...aliases].find(([, value]) => value === alias)?.[0];
     if (directoryId === undefined || selector === undefined) throw new LlamaCppBrowserError({ code: 'missing-model' });
     return hostModelSelector({ directoryId, repository, selector });
   } catch {

@@ -65,6 +65,17 @@ function includeSharedProjector({ choice }: { choice: 'include' | 'keep' | undef
   }
 }
 
+/** Public selectors are resolved before acceptance. Runtime and deletion use
+ * captured identities; a missing file must not become another model's alias.
+ */
+async function storedRepositoryModel({ id }: { id: string }): Promise<ModelDirectory> {
+  const { repository, variant } = parseModelReference({ name: id });
+  if (variant === undefined) return resolveRepositoryModel({ name: id });
+  const selected = (await repositoryDirectories({ repository })).find(model => model.id === id);
+  if (!selected) throw new LlamaCppBrowserError({ code: 'missing-model' });
+  return selected;
+}
+
 async function removalTarget({ id, sharedProjector }: { id: string, sharedProjector: 'include' | 'keep' | undefined }): Promise<{ parent: FileSystemDirectoryHandle, name: string, folder: FileSystemDirectoryHandle, selectedPaths: string[] | undefined, projectors: string[], affectedVariants: number }> {
   let parent: FileSystemDirectoryHandle; let name: string; let selectedPaths: string[] | undefined; let projectors: string[] = []; let affectedVariants = 0;
   if (id.startsWith('hf.co/') || id.startsWith('host/')) {
@@ -93,7 +104,7 @@ async function removalTarget({ id, sharedProjector }: { id: string, sharedProjec
       }
       selectedPaths = [pendingName, ...pending.selection.files.filter((_file, index) => !pending.reused?.[index]).flatMap(file => host ? [file.path, hostDownloadMarkerPath({ path: file.path })] : [file.path])];
     } else {
-      const directory = host ? await resolveHostModel({ name: id }) : await resolveRepositoryModel({ name: id });
+      const directory = host ? await resolveHostModel({ name: id }) : await storedRepositoryModel({ id });
       projectors = directory.projectorPath ? [directory.projectorPath] : [];
       selectedPaths = directory.files.filter(file => !projectors.includes(file.path)).map(file => file.path);
       affectedVariants = Math.max(0, (await repositoryDirectories({ repository, destination: host?.destination })).length - 1);
@@ -165,7 +176,7 @@ export async function removeStoredModel({ plan }: { plan: DeletionPlan }): Promi
 
 export async function storedModelDirectory({ name }: { name: string }): Promise<ModelDirectory> {
   if (name.startsWith('host/')) return resolveHostModel({ name });
-  if (name.startsWith('hf.co/')) return resolveRepositoryModel({ name });
+  if (name.startsWith('hf.co/')) return storedRepositoryModel({ id: name });
   const directory = userModelName({ id: name });
   try {
     const parent = await existingUserModelDirectory();

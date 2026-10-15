@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isModelSourceSegment, modelSourceRepositorySchema } from '@/01-models/llama-cpp-browser-model-launch';
 import { parsePublicHostModelReference } from '@/features/llama-cpp-browser/runtime/model-destination-types';
 import { contract, describeMethods, methodDescriptorSchema, methodNames, procedure, rpc } from '@/features/naidan-rpc';
 import type { NaidanRpcClient, NaidanRpcImplementation } from '@/features/naidan-rpc';
@@ -33,8 +34,8 @@ export const chatModelReferenceSchema = z.string().min(1).max(4096).refine(value
     return relativeModelPathSchema.safeParse(value).success;
   }
   const at = value.indexOf(':');
-  return value.slice(0, at).split('/').length === 3 && relativeModelPathSchema.safeParse(value.slice(0, at)).success &&
-    !value.slice(at + 1).includes('/') && relativeModelPathSchema.safeParse(value.slice(at + 1)).success;
+  return modelSourceRepositorySchema.safeParse(value.slice('hf.co/'.length, at)).success &&
+    value.slice(at + 1).split('/').every(name => isModelSourceSegment({ name }));
 });
 
 export const chatCatalogItemSchema = z.object({
