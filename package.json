@@ -29,7 +29,7 @@
     "he": "^1.2.0",
     "highlight.js": "^11.11.1",
     "katex": "^0.17.0",
-    "llama-cpp-browser-core": "github:nwtgck/browser-inference-core#d32c9e1a1de1f89893aac9bd5787e36aac736621",
+    "llama-cpp-browser-core": "github:nwtgck/browser-inference-core#df2003c9b4772fc6d0a2bbfdbbe450b8e6431813",
     "lucide-vue-next": "^0.562.0",
     "marked": "^18.0.5",
     "marked-highlight": "^2.2.4",
