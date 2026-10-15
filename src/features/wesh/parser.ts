@@ -1,5 +1,6 @@
 import { Lexer, ShellLexerIncompleteError } from './lexer';
 import type { Token, TokenType } from './lexer';
+import { parseShellHereDocumentDelimiter } from './shell/scan';
 import type {
   WeshASTNode,
   WeshCaseClause,
@@ -16,7 +17,7 @@ export function parseCommandLine({
   env: Map<string, string>,
 }): WeshASTNode {
   const lexer = new Lexer({ input: commandLine });
-  const parser = new Parser({ lexer });
+  const parser = new Parser({ lexer, sourceCompletion: 'complete' });
   return parser.parse();
 }
 
@@ -25,6 +26,7 @@ export type ShellUnitParseResult =
       kind: 'parsed',
       node: WeshASTNode,
       consumedCharacters: number,
+      warnings?: string[],
     }
   | {
       kind: 'needs-more-source',
@@ -42,7 +44,7 @@ export function parseNextShellUnit({
   let parser: Parser | undefined;
 
   try {
-    parser = new Parser({ lexer });
+    parser = new Parser({ lexer, sourceCompletion });
     const { node, boundary } = parser.parseNextUnit();
 
     switch (boundary.kind) {
@@ -53,6 +55,7 @@ export function parseNextShellUnit({
           kind: 'parsed',
           node,
           consumedCharacters: boundary.consumedCharacters,
+          ...(parser.warnings.length > 0 ? { warnings: parser.warnings } : {}),
         };
       case 'may-continue':
         return { kind: 'needs-more-source' };
@@ -62,15 +65,11 @@ export function parseNextShellUnit({
       }
       }
     case 'newline': {
-      const consumedCharacters =
-        commandLine[boundary.consumedCharacters - 1] === '\r' &&
-        commandLine[boundary.consumedCharacters] === '\n'
-          ? boundary.consumedCharacters + 1
-          : boundary.consumedCharacters;
       return {
         kind: 'parsed',
         node,
-        consumedCharacters,
+        consumedCharacters: boundary.consumedCharacters,
+        ...(parser.warnings.length > 0 ? { warnings: parser.warnings } : {}),
       };
     }
     default: {
@@ -112,84 +111,24 @@ const KEYWORDS = new Set([
   'function',
 ]);
 
-function parseHereDocDelimiter({
-  raw,
-}: {
-  raw: string,
-}): {
-  delimiter: string,
-  contentExpansion: 'literal' | 'variables',
-} {
-  let delimiter = '';
-  let mode: 'unquoted' | 'single' | 'double' = 'unquoted';
-
-  for (let index = 0; index < raw.length; index++) {
-    const char = raw[index];
-    if (char === undefined) continue;
-
-    switch (mode) {
-    case 'single':
-      if (char === "'") {
-        mode = 'unquoted';
-      } else {
-        delimiter += char;
-      }
-      continue;
-    case 'double':
-      if (char === '"') {
-        mode = 'unquoted';
-      } else if (char === '\\') {
-        const nextChar = raw[index + 1];
-        if (nextChar !== undefined) {
-          delimiter += nextChar;
-          index += 1;
-        }
-      } else {
-        delimiter += char;
-      }
-      continue;
-    case 'unquoted':
-      break;
-    default: {
-      const _ex: never = mode;
-      throw new Error(`Unhandled parser mode: ${_ex}`);
-    }
-    }
-
-    if (char === "'") {
-      mode = 'single';
-      continue;
-    }
-
-    if (char === '"') {
-      mode = 'double';
-      continue;
-    }
-
-    if (char === '\\') {
-      const nextChar = raw[index + 1];
-      if (nextChar !== undefined) {
-        delimiter += nextChar;
-        index += 1;
-      }
-      continue;
-    }
-
-    delimiter += char;
-  }
-
-  return {
-    delimiter,
-    contentExpansion: raw === delimiter ? 'variables' : 'literal',
-  };
-}
-
 class Parser {
   private currentToken: Token;
   private lexer: Lexer;
+  private sourceCompletion: 'complete' | 'may-continue';
+  readonly warnings: string[] = [];
+  private pendingHereDocuments: {
+    redirection: WeshRedirection,
+    delimiter: string,
+    tabHandling: 'preserve' | 'strip-leading',
+    contentExpansion: 'literal' | 'variables',
+  }[] = [];
 
-  constructor({ lexer }: { lexer: Lexer }) {
+  constructor({ lexer, sourceCompletion }: {
+    lexer: Lexer,
+    sourceCompletion: 'complete' | 'may-continue',
+  }) {
     this.lexer = lexer;
+    this.sourceCompletion = sourceCompletion;
     this.currentToken = this.lexer.next();
   }
 
@@ -199,9 +138,31 @@ class Parser {
 
   private eat({ type }: { type: TokenType }) {
     if (this.currentToken.type === type) {
+      if (type === 'SEMI' && this.currentToken.value === '\n') {
+        this.readPendingHereDocuments();
+      }
       this.currentToken = this.lexer.next();
     } else {
       throw new Error(`Unexpected token: ${this.currentToken.value}, expected ${type}`);
+    }
+  }
+
+  private readPendingHereDocuments(): void {
+    // Bodies start after the complete command-line newline. All heredocs on
+    // the line are consumed in declaration order, not at each << operator.
+    const pending = this.pendingHereDocuments;
+    this.pendingHereDocuments = [];
+    for (const { redirection, delimiter, tabHandling, contentExpansion } of pending) {
+      const result = this.lexer.readHereDoc({
+        delimiter,
+        tabHandling,
+        contentExpansion,
+        sourceCompletion: this.sourceCompletion,
+      });
+      redirection.content = result.content;
+      if (!result.terminated) {
+        this.warnings.push(`here-document delimited by end-of-file (wanted \`${delimiter}')`);
+      }
     }
   }
 
@@ -270,6 +231,9 @@ class Parser {
       terminators: [],
       newlinePolicy: 'separator',
     });
+    if (this.pendingHereDocuments.length > 0) {
+      this.readPendingHereDocuments();
+    }
     const type = this.currentToken.type;
     switch (type) {
     case 'EOF':
@@ -310,6 +274,12 @@ class Parser {
       terminators: [],
       newlinePolicy: 'unit-boundary',
     });
+
+    if (this.currentToken.type === 'SEMI' && this.currentToken.value === '\n') {
+      this.readPendingHereDocuments();
+    } else if (this.pendingHereDocuments.length > 0) {
+      this.readPendingHereDocuments();
+    }
 
     switch (this.currentToken.type) {
     case 'SEMI':
@@ -1712,7 +1682,7 @@ class Parser {
     }
     case 'HEREDOC': {
       const rawTarget = this.expectWord();
-      const { delimiter, contentExpansion } = parseHereDocDelimiter({ raw: rawTarget });
+      const { delimiter, contentExpansion } = parseShellHereDocumentDelimiter({ raw: rawTarget });
       const tabHandling = (() => {
         switch (tokenValue) {
         case '<<':
@@ -1723,13 +1693,19 @@ class Parser {
           throw new Error(`Unexpected here-document operator: ${tokenValue}`);
         }
       })();
-      return {
+      const redirection: WeshRedirection = {
         fd,
         type: 'heredoc',
         target: delimiter,
-        content: this.lexer.readHereDoc({ delimiter, tabHandling }),
         contentExpansion,
       };
+      this.pendingHereDocuments.push({
+        redirection,
+        delimiter,
+        tabHandling,
+        contentExpansion,
+      });
+      return redirection;
     }
     case 'WORD':
     case 'PIPE':
