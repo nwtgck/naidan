@@ -78,7 +78,8 @@ describe('core-factory WebGPU scope', () => {
 
   it.each([undefined, new Uint8Array(), new ArrayBuffer(0)])('rejects missing or empty Wasm input before loading a factory: %s', async wasmBinary => {
     await expect(createCore({
-      profile: 'cpu-wasm32', baseURL: 'https://fixture.invalid/',
+      profile: 'cpu-wasm32',
+      baseURL: 'https://fixture.invalid/',
       moduleOptions: { wasmBinary, print() {}, printErr() {} } as CoreModuleOptions,
     })).rejects.toThrow('Browser core requires supplied wasmBinary');
     expect(host.load).not.toHaveBeenCalled();

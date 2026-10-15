@@ -213,7 +213,8 @@ describe('shared browser core package integration', () => {
     expect(instantiate).toHaveBeenCalledOnce();
     const compiledBytes = instantiate.mock.calls[0]?.[0];
     if (!ArrayBuffer.isView(compiledBytes)) throw new Error('Expected a compiled byte view');
-    expect(new Uint8Array(compiledBytes.buffer, compiledBytes.byteOffset, compiledBytes.byteLength)).toEqual(new Uint8Array(binary));
+    // Compare the full Wasm payload without expanding its bytes into matcher entries.
+    expect(Buffer.from(compiledBytes.buffer, compiledBytes.byteOffset, compiledBytes.byteLength).equals(binary)).toBe(true);
     if (input === 'complete-buffer') expect(compiledBytes.buffer).toBe(supplied);
     expect(fetcher).not.toHaveBeenCalled();
   });

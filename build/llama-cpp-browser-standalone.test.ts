@@ -99,7 +99,8 @@ describe('manifest-verified standalone native artifacts', () => {
       const filePath = path.join(repo, `node_modules/llama-cpp-browser-core/llama-cpp-browser-core/profiles/${profile}/browser/core.wasm`);
       const bytes = readFileSync(filePath);
       expect(embeddedBinaries.find(binary => binary.filePath === filePath)).toMatchObject({
-        bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'),
+        bytes: bytes.length,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
       });
     }
   });
