@@ -58,7 +58,7 @@ import {
   previousShellCharacterIndex,
 } from './shell/scan';
 import { normalizePath, resolvePath } from './path';
-import { createWriteHandleFromStream } from './utils/stream';
+import { createReadHandleFromStream, createWriteHandleFromStream } from './utils/stream';
 import { WeshOverlayMap } from './utils/overlay-map';
 
 import { builtinCommands } from './commands';
@@ -1513,15 +1513,25 @@ usage: ${name} [-c command] [file [argument...]]
     text,
     env,
     environment,
+    escapeMode,
   }: {
     text: string,
     env: Map<string, string>,
     environment: WeshExecutionEnvironment,
+    escapeMode: 'standard' | 'here-document',
   }): Promise<string> {
     let result = '';
 
     for (let index = 0; index < text.length; index++) {
       const char = text[index];
+      if (escapeMode === 'here-document' && char === '\\') {
+        const escaped = text[index + 1];
+        if (escaped === '\\' || escaped === '$' || escaped === '`') {
+          result += escaped;
+          index += 1;
+          continue;
+        }
+      }
       if (char === '`') {
         const expansion = await this.expandBackquoteCommandSubstitution({
           text,
@@ -2298,11 +2308,13 @@ usage: ${name} [-c command] [file [argument...]]
         text: parsedExpression.pattern,
         env,
         environment,
+        escapeMode: 'standard',
       });
       const replacement = await this.expandPartVariables({
         text: parsedExpression.replacement,
         env,
         environment,
+        escapeMode: 'standard',
       });
       return this.applyParameterSubstitution({
         value: this.getParameterValue({
@@ -2334,6 +2346,7 @@ usage: ${name} [-c command] [file [argument...]]
               : this.escapeGlobLiteral({ text: tilde.prefix }) + tilde.suffix,
             env,
             environment,
+            escapeMode: 'standard',
           });
         })(),
       });
@@ -2903,6 +2916,7 @@ usage: ${name} [-c command] [file [argument...]]
       text: operand,
       env,
       environment,
+      escapeMode: 'standard',
     });
 
     switch (operator) {
@@ -4120,18 +4134,17 @@ usage: ${name} [-c command] [file [argument...]]
         return undefined;
       }
 
-      const { read, write } = await this.kernel.pipe();
       let content: string;
       switch (redirection.type) {
       case 'herestring':
-        content = await this.expandSingleWord({
+        content = `${await this.expandSingleWord({
           raw: redirection.content,
           env: environment.env,
           cwd: environment.cwd,
           context: 'assignment',
           shellOptions: environment.shellOptions,
           environment,
-        });
+        })}\n`;
         break;
       case 'heredoc':
         switch (redirection.contentExpansion) {
@@ -4140,6 +4153,7 @@ usage: ${name} [-c command] [file [argument...]]
             text: redirection.content,
             env: environment.env,
             environment,
+            escapeMode: 'here-document',
           });
           break;
         case 'literal':
@@ -4155,9 +4169,18 @@ usage: ${name} [-c command] [file [argument...]]
       default:
         throw new Error(`Unhandled inline redirection: ${redirection.type}`);
       }
-      await write.write({ buffer: encodeShellTextToBytes({ text: content + '\n' }) });
-      await write.close();
-      return read;
+      // Heredoc input is already materialized. A bounded pipe cannot be
+      // synchronously prefilled beyond its capacity without a concurrent
+      // reader, and would deadlock on sufficiently large heredocs.
+      const bytes = encodeShellTextToBytes({ text: content });
+      return createReadHandleFromStream({
+        source: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(bytes);
+            controller.close();
+          },
+        }),
+      });
     }
 
     if (redirection.type === 'dup_output' || redirection.type === 'dup_input') {
@@ -6868,6 +6891,7 @@ usage: ${name} [-c command] [file [argument...]]
           text: part.text,
           env: environment.env,
           environment,
+          escapeMode: 'standard',
         })
         : part.text;
       text += part.quoted
@@ -6892,6 +6916,7 @@ usage: ${name} [-c command] [file [argument...]]
           text: part.text,
           env: environment.env,
           environment,
+          escapeMode: 'standard',
         })
         : part.text;
       text += part.quoted
@@ -7696,6 +7721,10 @@ usage: ${name} [-c command] [file [argument...]]
       }
       reader.consumeText({ characters: parsedUnit.consumedCharacters });
       bufferedSource = reader.getRetainedText();
+
+      for (const warning of parsedUnit.warnings ?? []) {
+        await this.writeErrorText({ stderr, text: `wesh: warning: ${warning}\n` });
+      }
 
       if (parsedUnit.node.kind === 'list' && parsedUnit.node.parts.length === 0) {
         continue;

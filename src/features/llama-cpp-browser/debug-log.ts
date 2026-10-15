@@ -4,12 +4,12 @@ import { backendCensusSchema } from './performance/backend-census-schema';
 import { z } from 'zod';
 import { errorCode, errorCodeSchema, profileSchema } from './types';
 
-const stageSchema = z.enum(['audio-info', 'audio-reference', 'audio-input', 'audio-prompt', 'audio-frame', 'audio-output', 'media-encode', 'media-decode', 'model-resolve', 'projector-trace', 'projector-load', 'image-decode', 'image-tokenize', 'image-evaluate', 'session', 'cache-prepare', 'cache-probe', 'cache-checkpoint', 'prefill', 'template', 'tokenize', 'prefill-decode', 'sampler-create',
+const stageSchema = z.enum(['audio-info', 'audio-reference', 'audio-input', 'audio-prompt', 'audio-frame', 'audio-output', 'media-encode', 'media-decode', 'model-resolve', 'model-load', 'projector-trace', 'projector-load', 'image-decode', 'image-tokenize', 'image-evaluate', 'session', 'cache-prepare', 'cache-probe', 'cache-checkpoint', 'prefill', 'template', 'tokenize', 'prefill-decode', 'sampler-create',
   'reasoning-state', 'grammar-switch', 'native-sample', 'reasoning-accept', 'reasoning-replay',
   'token-render', 'partial-parse', 'stream-emit', 'generation-decode', 'generation-overlap', 'final-parse', 'cleanup', 'event-loop-yield',
   'worker-operation', 'worker-callback', 'worker-rpc', 'worker-error', 'worker-messageerror']);
 export type DiagnosticStage = z.infer<typeof stageSchema>;
-const failureKindSchema = z.enum(['wasm-trap', 'native-exception', 'binding-error', 'type-error', 'range-error',
+const failureKindSchema = z.enum(['native-model-load-failed', 'native-buffer-allocation', 'native-file-backed-read', 'wasm-trap', 'native-exception', 'binding-error', 'type-error', 'range-error',
   'webgpu-dispatch-limit', 'webgpu-validation', 'webgpu-device-error', 'webgpu-device-lost', 'native-graph-error', 'native-output-mismatch', 'validation-error', 'abort-error', 'javascript-error', 'unknown-exception']);
 const nativeMetricSchema = z.enum(['n_ctx', 'n_ctx_seq', 'n_batch', 'n_ubatch', 'n_seq_max', 'graph_nodes', 'graph_splits', 'compute_buffer_mib', 'model_buffer_mib', 'kv_buffer_mib', 'recurrent_buffer_mib']);
 
@@ -52,6 +52,19 @@ export const diagnosticSchema = z.object({
     interval: sampleRateSchema,
   }).strict().optional(),
   fileReads: fileReadSchema.optional(),
+  modelFileCount: z.number().int().positive().max(65535).optional(),
+  fileBackedRowsAvailable: z.boolean().optional(),
+  retainedShardOrdinal: z.number().int().positive().max(65535).optional(),
+  requestedBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  modelShardReads: z.array(z.object({
+    ordinal: z.number().int().positive().max(65535),
+    sizeBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    sourceCalls: z.number().int().nonnegative(),
+    sourceBytes: z.number().int().nonnegative(),
+    failures: z.number().int().nonnegative(),
+    maximumReadEndBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    lastOffsetBytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  }).strict()).max(65535).optional(),
   progressDelivery: z.object({
     received: z.number().int().nonnegative(),
     sent: z.number().int().nonnegative(),
@@ -192,6 +205,7 @@ export const diagnosticSchema = z.object({
   reasoning: z.boolean().optional(),
   pointerBytes: z.union([z.literal(4), z.literal(8)]).optional(),
   contextTokens: z.number().int().positive().optional(),
+  requestedContextTokens: z.number().int().positive().max(1048576).optional(),
   reusedTokens: z.number().int().nonnegative().optional(),
   evaluatedTokens: z.number().int().nonnegative().optional(),
   cachedTokens: z.number().int().nonnegative().optional(),
@@ -270,6 +284,7 @@ const stageDescriptions = {
   'audio-output': 'decoding the accumulated audio and copying the waveform',
   'media-encode': 'encoding image or audio embeddings with native mtmd',
   'media-decode': 'evaluating a media embedding batch with the language model',
+  'model-load': 'loading the native model weights',
   'model-resolve': 'resolving the model directory layout',
   'projector-trace': 'reading native media encoder tensor metadata',
   'projector-load': 'loading the matching media companion',
@@ -305,6 +320,9 @@ const stageDescriptions = {
   'worker-messageerror': 'deserializing an inference worker message',
 } satisfies Record<DiagnosticStage, string>;
 const failureDescriptions = {
+  'native-model-load-failed': 'Native model loading returned no model.',
+  'native-buffer-allocation': 'Native buffer allocation failed.',
+  'native-file-backed-read': 'Native file-backed row gathering failed.',
   'native-graph-error': 'Native image graph evaluation returned an error status.',
   'native-output-mismatch': 'Native image output token count did not match the expected count.',
   'webgpu-dispatch-limit': 'WebGPU dispatch exceeded the device workgroup limit.',
@@ -627,8 +645,29 @@ function nativeProjectorDiagnostic({ message }: { message: unknown }): Diagnosti
   };
 }
 
+/** Match entire fixed diagnostic lines. Never retain a raw error as a fallback,
+ * or guess that every backend allocation happened during model loading. */
+function nativeModelLoadDiagnostic({ message }: { message: unknown }): Diagnostic | undefined {
+  if (typeof message !== 'string' || message.length > 256) return undefined;
+  const line = message.replace(/\r?\n$/, '');
+  const cpu = /^ggml_backend_cpu_buffer_type_alloc_buffer: failed to allocate buffer of size ([0-9]{1,16})$/.exec(line);
+  if (cpu) {
+    const requestedBytes = Number(cpu[1]);
+    if (!Number.isSafeInteger(requestedBytes)) return undefined;
+    return { event: 'native-error', failureKind: 'native-buffer-allocation', nativeBackend: 'CPU', requestedBytes };
+  }
+  const model = /^llama_model_load: error loading model: unable to allocate (CPU|WebGPU) buffer$/.exec(line);
+  if (model) return { event: 'native-error', stage: 'model-load', failureKind: 'native-buffer-allocation', nativeBackend: model[1] === 'CPU' ? 'CPU' : 'WebGPU' };
+  if (line === 'qwen4exp_file_rows: gather failed') return { event: 'native-error', failureKind: 'native-file-backed-read' };
+  return undefined;
+}
+
 /** Keep structured progress/metrics and known failures; never forward raw stderr. */
 export function logNativeDiagnostic({ message }: { message: unknown }): void {
+  const modelLoad = nativeModelLoadDiagnostic({ message });
+  if (modelLoad) {
+    logDiagnostic({ diagnostic: modelLoad }); return;
+  }
   if (typeof message === 'string' && message.length <= 256) {
     const line = message.replace(/\r?\n$/, '');
     const graph = /^clip_encode: ggml_backend_sched_graph_compute failed with error (-?\d+)$/.exec(line);

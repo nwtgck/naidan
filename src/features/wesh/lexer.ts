@@ -58,7 +58,7 @@ export class Lexer {
     if (char === '#') {
       while (this.position < this.length) {
         const commentChar = this.input[this.position];
-        if (commentChar === '\n' || commentChar === '\r') break;
+        if (commentChar === '\n') break;
         this.position += 1;
       }
 
@@ -67,11 +67,7 @@ export class Lexer {
       }
 
       const newlinePosition = this.position;
-      if (this.input[this.position] === '\r' && this.input[this.position + 1] === '\n') {
-        this.position += 2;
-      } else {
-        this.position += 1;
-      }
+      this.position += 1;
       return { type: 'SEMI', value: '\n', position: newlinePosition };
     }
 
@@ -121,7 +117,9 @@ export class Lexer {
       return { type: 'SEMI', value: ';', position: this.position - 1 };
     }
 
-    if (char === '\n' || char === '\r') {
+    // Bash recognizes LF as the line terminator. A carriage return is a
+    // literal word character, including before LF in CRLF source text.
+    if (char === '\n') {
       this.position++;
       return { type: 'SEMI', value: '\n', position: this.position - 1 };
     }
@@ -317,7 +315,6 @@ export class Lexer {
         char === ' ' ||
         char === '\t' ||
         char === '\n' ||
-        char === '\r' ||
         char === '|' ||
         char === '&' ||
         char === ';' ||
@@ -434,11 +431,14 @@ export class Lexer {
     return token;
   }
 
-  readHereDoc({ delimiter, tabHandling }: {
+  readHereDoc({ delimiter, tabHandling, contentExpansion, sourceCompletion }: {
     delimiter: string,
     tabHandling: 'preserve' | 'strip-leading',
-  }): string {
+    contentExpansion: 'literal' | 'variables',
+    sourceCompletion: 'complete' | 'may-continue',
+  }): { content: string, terminated: boolean } {
     let content = '';
+    let logicalLine = '';
 
     // Simple line-based scanner
     while (this.position < this.length) {
@@ -460,21 +460,45 @@ export class Lexer {
         }
       })();
 
-      if (line === delimiter) {
-        this.position = lineEnd + (lineEnd < this.length ? 1 : 0); // Skip delimiter line and newline
-        // Standard behavior: content is everything BEFORE the delimiter line.
-        // If content ended with newline (which it does because we add it),
-        // we might want to keep it or remove one.
-        // Actually, my content += line + '\n' adds a newline for every line.
-        // The last line before delimiter also got a newline.
-        return content.endsWith('\n') ? content.slice(0, -1) : content;
+      logicalLine += line;
+      let trailingBackslashes = 0;
+      for (let index = line.length - 1; index >= 0 && line[index] === '\\'; index--) {
+        trailingBackslashes += 1;
+      }
+      // Bash removes unquoted backslash-newlines before testing for the
+      // delimiter. This can join even the two halves of a delimiter line.
+      if (
+        contentExpansion === 'variables' &&
+        lineEnd < this.length &&
+        trailingBackslashes % 2 === 1
+      ) {
+        logicalLine = logicalLine.slice(0, -1);
+        this.position = lineEnd + 1;
+        continue;
       }
 
-      content += line + '\n';
+      if (logicalLine === delimiter) {
+        this.position = lineEnd + (lineEnd < this.length ? 1 : 0); // Skip delimiter line and newline
+        return { content, terminated: true };
+      }
+
+      content += logicalLine + '\n';
+      logicalLine = '';
       this.position = lineEnd + (lineEnd < this.length ? 1 : 0);
     }
 
-    throw new ShellLexerIncompleteError(`Here-document delimiter '${delimiter}' not found`);
+    switch (sourceCompletion) {
+    case 'complete':
+      // Bash accepts a here-document terminated by input EOF, with a warning.
+      // It also supplies a newline for an unfinished final content line.
+      return { content: content + (logicalLine.length > 0 ? `${logicalLine}\n` : ''), terminated: false };
+    case 'may-continue':
+      throw new ShellLexerIncompleteError(`Here-document delimiter '${delimiter}' not found`);
+    default: {
+      const _ex: never = sourceCompletion;
+      throw new Error(`Unhandled source completion: ${_ex}`);
+    }
+    }
   }
 }
 

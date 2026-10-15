@@ -56,7 +56,12 @@ export function parsePublicHostModelReference({ name }: { name: string }): { ali
   if (!match) throw new Error('Invalid public linked model reference');
   const alias = decodeURIComponent(match[1]!);
   if (encodeURIComponent(alias) !== match[1]) throw new Error('Invalid public linked model reference');
-  const { repository, selector } = parseHostModelSelector({ name: `host/root/${match[2]}` });
+  // Public selectors are readable relative names. Only the root alias is encoded;
+  // a literal '%2F' in a filename must not turn into a path separator here.
+  const value = match[2]!; const colon = value.indexOf(':');
+  const repository = modelSourceRepositorySchema.parse(colon < 0 ? value : value.slice(0, colon));
+  const selector = colon < 0 ? undefined : value.slice(colon + 1);
+  if (selector !== undefined && !selector.split('/').every(name => isModelSourceSegment({ name }))) throw new Error('Invalid public linked model selector');
   return { alias, repository, selector };
 }
 

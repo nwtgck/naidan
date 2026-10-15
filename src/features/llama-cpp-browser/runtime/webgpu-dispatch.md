@@ -2,13 +2,13 @@
 
 ## Ownership and scope
 
-This is a Naidan-owned WebGPU API adapter, not a new lcore artifact, a llama.cpp
-source patch, or an implementation of a model's image encoder. It retains the
-installed native source/binary pins and the existing exact-source build checks.
-The existing browser-core build adapter gives each WebGPU factory a lexical
-`navigator` supplied by `createCore`. No global `navigator`, GPU prototype, device
-limit, installed dependency file, or Wasm byte is changed. Hosted and standalone
-builds share this boundary. CPU factories do not receive the adapter.
+This Naidan-owned WebGPU API adapter uses the published browser package's
+`hostNavigator` option. `createCore` passes a scoped facade to each WebGPU factory;
+the package owns its lexical `navigator` binding. The native package is pinned
+through npm, and its source and Wasm are verified against the package manifests.
+Hosted and standalone builds share this boundary. CPU factories do not receive
+the adapter. Browser globals, GPU prototypes, device limits and Wasm bytes remain
+unchanged.
 
 The adapter observes shader/pipeline/bind-group creation and compute dispatches.
 Native shaders and pipelines are used unchanged for legal-sized dispatches.
@@ -94,16 +94,16 @@ most compilation for subsequent tensors with the same chunk origins.
 An upstream native dispatch fix remains preferable long-term. Once the pinned
 backend correctly schedules these grids, they pass through unchanged; after
 native coverage is verified, remove this adapter, the factory binding, and its
-specific tests. Do not weaken the existing artifact/hash guards to accept a new
-lcore version without reviewing the JavaScript factory boundary.
+specific tests. Keep manifest integrity checks and verify the public factory
+contract when updating the native package.
 
 ## Verification boundaries
 
 Unit tests cover exact coverage, limits, descriptor/offset snapshots, logical
 builtins, pipeline-exclusive layouts, cache eviction, state restoration, error
 propagation, lazy acquisition, and multiple devices. Existing projector/session
-and profile tests retain their previous GPU-selection behavior. Build integration
-tests assert the lexical insertion for GPU profiles and unchanged CPU factories.
+and profile tests retain their previous GPU-selection behavior. Integration tests
+check the public factory option, unchanged package source and manifest integrity.
 
 Real-device inference and GPU numerical comparison are separate requirements;
 mock GPU tests and a successful TypeScript check are not substitutes for them.

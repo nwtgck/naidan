@@ -91,6 +91,7 @@ function scanHereDocumentDeclaration({
 }): {
   endIndex: number,
   pending: PendingHereDocument,
+  quoted: boolean,
 } | undefined {
   if (text[operatorIndex] !== '<' || text[operatorIndex + 1] !== '<') return undefined;
   if (text[operatorIndex + 2] === '<') return undefined;
@@ -127,6 +128,7 @@ function scanHereDocumentDeclaration({
   let literalStart = index;
   let mode: ShellQuoteMode = 'unquoted';
   let consumed = false;
+  let quoted = false;
 
   const appendLiteralUntil = ({ endIndex }: { endIndex: number }): void => {
     if (literalStart < endIndex) delimiterParts.push(text.slice(literalStart, endIndex));
@@ -190,6 +192,7 @@ function scanHereDocumentDeclaration({
     const ansiCQuoted = scanAnsiCQuotedDelimiterPart({ text, startIndex: index });
     if (ansiCQuoted !== undefined) {
       consumed = true;
+      quoted = true;
       appendLiteralUntil({ endIndex: index });
       delimiterParts.push(ansiCQuoted.value);
       index = ansiCQuoted.endIndex;
@@ -199,6 +202,7 @@ function scanHereDocumentDeclaration({
 
     if (character === '$' && text[index + 1] === '"') {
       consumed = true;
+      quoted = true;
       appendLiteralUntil({ endIndex: index });
       mode = 'double';
       index += 1;
@@ -227,18 +231,21 @@ function scanHereDocumentDeclaration({
     }
     consumed = true;
     if (character === "'") {
+      quoted = true;
       appendLiteralUntil({ endIndex: index });
       mode = 'single';
       literalStart = index + 1;
       continue;
     }
     if (character === '"') {
+      quoted = true;
       appendLiteralUntil({ endIndex: index });
       mode = 'double';
       literalStart = index + 1;
       continue;
     }
     if (character === '\\') {
+      quoted = true;
       appendLiteralUntil({ endIndex: index });
       const nextCharacter = text[index + 1];
       if (nextCharacter !== undefined) {
@@ -256,6 +263,26 @@ function scanHereDocumentDeclaration({
   return {
     endIndex: index - 1,
     pending: { delimiter, tabHandling },
+    quoted,
+  };
+}
+
+// The substitution scanner and command parser share delimiter quote removal.
+// Delimiter words are never expanded as ordinary shell words.
+export function parseShellHereDocumentDelimiter({ raw }: { raw: string }): {
+  delimiter: string,
+  contentExpansion: 'literal' | 'variables',
+} {
+  const declaration = scanHereDocumentDeclaration({
+    text: `<<${raw}\n`,
+    operatorIndex: 0,
+  });
+  if (declaration === undefined || declaration.endIndex !== raw.length + 1) {
+    throw new Error(`Invalid here-document delimiter: ${raw}`);
+  }
+  return {
+    delimiter: declaration.pending.delimiter,
+    contentExpansion: declaration.quoted ? 'literal' : 'variables',
   };
 }
 

@@ -87,13 +87,13 @@ describe('registered host folder aliases', () => {
 });
 
 describe('host alias reference boundaries', () => {
-  it.each(['a/b', 'a:b', '100% Models', '%2F', '日本語 🚀', ' Models ', 'models', 'Models'])('round-trips the exact folder name %s without changing storage or path encoding', folderName => {
+  it.each(['a/b', 'a:b', '100% Models', '%2F', '日本語 🚀', ' Models ', 'models', 'Models'])('round-trips the exact folder name %s without changing storage encoding', folderName => {
     const directories = [directory({ id: 'root', name: folderName })];
     const modelPath = 'weights:original/100% model 日本語.gguf';
     const canonical = reference({ directoryId: 'root', modelPath });
     const name = hostModelPublicName({ name: canonical, directories });
 
-    expect(name).toBe(`host/${encodeURIComponent(folderName)}/owner/repo:${encodeURIComponent(modelPath)}`);
+    expect(name).toBe(`host/${encodeURIComponent(folderName)}/owner/repo:${modelPath}`);
     expect(resolveHostModelName({ name, directories })).toBe(canonical);
     expect(directories).toEqual([directory({ id: 'root', name: folderName })]);
   });
@@ -102,7 +102,20 @@ describe('host alias reference boundaries', () => {
     const directories = [directory({ id: 'same name:%/root', name: 'Models' })];
     const canonical = reference({ directoryId: 'same name:%/root', modelPath: 'nested/model.gguf' });
     const name = hostModelPublicName({ name: canonical, directories });
-    expect(name).toBe('host/Models/owner/repo:nested%2Fmodel.gguf');
+    expect(name).toBe('host/Models/owner/repo:nested/model.gguf');
+    expect(resolveHostModelName({ name, directories })).toBe(canonical);
+    expect(resolveHostModelName({ name: canonical, directories })).toBe(canonical);
+  });
+
+  it.each([
+    'nested%2fmodel.gguf', '..%2Fmodel.gguf', '%2Fmodel.gguf',
+    'weights%5Cmodel.gguf', 'model%00.gguf', '%ZZ.gguf', '%E0%A4%A.gguf',
+    'weights:original/100% model 日本語.gguf',
+  ])('treats the public selector %s as literal text instead of decoding its filename', modelPath => {
+    const directories = [directory({ id: 'root', name: 'Models' })];
+    const canonical = reference({ directoryId: 'root', modelPath });
+    const name = hostModelPublicName({ name: canonical, directories });
+    expect(name).toBe(`host/Models/owner/repo:${modelPath}`);
     expect(resolveHostModelName({ name, directories })).toBe(canonical);
     expect(resolveHostModelName({ name: canonical, directories })).toBe(canonical);
   });
@@ -147,12 +160,11 @@ describe('host alias reference boundaries', () => {
     'host//owner/repo:model.gguf',
     'host/%zz/owner/repo:model.gguf',
     'host/%4Dodels/owner/repo:model.gguf',
-    'host/Models/owner/repo:nested%2fmodel.gguf',
-    'host/Models/owner/repo:..%2Fmodel.gguf',
-    'host/Models/owner/repo:%2Fmodel.gguf',
-    'host/Models/owner/repo:weights%5Cmodel.gguf',
-    'host/Models/owner/repo:model.gguf%00',
-    'host/Models/owner/repo:model.gguf/extra',
+    'host/Models/owner/repo:../model.gguf',
+    'host/Models/owner/repo:/model.gguf',
+    'host/Models/owner/repo:weights\\model.gguf',
+    'host/Models/owner/repo:model.gguf\0',
+    'host/Models/owner/repo:model.gguf//extra',
     'host/Models/owner/repo:',
     'host/Models/owner/repo',
     'host/root/owner/repo',
@@ -178,5 +190,18 @@ describe('public host names at the inventory schema boundary', () => {
     const model = { id: 'user/model.gguf', size: 128, importedAt: 1 };
     expect(modelSchema.safeParse({ ...model, name: 'a'.repeat(512) }).success).toBe(true);
     expect(modelSchema.safeParse({ ...model, name: 'a'.repeat(513) }).success).toBe(false);
+  });
+
+  it('validates internal encoded inventory names before expanding their readable public alias', () => {
+    const modelPath = `${'日'.repeat(40)}/${'本'.repeat(40)}.gguf`;
+    const id = reference({ directoryId: 'root', modelPath });
+    expect(id.slice(id.indexOf(':') + 1).length).toBeGreaterThan(255);
+    expect(modelSchema.safeParse({ id, name: id, size: 128, importedAt: 1 }).success).toBe(true);
+    const directories = [directory({ id: 'root', name: 'Models' })];
+    const name = hostModelPublicName({ name: id, directories });
+    expect(name).toBe(`host/Models/owner/repo:${modelPath}`);
+    expect(modelSchema.safeParse({ id, name, size: 128, importedAt: 1 }).success).toBe(true);
+    expect(resolveHostModelName({ name, directories })).toBe(id);
+    expect(resolveHostModelName({ name: id, directories })).toBe(id);
   });
 });

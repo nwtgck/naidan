@@ -12,7 +12,7 @@ const main = 'Muse-Glimmer-30B-KQuant-17GB-Q4_K_M.gguf';
 const projector = 'mmproj-Muse-Glimmer-30B-Q4_K_M.gguf';
 
 function catalog({ paths }: { paths: string[] }) {
-  return { repository: quantization.repository, revision, ...groupModelFiles({ files: paths.map(path => ({ path, size: 128 })) }) };
+  return { repository: quantization.hfRepository, revision, ...groupModelFiles({ files: paths.map(path => ({ path, size: 128 })) }) };
 }
 
 describe('bundled suggestions and exact download plans', () => {
@@ -35,13 +35,13 @@ describe('bundled suggestions and exact download plans', () => {
     expect(quantizationName({ path: 'model-Q4_K_M-Q8_0.gguf' })).toBeUndefined();
     const data = catalog({ paths: [main, 'dflash-Muse-Glimmer-30B-Q4_K_M.gguf'] });
     expect(quantizationChoices({ repository: data.repository, models: data.models })[0]?.label).toBe('Q4_K_M · KQuant-17GB');
-    expect(variantLabel({ repository: quantization.repository, path: main })).toBe('KQuant-17GB-Q4_K_M');
+    expect(variantLabel({ repository: quantization.hfRepository, path: main })).toBe('KQuant-17GB-Q4_K_M');
   });
 
   it('excludes auxiliary GGUFs and opt-in projectors without trusting size hints', () => {
     const data = catalog({ paths: [main, projector, 'dflash-Muse-Glimmer-30B-Q4_K_M.gguf', 'mtp-Q4_K_M.gguf', 'eagle3-Q4_K_M.gguf'] });
     const changedHints = { ...quantization, approximateModelBytes: 1, approximateMultimodalBytes: 2 };
-    expect(resolveSuggestionPlan({ quantization: changedHints, catalog: data, multimodal: 'off' })).toEqual({ repository: quantization.repository, revision, files: [{ path: main, size: 128 }] });
+    expect(resolveSuggestionPlan({ quantization: changedHints, catalog: data, multimodal: 'off' })).toEqual({ repository: quantization.hfRepository, revision, files: [{ path: main, size: 128 }] });
     expect(resolveSuggestionPlan({ quantization: changedHints, catalog: data, multimodal: 'on' }).files.map(file => file.path)).toEqual([main, projector]);
     expect(artifactRole({ path: 'draft/model-Q4_K_M.gguf' })).toBe('auxiliary');
     expect(artifactRole({ path: 'Crafted-Q4_K_M.gguf' })).toBe('model');
@@ -58,20 +58,20 @@ describe('bundled suggestions and exact download plans', () => {
   });
 
   it('matches local repository identity and the exact main quantization, not approximate bytes or a filename coincidence', () => {
-    const local = { id: `hf.co/${quantization.repository}:${encodeURIComponent(main)}`, name: 'already installed', size: 128, importedAt: 1 };
+    const local = { id: `hf.co/${quantization.hfRepository}:${encodeURIComponent(main)}`, name: 'already installed', size: 128, importedAt: 1 };
     expect(findLocalSuggestedModel({ quantization, models: [local] })).toEqual(local);
     expect(findLocalSuggestedModel({ quantization, models: [{ ...local, id: `user/${main}` }] })).toBeUndefined();
     for (const path of ['model-Q8_0.gguf', 'model-Q4_K_XL.gguf', 'dflash-Q4_K_M.gguf']) {
-      expect(findLocalSuggestedModel({ quantization, models: [{ ...local, id: `hf.co/${quantization.repository}:${encodeURIComponent(path)}` }] })).toBeUndefined();
+      expect(findLocalSuggestedModel({ quantization, models: [{ ...local, id: `hf.co/${quantization.hfRepository}:${encodeURIComponent(path)}` }] })).toBeUndefined();
     }
-    expect(findLocalSuggestedModel({ quantization, models: [local, { ...local, id: `hf.co/${quantization.repository}:other-Q4_K_M.gguf` }] })).toBeUndefined();
+    expect(findLocalSuggestedModel({ quantization, models: [local, { ...local, id: `hf.co/${quantization.hfRepository}:other-Q4_K_M.gguf` }] })).toBeUndefined();
   });
 
   it('pins normal file-save links, encodes nested filenames and does not confuse decimal bytes with GiB', () => {
     const file = { path: 'nested/model name-Q4_K_M.gguf', size: 128 };
-    expect(fileDownloadUrl({ repository: quantization.repository, revision, file })).toBe(`https://huggingface.co/${quantization.repository}/resolve/${revision}/nested/model%20name-Q4_K_M.gguf?download=true`);
-    expect(() => fileDownloadUrl({ repository: quantization.repository, revision: 'main', file })).toThrow();
-    expect(() => fileDownloadUrl({ repository: quantization.repository, revision, file: { ...file, path: '../bad.gguf' } })).toThrow();
+    expect(fileDownloadUrl({ repository: quantization.hfRepository, revision, file })).toBe(`https://huggingface.co/${quantization.hfRepository}/resolve/${revision}/nested/model%20name-Q4_K_M.gguf?download=true`);
+    expect(() => fileDownloadUrl({ repository: quantization.hfRepository, revision: 'main', file })).toThrow();
+    expect(() => fileDownloadUrl({ repository: quantization.hfRepository, revision, file: { ...file, path: '../bad.gguf' } })).toThrow();
     expect(formatDownloadBytes({ bytes: 16_800_000_000 })).toBe('15.65 GiB');
     const plan = resolveSuggestionPlan({ quantization, catalog: catalog({ paths: [main, projector] }), multimodal: 'on' });
     expect(selectionKey({ selection: plan })).toBe(selectionKey({ selection: { ...plan, files: [...plan.files].reverse() } }));

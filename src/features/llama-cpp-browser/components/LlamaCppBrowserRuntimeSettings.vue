@@ -2,9 +2,10 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef, useId, watch } from 'vue';
 import { ChevronDownIcon, PowerOffIcon, SlidersHorizontalIcon } from 'lucide-vue-next';
 import { lazyStrings } from '@/strings';
+import { useSettings } from '@/composables/useSettings';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { selectableProfiles } from '@/features/llama-cpp-browser/runtime/profile-policy';
-import { errorCode, runtimeOptionsSchema } from '@/features/llama-cpp-browser/types';
+import { chatContextTokensSchema, defaultChatContextTokens, minimumChatContextTokens, maximumChatContextTokens, errorCode, runtimeOptionsSchema } from '@/features/llama-cpp-browser/types';
 import { resolveProfilePreference, type ProfileCapabilities, type ProfileState, type ProfileUnavailableReason } from '@/features/llama-cpp-browser/runtime/profile-capabilities';
 
 const props = defineProps<{ disabled: boolean, releaseDisabled: boolean }>();
@@ -12,6 +13,17 @@ const emit = defineEmits<{ runtimeReady: [ready: boolean] }>();
 const id = useId();
 const profileState = shallowRef<ProfileState>(llamaCppBrowserService.getProfileState());
 const options = ref(llamaCppBrowserService.getOptions());
+const { settings, initialized, captureExperimentalStorage, updateExperimentalForStorage } = useSettings();
+const storedContextTokens = computed(() => settings.value.experimental?.llamaCppBrowser?.contextTokens);
+const contextTokensDraft = ref<number | string>(storedContextTokens.value ?? defaultChatContextTokens);
+const contextSaving = ref(false);
+const contextSaveFailed = ref(false);
+const contextTokensValid = computed(() => chatContextTokensSchema.safeParse(contextTokensDraft.value).success);
+const contextDisabled = computed(() => props.disabled || contextSaving.value || !initialized.value);
+watch([storedContextTokens, () => settings.value.storageType], () => {
+  contextTokensDraft.value = storedContextTokens.value ?? defaultChatContextTokens;
+  contextSaveFailed.value = false;
+});
 let disposed = false;
 const profileLabels = {
   'webgpu-wasm64-jspi': 'WebGPU / wasm64',
@@ -91,6 +103,35 @@ function applyOptions(): void {
   if (parsed.success && !profileDisabled({ profile: parsed.data.profile })) llamaCppBrowserService.setOptions({ options: parsed.data });
 }
 
+async function saveContextTokens({ value }: { value: number | string | undefined }): Promise<void> {
+  if (contextDisabled.value) return;
+  const parsed = chatContextTokensSchema.safeParse(value ?? defaultChatContextTokens);
+  if (!parsed.success) return;
+  const contextTokens = value === undefined ? undefined : parsed.data;
+  contextSaving.value = true;
+  contextSaveFailed.value = false;
+  try {
+    const isCurrent = captureExperimentalStorage();
+    const outcome = await updateExperimentalForStorage({
+      isCurrent,
+      updater: ({ experimental }) => ({
+        ...experimental,
+        llamaCppBrowser: { ...experimental?.llamaCppBrowser, contextTokens },
+      }),
+    });
+    switch (outcome) {
+    case 'saved': case 'changed':
+      contextTokensDraft.value = storedContextTokens.value ?? defaultChatContextTokens;
+      break;
+    default: { const exhaustive: never = outcome; throw new Error(String(exhaustive)); }
+    }
+  } catch {
+    contextSaveFailed.value = true;
+  } finally {
+    contextSaving.value = false;
+  }
+}
+
 function releaseRuntime(): void {
   if (!props.releaseDisabled) llamaCppBrowserService.release();
 }
@@ -117,6 +158,17 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div tw-class="relative"><select :id="`${id}-profile`" v-model="options.profile" :disabled="profileState.status === 'checking'" data-testid="llama-cpp-browser-profile" tw-class="appearance-none block w-full pl-3 pr-9 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium text-gray-800 dark:text-gray-100 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all" @change="applyOptions">
           <option v-for="choice in profileChoices" :key="choice.profile" :value="choice.profile" :disabled="choice.disabled">{{ choice.label }}<template v-if="choice.reason"> — {{ choice.reason }}</template></option>
         </select><ChevronDownIcon tw-class="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" /></div>
+      </div>
+      <div tw-class="space-y-2">
+        <label :for="`${id}-context-tokens`" tw-class="block text-xs font-bold text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__context_size_tokens() }}</label>
+        <input :id="`${id}-context-tokens`" v-model.number="contextTokensDraft" type="number" :min="minimumChatContextTokens" :max="maximumChatContextTokens" step="1" required :disabled="contextDisabled" :aria-invalid="!contextTokensValid || undefined" :aria-describedby="`${id}-context-description${contextTokensValid ? '' : ` ${id}-context-invalid`}${contextSaveFailed ? ` ${id}-context-save-failed` : ''}`" data-testid="llama-cpp-browser-context-tokens" tw-class="block w-full px-3 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium text-gray-800 dark:text-gray-100 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all disabled:opacity-50" @input="contextSaveFailed = false" />
+        <div tw-class="flex flex-wrap items-center gap-3">
+          <button type="button" :disabled="contextDisabled || !contextTokensValid" data-testid="llama-cpp-browser-context-save" tw-class="px-3 py-2 rounded-xl bg-blue-600 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed" @click="saveContextTokens({ value: contextTokensDraft })">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__save() }}</button>
+          <button type="button" :disabled="contextDisabled" data-testid="llama-cpp-browser-context-reset" tw-class="text-xs text-blue-600 dark:text-blue-400 disabled:opacity-50 disabled:cursor-not-allowed" @click="saveContextTokens({ value: undefined })">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__reset_to_default() }}</button>
+        </div>
+        <p :id="`${id}-context-description`" tw-class="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__context_size_applies_to_all_chats() }}</p>
+        <p v-if="!contextTokensValid" :id="`${id}-context-invalid`" role="alert" data-testid="llama-cpp-browser-context-invalid" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__enter_a_whole_number_from_minimum_to_maximum({ minimum: minimumChatContextTokens, maximum: maximumChatContextTokens }) }}</p>
+        <p v-if="contextSaveFailed" :id="`${id}-context-save-failed`" role="alert" data-testid="llama-cpp-browser-context-save-failed" tw-class="text-xs text-red-600 dark:text-red-400">{{ lazyStrings.LlamaCppBrowserRuntimeSettings__could_not_save_context_size() }}</p>
       </div>
     </fieldset>
     <p v-if="profileState.status === 'checking'" role="status" data-testid="llama-cpp-browser-profile-checking" tw-class="text-xs text-gray-500 dark:text-gray-400">{{ lazyStrings.llamaCppBrowser__checking_browser_support() }}</p>

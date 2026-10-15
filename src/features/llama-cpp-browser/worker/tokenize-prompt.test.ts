@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { tokenizePrompt } from './tokenize-prompt';
+import { subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
 
 function fixture() {
   let nextPointer = 100n;
@@ -199,5 +200,28 @@ describe('prompt-sized speculation and deallocation failures', () => {
     expect(core.free).toHaveBeenCalledOnce();
     expect(core.tryAlloc).toHaveBeenCalledOnce();
     expect(allocations.size).toBe(0);
+  });
+});
+
+describe('context capacity failure diagnostics', () => {
+  it.each([-65536, 65536, -2147483648])('reports actual capacity and safe required count for native result %s', async result => {
+    const { core, run } = fixture();
+    const listener = vi.fn();
+    const unsubscribe = subscribeDiagnostics({ debug: 'off', listener });
+    using _listener = {
+      [Symbol.dispose]() {
+        unsubscribe();
+      },
+    };
+    using _console = vi.spyOn(console, 'log').mockImplementation(() => {});
+    core.api.llama_tokenize.mockResolvedValue(result);
+    await expect(run({ contextTokens: 32768 })).rejects.toThrow('context-full');
+    expect(listener).toHaveBeenCalledOnce();
+    const diagnostic = listener.mock.calls[0]?.[0].diagnostic;
+    expect(diagnostic).toMatchObject({ event: 'failed', stage: 'tokenize', code: 'context-full', contextTokens: 32768 });
+    if (result === -2147483648) expect(diagnostic).not.toHaveProperty('tokens');
+    else expect(diagnostic.tokens).toBe(65536);
+    expect(diagnostic).not.toHaveProperty('prompt');
+    expect(diagnostic).not.toHaveProperty('tokenIds');
   });
 });

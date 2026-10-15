@@ -9,9 +9,6 @@ import LlamaCppBrowserDeletionDialog from './LlamaCppBrowserDeletionDialog.vue';
 import { useModelDeletionConfirm } from './useModelDeletionConfirm';
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { AlertCircleIcon, BrainCircuitIcon, HardDriveIcon, Loader2Icon, RefreshCcwIcon, Trash2Icon, SearchIcon, XIcon } from 'lucide-vue-next';
-import { idToRaw } from '@/01-models/ids';
-import { useSettings } from '@/composables/useSettings';
-import { hostModelDirectoryLabel } from '@/features/llama-cpp-browser/composables/useModelDownloadDestination';
 import { lazyStrings } from '@/strings';
 import { llamaCppBrowserService } from '@/features/llama-cpp-browser';
 import { errorCode, type EngineState, type LocalModel, type ErrorCode } from '@/features/llama-cpp-browser/types';
@@ -34,13 +31,6 @@ defineSlots<{ catalog({ disabled, inspect }: { disabled: boolean, inspect: typeo
 const emit = defineEmits<{ modelsChanged: [models: LocalModel[]], modelSelected: [name: string], runtimeReady: [ready: boolean] }>();
 const state = shallowRef<EngineState>(llamaCppBrowserService.getState());
 const models = ref<LocalModel[]>([]);
-const { settings } = useSettings();
-
-function modelSourceLabel({ model }: { model: LocalModel }): string | undefined {
-  const source = model.source;
-  if (!source) return lazyStrings.LlamaCppBrowserDownloadDestination__browser_storage();
-  return hostModelDirectoryLabel({ id: source.directoryId, name: source.directoryName, entries: (settings.value.experimental?.hostModelDirectories ?? []).map(({ id, name }) => ({ id: idToRaw({ id }), name })) });
-}
 
 const nameFilter = ref('');
 const filteredModels = computed(() => {
@@ -210,7 +200,7 @@ defineExpose({ refresh, ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {})
       <ul v-else data-testid="llama-cpp-browser-model-list" tw-class="space-y-2">
         <li v-for="model in filteredModels" :key="model.id" tw-class="flex flex-wrap items-center gap-3 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900/30">
           <div tw-class="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-500 flex items-center justify-center shrink-0"><BrainCircuitIcon tw-class="w-4 h-4" /></div>
-          <div tw-class="min-w-0 flex-1"><p tw-class="text-sm font-bold text-gray-800 dark:text-gray-100 break-all">{{ model.source?.kind === 'host' ? model.source.path : model.name }}</p><p v-if="model.source?.kind === 'host'" data-testid="llama-imported-model-source" tw-class="text-[10px] text-gray-500 dark:text-gray-400 break-all mt-1">{{ modelSourceLabel({ model }) }} / {{ model.source.repository }} / {{ model.source.path }}</p><p v-else data-testid="llama-imported-model-source" tw-class="text-[10px] text-gray-500 dark:text-gray-400 mt-1">{{ modelSourceLabel({ model }) }}</p><p tw-class="text-[10px] text-gray-400 font-mono tabular-nums mt-1">{{ formatSize({ bytes: model.size }) }} · GGUF</p></div>
+          <div tw-class="min-w-0 flex-1"><p data-testid="llama-imported-model-name" :title="model.source?.path" tw-class="text-sm font-bold text-gray-800 dark:text-gray-100 break-all">{{ model.name }}</p><p tw-class="text-[10px] text-gray-400 font-mono tabular-nums mt-1">{{ formatSize({ bytes: model.size }) }} · GGUF</p></div>
           <div tw-class="flex items-center justify-end gap-1 ml-auto">
             <LlamaCppBrowserDefaultModelAction :model="model" :current="defaultModel" :disabled="unavailable || importing || active !== undefined || refreshing || defaultActionDisabled" @select="defaultSelection = $event" />
             <button type="button" :disabled="unavailable || importing || active !== undefined || downloading || queuedDownloadBusy || refreshing" :data-testid="`llama-cpp-browser-delete-${model.id}`" :aria-label="lazyStrings.llamaCppBrowser__delete_model()" :title="lazyStrings.llamaCppBrowser__delete_model()" tw-class="p-2 rounded-xl text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors" @click="remove({ id: model.id })"><Trash2Icon tw-class="w-4 h-4" /></button>

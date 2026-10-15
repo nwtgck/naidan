@@ -46,7 +46,7 @@ const detailsOpen = ref(false);
 // source must not expose or download the previous source's files/projector.
 // Same-source option changes can recompute a plan locally without another request.
 const catalogs = shallowRef<ReadonlyMap<string, RepositoryCatalog>>(new Map());
-const catalog = computed(() => catalogs.value.get(quantization.value.repository.toLowerCase()));
+const catalog = computed(() => catalogs.value.get(quantization.value.hfRepository.toLowerCase()));
 const inspecting = shallowRef<AbortController>();
 const previewError = ref(false);
 const localError = ref(false);
@@ -126,7 +126,7 @@ watch([() => props.models, quantization, multimodal, plan, queue.changed, destin
     if (plan.value) found = await installedSelection({ selection: plan.value, destination: destination.value });
     else if (known && multimodal.value === 'off') found = known;
     else if (known) {
-      const directories = await repositoryDirectories({ repository: quantization.value.repository, destination: destination.value });
+      const directories = await repositoryDirectories({ repository: quantization.value.hfRepository, destination: destination.value });
       if (directories.some(directory => directory.id === known.id && directory.projectorPath !== undefined)) found = known;
     }
     if (!cancelled && !disposed) installed.value = found ? props.models.find(model => model.id === found.id) ?? found : undefined;
@@ -157,10 +157,10 @@ async function checkContents(): Promise<void> {
   try {
     // Privacy boundary: ONLY this button or Download authorizes metadata I/O.
     // Details expansion and quantization/multimodal changes never call it.
-    const result = await getMetadataSession().inspect({ input: requested.repository, signal: controller.signal, freshness: catalog.value ? 'refresh' : 'reuse' });
+    const result = await getMetadataSession().inspect({ input: requested.hfRepository, signal: controller.signal, freshness: catalog.value ? 'refresh' : 'reuse' });
     if (!disposed && !controller.signal.aborted) {
       if (job.value && jobKey.value === requestedKey && !busy.value) queue.forget({ id: job.value.id });
-      catalogs.value = new Map(catalogs.value).set(requested.repository.toLowerCase(), result);
+      catalogs.value = new Map(catalogs.value).set(requested.hfRepository.toLowerCase(), result);
     }
   } catch {
     if (!disposed && !controller.signal.aborted && jobKey.value === requestedKey) previewError.value = true;
@@ -184,13 +184,13 @@ async function download(): Promise<void> {
     if (disposed) return;
     queue.enqueue({
       key: requestedKey,
-      repository: requestedQuantization.repository,
+      repository: requestedQuantization.hfRepository,
       source: 'suggestion',
       destination: authorized.destination,
       expectedRoot: authorized.expectedRoot,
       prepare: async ({ signal }) => {
         if (pinned) return pinned;
-        const resolved = await getMetadataSession().inspect({ input: requestedQuantization.repository, signal, freshness: 'reuse' });
+        const resolved = await getMetadataSession().inspect({ input: requestedQuantization.hfRepository, signal, freshness: 'reuse' });
         return resolveSuggestionPlan({ quantization: requestedQuantization, catalog: resolved, multimodal: requestedMultimodal });
       },
     });
@@ -310,8 +310,8 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
         <div tw-class="pt-2 space-y-2 text-xs text-gray-500 dark:text-gray-400">
           <!-- A dedicated row keeps long repository names separate from actions. -->
           <div tw-class="min-w-0" data-testid="llama-suggestion-repository-row">
-            <a :href="`https://huggingface.co/${repositoryUrlPath({ repository: quantization.repository })}`" target="_blank" rel="noopener noreferrer" data-testid="llama-suggestion-repository" tw-class="flex w-fit max-w-full min-w-0 items-start gap-1.5 rounded-sm text-blue-600 dark:text-blue-400 hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-              <span tw-class="min-w-0 break-all leading-relaxed">Hugging Face · {{ quantization.repository }}</span>
+            <a :href="`https://huggingface.co/${repositoryUrlPath({ repository: quantization.hfRepository })}`" target="_blank" rel="noopener noreferrer" data-testid="llama-suggestion-repository" tw-class="flex w-fit max-w-full min-w-0 items-start gap-1.5 rounded-sm text-blue-600 dark:text-blue-400 hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+              <span tw-class="min-w-0 break-all leading-relaxed">Hugging Face · {{ quantization.hfRepository }}</span>
               <ExternalLinkIcon aria-hidden="true" tw-class="mt-0.5 w-3 h-3 shrink-0" />
             </a>
           </div>

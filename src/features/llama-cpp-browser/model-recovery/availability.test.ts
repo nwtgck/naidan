@@ -1,4 +1,5 @@
 import { selectHostModel } from '@/features/llama-cpp-browser/runtime/host-model-store';
+import { resolveRepositoryModel } from '@/features/llama-cpp-browser/hugging-face/storage';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { storageService } from '@/00-storage/service';
 import { toHostModelDirectoryId } from '@/01-models/ids';
@@ -8,10 +9,22 @@ const calls = vi.hoisted(() => ({ read: vi.fn() }));
 vi.mock('@/00-storage/service', () => ({ storageService: { loadHostModelDirectories: vi.fn() } }));
 vi.mock('../runtime/host-model-store', () => ({ selectHostModel: vi.fn() }));
 vi.mock('../runtime/model-store', () => ({ storedModelDirectory: calls.read }));
+vi.mock('../hugging-face/storage', () => ({ resolveRepositoryModel: vi.fn() }));
 
 beforeEach(() => vi.resetAllMocks());
 
 describe('local-only missing-model inspection', () => {
+  it('captures an HF public short name before inspecting its exact stored identity', async () => {
+    const name = 'hf.co/owner/Model-GGUF:Q4';
+    const id = 'hf.co/owner/Model-GGUF:Model-Q4.gguf';
+    vi.mocked(resolveRepositoryModel).mockResolvedValue({ id, name, modelPath: 'Model-Q4.gguf', projectorPath: undefined, files: [] });
+    calls.read.mockResolvedValue({});
+    expect(await inspectLocalModel({ modelId: name })).toBe('available');
+    expect(resolveRepositoryModel).toHaveBeenCalledExactlyOnceWith({ name });
+    expect(calls.read).toHaveBeenCalledExactlyOnceWith({ name: id });
+    expect(storageService.loadHostModelDirectories).not.toHaveBeenCalled();
+  });
+
   it.each(['model.gguf', 'Q4'])('resolves public folder aliases and %s before inspecting the canonical storage identity', async selector => {
     vi.mocked(storageService.loadHostModelDirectories).mockResolvedValue([{ id: toHostModelDirectoryId({ raw: 'root' }), name: 'Models' }]);
     vi.mocked(selectHostModel).mockResolvedValue({ id: 'host/root/owner/repo:model.gguf', name: 'host/root/owner/repo:Q4', modelPath: 'model.gguf', projectorPath: undefined, files: [] });

@@ -34,13 +34,17 @@ function args() {
 
 beforeEach(async () => {
   vi.resetModules(); vi.clearAllMocks(); fixture.worker.canReuse.mockReturnValue(true);
+  const { storageService } = await import('@/00-storage/service');
+  vi.spyOn(storageService, 'loadSettings').mockResolvedValue(null);
   fixture.worker.generate.mockResolvedValue(result);
   fixture.worker.probeProfiles.mockResolvedValue({ recommended: 'cpu-wasm32', profiles: [{ profile: 'cpu-wasm32', status: 'available' }] });
   create = (await import('./resources-hosted')).createReadOnlyResources;
   service = (await import('@/features/llama-cpp-browser/index-hosted')).llamaCppBrowserService;
 });
 
-afterEach(() => service.release());
+afterEach(() => {
+  service.release(); vi.restoreAllMocks();
+});
 
 it('does not create a native worker to dispose an unused resource owner', async () => {
   const resources = create({ directories: () => [] });

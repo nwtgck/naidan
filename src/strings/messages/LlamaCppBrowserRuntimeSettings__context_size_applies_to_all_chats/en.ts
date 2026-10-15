@@ -1,0 +1,1 @@
+export const LlamaCppBrowserRuntimeSettings__context_size_applies_to_all_chats = (): string => "Applies to all llama.cpp chats from the next generation. Larger values use more memory. Model or memory limits may reduce the actual size.";

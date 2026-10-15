@@ -63,6 +63,7 @@ export function createTransformersJsService({ createWorkerClient }: {
   const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 
   function debugLog({ event, details }: { event: string, details: Record<string, unknown> }): void {
+    if (__BUILD_MODE_IS_TEST__) return;
     const timestamp = (() => {
       const dateCtor = globalThis.Date;
       if (typeof dateCtor === 'function') {

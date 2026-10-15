@@ -224,10 +224,10 @@ describe('local GGUF manager', () => {
     expect(wrapper.emitted('modelSelected')).toEqual([[storedModel.name]]);
   });
 
-  it('lists browser storage and all linked roots together with readable source labels and no source selector', async () => {
+  it('lists browser storage and all linked roots together using public model IDs and no source selector', async () => {
     const first: LocalModel = {
       id: 'host/root-a/owner/repo:model.gguf',
-      name: 'host/root-a/owner/repo:model.gguf',
+      name: 'host/Models%20A/owner/repo:model',
       size: 128,
       importedAt: 1,
       source: { kind: 'host', directoryId: 'root-a', directoryName: 'Models A', repository: 'owner/repo', path: 'model.gguf' },
@@ -235,20 +235,55 @@ describe('local GGUF manager', () => {
     const second: LocalModel = {
       ...first,
       id: 'host/root-b/owner/repo:model.gguf',
-      name: 'host/root-b/owner/repo:model.gguf',
+      name: 'host/Models%20B/owner/repo:model',
       source: { kind: 'host', directoryId: 'root-b', directoryName: 'Models B', repository: 'owner/repo', path: 'model.gguf' },
     };
     vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue([storedModel, first, second]);
     const wrapper = render(); await flushPromises();
     const list = wrapper.get('[data-testid="llama-cpp-browser-model-list"]');
     expect(list.findAll('li')).toHaveLength(3);
-    expect(list.findAll('[data-testid="llama-imported-model-source"]').map(source => source.text())).toEqual([
-      'Browser storage (OPFS)', 'Models A / owner/repo / model.gguf', 'Models B / owner/repo / model.gguf',
-    ]);
+    expect(list.findAll('[data-testid="llama-imported-model-name"]').map(name => name.text())).toEqual([storedModel.name, first.name, second.name]);
+    expect(list.findAll('[data-testid="llama-imported-model-name"]').map(name => name.attributes('title'))).toEqual([undefined, 'model.gguf', 'model.gguf']);
     expect(list.find('[data-testid="llama-download-destination"]').exists()).toBe(false);
     await wrapper.get('[data-testid="llama-imported-model-search"]').setValue('Models B');
     expect(list.findAll('li')).toHaveLength(1);
     expect(wrapper.emitted('modelsChanged')?.[0]?.[0]).toEqual([storedModel, first, second]);
+  });
+
+  it('shows shared public IDs for split GGUFs and keeps physical paths only in title tooltips', async () => {
+    const variants = [
+      { variant: 'Q4_K_M', path: 'Q4_K_M/Model-Q4_K_M-00001-of-00002.gguf' },
+      { variant: 'Q5_K_M', path: 'Q5_K_M/Model-Q5_K_M-00001-of-00003.gguf' },
+      { variant: 'Q8_0', path: 'Q8_0/Model-Q8_0-00001-of-00004.gguf' },
+    ];
+    const models: LocalModel[] = variants.map(({ variant, path }) => ({
+      id: `host/root-a/alice/Model-GGUF:${encodeURIComponent(path)}`,
+      name: `host/Models/alice/Model-GGUF:${variant}`,
+      size: 128,
+      importedAt: 1,
+      source: {
+        kind: 'host',
+        directoryId: 'root-a',
+        directoryName: 'Models',
+        repository: 'alice/Model-GGUF',
+        path,
+      },
+    }));
+    vi.mocked(llamaCppBrowserService.listModels).mockResolvedValue(models);
+    const wrapper = render(); await flushPromises();
+    const list = wrapper.get('[data-testid="llama-cpp-browser-model-list"]');
+    expect(list.findAll('[data-testid="llama-imported-model-name"]').map(name => name.text())).toEqual([
+      'host/Models/alice/Model-GGUF:Q4_K_M',
+      'host/Models/alice/Model-GGUF:Q5_K_M',
+      'host/Models/alice/Model-GGUF:Q8_0',
+    ]);
+    expect(list.findAll('[data-testid="llama-imported-model-name"]').map(name => name.attributes('title'))).toEqual(variants.map(({ path }) => path));
+    for (const { path } of variants) expect(list.text()).not.toContain(path);
+    await wrapper.get('[data-testid="llama-imported-model-search"]').setValue('host/Models/alice/Model-GGUF:Q8_0');
+    expect(list.findAll('[data-testid="llama-imported-model-name"]').map(name => name.text())).toEqual([
+      'host/Models/alice/Model-GGUF:Q8_0',
+    ]);
+    expect(wrapper.emitted('modelsChanged')?.[0]?.[0]).toEqual(models);
   });
 
   it('filters imported names without changing the underlying list and shares default-model confirmation', async () => {

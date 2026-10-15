@@ -495,3 +495,48 @@ private`, 'resolve_fused_ops: Flash Attention enabled\n\n',
     expect(diagnosticSchema.safeParse({ event: 'native-info', nativeFlashAttention: { kind: 'requested', mode: 'auto', model: 'private' } }).success).toBe(false);
   });
 });
+
+describe('sanitized model-load and file-backed read failures', () => {
+  it('records the exact upstream CPU allocation failure without inventing a phase', () => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    logNativeDiagnostic({ message: 'ggml_backend_cpu_buffer_type_alloc_buffer: failed to allocate buffer of size 69685383680\n' });
+    expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([{ event: 'native-error', failureKind: 'native-buffer-allocation', nativeBackend: 'CPU', requestedBytes: 69685383680 }]);
+  });
+
+  it('distinguishes a native model allocation error from JavaScript exceptions', () => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    logNativeDiagnostic({ message: 'llama_model_load: error loading model: unable to allocate CPU buffer' });
+    expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([{ event: 'native-error', stage: 'model-load', failureKind: 'native-buffer-allocation', nativeBackend: 'CPU' }]);
+  });
+
+  it('classifies the constant row-reader error without exposing paths or row IDs', () => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    logNativeDiagnostic({ message: 'qwen4exp_file_rows: gather failed' });
+    expect(readDiagnostics({ calls: debug.mock.calls })).toEqual([{ event: 'native-error', failureKind: 'native-file-backed-read' }]);
+  });
+
+  it.each([
+    'ggml_backend_cpu_buffer_type_alloc_buffer: failed to allocate buffer of size 9007199254740992',
+    'ggml_backend_cpu_buffer_type_alloc_buffer: failed to allocate buffer of size -1',
+    'ggml_backend_cpu_buffer_type_alloc_buffer: failed to allocate buffer of size 128 /private/model.gguf',
+    'llama_model_load: error loading model: unable to allocate private-backend buffer',
+    'qwen4exp_file_rows: gather failed /private/model.gguf',
+    'qwen4exp_file_rows: gather failed' + '\n\n',
+    'qwen4exp_file_rows: gather failed' + '\u2028',
+  ])('drops malformed or extended native details', message => {
+    const debug = vi.spyOn(console, 'log').mockImplementation(() => {});
+    logNativeDiagnostic({ message });
+    expect(debug).not.toHaveBeenCalled();
+  });
+});
+
+describe('requested and effective chat context diagnostics', () => {
+  it('keeps allocation target and native capacity distinct and rejects unbounded values', () => {
+    const diagnostic = { event: 'context-ready', requestedContextTokens: 131072, contextTokens: 65536 } as const;
+    expect(diagnosticSchema.parse(diagnostic)).toMatchObject(diagnostic);
+    for (const requestedContextTokens of [0, -1, 1.5, Infinity, NaN, 1048577]) {
+      expect(diagnosticSchema.safeParse({ ...diagnostic, requestedContextTokens }).success).toBe(false);
+    }
+    expect(diagnosticSchema.safeParse({ ...diagnostic, modelName: 'private' }).success).toBe(false);
+  });
+});

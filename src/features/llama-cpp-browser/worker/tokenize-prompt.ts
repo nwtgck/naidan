@@ -1,3 +1,4 @@
+import { logDiagnostic } from '@/features/llama-cpp-browser/debug-log';
 import type { Core } from '@/features/llama-cpp-browser/runtime/core';
 import { LlamaCppBrowserError } from '@/features/llama-cpp-browser/types';
 
@@ -38,6 +39,7 @@ export async function tokenizePrompt({ core, vocab, prompt, promptBytes, context
     }
     // INT32_MIN is the upstream overflow sentinel, not an allocatable length.
     if (result === -2147483648 || result === 0 || Math.abs(result) > maximumTokens) {
+      logDiagnostic({ diagnostic: { event: 'failed', stage: 'tokenize', code: 'context-full', contextTokens, ...(result === -2147483648 ? {} : { tokens: Math.abs(result) }) } });
       throw new LlamaCppBrowserError({ code: 'context-full' });
     }
     return result;

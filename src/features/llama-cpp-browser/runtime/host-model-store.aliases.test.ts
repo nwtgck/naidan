@@ -29,7 +29,7 @@ describe('host model inventory public names', () => {
 
     expect(models).toEqual([{
       ...stored,
-      name: 'host/My%20Models/owner/repo:nested%2Fmodel',
+      name: 'host/My%20Models/owner/repo:nested/model',
       source: { kind: 'host', directoryId: 'opaque-root', directoryName: 'My Models', repository: 'owner/repo', path: 'nested/model.gguf' },
     }]);
     expect(stored.name).toBe('host/opaque-root/owner/repo:nested%2Fmodel');
@@ -50,7 +50,7 @@ describe('host model inventory public names', () => {
     const models = await listHostStoredModels({ directories, signal: undefined });
 
     expect(models).toHaveLength(1);
-    expect(models[0]?.name).toBe(`host/${expected}/owner/repo:nested%2Fmodel`);
+    expect(models[0]?.name).toBe(`host/${expected}/owner/repo:nested/model`);
     expect(models[0]?.id).toBe('host/root-1/owner/repo:nested%2Fmodel.gguf');
     expect(models[0]?.source?.directoryName).toBe('Models');
     expect(getHostModelInventoryIssues()).toContainEqual({ directoryId: 'root-0', directoryName: 'Models', message: 'Linked model folder permission expired' });

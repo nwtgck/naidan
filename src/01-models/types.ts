@@ -421,6 +421,7 @@ export type BrowserImageModelSelection = {
 };
 
 export type LlamaCppBrowserSettings = {
+  contextTokens?: number,
   modelDownloadDestination?: { kind: 'opfs' } | { kind: 'host', directoryId: HostModelDirectoryId },
 };
 

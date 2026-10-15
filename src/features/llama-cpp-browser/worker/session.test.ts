@@ -1,3 +1,4 @@
+import * as runtimeModule from '@/features/llama-cpp-browser/runtime/load-runtime';
 import { subscribeDiagnostics } from '@/features/llama-cpp-browser/debug-log';
 import { subscribeMemoryDiagnostics } from '@/features/llama-cpp-browser/runtime/memory-diagnostics';
 import type { MemoryDiagnostic } from '@/features/llama-cpp-browser/memory-diagnostics';
@@ -661,6 +662,174 @@ describe('cancelled model acquisition and complete shard cleanup', () => {
     return { core, resources, events, mount };
   }
 
+  function enableFileRows({ index }: { index: number }) {
+    const { core, resources, events, mount } = shards();
+    Object.assign(core, { pointerBytes: 8 });
+    Object.assign(core.module, { _lcb_file_backed_rows_version: () => 1, _lcb_model_file_backed_shard: () => index });
+    vi.mocked(core.api.llama_model_free).mockImplementation(async () => {
+      events.push('native-free');
+    });
+    return { core, resources, events, mount };
+  }
+
+  it('retains only the native-selected shard and frees native descriptors before its storage', async () => {
+    const { core, resources, events } = enableFileRows({ index: 1 });
+    await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+    expect(resources[0]!.close).toHaveBeenCalledOnce();
+    expect(resources[2]!.close).toHaveBeenCalledOnce();
+    expect(resources[1]!.close).not.toHaveBeenCalled();
+    expect(resources[1]!.remove).not.toHaveBeenCalled();
+    events.length = 0;
+    await releaseSession({ releaseRuntime: false });
+    expect(events).toEqual(['native-free', 'remove-1', 'close-1']);
+    await releaseSession({ releaseRuntime: false });
+    expect(core.api.llama_model_free).toHaveBeenCalledOnce();
+    for (const resource of resources) expect(resource.close).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the retained reader alive across requests and an old request cancellation', async () => {
+    const { core, resources, mount } = enableFileRows({ index: 1 });
+    const controller = new AbortController();
+    const first = await prepareGenerationSession({ request: request({ debug: 'off' }), signal: controller.signal, onProgress: () => {} });
+    const source = mount.mock.calls[1]![0].source;
+    controller.abort();
+    expect(source.read({ destination: new Uint8Array(1), offset: 0 })).toBe(0);
+    const second = await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+    expect(second.model).toBe(first.model);
+    expect(core.api.llama_model_load_from_splits).toHaveBeenCalledOnce();
+    expect(resources[1]!.close).not.toHaveBeenCalled();
+    await releaseSession({ releaseRuntime: false });
+    expect(() => source.read({ destination: new Uint8Array(1), offset: 0 })).toThrow('disposed');
+  });
+
+  it('keeps storage alive until asynchronous model destruction settles', async () => {
+    const { core, resources } = enableFileRows({ index: 1 });
+    await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+    const gate = Promise.withResolvers<void>();
+    vi.mocked(core.api.llama_model_free).mockImplementationOnce(() => gate.promise);
+    const released = releaseSession({ releaseRuntime: false });
+    await vi.waitFor(() => expect(core.api.llama_model_free).toHaveBeenCalledOnce());
+    expect(resources[1]!.close).not.toHaveBeenCalled();
+    gate.resolve(); await released;
+    expect(resources[1]!.close).toHaveBeenCalledOnce();
+  });
+
+  it('releases all shards for a runtime with streaming support but an ordinary model', async () => {
+    const { resources } = enableFileRows({ index: -1 });
+    await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+    for (const resource of resources) expect(resource.close).toHaveBeenCalledOnce();
+  });
+
+  it('fails closed on an invalid native shard result and frees the unpublished model', async () => {
+    const { core, resources, events } = enableFileRows({ index: 3 });
+    await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toThrow('runtime-error');
+    expect(core.api.llama_model_free).toHaveBeenCalledExactlyOnceWith(10n);
+    expect(events[0]).toBe('native-free');
+    for (const resource of resources) expect(resource.close).toHaveBeenCalledOnce();
+  });
+
+  it('frees all shards after a cancelled streaming model load before ownership publication', async () => {
+    const { core, resources } = enableFileRows({ index: 1 });
+    const controller = new AbortController();
+    vi.mocked(core.api.llama_model_load_from_splits).mockImplementationOnce(async () => {
+      controller.abort(); return 10n;
+    });
+    await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: controller.signal, onProgress: () => {} })).rejects.toThrow('aborted');
+    expect(core.api.llama_model_free).toHaveBeenCalledExactlyOnceWith(10n);
+    for (const resource of resources) expect(resource.close).toHaveBeenCalledOnce();
+  });
+
+  it('still closes retained storage if model destruction throws', async () => {
+    const { core, resources } = enableFileRows({ index: 1 });
+    await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+    vi.mocked(core.api.llama_model_free).mockRejectedValueOnce(new Error('native destruction'));
+    await expect(releaseSession({ releaseRuntime: false })).rejects.toThrow('native destruction');
+    expect(resources[1]!.close).toHaveBeenCalledOnce();
+    await releaseSession({ releaseRuntime: false });
+    expect(resources[1]!.close).toHaveBeenCalledOnce();
+  });
+
+  it('drains all load-owned callbacks and pointers even when unpublished model destruction fails', async () => {
+    const { core, resources } = enableFileRows({ index: 3 });
+    using free = vi.spyOn(core, 'free');
+    using allocated = vi.spyOn(core, 'alloc');
+    using records = vi.spyOn(core, 'allocRecord');
+    using strings = vi.spyOn(core, 'utf8');
+    vi.mocked(core.api.llama_model_free).mockRejectedValueOnce(new Error('destructor failed'));
+    // Invalid native shard is the primary failure; cleanup must not hide it.
+    await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toThrow('runtime-error');
+    expect(core.module.removeFunction).toHaveBeenCalledExactlyOnceWith(1);
+    const pointers = [...allocated.mock.results, ...records.mock.results, ...strings.mock.results].map(result => result.value);
+    expect(pointers).toHaveLength(6);
+    for (const pointer of pointers) expect(free.mock.calls.filter(([args]) => args.pointer === pointer)).toHaveLength(1);
+    for (const resource of resources) expect(resource.close).toHaveBeenCalledOnce();
+    expect(core.api.llama_init_from_model).not.toHaveBeenCalled();
+  });
+
+  it('preserves a native load failure while draining multiple independent cleanup failures', async () => {
+    const { core, resources } = shards();
+    const primary = new Error('native load failure');
+    vi.mocked(core.api.llama_model_load_from_splits).mockRejectedValueOnce(primary);
+    vi.mocked(core.module.removeFunction).mockImplementationOnce(() => {
+      throw new Error('callback removal failed');
+    });
+    using free = vi.spyOn(core, 'free').mockImplementationOnce(() => {
+      throw new Error('allocation release failed');
+    });
+    resources[1]!.close.mockImplementationOnce(() => {
+      throw new Error('storage close failed');
+    });
+    await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toBe(primary);
+    expect(free).toHaveBeenCalledTimes(6);
+    for (const resource of resources) {
+      expect(resource.close).toHaveBeenCalledOnce();
+      expect(resource.remove).toHaveBeenCalledOnce();
+    }
+    expect(core.api.llama_init_from_model).not.toHaveBeenCalled();
+  });
+
+  it('reclaims an already published retained shard when unused shard cleanup fails', async () => {
+    const { core, resources, events } = enableFileRows({ index: 1 });
+    const failure = new Error('unused shard close failed');
+    resources[2]!.close.mockImplementationOnce(() => {
+      throw failure;
+    });
+    using load = vi.spyOn(runtimeModule, 'loadRuntime');
+    await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toBe(failure);
+    expect(core.api.llama_model_free).toHaveBeenCalledExactlyOnceWith(10n);
+    expect(core.api.llama_init_from_model).not.toHaveBeenCalled();
+    expect(core.api.llama_backend_free).toHaveBeenCalledOnce();
+    expect(events.indexOf('native-free')).toBeLessThan(events.indexOf('close-1'));
+    for (const resource of resources) {
+      expect(resource.remove).toHaveBeenCalledOnce();
+      expect(resource.close).toHaveBeenCalledOnce();
+    }
+    await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves an undefined primary rejection instead of a later cleanup error', async () => {
+    const { core, resources } = shards();
+    vi.mocked(core.api.llama_model_load_from_splits).mockRejectedValueOnce(undefined);
+    vi.mocked(core.module.removeFunction).mockImplementationOnce(() => {
+      throw new Error('callback cleanup failed');
+    });
+    await expect(prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} })).rejects.toBeUndefined();
+    for (const resource of resources) expect(resource.close).toHaveBeenCalledOnce();
+    expect(core.api.llama_init_from_model).not.toHaveBeenCalled();
+  });
+
+  it('does not reuse a runtime after a retained model destructor fails', async () => {
+    const { core, resources } = enableFileRows({ index: 1 });
+    using load = vi.spyOn(runtimeModule, 'loadRuntime');
+    await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+    vi.mocked(core.api.llama_model_free).mockRejectedValueOnce(new Error('native destruction'));
+    await expect(releaseSession({ releaseRuntime: false })).rejects.toThrow('native destruction');
+    expect(resources[1]!.close).toHaveBeenCalledOnce();
+    await prepareGenerationSession({ request: request({ debug: 'off' }), signal: undefined, onProgress: () => {} });
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
   it('does not open another shard or enter native loading after a pending acquisition is cancelled', async () => {
     const { core, resources, mount } = shards(); const first = resources[0]!;
     const pending = Promise.withResolvers<typeof first.access>(); first.open.mockReturnValueOnce(pending.promise);
@@ -776,5 +945,108 @@ describe('measurement-only loaded descriptor ownership', () => {
     await prepareSession({ request: measured, onProgress: () => {}, signal: undefined });
     expect(core.api.llama_model_n_layer).toHaveBeenCalledTimes(2);
     expect(descriptors().map(value => value.layers)).toEqual([64, 64, 32]);
+  });
+});
+
+function configurableContextFixture() {
+  const core = host.core;
+  if (!core) throw new Error('Expected native fixture');
+  let allocatedTarget = 0;
+  vi.mocked(core.api.llama_model_n_ctx_train).mockResolvedValue(131072);
+  vi.mocked(core.setField).mockImplementation(({ name, field, value }) => {
+    if (name === 'llama_context_params' && field === 'n_ctx') allocatedTarget = Number(value);
+  });
+  vi.mocked(core.api.llama_n_ctx).mockImplementation(async () => allocatedTarget);
+  const prepare = ({ contextTokens }: { contextTokens: number | undefined }) => prepareGenerationSession({
+    request: { ...request({ debug: 'off' }), options: { profile: 'cpu-wasm32', contextTokens } },
+    signal: undefined,
+    onProgress: () => {},
+  });
+  const targets = () => vi.mocked(core.setField).mock.calls.filter(([call]) => call.field === 'n_ctx').map(([call]) => call.value);
+  return { core, prepare, targets };
+}
+
+describe('chat context target changes without weight reload', () => {
+  it('retains the legacy target when no preference is set and reuses an explicit equivalent', async () => {
+    const { core, prepare, targets } = configurableContextFixture();
+    expect((await prepare({ contextTokens: undefined })).contextTokens).toBe(32768);
+    expect((await prepare({ contextTokens: 32768 })).contextTokens).toBe(32768);
+    expect(targets()).toEqual([32768]);
+    expect(core.api.llama_init_from_model).toHaveBeenCalledOnce();
+    expect(core.api.llama_free).not.toHaveBeenCalled();
+  });
+
+  it('changes only the context and releases stale prefix checkpoints exactly once', async () => {
+    const { core, prepare, targets } = configurableContextFixture();
+    const first = await prepare({ contextTokens: 65536 });
+    first.cache.tokens = [1, 2, 3];
+    first.cache.validity = 'valid';
+    first.cache.checkpoint = { pointer: 999n, bytes: 64, tokens: [1], positionMin: 0, positionMax: 0 };
+    const free = vi.spyOn(core, 'free');
+    const second = await prepare({ contextTokens: 131072 });
+    expect(second.contextTokens).toBe(131072);
+    expect(second.cache.tokens).toEqual([]);
+    expect(second.cache.checkpoint).toBeUndefined();
+    expect(free.mock.calls.filter(([call]) => call.pointer === 999n)).toHaveLength(1);
+    expect(core.api.llama_free).toHaveBeenCalledExactlyOnceWith(first.context);
+    expect(core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+    expect(core.api.llama_model_free).not.toHaveBeenCalled();
+    expect(core.api.llama_backend_free).not.toHaveBeenCalled();
+    expect(targets()).toEqual([65536, 131072]);
+    await prepare({ contextTokens: undefined });
+    expect(targets()).toEqual([65536, 131072, 32768]);
+    expect(core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+  });
+
+  it('clamps to training capacity without repeatedly rebuilding the same smaller context', async () => {
+    const { core, prepare, targets } = configurableContextFixture();
+    vi.mocked(core.api.llama_model_n_ctx_train).mockResolvedValue(32768);
+    expect((await prepare({ contextTokens: 131072 })).contextTokens).toBe(32768);
+    await prepare({ contextTokens: 131072 });
+    expect(targets()).toEqual([32768]);
+    expect(core.api.llama_init_from_model).toHaveBeenCalledOnce();
+  });
+
+  it('remembers the request after native allocation fallback instead of retrying on every generation', async () => {
+    const { core, prepare, targets } = configurableContextFixture();
+    vi.mocked(core.api.llama_init_from_model).mockResolvedValueOnce(0n).mockResolvedValueOnce(0n).mockResolvedValueOnce(20n);
+    expect((await prepare({ contextTokens: 65536 })).contextTokens).toBe(32768);
+    await prepare({ contextTokens: 65536 });
+    expect(targets()).toEqual([65536, 65536, 32768]);
+    expect(core.api.llama_init_from_model).toHaveBeenCalledTimes(3);
+    expect(core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
+  });
+
+  it('reports actual native capacity rather than the requested size', async () => {
+    const { core, prepare } = configurableContextFixture();
+    vi.mocked(core.api.llama_n_ctx).mockResolvedValue(32768);
+    expect((await prepare({ contextTokens: 65536 })).contextTokens).toBe(32768);
+  });
+
+  it('retires a model/runtime whose context destructor throws during a resize', async () => {
+    const { core, prepare } = configurableContextFixture();
+    await prepare({ contextTokens: 65536 });
+    const failure = new Error('context destruction failed');
+    vi.mocked(core.api.llama_free).mockRejectedValueOnce(failure);
+    await expect(prepare({ contextTokens: 131072 })).rejects.toBe(failure);
+    expect(core.api.llama_free).toHaveBeenCalledOnce();
+    expect(core.api.llama_model_free).toHaveBeenCalledOnce();
+    expect(core.api.llama_backend_free).toHaveBeenCalledOnce();
+    await prepare({ contextTokens: 131072 });
+    expect(core.api.llama_model_load_from_file).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([0, -1, 511, 512.5, Infinity, NaN, 1048577])('rejects invalid direct worker target %s before loading weights', async contextTokens => {
+    const { core, prepare } = configurableContextFixture();
+    await expect(prepare({ contextTokens })).rejects.toThrow();
+    expect(core.api.llama_model_load_from_file).not.toHaveBeenCalled();
+    expect(core.api.llama_init_from_model).not.toHaveBeenCalled();
+  });
+
+  it('preserves the independently bounded audio context even with a larger chat option', async () => {
+    const { core, targets } = configurableContextFixture();
+    await prepareAudioSession({ request: { ...request({ debug: 'off' }), options: { profile: 'cpu-wasm32', contextTokens: 131072 } }, contextTokens: 4096, audioBackend: 'profile', signal: undefined, onProgress: () => {} });
+    expect(targets()).toEqual([4096]);
+    expect(core.api.llama_model_load_from_file).toHaveBeenCalledOnce();
   });
 });

@@ -47,13 +47,43 @@ describe('persisted llama.cpp browser destination preferences', () => {
     const restored = await reopenedProvider.loadSettings();
 
     expect(restored).not.toBeNull();
-    expect(restored?.experimental?.llamaCppBrowser).toStrictEqual({ modelDownloadDestination });
+    expect(restored?.experimental?.llamaCppBrowser).toStrictEqual({ modelDownloadDestination, contextTokens: undefined });
     expect(restored?.experimental?.browserImageGeneration).toMatchObject(settings.experimental!.browserImageGeneration!);
     expect(restored?.experimental?.hostModelDirectories).toStrictEqual(settings.experimental!.hostModelDirectories);
     expect(restored?.experimental?.locale).toBe('ja');
 
     await reopenedProvider.saveSettings({ settings: restored! });
 
+    expect(localStorage.getItem(settingsKey)).toBe(raw);
+  });
+});
+
+describe('persisted experimental chat capacity', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('round-trips the context target without replacing other experimental fields', async () => {
+    const settings: Settings = {
+      ...DEFAULT_SETTINGS,
+      endpoint: { type: 'llama_cpp_browser' },
+      storageType: 'local',
+      experimental: {
+        locale: 'ja',
+        llamaCppBrowser: { contextTokens: 131072, modelDownloadDestination: { kind: 'opfs' } },
+        browserImageGeneration: { width: 768 },
+      },
+    };
+    const provider = new LocalStorageProvider();
+    await provider.saveSettings({ settings });
+    const raw = localStorage.getItem(settingsKey)!;
+    expect(JSON.parse(raw).experimental.llamaCppBrowser).toStrictEqual({ contextTokens: 131072, modelDownloadDestination: { kind: 'opfs' } });
+    const reopened = new LocalStorageProvider();
+    const restored = await reopened.loadSettings();
+    expect(restored?.experimental?.llamaCppBrowser).toStrictEqual(settings.experimental!.llamaCppBrowser);
+    expect(restored?.experimental?.locale).toBe('ja');
+    expect(restored?.experimental?.browserImageGeneration?.width).toBe(768);
+    await reopened.saveSettings({ settings: restored! });
     expect(localStorage.getItem(settingsKey)).toBe(raw);
   });
 });
