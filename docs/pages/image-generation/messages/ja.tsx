@@ -48,7 +48,7 @@ export const messages = {
   prompt: 'プロンプト',
   negative_prompt: 'ネガティブプロンプト',
   image_size: '画像サイズ',
-  orange_cat_by_a_sunlit_window: '朝日の差す窓辺に座るオレンジ色の猫',
+  kitten_flying_through_blue_sky: '青い空を飛ぶ、ふわふわの子猫',
   generate: '生成',
   execution_previews_and_temporary_results: '実行状態・プレビュー・一時的な結果',
   visual_progress: 'ビジュアル表示',

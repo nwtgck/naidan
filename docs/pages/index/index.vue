@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import DocsLink from '../../components/DocsLink.vue';
-import { GithubIcon } from 'lucide-vue-next';
+import { BookOpenIcon, GithubIcon } from 'lucide-vue-next';
 import logo from '../../assets/naidan.svg';
 import AppEntryLink from '../../components/AppEntryLink.vue';
 import BrowserMock from '../../components/BrowserMock.vue';
@@ -8,6 +8,9 @@ import ExternalLink from '../../components/ExternalLink.vue';
 import BoundaryDiagram from '../../components/demos/BoundaryDiagram.vue';
 import StandaloneDemo from '../../components/demos/StandaloneDemo.vue';
 import StorageChoiceDemo from '../../components/demos/StorageChoiceDemo.vue';
+import HomeChatGenerationComparison from '../../components/demos/HomeChatGenerationComparison.vue';
+import HomeImageGenerationComparison from '../../components/demos/HomeImageGenerationComparison.vue';
+import HomeSpeechGenerationComparison from '../../components/demos/HomeSpeechGenerationComparison.vue';
 import type { HomeMessages, CommonMessages } from '../../messages/types';
 import type { DocsLocale, DocsPageId } from '../../navigation/routes';
 import RenderText from '../../components/RenderText';
@@ -108,6 +111,30 @@ defineExpose({
         </span>
         <span class="home-guide-arrow" aria-hidden="true">→</span>
       </DocsLink>
+      <div class="browser-generation" data-testid="docs-browser-generation">
+        <section class="browser-generation-example generation-comparison-example" aria-labelledby="browser-generation-chat-title" data-testid="docs-browser-generation-chat">
+          <div class="browser-generation-copy">
+            <h2 id="browser-generation-chat-title">{{ s.gguf_answer_in_browser_heading }}</h2>
+            <p>{{ s.gguf_answer_in_browser_description }}</p>
+            <p class="generation-alt-route"><RenderText :node="s.local_ai_server_option({ locale })" /></p>
+          </div>
+          <figure class="browser-generation-figure"><HomeChatGenerationComparison :messages="s"><template #guide><DocsLink class="generation-guide-link" data-testid="docs-generation-guide-chat" :locale="locale" page="endpoint-type-llama-cpp-browser" :aria-label="s.gguf_chat_guide_link"><BookOpenIcon :size="20" aria-hidden="true" /><span>{{ s.gguf_chat_guide_link }}</span></DocsLink></template></HomeChatGenerationComparison></figure>
+        </section>
+        <section class="browser-generation-example generation-comparison-example" aria-labelledby="browser-generation-image-title" data-testid="docs-browser-generation-image">
+          <div class="browser-generation-copy">
+            <h2 id="browser-generation-image-title">{{ s.cat_image_in_browser_heading }}</h2>
+            <p>{{ s.cat_image_in_browser_description }}</p>
+          </div>
+          <figure class="browser-generation-figure"><HomeImageGenerationComparison :messages="s"><template #guide><DocsLink class="generation-guide-link" data-testid="docs-generation-guide-image" :locale="locale" page="image-generation" :aria-label="s.image_generation_guide_link"><BookOpenIcon :size="20" aria-hidden="true" /><span>{{ s.image_generation_guide_link }}</span></DocsLink></template></HomeImageGenerationComparison></figure>
+        </section>
+        <section class="browser-generation-example generation-comparison-example" aria-labelledby="browser-generation-speech-title" data-testid="docs-browser-generation-speech">
+          <div class="browser-generation-copy">
+            <h2 id="browser-generation-speech-title">{{ s.speech_in_browser_heading }}</h2>
+            <p>{{ s.speech_in_browser_description }}</p>
+          </div>
+          <figure class="browser-generation-figure"><HomeSpeechGenerationComparison :messages="s"><template #guide><DocsLink class="generation-guide-link" data-testid="docs-generation-guide-speech" :locale="locale" page="audio-generation" :aria-label="s.speech_generation_guide_link"><BookOpenIcon :size="20" aria-hidden="true" /><span>{{ s.speech_generation_guide_link }}</span></DocsLink></template></HomeSpeechGenerationComparison></figure>
+        </section>
+      </div>
       <div class="models-section">
         <h2 class="section-title">{{ s.model_locations_heading }}</h2>
         <div class="pair-grid">
@@ -258,6 +285,29 @@ defineExpose({
 .models-section {
   margin-top: 64px;
 }
+
+.browser-generation { display: grid; gap: 28px; margin-top: 72px; }
+.browser-generation-example { display: grid; grid-template-columns: minmax(0,.62fr) minmax(0,1fr); align-items: center; gap: 38px; padding: 28px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); }
+.browser-generation-copy,.browser-generation-figure { min-width: 0; }
+.browser-generation-copy h2 { margin: 0 0 11px; font-size: clamp(20px,2.2vw,28px); line-height: 1.45; letter-spacing: -.035em; overflow-wrap: anywhere; }
+.browser-generation-copy p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.85; }
+.browser-generation-copy a { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; margin-top: 17px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface-2); color: var(--blue); font-size: 12px; font-weight: 750; line-height: 1.5; text-decoration: none; overflow-wrap: anywhere; }
+.browser-generation-copy a:hover { border-color: var(--blue); background: var(--surface-3); }
+.browser-generation-copy a:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
+.browser-generation-figure { margin: 0; }
+.browser-generation-example.generation-comparison-example { grid-template-columns:minmax(0,1fr);gap:14px;padding:20px; }
+.generation-comparison-example .browser-generation-copy h2 { margin:0;text-wrap:balance; }
+.browser-generation-figure :deep(.generation-guide-footer) { display:flex;justify-content:flex-start;min-width:0;margin-top:8px; }
+.generation-guide-link { box-sizing:border-box;display:inline-flex;align-items:center;gap:8px;max-width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface-2);color:var(--blue);font-size:14px;font-weight:750;line-height:1.3;text-decoration:none;overflow-wrap:anywhere; }
+.generation-guide-link svg { flex:none; }
+.generation-guide-link span { min-width:0; }
+.generation-guide-link:hover { border-color:var(--blue);background:var(--surface-3); }
+.generation-guide-link:focus-visible { outline:2px solid var(--blue);outline-offset:4px; }
+.generation-comparison-example .browser-generation-copy p { margin-top:8px; }
+.browser-generation-copy .generation-alt-route :deep(a) { display:inline;margin:0;padding:0;border:0;background:none;color:var(--blue);font-size:inherit;font-weight:inherit;line-height:inherit;text-decoration:underline;text-underline-offset:.15em; }
+.browser-generation-copy .generation-alt-route :deep(a:hover) { background:none; }
+@media(max-width:900px) { .browser-generation-example { grid-template-columns: minmax(0,1fr); gap: 20px; } }
+@media(max-width:620px) { .browser-generation { gap: 20px; margin-top: 52px; } .browser-generation-example { padding: 16px; } .browser-generation-example.generation-comparison-example { padding:12px; } }
 
 .mechanism-detail-link { color: var(--blue); text-underline-offset: .16em; }
 .mechanism-detail-link:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }

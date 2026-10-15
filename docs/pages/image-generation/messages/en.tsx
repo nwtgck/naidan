@@ -48,7 +48,7 @@ export const messages = {
   prompt: 'Prompt',
   negative_prompt: 'Negative prompt',
   image_size: 'Image size',
-  orange_cat_by_a_sunlit_window: 'An orange cat sitting by a sunlit window',
+  kitten_flying_through_blue_sky: 'A fluffy kitten flying through a blue sky',
   generate: 'Generate',
   execution_previews_and_temporary_results: 'Execution, previews and temporary results',
   visual_progress: 'Visual progress',

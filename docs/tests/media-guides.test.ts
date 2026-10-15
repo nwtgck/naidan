@@ -41,7 +41,8 @@ describe('media workflow guides', () => {
     const exampleImages = [...page.document.querySelectorAll('[data-testid="image-step-generate"] .complete img, [data-testid="image-step-generate"] .asset img, [data-testid="image-step-reuse"] .complete img, [data-testid="image-step-reuse"] .asset img, [data-testid="image-step-reuse"] .viewer-image img')];
     expect(exampleImages).toHaveLength(5);
     expect(new Set(exampleImages.map(image => image.getAttribute('src'))).size).toBe(1);
-    expect(page.document.querySelector('[data-testid="image-step-reuse"] .viewer-side p')?.textContent).toBe(copy.orange_cat_by_a_sunlit_window);
+    expect(exampleImages[0]?.getAttribute('src')).toContain('flying-kitten.webp');
+    expect(page.document.querySelector('[data-testid="image-step-reuse"] .viewer-side p')?.textContent).toBe(copy.kitten_flying_through_blue_sky);
     expect(page.document.querySelector('#image-storage')?.parentElement?.textContent).toContain('OPFS');
     expect(page.document.querySelector('#image-storage')?.parentElement?.querySelector('.ui-label')).not.toBeNull();
     expect(page.document.querySelector('article')?.textContent).not.toContain('Naidan RPC');
