@@ -44,7 +44,7 @@ export async function loadCoreModule({ profile, baseURL, moduleOptions }: {
   profile: LlamaCppProfile, baseURL: URL | string | undefined, moduleOptions: CoreModuleOptions,
 }) {
   const embedded = embeddedProfile({ profile, baseURL });
-  // The version-bound build adapter requires wasmBinary and forbids external acquisition.
+  // createCore supplies the decoded bytes before invoking either native factory.
   switch (embedded) {
   case 'webgpu-wasm32-jspi': {
     const { default: factory } = await import('virtual:llama-cpp-browser-core/webgpu-wasm32-jspi');

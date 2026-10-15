@@ -341,13 +341,24 @@ export function attachCore({ module, callMode }: { module: CoreModule, callMode:
 
 export type Core = ReturnType<typeof attachCore> & { chat: NativeChat };
 
+function wasmModuleBinary({ binary }: { binary: CoreModuleOptions['wasmBinary'] }): ArrayBuffer {
+  if (!binary || binary.byteLength === 0) throw new Error('Browser core requires supplied wasmBinary');
+  if (binary instanceof ArrayBuffer) return binary;
+  // Emscripten creates a view over an ArrayBuffer without copying its payload.
+  // Partial views need an exact buffer; shared views need an ordinary buffer.
+  if (binary.buffer instanceof ArrayBuffer && binary.byteOffset === 0 && binary.byteLength === binary.buffer.byteLength) return binary.buffer;
+  return new Uint8Array(binary).buffer;
+}
+
 export async function createCore({ profile, baseURL, moduleOptions }: {
   profile: LlamaCppProfile, baseURL: URL | string | undefined, moduleOptions: CoreModuleOptions,
 }): Promise<Core> {
+  const wasmBinary = wasmModuleBinary({ binary: moduleOptions.wasmBinary });
   const gpuRequests = createGpuRequestObserver();
   const options: CoreModuleOptions = usesWebGpu({ profile }) ? {
     ...moduleOptions,
-    naidanNavigator: createCoreWebGpuNavigator({
+    wasmBinary,
+    hostNavigator: createCoreWebGpuNavigator({
       navigator: globalThis.navigator,
       observeDevice: gpuRequests.wrapDevice,
       report({ axis, count, limit, chunks }) {
@@ -364,7 +375,7 @@ export async function createCore({ profile, baseURL, moduleOptions }: {
         });
       },
     }),
-  } : moduleOptions;
+  } : { ...moduleOptions, wasmBinary };
   const { module, chat } = await loadCoreModule({ profile, baseURL, moduleOptions: options });
   switch (profile) {
   case 'webgpu-wasm32-asyncify': {
