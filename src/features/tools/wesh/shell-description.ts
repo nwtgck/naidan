@@ -41,6 +41,7 @@ export function buildShellDescription({
   return (
     'Execute shell scripts to perform file operations, system exploration, and data processing. ' +
     'You can use standard Unix-like commands (ls, cat, grep, etc.). For file edits, `sed` and `patch` are available. ' +
+    'No network access. No `python` or `python3`. `node` supports only `--check` for syntax checking; no JavaScript execution. ' +
     'Run `help` to see available utilities.' +
     mountList +
     fileTypeSection
