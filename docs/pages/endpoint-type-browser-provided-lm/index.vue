@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import RenderText from '../../components/RenderText';
 import ChromeModelFlow from '../../components/demos/ChromeModelFlow.vue';
-import BrowserProvidedSettingsStep from '../../components/demos/BrowserProvidedSettingsStep.vue';
+import BrowserProvidedModelSettingsStep from '../../components/demos/BrowserProvidedModelSettingsStep.vue';
 import RelatedGuide from '../../components/RelatedGuide.vue';
 import DocsIsland from '../../components/DocsIsland.vue';
 import { browserAiAvailabilityIsland } from '../../islands/browser-ai-availability/definition';
@@ -37,25 +37,25 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
     <section class="walkthrough-step" aria-labelledby="browser-open">
       <h2 id="browser-open">{{ s.open_connection_settings_heading }}</h2>
       <p><RenderText :node="s.open_connection_settings_instructions()" /></p>
-      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="open" :messages="s" /><figcaption class="caption"><RenderText :node="s.open_connection_settings_figure_caption()" /></figcaption></figure>
+      <figure class="guide-figure"><BrowserProvidedModelSettingsStep stage="open" :messages="s" /><figcaption class="caption"><RenderText :node="s.open_connection_settings_figure_caption()" /></figcaption></figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="browser-select">
       <h2 id="browser-select">{{ s.select_chrome_model_heading }}</h2>
       <p><RenderText :node="s.select_chrome_model_instructions()" /></p>
-      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="select" :messages="s" /><figcaption class="caption"><RenderText :node="s.select_chrome_model_figure_caption()" /></figcaption></figure>
+      <figure class="guide-figure"><BrowserProvidedModelSettingsStep stage="select" :messages="s" /><figcaption class="caption"><RenderText :node="s.select_chrome_model_figure_caption()" /></figcaption></figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="browser-prepare">
       <h2 id="browser-prepare">{{ s.prepare_chrome_model_heading }}</h2>
       <p><RenderText :node="s.prepare_chrome_model_instructions()" /></p>
-      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="prepare" :messages="s" /><figcaption class="caption">{{ s.prepare_chrome_model_figure_caption }}</figcaption></figure>
+      <figure class="guide-figure"><BrowserProvidedModelSettingsStep stage="prepare" :messages="s" /><figcaption class="caption">{{ s.prepare_chrome_model_figure_caption }}</figcaption></figure>
     </section>
 
     <section class="walkthrough-step" aria-labelledby="browser-save">
       <h2 id="browser-save">{{ s.save_connection_heading }}</h2>
       <p><RenderText :node="s.save_connection_instructions()" /></p>
-      <figure class="guide-figure"><BrowserProvidedSettingsStep stage="save" :messages="s" /><figcaption class="caption">{{ s.save_connection_figure_caption }}</figcaption></figure>
+      <figure class="guide-figure"><BrowserProvidedModelSettingsStep stage="save" :messages="s" /><figcaption class="caption">{{ s.save_connection_figure_caption }}</figcaption></figure>
     </section>
 
     <p><RenderText :node="s.start_chat_with_chrome_model()" /></p>

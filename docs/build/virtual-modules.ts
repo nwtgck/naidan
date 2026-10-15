@@ -66,7 +66,7 @@ export function createDocsModulesPlugin({ root, allowTestArticleTranslations = f
         // style imports and url() assets; this plugin never reconstructs them.
         // Exports keep nested SFC imports reachable during tree-shaking. These
         // collection entries are never loaded by static documents.
-        return `import "/styles/site.css"; export { default as layout } from "/components/DocLayout.vue"; export { default as page } from ${JSON.stringify(`/${page.source}`)}; export { default as docsLink } from "/components/DocsLink.vue"; export { default as localAnchorLink } from "/components/LocalAnchorLink.vue"; export { default as externalLink } from "/components/ExternalLink.vue"; export { default as appEntryLink } from "/components/AppEntryLink.vue"; export { default as uiLabel } from "/components/UiLabel.vue";`;
+        return `import "/styles/site.css"; export { default as layout } from "/components/DocLayout.vue"; export { default as page } from ${JSON.stringify(`/${page.source}`)}; export { default as docsLink } from "/components/DocsLink.vue"; export { default as skipToContentLink } from "/components/SkipToContentLink.vue"; export { default as externalLink } from "/components/ExternalLink.vue"; export { default as appEntryLink } from "/components/AppEntryLink.vue"; export { default as uiLabel } from "/components/UiLabel.vue";`;
       }
       return undefined;
     },

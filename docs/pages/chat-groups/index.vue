@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import RenderText from '../../components/RenderText';
-import GroupStep from '../../components/demos/GroupStep.vue';
-import GroupSettingsStep from '../../components/demos/GroupSettingsStep.vue';
+import ChatGroupStep from '../../components/demos/ChatGroupStep.vue';
+import ChatGroupSettingsStep from '../../components/demos/ChatGroupSettingsStep.vue';
 import RelatedGuide from '../../components/RelatedGuide.vue';
 import type { DocsLocale } from '../../navigation/routes';
 import type { CommonMessages } from '../../messages/types';
@@ -22,7 +22,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="groups-create">{{ s.create_group_heading }}</h2>
       <p><RenderText :node="s.create_group_instructions()" /></p>
       <figure class="guide-figure">
-        <GroupStep stage="create" :messages="s" />
+        <ChatGroupStep stage="create" :messages="s" />
         <figcaption class="caption">{{ s.group_creation_caption }}</figcaption>
       </figure>
     </section>
@@ -33,7 +33,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="groups-model">{{ s.choose_group_model_heading }}</h2>
       <p><RenderText :node="s.choose_group_model_instructions()" /></p>
       <figure class="guide-figure">
-        <GroupSettingsStep stage="model" :messages="s" />
+        <ChatGroupSettingsStep stage="model" :messages="s" />
         <figcaption class="caption"><RenderText :node="s.group_model_caption()" /></figcaption>
       </figure>
     </section>
@@ -42,7 +42,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="groups-prompt">{{ s.set_group_instructions_heading }}</h2>
       <p><RenderText :node="s.set_group_instructions()" /></p>
       <figure class="guide-figure">
-        <GroupSettingsStep stage="prompt" :messages="s" />
+        <ChatGroupSettingsStep stage="prompt" :messages="s" />
         <figcaption class="caption">{{ s.group_instructions_caption }}</figcaption>
       </figure>
     </section>
@@ -51,7 +51,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="groups-move">{{ s.move_chat_into_group_heading }}</h2>
       <p><RenderText :node="s.move_chat_into_group_instructions()" /></p>
       <figure class="guide-figure">
-        <GroupStep stage="move" :messages="s" />
+        <ChatGroupStep stage="move" :messages="s" />
         <figcaption class="caption"><RenderText :node="s.move_chat_caption()" /></figcaption>
       </figure>
     </section>
@@ -60,7 +60,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="groups-add">{{ s.start_chat_inside_group_heading }}</h2>
       <p><RenderText :node="s.start_chat_inside_group_instructions()" /></p>
       <figure class="guide-figure">
-        <GroupStep stage="add" :messages="s" />
+        <ChatGroupStep stage="add" :messages="s" />
         <figcaption class="caption"><RenderText :node="s.add_chat_caption()" /></figcaption>
       </figure>
     </section>
@@ -69,7 +69,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="groups-tidy">{{ s.organize_sidebar_heading }}</h2>
       <p>{{ s.organize_sidebar_instructions }}</p>
       <figure class="guide-figure">
-        <GroupStep stage="tidy" :messages="s" />
+        <ChatGroupStep stage="tidy" :messages="s" />
         <figcaption class="caption">{{ s.organized_sidebar_caption }}</figcaption>
       </figure>
     </section>

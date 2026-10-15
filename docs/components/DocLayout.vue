@@ -7,7 +7,7 @@ import { DOCS_LOCALES, DOCS_LOCALE_NAMES } from '../navigation/routes';
 import type { DocsLocale, DocsPageId } from '../navigation/routes';
 import AppEntryLink from './AppEntryLink.vue';
 import DocsLink from './DocsLink.vue';
-import LocalAnchorLink from './LocalAnchorLink.vue';
+import SkipToContentLink from './SkipToContentLink.vue';
 import DocsGuideMenu from './DocsGuideMenu.vue';
 import DocsGuideTree from './DocsGuideTree.vue';
 import DocsIsland from './DocsIsland.vue';
@@ -35,9 +35,9 @@ defineExpose({
 
 <template>
   <DocsSymbols />
-  <LocalAnchorLink
+  <SkipToContentLink
     class="skip-link"
-  >{{ s.skip_to_content }}</LocalAnchorLink>
+  >{{ s.skip_to_content }}</SkipToContentLink>
   <header
     class="topbar"
     :class="{ 'docs-article-page': page !== 'index' }"

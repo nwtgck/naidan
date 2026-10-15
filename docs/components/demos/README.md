@@ -1,26 +1,20 @@
 # Source-derived documentation demonstrations
 
-Docs deliberately owns independent replicas of application presentation.
-Duplication is intentional: do not share or import the application’s UI
-components, stores, providers, browser file handles or model runtimes. This keeps
-static Docs deterministic and independent of model assets. Reproduce important
-layout and interactions accurately using current source and tests. UI labels,
-sample conversations, diagram text and accessible labels follow the page locale.
-Static demonstrations read the selected article or common messages through a
-typed prop during server rendering. Registered islands prepare their own small
-messages for that locale before server rendering and client hydration; they do
-not receive the article catalog as JSON props. Keep genuine commands, paths,
-filenames and tool identifiers in their authentic form.
+This file maps Docs' independent presentation replicas to their current app
+counterparts. Compare source and behavior tests for layout and interactions;
+do not import app UI, stores, providers or runtimes into Docs. Localize UI labels,
+sample content, diagram text and accessible labels while preserving authentic
+commands, paths, filenames and tool identifiers. The main Docs README explains
+how static demonstrations and interactive islands receive their messages.
 
 ## Source counterparts
 
-Use the current `src/` implementation and its behavior tests as the reference.
-Check the following counterparts when updating a demonstration; old archives
-and previous Docs versions do not define current application behavior.
+Use the current `src/` implementation and behavior tests as the reference.
+Old archives and earlier Docs versions do not define current app behavior.
 
 | Demonstration | Application counterparts |
 | --- | --- |
-| `ReplicaChrome.vue`, `../BrowserMock.vue` | `src/components/Sidebar.vue`, `src/components/ChatPaneHeader.vue`, `src/components/ChatInput.vue`, `src/components/MessageItem.vue`, `src/components/MessageActions.vue`; `src/components/ChatInput.test.ts`, `src/components/Sidebar.test.ts` |
+| `NaidanAppFrame.vue`, `../HomeChatResponseDemo.vue` | `src/components/Sidebar.vue`, `src/components/ChatPaneHeader.vue`, `src/components/ChatInput.vue`, `src/components/MessageItem.vue`, `src/components/MessageActions.vue`; `src/components/ChatInput.test.ts`, `src/components/Sidebar.test.ts` |
 | `FolderAccessDemo.vue` | `src/components/ChatAttachMenu.vue`, `src/components/VolumeMountList.vue`, folder link/copy entries; `src/features/tools/wesh/chat-workspace.test.ts` |
 | `FileExplorerStep.vue` | `src/components/SidebarDebugControls.vue`; `src/features/file-explorer/components/{FileExplorerModal,FileExplorerToolbar,FileExplorerBreadcrumbs,FileExplorerPreviewPanel,FileExplorerZipUploadDialog,FileExplorerDirectoryDownloadDialog}.vue`; `src/features/file-explorer/composables/` and component behavior tests |
 | `ShellWorkspaceDemo.vue` | `src/components/AssistantProcessSequence.vue`, `src/features/tools/components/ShellExecuteToolCall.vue`, `src/features/tools/components/ToolCallItem.vue`; `src/features/tools/components/ShellExecuteToolCall.test.ts` |
@@ -31,15 +25,15 @@ and previous Docs versions do not define current application behavior.
 | `../../islands/branching/BranchingDemo.vue` | `src/components/MessageActions.vue`, `src/components/MessageActionsMenu.vue`, `src/components/MessageItem.vue`, `src/logic/chat-tree.ts`; `src/components/MessageActionsMenu.test.ts`, `src/logic/chat-tree.test.ts` |
 | `StandaloneDemo.vue` | root `README.md`, Standalone package layout and download instructions |
 | `OfflineGuideStep.vue` | `build/pwa.ts`, `pwa/sw.ts`, `src/logic/pwa/update-controller.ts`, `src/composables/pwa-update-runtime.ts`; `src/components/{PWAManager,PWAUpdateNotification,Sidebar,SidebarDebugControls,DebugPanel}.vue`; `src/components/PWAUpdateNotification.test.ts`, `src/logic/pwa/update-controller.test.ts` |
-| `BoundaryDiagram.vue` | root `README.md`, nested OS/browser boundaries, browser API and permission paths, localhost engine connections |
+| `BrowserBoundaryDiagram.vue` | root `README.md`, nested OS/browser boundaries, browser API and permission paths, localhost engine connections |
 | `ConnectionPolicyDiagram.vue` | root `README.md` “Other hosted variants” and `.github/workflows/main.yml` Hosted, Local-only and Curated `_headers` policies |
-| `ConnectionSettingsStep.vue` | `src/components/Sidebar.vue`, `SettingsModal.vue`, `ConnectionTab.vue`, `ModelSelector.vue`, `ServerSetupGuide.vue`; `src/components/SettingsModal.test.ts`; `src/constants.ts` local endpoint presets |
+| `OllamaConnectionSettingsStep.vue` | `src/components/Sidebar.vue`, `SettingsModal.vue`, `ConnectionTab.vue`, `ModelSelector.vue`, `ServerSetupGuide.vue`; `src/components/SettingsModal.test.ts`; `src/constants.ts` local endpoint presets |
 | `OpenAiCompatibleSettingsStep.vue` | `src/components/SettingsModal.vue`, `src/components/ConnectionTab.vue`, `src/components/ModelSelector.vue`, `src/components/ServerSetupGuide.vue`; `src/constants.ts` local endpoint presets; `src/features/lm/openai.ts` model-list request |
-| `BrowserModelSettingsStep.vue` | `src/components/SettingsModal.vue`, `src/components/ConnectionTab.vue`; `src/features/llama-cpp-browser/components/{LlamaCppBrowserManager,LlamaCppBrowserModelImport,LlamaCppBrowserHuggingFaceManager,LlamaCppBrowserDefaultModelAction}.vue`; `src/features/transformers-js/components/TransformersJsManager.vue`; `src/logic/endpoint-build-availability.ts` |
-| `BrowserProvidedSettingsStep.vue` | `src/components/SettingsModal.vue`, `src/components/ConnectionTab.vue`; `src/features/prompt-api/components/PromptApiStatus.vue`, `src/features/prompt-api/runtime.ts` |
+| `InBrowserModelSettingsStep.vue` | `src/components/SettingsModal.vue`, `src/components/ConnectionTab.vue`; `src/features/llama-cpp-browser/components/{LlamaCppBrowserManager,LlamaCppBrowserModelImport,LlamaCppBrowserHuggingFaceManager,LlamaCppBrowserDefaultModelAction}.vue`; `src/features/transformers-js/components/TransformersJsManager.vue`; `src/logic/endpoint-build-availability.ts` |
+| `BrowserProvidedModelSettingsStep.vue` | `src/components/SettingsModal.vue`, `src/components/ConnectionTab.vue`; `src/features/prompt-api/components/PromptApiStatus.vue`, `src/features/prompt-api/runtime.ts` |
 | `ChromeModelFlow.vue` | `src/features/prompt-api/{api,provider,runtime}.ts`, `src/features/prompt-api/provider.test.ts`; browser-managed model preparation and streamed chat answer |
-| `HomeBrowserFrame.vue` | Shared browser tab and navigation chrome for the home generation examples. Tabs follow `BoundaryDiagram.vue` without its right-side browser label; the address row remains separate. Naidan scenes use the Naidan logo; the comparison browser uses its service name. |
-| `HomeLocalOverhead.vue` | Shared badge above each Naidan browser, pairing its logo and name with the localized no-server prompt or text claim. The claim can wrap within the fixed overhead row. |
+| `HomeBrowserFrame.vue` | Shared browser tab and navigation chrome for the home generation examples. Tabs follow `BrowserBoundaryDiagram.vue` without its right-side browser label; the address row remains separate. Naidan scenes use the Naidan logo; the comparison browser uses its service name. |
+| `HomeLocalGenerationBadge.vue` | Shared badge above each Naidan browser, pairing its logo and name with the localized no-server prompt or text claim. The claim can wrap within the fixed badge row. |
 | `HomeTypingText.vue` | Shared SSR-only prompt typing for the home comparison examples. Character spans keep the final text layout stable; a thin caret blinks at the typing position, and pause or reduced motion shows the complete prompt. |
 | `HomeChatGenerationComparison.vue` | Home GGUF chat comparison showing a question and answer within the Naidan browser or through an external AI server. Both routes stream the same answer character by character on one timeline. The page provides the guide link below the Naidan browser. |
 | `HomeImageGenerationComparison.vue` | Home image comparison with equal 440px desktop / 584px narrow browser frames and 160px kitten results. Each prompt types in place, then the local Generate or remote Send control presses before the prompt travels. The prompt stays at each model or server after arrival, and the same kitten image moves from that processing grid to the result. The whole remote side is faded to focus Naidan; the page provides the guide link below its browser. |
@@ -48,9 +42,9 @@ and previous Docs versions do not define current application behavior.
 | `SettingsInheritanceDiagram.vue` | `src/logic/chat-settings-resolver.ts`, `src/logic/chat-settings-resolver.test.ts`; conceptual model lookup from Chat to group to Global for one question |
 | `StorageSettingsStep.vue` | `src/components/SettingsModal.vue`, `src/components/StorageTab.vue`; `src/00-storage/service/index.ts`, `src/composables/useStoragePersistence.ts` |
 | `BackupSettingsStep.vue` | `src/components/StorageTab.vue`, `src/features/import-export/components/ImportExportModal.vue`, `src/features/import-export/service.ts` |
-| `CompactStep.vue` | `src/components/ChatPaneHeader.vue`, `ContextCompactMenuItem.vue`, `ContextCompactSettingsDialog.vue`, `ContextCompactProgressStrip.vue`; `src/composables/chat/chat-scoped/chat-compact-flow.ts`; `src/logic/context-compact.ts` and its tests |
-| `GroupStep.vue` | `src/components/Sidebar.vue`, `ChatPaneHeader.vue`, `ChatGroupActions.vue`; `src/components/Sidebar.test.ts`, `Sidebar.dnd.test.ts`; `src/composables/chat/useChatGroups.ts` |
-| `GroupSettingsStep.vue` | `src/components/Sidebar.vue`, `ChatGroupSettingsPanel.vue`, `SystemPromptSettingsEditor.vue`, `ModelSelector.vue`; `src/logic/chat-settings-resolver.ts` and its tests |
+| `ContextCompactionStep.vue` | `src/components/ChatPaneHeader.vue`, `ContextCompactMenuItem.vue`, `ContextCompactSettingsDialog.vue`, `ContextCompactProgressStrip.vue`; `src/composables/chat/chat-scoped/chat-compact-flow.ts`; `src/logic/context-compact.ts` and its tests |
+| `ChatGroupStep.vue` | `src/components/Sidebar.vue`, `ChatPaneHeader.vue`, `ChatGroupActions.vue`; `src/components/Sidebar.test.ts`, `Sidebar.dnd.test.ts`; `src/composables/chat/useChatGroups.ts` |
+| `ChatGroupSettingsStep.vue` | `src/components/Sidebar.vue`, `ChatGroupSettingsPanel.vue`, `SystemPromptSettingsEditor.vue`, `ModelSelector.vue`; `src/logic/chat-settings-resolver.ts` and its tests |
 | `ImageCreationStep.vue` | `src/components/SidebarDebugControls.vue`; `src/features/image-generation/components/{ImageGenerationLab,ImageGenerationWorkspace,ImageGenerationEditor,ImageGenerationMonitor,ImageGenerationGallery,ImageGenerationAssetViewer}.vue`; `src/features/stable-diffusion-cpp-browser/components/{ImageModelLibrary,ImageModelCatalog}.vue`; `src/pages/image-generation.sessions.test.ts` |
 | `AudioCreationStep.vue` | `src/components/SidebarDebugControls.vue`; `src/features/audio-generation/{AudioGenerationView.vue,README.md,AudioGenerationView.test.ts,model-catalog.ts}`; `src/features/audio-generation/components/AudioHistoryResult.vue` |
 | `SuperEditStep.vue` | `src/components/ChatPaneHeader.vue`, `src/components/HistoryManipulationModal.vue`, `src/composables/chat/chat-scoped/chat-history-flow.ts`; `src/components/HistoryManipulationModal.test.ts` |

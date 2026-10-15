@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ClipboardIcon, FolderIcon, GlobeIcon, LaptopIcon, RotateCwIcon, ServerIcon, ShieldCheckIcon, WaypointsIcon, XIcon } from 'lucide-vue-next';
 import logo from '../../assets/naidan.svg';
-type BoundaryDiagramMessages = typeof import('../../pages/browser-boundaries/messages/en').messages | typeof import('../../pages/index/messages/en').messages;
+type BrowserBoundaryDiagramMessages = typeof import('../../pages/browser-boundaries/messages/en').messages | typeof import('../../pages/index/messages/en').messages;
 
-defineProps<{ messages: BoundaryDiagramMessages }>();
+defineProps<{ messages: BrowserBoundaryDiagramMessages }>();
 
 defineExpose({
   ...((__BUILD_MODE_IS_TEST__ && {

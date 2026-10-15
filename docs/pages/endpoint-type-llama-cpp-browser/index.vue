@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import RenderText from '../../components/RenderText';
 import AppEntryLink from '../../components/AppEntryLink.vue';
-import BrowserModelSettingsStep from '../../components/demos/BrowserModelSettingsStep.vue';
+import InBrowserModelSettingsStep from '../../components/demos/InBrowserModelSettingsStep.vue';
 import RelatedGuide from '../../components/RelatedGuide.vue';
 import type { DocsLocale } from '../../navigation/routes';
 import type { CommonMessages } from '../../messages/types';
@@ -50,7 +50,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <p class="app-entry-onboarding"><RenderText :node="s.model_manager_first_run_note()" /></p>
       <p><RenderText :node="s.open_model_manager_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="llama" stage="open" :messages="s" />
+        <InBrowserModelSettingsStep mode="llama" stage="open" :messages="s" />
         <figcaption class="caption"><RenderText :node="s.open_model_manager_figure_caption()" /></figcaption>
       </figure>
     </section>
@@ -59,7 +59,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="llama-guide-import">{{ s.import_gguf_heading }}</h2>
       <p><RenderText :node="s.import_gguf_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="llama" stage="import" :messages="s" />
+        <InBrowserModelSettingsStep mode="llama" stage="import" :messages="s" />
         <figcaption class="caption"><RenderText :node="s.import_gguf_figure_caption()" /></figcaption>
       </figure>
     </section>
@@ -68,7 +68,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="llama-guide-download">{{ s.download_gguf_heading }}</h2>
       <p><RenderText :node="s.download_gguf_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="llama" stage="download" :messages="s" />
+        <InBrowserModelSettingsStep mode="llama" stage="download" :messages="s" />
         <figcaption class="caption">{{ s.download_gguf_figure_caption }}</figcaption>
       </figure>
     </section>
@@ -77,7 +77,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="llama-guide-default">{{ s.choose_default_model_heading }}</h2>
       <p><RenderText :node="s.choose_default_model_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="llama" stage="default" :messages="s" />
+        <InBrowserModelSettingsStep mode="llama" stage="default" :messages="s" />
         <figcaption class="caption">{{ s.choose_default_model_figure_caption }}</figcaption>
       </figure>
     </section>

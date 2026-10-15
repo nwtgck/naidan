@@ -69,7 +69,7 @@ describe('Docs scoped motion CSS', () => {
   });
 
   it.each([
-    { file: 'components/BrowserMock.vue', selector: `html:has(#docs-pause-motion:checked) .demo-send-stop[${scopeId}]`, property: 'visibility', value: 'hidden' },
+    { file: 'components/HomeChatResponseDemo.vue', selector: `html:has(#docs-pause-motion:checked) .demo-send-stop[${scopeId}]`, property: 'visibility', value: 'hidden' },
     { file: 'components/demos/SettingsCameraFrame.vue', selector: `html:has(#docs-pause-motion:checked) .focus-open .camera-canvas[${scopeId}]`, property: 'transform', value: undefined },
     { file: 'components/demos/NaidanRpcStep.vue', selector: `html:has(#docs-pause-motion:checked) .camera .canvas[${scopeId}]`, property: 'transform', value: undefined },
     { file: 'components/demos/BackupSettingsStep.vue', selector: `html:has(#docs-pause-motion:checked) .pointer[${scopeId}]`, property: 'display', value: 'none' },

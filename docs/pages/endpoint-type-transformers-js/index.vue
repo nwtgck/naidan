@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import RenderText from '../../components/RenderText';
-import BrowserModelSettingsStep from '../../components/demos/BrowserModelSettingsStep.vue';
+import InBrowserModelSettingsStep from '../../components/demos/InBrowserModelSettingsStep.vue';
 import RelatedGuide from '../../components/RelatedGuide.vue';
 import type { DocsLocale } from '../../navigation/routes';
 import type { CommonMessages } from '../../messages/types';
@@ -23,7 +23,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="transformers-guide-open">{{ s.open_model_manager_heading }}</h2>
       <p><RenderText :node="s.open_model_manager_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="transformers" stage="open" :messages="s" />
+        <InBrowserModelSettingsStep mode="transformers" stage="open" :messages="s" />
         <figcaption class="caption">{{ s.open_model_manager_figure_caption }}</figcaption>
       </figure>
     </section>
@@ -32,7 +32,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="transformers-guide-download">{{ s.download_onnx_model_heading }}</h2>
       <p><RenderText :node="s.download_onnx_model_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="transformers" stage="download" :messages="s" />
+        <InBrowserModelSettingsStep mode="transformers" stage="download" :messages="s" />
         <figcaption class="caption"><RenderText :node="s.download_onnx_model_figure_caption()" /></figcaption>
       </figure>
     </section>
@@ -41,7 +41,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="transformers-guide-resume">{{ s.load_or_resume_model_heading }}</h2>
       <p><RenderText :node="s.load_or_resume_model_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="transformers" stage="resume" :messages="s" />
+        <InBrowserModelSettingsStep mode="transformers" stage="resume" :messages="s" />
         <figcaption class="caption"><RenderText :node="s.load_or_resume_model_figure_caption()" /></figcaption>
       </figure>
     </section>
@@ -50,7 +50,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="transformers-guide-save">{{ s.save_default_model_heading }}</h2>
       <p><RenderText :node="s.save_default_model_instructions()" /></p>
       <figure class="guide-figure">
-        <BrowserModelSettingsStep mode="transformers" stage="save" :messages="s" />
+        <InBrowserModelSettingsStep mode="transformers" stage="save" :messages="s" />
         <figcaption class="caption"><RenderText :node="s.save_default_model_figure_caption()" /></figcaption>
       </figure>
     </section>

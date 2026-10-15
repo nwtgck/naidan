@@ -6,13 +6,14 @@ import { MessageChannel } from 'node:worker_threads';
 import * as Comlink from 'comlink';
 import { JSDOM } from 'jsdom';
 import { build } from 'vite';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { docsBuildConfig } from '../build/production';
 import { messages as enSearchMessages } from '../messages/search-ui/en';
 import { messages as jaSearchMessages } from '../messages/search-ui/ja';
 import { messages as homeEn } from '../pages/index/messages/en';
 import { messages as homeJa } from '../pages/index/messages/ja';
 import { DOCS_PAGES, docsHref } from '../navigation/routes';
+import type { DocsLocale } from '../navigation/routes';
 import { parseSearchIndex, purposeDocs, searchDocs } from '../search/search';
 import type { SearchIndex } from '../search/search';
 import { PURPOSE_PAGES } from '../search/search-purpose';
@@ -57,53 +58,70 @@ describe('Docs search', () => {
     }
   });
 
-  it('publishes locale-specific article indexes and serves the same content in development', async () => {
-    await using fixture = await createSiteFixture();
-    await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' });
-    await using dev = await startSiteDev({ root: fixture.root });
-    const expectedHrefs = (locale: 'en' | 'ja') => DOCS_PAGES.map(page => docsHref({ locale, page: page.id }));
-    for (const locale of ['en', 'ja'] as const) {
-      const file = await readFile(path.join(fixture.docs, 'dist', `search-${locale}.json`), 'utf8');
-      const production = parseSearchIndex({ value: JSON.parse(file) as unknown, locale });
-      const response = await dev.request({ url: `/docs/search-${locale}.json` });
-      expect(response.status).toBe(200);
-      expect(response.headers.get('content-type')).toContain('application/json');
-      const development = parseSearchIndex({ value: await response.json() as unknown, locale });
-      expect(development).toEqual(production);
-      expect(production.entries.map(item => item.href)).toEqual(expectedHrefs(locale));
-      const homeMessages = locale === 'en' ? homeEn : homeJa;
-      const homeEntry = production.entries.find(entry => entry.href === docsHref({ locale, page: 'index' }));
-      for (const heading of [homeMessages.gguf_answer_in_browser_heading, homeMessages.cat_image_in_browser_heading, homeMessages.speech_in_browser_heading]) expect(homeEntry?.headings).toContain(heading);
-      for (const paragraph of [homeMessages.gguf_answer_in_browser_description, homeMessages.cat_image_in_browser_description, homeMessages.speech_in_browser_description]) expect(homeEntry?.paragraphs).toContain(paragraph);
-      for (const diagramText of [homeMessages.chat_question, homeMessages.cat_image_prompt, homeMessages.speech_text]) expect(homeEntry?.paragraphs).not.toContain(diagramText);
-      const purposes = purposeDocs({ index: production });
-      expect(purposes.map(item => item.href)).toEqual(PURPOSE_PAGES.map(page => docsHref({ locale, page })));
-      for (const hit of purposes) expect(hit.snippet).toBe(production.entries.find(entry => entry.href === hit.href)?.description);
-      expect(file).not.toContain('Project notes');
-      const guide = await dev.request({ url: docsHref({ locale, page: 'file-access' }) });
-      expect(guide.status).toBe(200);
-      using page = parsePage({ html: await guide.text() });
-      expect(page.document.querySelector('[data-testid="docs-search-trigger"]')?.getAttribute('aria-label')).toBe(locale === 'ja' ? 'ドキュメントを検索' : 'Search docs');
-      const searchHost = page.document.querySelector('[data-docs-island="search"]');
-      if (!searchHost) throw new Error('Missing Docs search island');
-      const serialized = searchHost.getAttribute('data-docs-props') ?? '';
-      expect(Object.keys(JSON.parse(serialized) as object).sort()).toEqual(['currentPage', 'locale', 'purpose']);
-      const payload = parseSearchPayload({ serialized });
-      expect(payload.locale).toBe(locale);
-      expect(payload.currentPage).toBe('file-access');
-      expect(payload.purpose.map(item => item.href)).toEqual(PURPOSE_PAGES.map(purposePage => docsHref({ locale, page: purposePage })));
-      expect(payload.purpose.every(item => item.title.trim() && item.snippet.trim())).toBe(true);
-      expect(Array.from(searchHost.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-search-results"] a'), link => link.getAttribute('href'))).toEqual(payload.purpose.map(item => item.href));
-      expect(() => parseSearchPayload({ serialized: JSON.stringify({ ...payload, purpose: [{ ...payload.purpose[0], href: docsHref({ locale: locale === 'en' ? 'ja' : 'en', page: PURPOSE_PAGES[0] }) }, ...payload.purpose.slice(1)] }) })).toThrow();
-      expect(() => parseSearchPayload({ serialized: JSON.stringify({ ...payload, currentPage: 'not-a-page' }) })).toThrow();
-      expect(() => parseSearchPayload({ serialized: JSON.stringify({ ...payload, locale: 'fr' }) })).toThrow();
-      using currentPurpose = parsePage({ html: await readFile(path.join(fixture.docs, 'dist', locale, 'standalone/index.html'), 'utf8') });
-      const selfLink = currentPurpose.document.querySelector<HTMLAnchorElement>(`[data-docs-island="search"] [data-testid="docs-search-results"] a[href="${docsHref({ locale, page: 'standalone' })}"]`);
-      expect(selfLink?.hasAttribute('data-docs-guide-prefetch')).toBe(false);
-      const relatedLabel = page.document.querySelector('[data-docs-related-guide] .related-eyebrow')?.textContent?.trim();
-      expect(relatedLabel).toBeTruthy();
-      expect(production.entries.find(entry => entry.href === docsHref({ locale, page: 'file-access' }))?.paragraphs).not.toContain(relatedLabel);
-      expect(page.document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toContain(`/docs/${locale}/file-access/`);
+  describe('published article indexes', () => {
+    let published: { indexes: Record<DocsLocale, string>; standalone: Record<DocsLocale, string>; worker: string };
+
+    beforeAll(async () => {
+      await using fixture = await createSiteFixture();
+      await build({ ...docsBuildConfig({ root: fixture.docs }), configFile: false, logLevel: 'silent' });
+      const dist = path.join(fixture.docs, 'dist');
+      const workerAsset = (await readdir(path.join(dist, 'assets'))).find(file => /^worker-.+\.js$/u.test(file));
+      if (!workerAsset) throw new Error('Missing generated Docs search worker');
+      // These checks read one real production build. Hydration tests retain
+      // independent fixtures so their browser module instances stay isolated.
+      published = {
+        indexes: { en: await readFile(path.join(dist, 'search-en.json'), 'utf8'), ja: await readFile(path.join(dist, 'search-ja.json'), 'utf8') },
+        standalone: { en: await readFile(path.join(dist, 'en/standalone/index.html'), 'utf8'), ja: await readFile(path.join(dist, 'ja/standalone/index.html'), 'utf8') },
+        worker: await readFile(path.join(dist, 'assets', workerAsset), 'utf8'),
+      };
+    });
+
+    it('publishes locale-specific article indexes and serves the same content in development', async () => {
+      await using fixture = await createSiteFixture();
+      await using dev = await startSiteDev({ root: fixture.root });
+      for (const locale of ['en', 'ja'] as const) {
+        const file = published.indexes[locale];
+        const production = parseSearchIndex({ value: JSON.parse(file) as unknown, locale });
+        const response = await dev.request({ url: `/docs/search-${locale}.json` });
+        expect(response.status).toBe(200);
+        expect(response.headers.get('content-type')).toContain('application/json');
+        const development = parseSearchIndex({ value: await response.json() as unknown, locale });
+        expect(development).toEqual(production);
+        expect(production.entries.map(item => item.href)).toEqual(DOCS_PAGES.map(page => docsHref({ locale, page: page.id })));
+        const homeMessages = locale === 'en' ? homeEn : homeJa;
+        const homeEntry = production.entries.find(entry => entry.href === docsHref({ locale, page: 'index' }));
+        for (const heading of [homeMessages.gguf_answer_in_browser_heading, homeMessages.cat_image_in_browser_heading, homeMessages.speech_in_browser_heading]) expect(homeEntry?.headings).toContain(heading);
+        for (const paragraph of [homeMessages.gguf_answer_in_browser_description, homeMessages.cat_image_in_browser_description, homeMessages.speech_in_browser_description]) expect(homeEntry?.paragraphs).toContain(paragraph);
+        for (const diagramText of [homeMessages.chat_question, homeMessages.cat_image_prompt, homeMessages.speech_text]) expect(homeEntry?.paragraphs).not.toContain(diagramText);
+        const purposes = purposeDocs({ index: production });
+        expect(purposes.map(item => item.href)).toEqual(PURPOSE_PAGES.map(page => docsHref({ locale, page })));
+        for (const hit of purposes) expect(hit.snippet).toBe(production.entries.find(entry => entry.href === hit.href)?.description);
+        expect(file).not.toContain('Project notes');
+        const guide = await dev.request({ url: docsHref({ locale, page: 'file-access' }) });
+        expect(guide.status).toBe(200);
+        using page = parsePage({ html: await guide.text() });
+        expect(page.document.querySelector('[data-testid="docs-search-trigger"]')?.getAttribute('aria-label')).toBe(locale === 'ja' ? 'ドキュメントを検索' : 'Search docs');
+        const searchHost = page.document.querySelector('[data-docs-island="search"]');
+        if (!searchHost) throw new Error('Missing Docs search island');
+        const serialized = searchHost.getAttribute('data-docs-props') ?? '';
+        expect(Object.keys(JSON.parse(serialized) as object).sort()).toEqual(['currentPage', 'locale', 'purpose']);
+        const payload = parseSearchPayload({ serialized });
+        expect(payload.locale).toBe(locale);
+        expect(payload.currentPage).toBe('file-access');
+        expect(payload.purpose.map(item => item.href)).toEqual(PURPOSE_PAGES.map(purposePage => docsHref({ locale, page: purposePage })));
+        expect(payload.purpose.every(item => item.title.trim() && item.snippet.trim())).toBe(true);
+        expect(Array.from(searchHost.querySelectorAll<HTMLAnchorElement>('[data-testid="docs-search-results"] a'), link => link.getAttribute('href'))).toEqual(payload.purpose.map(item => item.href));
+        expect(() => parseSearchPayload({ serialized: JSON.stringify({ ...payload, purpose: [{ ...payload.purpose[0], href: docsHref({ locale: locale === 'en' ? 'ja' : 'en', page: PURPOSE_PAGES[0] }) }, ...payload.purpose.slice(1)] }) })).toThrow();
+        expect(() => parseSearchPayload({ serialized: JSON.stringify({ ...payload, currentPage: 'not-a-page' }) })).toThrow();
+        expect(() => parseSearchPayload({ serialized: JSON.stringify({ ...payload, locale: 'fr' }) })).toThrow();
+        using currentPurpose = parsePage({ html: published.standalone[locale] });
+        const selfLink = currentPurpose.document.querySelector<HTMLAnchorElement>(`[data-docs-island="search"] [data-testid="docs-search-results"] a[href="${docsHref({ locale, page: 'standalone' })}"]`);
+        expect(selfLink?.hasAttribute('data-docs-guide-prefetch')).toBe(false);
+        const relatedLabel = page.document.querySelector('[data-docs-related-guide] .related-eyebrow')?.textContent?.trim();
+        expect(relatedLabel).toBeTruthy();
+        expect(production.entries.find(entry => entry.href === docsHref({ locale, page: 'file-access' }))?.paragraphs).not.toContain(relatedLabel);
+        expect(page.document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toContain(`/docs/${locale}/file-access/`);
+      }
       const home = await dev.request({ url: '/docs/' });
       using neutral = parsePage({ html: await home.text() });
       for (const template of neutral.document.querySelectorAll<HTMLTemplateElement>('template[data-docs-locale]')) {
@@ -120,86 +138,91 @@ describe('Docs search', () => {
       expect(neutral.document.querySelector('script[src="/docs/@id/__x00__virtual:naidan-docs/island/search"]')).not.toBeNull();
       expect(neutral.document.querySelector('script[src="/docs/client/home-brand.ts"]')).not.toBeNull();
       expect(neutral.document.querySelector('script[src="/docs/client/app-entry.ts"]')).not.toBeNull();
-    }
-    const japanese = parseSearchIndex({ value: JSON.parse(await readFile(path.join(fixture.docs, 'dist/search-ja.json'), 'utf8')) as unknown, locale: 'ja' });
-    expect(searchDocs({ index: japanese, query: 'バックアップ ZIP' }).some(item => item.href === '/docs/ja/data-backup/')).toBe(true);
-    expect(searchDocs({ index: japanese, query: '新しいチャット' }).some(item => item.href === '/docs/ja/')).toBe(false);
-    for (const [query, expectedHref] of [
-      ['バックアップしたい', '/docs/ja/data-backup/'],
-      ['バックアップしたいです。', '/docs/ja/data-backup/'],
-      ['保存先を変えたい', '/docs/ja/data-storage/'],
-      ['ファイルを渡したい', '/docs/ja/file-access/'],
-      ['音声を保存したい', '/docs/ja/audio-generation/'],
-      ['シェルを有効にしたい', '/docs/ja/tool-browser-shell/'],
-    ] as const) {
-      const results = searchDocs({ index: japanese, query });
-      expect(results[0]?.href).toBe(expectedHref);
-      expect(results.length).toBeLessThanOrEqual(5);
-    }
-    expect(searchDocs({ index: japanese, query: 'GGUF' }).some(item => item.href === '/docs/ja/endpoint-type-llama-cpp-browser/')).toBe(true);
-    expect(searchDocs({ index: japanese, query: '量子ユニコーンを飼いたい' })).toEqual([]);
-    expect(searchDocs({ index: japanese, query: 'したい' })).toEqual([]);
-    expect(searchDocs({ index: japanese, query: 'をしたい。' })).toEqual([]);
-    expect(searchDocs({ index: japanese, query: '絵をしたい' })).toEqual([]);
-    expect(searchDocs({ index: japanese, query: 'AIを使いたい' }).length).toBeLessThanOrEqual(5);
-    expect(() => parseSearchIndex({ value: { locale: 'ja', entries: [{ href: 'https://elsewhere.example/', title: 'Wrong', headings: [], paragraphs: [] }] }, locale: 'ja' })).toThrow();
-    expect(() => parseSearchIndex({ value: { ...japanese, locale: 'en' }, locale: 'ja' })).toThrow();
-    expect(() => parseSearchIndex({ value: { ...japanese, entries: [{ ...japanese.entries[0], headings: [1] }, ...japanese.entries.slice(1)] }, locale: 'ja' })).toThrow();
-    expect(() => parseSearchIndex({ value: { ...japanese, entries: japanese.entries.slice(1) }, locale: 'ja' })).toThrow();
-    expect(() => parseSearchIndex({ value: { ...japanese, entries: [...japanese.entries.slice(1), japanese.entries[1]] }, locale: 'ja' })).toThrow();
-    const workerAsset = (await readdir(path.join(fixture.docs, 'dist/assets'))).find(file => /^worker-.+\.js$/u.test(file));
-    if (!workerAsset) throw new Error('Missing generated Docs search worker');
-    const channel = new MessageChannel();
-    using _ports = {
-      [Symbol.dispose]() {
-        channel.port1.close(); channel.port2.close();
-      },
-    };
-    let englishFailures = 1;
-    const fetchIndex = vi.fn(async (url: string) => {
-      const language = url.endsWith('search-ja.json') ? 'ja' : 'en';
-      if (language === 'en' && englishFailures > 0) {
-        englishFailures -= 1;
-        throw new Error('Temporary index failure');
+    });
+
+    it('searches published Japanese prose and rejects malformed article indexes', () => {
+      const japanese = parseSearchIndex({ value: JSON.parse(published.indexes.ja) as unknown, locale: 'ja' });
+      expect(searchDocs({ index: japanese, query: 'バックアップ ZIP' }).some(item => item.href === '/docs/ja/data-backup/')).toBe(true);
+      expect(searchDocs({ index: japanese, query: '新しいチャット' }).some(item => item.href === '/docs/ja/')).toBe(false);
+      for (const [query, expectedHref] of [
+        ['バックアップしたい', '/docs/ja/data-backup/'],
+        ['バックアップしたいです。', '/docs/ja/data-backup/'],
+        ['保存先を変えたい', '/docs/ja/data-storage/'],
+        ['ファイルを渡したい', '/docs/ja/file-access/'],
+        ['音声を保存したい', '/docs/ja/audio-generation/'],
+        ['シェルを有効にしたい', '/docs/ja/tool-browser-shell/'],
+      ] as const) {
+        const results = searchDocs({ index: japanese, query });
+        expect(results[0]?.href).toBe(expectedHref);
+        expect(results.length).toBeLessThanOrEqual(5);
       }
-      return new Response(await readFile(path.join(fixture.docs, 'dist', `search-${language}.json`), 'utf8'));
+      expect(searchDocs({ index: japanese, query: 'GGUF' }).some(item => item.href === '/docs/ja/endpoint-type-llama-cpp-browser/')).toBe(true);
+      expect(searchDocs({ index: japanese, query: '量子ユニコーンを飼いたい' })).toEqual([]);
+      expect(searchDocs({ index: japanese, query: 'したい' })).toEqual([]);
+      expect(searchDocs({ index: japanese, query: 'をしたい。' })).toEqual([]);
+      expect(searchDocs({ index: japanese, query: '絵をしたい' })).toEqual([]);
+      expect(searchDocs({ index: japanese, query: 'AIを使いたい' }).length).toBeLessThanOrEqual(5);
+      expect(() => parseSearchIndex({ value: { locale: 'ja', entries: [{ href: 'https://elsewhere.example/', title: 'Wrong', headings: [], paragraphs: [] }] }, locale: 'ja' })).toThrow();
+      expect(() => parseSearchIndex({ value: { ...japanese, locale: 'en' }, locale: 'ja' })).toThrow();
+      expect(() => parseSearchIndex({ value: { ...japanese, entries: [{ ...japanese.entries[0], headings: [1] }, ...japanese.entries.slice(1)] }, locale: 'ja' })).toThrow();
+      expect(() => parseSearchIndex({ value: { ...japanese, entries: japanese.entries.slice(1) }, locale: 'ja' })).toThrow();
+      expect(() => parseSearchIndex({ value: { ...japanese, entries: [...japanese.entries.slice(1), japanese.entries[1]] }, locale: 'ja' })).toThrow();
     });
-    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    using _errors = { [Symbol.dispose]: () => errors.mockRestore() };
-    new Script(await readFile(path.join(fixture.docs, 'dist/assets', workerAsset), 'utf8')).runInNewContext({
-      addEventListener: channel.port2.addEventListener.bind(channel.port2),
-      removeEventListener: channel.port2.removeEventListener.bind(channel.port2),
-      postMessage: channel.port2.postMessage.bind(channel.port2),
-      fetch: fetchIndex,
-      console,
+
+    it('shares locale index requests and retries failures in the generated search worker', async () => {
+      const japanese = parseSearchIndex({ value: JSON.parse(published.indexes.ja) as unknown, locale: 'ja' });
+      const channel = new MessageChannel();
+      using _ports = {
+        [Symbol.dispose]() {
+          channel.port1.close(); channel.port2.close();
+        },
+      };
+      let englishFailures = 1;
+      const fetchIndex = vi.fn(async (url: string) => {
+        const language = url.endsWith('search-ja.json') ? 'ja' : 'en';
+        if (language === 'en' && englishFailures > 0) {
+          englishFailures -= 1;
+          throw new Error('Temporary index failure');
+        }
+        return new Response(published.indexes[language]);
+      });
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+      using _errors = { [Symbol.dispose]: () => errors.mockRestore() };
+      new Script(published.worker).runInNewContext({
+        addEventListener: channel.port2.addEventListener.bind(channel.port2),
+        removeEventListener: channel.port2.removeEventListener.bind(channel.port2),
+        postMessage: channel.port2.postMessage.bind(channel.port2),
+        fetch: fetchIndex,
+        console,
+      });
+      channel.port2.start();
+      const remote = Comlink.wrap<SearchWorkerApi>(channel.port1 as unknown as Comlink.Endpoint);
+      using _remote = { [Symbol.dispose]: () => remote[Comlink.releaseProxy]() };
+      const workerMessages = await Promise.all([
+        remote.search({ request: { requestId: 1, locale: 'ja', query: '' } }),
+        remote.search({ request: { requestId: 2, locale: 'ja', query: 'バックアップ' } }),
+        remote.search({ request: { requestId: 3, locale: 'ja', query: '保存先' } }),
+      ]);
+      expect(fetchIndex).toHaveBeenCalledTimes(1);
+      const purposeMessage = workerMessages.find(message => message.requestId === 1);
+      expect(purposeMessage?.kind).toBe('results');
+      if (purposeMessage?.kind !== 'results') throw new Error('Missing Docs worker purpose guides');
+      expect(purposeMessage.results).toEqual(purposeDocs({ index: japanese }));
+      const firstMessage = workerMessages.find(message => message.requestId === 2);
+      expect(firstMessage?.kind).toBe('results');
+      if (firstMessage?.kind !== 'results') throw new Error('Missing Docs worker search results');
+      expect(firstMessage.results.some(hit => hit.href === '/docs/ja/data-backup/')).toBe(true);
+      expect(await remote.search({ request: { requestId: 4, locale: 'en', query: 'backup' } })).toEqual({ kind: 'error', requestId: 4 });
+      expect((await remote.search({ request: { requestId: 5, locale: 'en', query: 'backup' } })).kind).toBe('results');
+      expect(fetchIndex).toHaveBeenCalledTimes(3);
+      await expect(remote.search({ request: { requestId: 6, locale: 'fr', query: '' } as unknown as SearchWorkerRequest })).rejects.toThrow();
+      expect(fetchIndex).toHaveBeenCalledTimes(3);
+      const natural = await remote.search({ request: { requestId: 7, locale: 'ja', query: '保存先を変えたい' } });
+      expect(natural.kind).toBe('results');
+      if (natural.kind !== 'results') throw new Error('Missing Docs natural-language search results');
+      expect(natural.results[0]?.href).toBe('/docs/ja/data-storage/');
+      expect(fetchIndex).toHaveBeenCalledTimes(3);
     });
-    channel.port2.start();
-    const remote = Comlink.wrap<SearchWorkerApi>(channel.port1 as unknown as Comlink.Endpoint);
-    using _remote = { [Symbol.dispose]: () => remote[Comlink.releaseProxy]() };
-    const workerMessages = await Promise.all([
-      remote.search({ request: { requestId: 1, locale: 'ja', query: '' } }),
-      remote.search({ request: { requestId: 2, locale: 'ja', query: 'バックアップ' } }),
-      remote.search({ request: { requestId: 3, locale: 'ja', query: '保存先' } }),
-    ]);
-    expect(fetchIndex).toHaveBeenCalledTimes(1);
-    const purposeMessage = workerMessages.find(message => message.requestId === 1);
-    expect(purposeMessage?.kind).toBe('results');
-    if (purposeMessage?.kind !== 'results') throw new Error('Missing Docs worker purpose guides');
-    expect(purposeMessage.results).toEqual(purposeDocs({ index: japanese }));
-    const firstMessage = workerMessages.find(message => message.requestId === 2);
-    expect(firstMessage?.kind).toBe('results');
-    if (firstMessage?.kind !== 'results') throw new Error('Missing Docs worker search results');
-    expect(firstMessage.results.some(hit => hit.href === '/docs/ja/data-backup/')).toBe(true);
-    expect(await remote.search({ request: { requestId: 4, locale: 'en', query: 'backup' } })).toEqual({ kind: 'error', requestId: 4 });
-    expect((await remote.search({ request: { requestId: 5, locale: 'en', query: 'backup' } })).kind).toBe('results');
-    expect(fetchIndex).toHaveBeenCalledTimes(3);
-    await expect(remote.search({ request: { requestId: 6, locale: 'fr', query: '' } as unknown as SearchWorkerRequest })).rejects.toThrow();
-    expect(fetchIndex).toHaveBeenCalledTimes(3);
-    const natural = await remote.search({ request: { requestId: 7, locale: 'ja', query: '保存先を変えたい' } });
-    expect(natural.kind).toBe('results');
-    if (natural.kind !== 'results') throw new Error('Missing Docs natural-language search results');
-    expect(natural.results[0]?.href).toBe('/docs/ja/data-storage/');
-    expect(fetchIndex).toHaveBeenCalledTimes(3);
   });
 
   it('hydrates the header palette and ignores stale worker results', async () => {

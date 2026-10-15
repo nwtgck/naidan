@@ -6,6 +6,7 @@ import { build } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import { docsBuildConfig } from '../build/production';
 import { DOCS_LOCALES, DOCS_PAGES, docsHref } from '../navigation/routes';
+import { writeMinimalArticleFixtures } from './article-fixture.test-support';
 import { createSiteFixture, parsePage, startSiteDev } from './site.test-support';
 
 describe('Docs development and static output', () => {
@@ -153,14 +154,18 @@ describe('Docs adversarial lifecycle behavior', () => {
 
   it('uses fresh render modules, removes obsolete output and keeps server dictionaries out of client assets', async () => {
     await using fixture = await createSiteFixture();
+    await writeMinimalArticleFixtures({ root: fixture.docs });
     const config = { ...docsBuildConfig({ root: fixture.docs }), configFile: false as const, logLevel: 'error' as const };
     await build(config);
+    expect(await readFile(path.join(fixture.docs, 'dist/en/index.html'), 'utf8')).toContain('Server-only article heading in en.');
     await writeFile(path.join(fixture.docs, 'dist', 'stale.html'), 'previous route');
     const file = path.join(fixture.docs, 'pages/index/messages/en.tsx');
-    await writeFile(file, (await readFile(file, 'utf8')).replace('Find what you want to do.', 'Updated production heading'));
+    await writeFile(file, (await readFile(file, 'utf8')).replace('Server-only article heading in en.', 'Updated production heading'));
     await build(config);
     const html = await readFile(path.join(fixture.docs, 'dist/en/index.html'), 'utf8');
     expect(html).toContain('Updated production heading');
+    expect(html).not.toContain('Server-only article heading in en.');
+    expect(await readFile(path.join(fixture.docs, 'dist/ja/index.html'), 'utf8')).toContain('Server-only article heading in ja.');
     expect(await readdir(path.join(fixture.docs, 'dist'))).not.toContain('stale.html');
     expect(await readdir(path.join(fixture.docs, '.cache'))).not.toContain(expect.stringMatching(/^render-/));
     expect(await readdir(path.join(fixture.docs, 'dist'))).not.toContain('.vite');
@@ -168,7 +173,8 @@ describe('Docs adversarial lifecycle behavior', () => {
       if (!file.endsWith('.js')) continue;
       const code = await readFile(path.join(fixture.docs, 'dist/assets', file), 'utf8');
       expect(code).not.toContain('Updated production heading');
-      expect(code).not.toContain('安全性を徹底追求した');
+      expect(code).not.toContain('Server-only article heading in en.');
+      expect(code).not.toContain('Server-only article heading in ja.');
       // Island imports of named common messages must not pull in page-wide navigation.
       expect(code).not.toContain('Guide home');
       expect(code).not.toContain('ブラウザ内でモデルを動かす');

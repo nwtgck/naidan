@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import RenderText from '../../components/RenderText';
-import ConnectionSettingsStep from '../../components/demos/ConnectionSettingsStep.vue';
+import OllamaConnectionSettingsStep from '../../components/demos/OllamaConnectionSettingsStep.vue';
 import RelatedGuide from '../../components/RelatedGuide.vue';
 import type { DocsLocale } from '../../navigation/routes';
 import type { CommonMessages, OllamaGuideMessages } from '../../messages/types';
@@ -23,7 +23,7 @@ defineExpose({
       <h2 id="ollama-open">{{ s.open_connection_settings_heading }}</h2>
       <p><RenderText :node="s.open_connection_settings_instructions()" /></p>
       <figure class="guide-figure">
-        <ConnectionSettingsStep stage="open" :messages="s" />
+        <OllamaConnectionSettingsStep stage="open" :messages="s" />
         <figcaption class="caption"><RenderText :node="s.open_connection_settings_figure_caption()" /></figcaption>
       </figure>
     </section>
@@ -32,7 +32,7 @@ defineExpose({
       <h2 id="ollama-provider">{{ s.choose_ollama_provider_heading }}</h2>
       <p><RenderText :node="s.choose_ollama_provider_instructions()" /></p>
       <figure class="guide-figure">
-        <ConnectionSettingsStep stage="provider" :messages="s" />
+        <OllamaConnectionSettingsStep stage="provider" :messages="s" />
         <figcaption class="caption">{{ s.choose_ollama_provider_figure_caption }}</figcaption>
       </figure>
     </section>
@@ -41,7 +41,7 @@ defineExpose({
       <h2 id="ollama-check">{{ s.check_ollama_connection_heading }}</h2>
       <p><RenderText :node="s.check_ollama_connection_instructions()" /></p>
       <figure class="guide-figure">
-        <ConnectionSettingsStep stage="check" :messages="s" />
+        <OllamaConnectionSettingsStep stage="check" :messages="s" />
         <figcaption class="caption"><RenderText :node="s.check_ollama_connection_figure_caption()" /></figcaption>
       </figure>
     </section>
@@ -50,7 +50,7 @@ defineExpose({
       <h2 id="ollama-model">{{ s.choose_ollama_model_heading }}</h2>
       <p><RenderText :node="s.choose_ollama_model_instructions()" /></p>
       <figure class="guide-figure">
-        <ConnectionSettingsStep stage="model" :messages="s" />
+        <OllamaConnectionSettingsStep stage="model" :messages="s" />
         <figcaption class="caption">{{ s.choose_ollama_model_figure_caption }}</figcaption>
       </figure>
     </section>

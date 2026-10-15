@@ -5,7 +5,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { validateStaticComponent } from '../build/source-policy';
 import DocsLink from '../components/DocsLink.vue';
-import LocalAnchorLink from '../components/LocalAnchorLink.vue';
+import SkipToContentLink from '../components/SkipToContentLink.vue';
 import ExternalLink from '../components/ExternalLink.vue';
 import AppEntryLink from '../components/AppEntryLink.vue';
 import RenderText from '../components/RenderText';
@@ -57,7 +57,7 @@ describe('typed Docs links', () => {
 
   it('keeps the skip link on the current page even when href is injected', async () => {
     // @ts-expect-error The local fragment destination is fixed by the component.
-    const html = await renderToString(createSSRApp({ render: () => h(LocalAnchorLink, { href: '/docs/en/#docs-main', class: 'skip-link' }, () => 'Skip') }));
+    const html = await renderToString(createSSRApp({ render: () => h(SkipToContentLink, { href: '/docs/en/#docs-main', class: 'skip-link' }, () => 'Skip') }));
     using parsed = parsePage({ html });
     expect(parsed.document.querySelector('a.skip-link')?.getAttribute('href')).toBe('#docs-main');
   });
@@ -92,7 +92,7 @@ describe('native anchor authoring guard', () => {
       .toThrow('Use a typed Docs link component');
   });
 
-  it.each(['components/DocsLink.vue', 'components/LocalAnchorLink.vue', 'components/ExternalLink.vue', 'components/AppEntryLink.vue'])('allows a native anchor inside %s', filename => {
+  it.each(['components/DocsLink.vue', 'components/SkipToContentLink.vue', 'components/ExternalLink.vue', 'components/AppEntryLink.vue'])('allows a native anchor inside %s', filename => {
     expect(() => validateStaticComponent({ source: '<template><a href="/">Link</a></template>', filename, mode: 'static' }))
       .not.toThrow();
   });

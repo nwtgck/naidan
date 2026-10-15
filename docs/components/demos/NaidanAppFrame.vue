@@ -2,7 +2,7 @@
 import logo from '../../assets/naidan.svg';
 import { PanelLeftIcon, Settings2Icon, SettingsIcon, FolderIcon, MessageSquareIcon, SearchIcon, SquarePenIcon } from 'lucide-vue-next';
 
-// Deliberately independent of app stores and inference imports. See docs/README.md
+// Deliberately independent of app stores and inference imports. See docs/components/demos/README.md
 // for the current app components and tests whose presentation this replica follows.
 defineProps<{ title: string; address: string; sidebar: 'visible' | 'hidden'; messages: typeof import('../../messages/replica-chrome/en').messages }>();
 

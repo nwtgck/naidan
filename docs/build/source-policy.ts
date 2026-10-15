@@ -4,7 +4,7 @@ import type { TemplateChildNode } from '@vue/compiler-dom';
 
 const nativeAnchorComponents = new Set([
   'components/DocsLink.vue',
-  'components/LocalAnchorLink.vue',
+  'components/SkipToContentLink.vue',
   'components/ExternalLink.vue',
   'components/AppEntryLink.vue',
 ]);

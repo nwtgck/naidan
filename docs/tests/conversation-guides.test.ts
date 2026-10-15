@@ -96,11 +96,11 @@ describe('conversation guides', () => {
   });
 
   it('keeps paused group settings scoped to its completed scene', () => {
-    const filename = new URL('../components/demos/GroupSettingsStep.vue', import.meta.url);
+    const filename = new URL('../components/demos/ChatGroupSettingsStep.vue', import.meta.url);
     const { descriptor, errors } = parse(readFileSync(filename, 'utf8'), { filename: filename.pathname });
     expect(errors).toHaveLength(0);
     const style = descriptor.styles[0];
-    if (!style) throw new Error('Missing GroupSettingsStep style');
+    if (!style) throw new Error('Missing ChatGroupSettingsStep style');
     const compiled = compileStyle({ source: style.content, filename: filename.pathname, id: 'data-v-test', scoped: true });
     expect(compiled.errors).toHaveLength(0);
     expect(compiled.code).toContain('html:has(#docs-pause-motion:checked) .stage-model .selected-value');

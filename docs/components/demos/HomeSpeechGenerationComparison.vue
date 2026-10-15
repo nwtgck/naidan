@@ -2,7 +2,7 @@
 import { ArrowUpIcon, AudioLinesIcon, ChevronDownIcon, CloudIcon, DownloadIcon, PlayIcon } from 'lucide-vue-next';
 import naidanLogo from '../../assets/naidan.svg';
 import HomeBrowserFrame from './HomeBrowserFrame.vue';
-import HomeLocalOverhead from './HomeLocalOverhead.vue';
+import HomeLocalGenerationBadge from './HomeLocalGenerationBadge.vue';
 import HomeTypingText from './HomeTypingText.vue';
 
 defineProps<{ messages: typeof import('../../pages/index/messages/en').messages }>();
@@ -14,7 +14,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <div class="speech-comparison" data-docs-animation="speech-route-comparison" data-testid="docs-speech-route-comparison">
     <section class="comparison-mode local-mode" :aria-label="messages.naidan_speech_generation">
       <div class="local-route">
-        <HomeLocalOverhead :claim="messages.no_text_sent_to_server" />
+        <HomeLocalGenerationBadge :claim="messages.no_text_sent_to_server" />
         <HomeBrowserFrame identity="naidan" tab-label="Naidan" class="comparison-browser" data-testid="docs-local-speech-browser">
           <div class="comparison-screen local-screen">
             <strong class="workspace-brand"><img :src="naidanLogo" width="28" height="28" alt=""><span class="brand-copy"><span class="brand-name brand-wordmark">Naidan</span><span class="brand-subtitle"><AudioLinesIcon :size="13" aria-hidden="true" />{{ messages.audio_generation_ui }}</span></span></strong>

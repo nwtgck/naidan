@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { ArrowUpIcon, BirdIcon, BotIcon, CloudIcon, SendIcon, UserIcon } from 'lucide-vue-next';
 import naidanLogo from '../../assets/naidan.svg';
 import HomeBrowserFrame from './HomeBrowserFrame.vue';
-import HomeLocalOverhead from './HomeLocalOverhead.vue';
+import HomeLocalGenerationBadge from './HomeLocalGenerationBadge.vue';
 import HomeTypingText from './HomeTypingText.vue';
 
 const props = defineProps<{ messages: typeof import('../../pages/index/messages/en').messages }>();
@@ -19,7 +19,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <div class="chat-comparison" data-docs-animation="chat-route-comparison" data-testid="docs-chat-route-comparison">
     <section class="comparison-mode local-mode" :aria-label="messages.naidan_gguf_chat">
       <div class="local-route">
-        <HomeLocalOverhead :claim="messages.no_prompt_sent" />
+        <HomeLocalGenerationBadge :claim="messages.no_prompt_sent" />
         <HomeBrowserFrame identity="naidan" tab-label="Naidan" class="comparison-browser" data-testid="docs-local-chat-browser">
           <div class="chat-screen local-screen">
             <div class="screen-header"><img :src="naidanLogo" width="27" height="27" alt=""><strong class="brand-wordmark">Naidan</strong><span>{{ messages.new_chat }}</span><small>{{ messages.gguf_model }}</small></div>

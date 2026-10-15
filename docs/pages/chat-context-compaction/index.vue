@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import RenderText from '../../components/RenderText';
-import CompactStep from '../../components/demos/CompactStep.vue';
+import ContextCompactionStep from '../../components/demos/ContextCompactionStep.vue';
 import RelatedGuide from '../../components/RelatedGuide.vue';
 import type { DocsLocale } from '../../navigation/routes';
 import type { CommonMessages } from '../../messages/types';
@@ -22,7 +22,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="compact-open">{{ s.open_compact_context_heading }}</h2>
       <p><RenderText :node="s.open_compact_context_instructions()" /></p>
       <figure class="guide-figure">
-        <CompactStep stage="open" :messages="s" />
+        <ContextCompactionStep stage="open" :messages="s" />
         <figcaption class="caption"><RenderText :node="s.compact_context_menu_caption()" /></figcaption>
       </figure>
     </section>
@@ -31,7 +31,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="compact-keep">{{ s.choose_recent_messages_heading }}</h2>
       <p><RenderText :node="s.choose_recent_messages_instructions()" /></p>
       <figure class="guide-figure">
-        <CompactStep stage="keep" :messages="s" />
+        <ContextCompactionStep stage="keep" :messages="s" />
         <figcaption class="caption">{{ s.recent_messages_selection_caption }}</figcaption>
       </figure>
     </section>
@@ -40,7 +40,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="compact-run">{{ s.start_summary_heading }}</h2>
       <p><RenderText :node="s.start_summary_instructions()" /></p>
       <figure class="guide-figure">
-        <CompactStep stage="run" :messages="s" />
+        <ContextCompactionStep stage="run" :messages="s" />
         <figcaption class="caption"><RenderText :node="s.summary_progress_caption()" /></figcaption>
       </figure>
     </section>
@@ -49,7 +49,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
       <h2 id="compact-result">{{ s.review_shorter_path_heading }}</h2>
       <p>{{ s.review_shorter_path_instructions }}</p>
       <figure class="guide-figure">
-        <CompactStep stage="result" :messages="s" />
+        <ContextCompactionStep stage="result" :messages="s" />
         <figcaption class="caption">{{ s.shorter_path_caption }}</figcaption>
       </figure>
     </section>

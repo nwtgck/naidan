@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import DocsLink from '../../components/DocsLink.vue';
-import BoundaryDiagram from '../../components/demos/BoundaryDiagram.vue';
+import BrowserBoundaryDiagram from '../../components/demos/BrowserBoundaryDiagram.vue';
 import RelatedGuide from '../../components/RelatedGuide.vue';
 import type { DocsLocale } from '../../navigation/routes';
 import type { BoundaryMessages, CommonMessages } from '../../messages/types';
@@ -30,7 +30,7 @@ defineExpose({
       class="lead"
     >{{ paragraph }}</p>
     <h2>{{ s.os_and_browser_boundaries_heading }}</h2>
-    <figure class="guide-figure"><BoundaryDiagram :messages="s" /><figcaption class="caption">{{ s.os_and_browser_boundaries_caption }}</figcaption></figure>
+    <figure class="guide-figure"><BrowserBoundaryDiagram :messages="s" /><figcaption class="caption">{{ s.os_and_browser_boundaries_caption }}</figcaption></figure>
     <section><h2>{{ s.choose_the_input_heading }}</h2><p>{{ s.choose_the_input_description }}</p></section>
     <section><h2>{{ s.browser_runs_the_model_heading }}</h2><p>{{ s.browser_runs_the_model_description }}</p></section>
     <section><h2>{{ s.connections_have_a_purpose_heading }}</h2><p>{{ s.connections_have_a_purpose_description }}</p></section>

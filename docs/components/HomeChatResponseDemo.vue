@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { BirdIcon, UserIcon, PaperclipIcon, SendIcon, SquareIcon, ChevronDownIcon, CopyIcon, PencilIcon, RefreshCwIcon, MoreHorizontalIcon, MoreVerticalIcon, Volume2Icon, Settings2Icon, FileEditIcon } from 'lucide-vue-next';
-import ReplicaChrome from './demos/ReplicaChrome.vue';
+import NaidanAppFrame from './demos/NaidanAppFrame.vue';
 import type { CommonMessages } from '../messages/types';
 
 const props = defineProps<{ messages: typeof import('../pages/index/messages/en').messages; common: CommonMessages }>();
@@ -36,7 +36,7 @@ defineExpose({
 
 <template>
   <div class="home-demonstration" data-docs-animation="chat-response" aria-hidden="true">
-    <ReplicaChrome :messages="common" :title="messages.project_summary" address="Naidan" sidebar="visible">
+    <NaidanAppFrame :messages="common" :title="messages.project_summary" address="Naidan" sidebar="visible">
       <div class="demo-scene" data-testid="docs-home-chat-scene">
         <div class="demo-thread">
           <div class="demo-message demo-user">
@@ -57,7 +57,7 @@ defineExpose({
         </div>
         <div class="demo-input"><div class="demo-placeholder">{{ messages.type_a_message }}</div><div class="demo-input-editor"><ChevronDownIcon :size="11" /><FileEditIcon :size="11" /></div><div class="demo-input-controls"><span class="demo-model">Gemma <ChevronDownIcon :size="10" /></span><PaperclipIcon :size="13" /><Settings2Icon :size="13" /><span class="demo-send"><span class="demo-send-ready"><SendIcon :size="13" /></span><span class="demo-send-stop"><span>Esc</span><SquareIcon :size="11" /></span></span></div></div>
       </div>
-    </ReplicaChrome>
+    </NaidanAppFrame>
     <div class="demo-capabilities"><span v-for="capability in messages.generation_capabilities()" :key="capability">{{ capability }}</span></div>
   </div>
 </template>

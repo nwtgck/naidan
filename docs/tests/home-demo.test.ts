@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createSSRApp, h } from 'vue';
 import { renderToString } from '@vue/server-renderer';
-import BrowserMock from '../components/BrowserMock.vue';
+import HomeChatResponseDemo from '../components/HomeChatResponseDemo.vue';
 import { messages as homeEn } from '../pages/index/messages/en';
 import { messages as homeJa } from '../pages/index/messages/ja';
 import { messages as commonEn } from '../messages/common/en';
@@ -13,7 +13,7 @@ describe('homepage chat replica', () => {
     { locale: 'en', home: homeEn, common: commonEn },
     { locale: 'ja', home: homeJa, common: commonJa },
   ])('renders the complete $locale conversation as static localized HTML', async ({ home, common }) => {
-    const html = await renderToString(createSSRApp({ render: () => h(BrowserMock, { messages: home, common }) }));
+    const html = await renderToString(createSSRApp({ render: () => h(HomeChatResponseDemo, { messages: home, common }) }));
     using page = parsePage({ html });
     const scene = page.document.querySelector('[data-testid="docs-home-chat-scene"]');
     expect(scene).not.toBeNull();

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { BirdIcon, UserIcon, CopyIcon, PencilIcon, RefreshCwIcon, GitForkIcon, SendIcon, MoreVerticalIcon, MoreHorizontalIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, FileEditIcon, Settings2Icon, XCircleIcon, Volume2Icon, HistoryIcon, LinkIcon, PaperclipIcon, MessageSquareIcon } from 'lucide-vue-next';
-import ReplicaChrome from '../../components/demos/ReplicaChrome.vue';
+import NaidanAppFrame from '../../components/demos/NaidanAppFrame.vue';
 import RenderText from '../../components/RenderText';
 import type { BranchingMessages, BranchingChrome } from './messages';
 
@@ -238,7 +238,7 @@ defineExpose({
   <section class="branch-demo" :aria-label="`${copy.label}: ${copy.methods[method].title}`" :data-testid="`branch-method-${variant}`" data-docs-animation="branch-walkthrough" :data-playback="playback" :data-method="method" :data-stage="stage">
     <h3 class="method-title">{{ copy.methods[method].title }}</h3>
     <p class="method-description">{{ copy.methods[method].body }}</p>
-    <ReplicaChrome :title="activeTitle" address="https://naidan.pages.dev/" :sidebar="sidebar" :messages="chrome">
+    <NaidanAppFrame :title="activeTitle" address="https://naidan.pages.dev/" :sidebar="sidebar" :messages="chrome">
       <template v-if="variant === 'fork'" #title>
         <span class="branch-title-stack"><span class="branch-title-reserve" aria-hidden="true">{{ copy.forkTitle }}</span><span>{{ activeTitle }}</span></span>
       </template>
@@ -352,7 +352,7 @@ defineExpose({
         <div class="input-placeholder">{{ copy.ui.inputPlaceholder }}<span><ChevronDownIcon :size="14" /><FileEditIcon :size="14" /></span></div>
         <div class="input-footer"><span class="model-select">Gemma<ChevronDownIcon :size="11" /></span><PaperclipIcon :size="15" :title="copy.ui.attach" /><Settings2Icon :size="15" :title="copy.ui.tools" /><span class="sample-send" :title="copy.ui.send"><kbd>Ctrl + Enter</kbd><SendIcon :size="14" /></span></div>
       </div>
-    </ReplicaChrome>
+    </NaidanAppFrame>
     <div class="walkthrough-footer">
       <div class="stage-choices" role="group" :aria-label="copy.controls.steps"><button v-for="value in stages" :key="value" type="button" :disabled="availability === 'static'" :aria-current="stage === value ? 'step' : undefined" :data-testid="`branch-step-${value}`" @click="chooseStage({ value })"><span aria-hidden="true">{{ value + 1 }}</span><span class="sr-only">{{ value + 1 }}. <RenderText :node="copy.methods[method].stages[value]()" /></span></button></div>
       <button type="button" class="replay" :disabled="availability === 'static'" data-testid="branch-replay" @click="replay"><RefreshCwIcon :size="12" />{{ copy.controls.replay }}</button>

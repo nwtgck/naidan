@@ -3,7 +3,7 @@ import { ArrowUpIcon, BotIcon, CloudIcon, ImageIcon } from 'lucide-vue-next';
 import catArtwork from '../../assets/flying-kitten.webp';
 import naidanLogo from '../../assets/naidan.svg';
 import HomeBrowserFrame from './HomeBrowserFrame.vue';
-import HomeLocalOverhead from './HomeLocalOverhead.vue';
+import HomeLocalGenerationBadge from './HomeLocalGenerationBadge.vue';
 import HomeTypingText from './HomeTypingText.vue';
 
 defineProps<{ messages: typeof import('../../pages/index/messages/en').messages }>();
@@ -15,7 +15,7 @@ defineExpose({ ...((__BUILD_MODE_IS_TEST__ && { TEST_ONLY: {} }) || {}) });
   <div class="image-comparison" data-docs-animation="image-route-comparison" data-testid="docs-image-route-comparison">
     <section class="comparison-mode local-mode" :aria-label="messages.naidan_image_generation">
       <div class="local-route">
-        <HomeLocalOverhead :claim="messages.no_prompt_sent" />
+        <HomeLocalGenerationBadge :claim="messages.no_prompt_sent" />
         <HomeBrowserFrame identity="naidan" tab-label="Naidan" class="comparison-browser" data-testid="docs-local-image-browser">
           <div class="comparison-screen local-screen">
             <strong class="workspace-brand"><img :src="naidanLogo" width="28" height="28" alt=""><span class="brand-copy"><span class="brand-name brand-wordmark">Naidan</span><span class="brand-subtitle">{{ messages.image_generation_ui }}</span></span></strong>

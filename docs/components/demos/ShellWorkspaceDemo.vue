@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { BirdIcon, UserIcon, Loader2Icon, HammerIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, ChevronUpIcon, EyeIcon, EyeOffIcon, ShapesIcon, WrapTextIcon, MousePointer2Icon, TerminalIcon } from 'lucide-vue-next';
-import ReplicaChrome from './ReplicaChrome.vue';
+import NaidanAppFrame from './NaidanAppFrame.vue';
 import type { CommonMessages } from '../../messages/types';
 
 const props = defineProps<{ messages: typeof import('../../pages/tool-browser-shell/messages/en').messages; common: CommonMessages }>();
@@ -79,7 +79,7 @@ defineExpose({
 
 <template>
   <div data-docs-animation="shell-tool-call" data-testid="docs-shell-demo" aria-hidden="true">
-    <ReplicaChrome :title="messages.project_tasks_title" :address="messages.project_tasks_address" :messages="common" sidebar="hidden">
+    <NaidanAppFrame :title="messages.project_tasks_title" :address="messages.project_tasks_address" :messages="common" sidebar="hidden">
       <div class="shell-chat">
         <div class="shell-user">
           <div class="message-heading"><span class="message-avatar"><UserIcon :size="15" /></span><b>{{ messages.you_label }}</b></div>
@@ -147,7 +147,7 @@ defineExpose({
           </div>
         </div>
       </div>
-    </ReplicaChrome>
+    </NaidanAppFrame>
   </div>
   <details class="shell-transcript" data-testid="docs-shell-transcript">
     <summary>

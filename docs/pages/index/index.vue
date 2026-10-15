@@ -3,9 +3,9 @@ import DocsLink from '../../components/DocsLink.vue';
 import { BookOpenIcon, GithubIcon } from 'lucide-vue-next';
 import logo from '../../assets/naidan.svg';
 import AppEntryLink from '../../components/AppEntryLink.vue';
-import BrowserMock from '../../components/BrowserMock.vue';
+import HomeChatResponseDemo from '../../components/HomeChatResponseDemo.vue';
 import ExternalLink from '../../components/ExternalLink.vue';
-import BoundaryDiagram from '../../components/demos/BoundaryDiagram.vue';
+import BrowserBoundaryDiagram from '../../components/demos/BrowserBoundaryDiagram.vue';
 import StandaloneDemo from '../../components/demos/StandaloneDemo.vue';
 import StorageChoiceDemo from '../../components/demos/StorageChoiceDemo.vue';
 import HomeChatGenerationComparison from '../../components/demos/HomeChatGenerationComparison.vue';
@@ -74,7 +74,7 @@ defineExpose({
         </div>
       </div>
       <figure class="home-mock">
-        <BrowserMock :messages="s" :common="common" />
+        <HomeChatResponseDemo :messages="s" :common="common" />
       </figure>
     </div>
   </section>
@@ -92,7 +92,7 @@ defineExpose({
         <p class="section-description">{{ s.browser_boundaries_introduction }}</p>
       </div>
       <div class="how-grid">
-        <BoundaryDiagram :messages="s" />
+        <BrowserBoundaryDiagram :messages="s" />
         <div class="mechanism-list">
           <section class="mechanism-item"><span class="mechanism-index" aria-hidden="true">01</span><div><h3>{{ s.browser_access_heading }}</h3><p>{{ s.browser_access_description }}</p></div></section>
           <section class="mechanism-item"><span class="mechanism-index" aria-hidden="true">02</span><div><h3>{{ s.local_model_processing_heading }}</h3><p>{{ s.local_model_processing_description }}</p></div></section>
