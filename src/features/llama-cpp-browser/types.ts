@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { huggingFaceModelId } from '@/01-models/llama-cpp-browser-model-launch';
+// eslint-disable-next-line local-rules-imports/prefer-root-alias-imports -- Build configuration consumes this schema before Vite aliases exist.
+import { huggingFaceModelId } from '../../01-models/llama-cpp-browser-model-launch';
 
 import { parseHostModelReference, parseHostModelSelector, parsePublicHostModelReference } from './runtime/model-destination-types';
 
