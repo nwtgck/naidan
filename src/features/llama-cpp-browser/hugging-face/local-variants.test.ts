@@ -52,45 +52,55 @@ describe.each(['opfs', 'host'] as const)('%s shared local variants', kind => {
 
   it.each([
     {
-      layout: 'quantization directory with four shards', repository: 'unsloth/Model-GGUF',
-      groups: [{ variant: 'UD-Q4_K_XL', paths: [
-        'UD-Q4_K_XL/Model-UD-Q4_K_XL-00001-of-00004.gguf',
-        'UD-Q4_K_XL/Model-UD-Q4_K_XL-00002-of-00004.gguf',
-        'UD-Q4_K_XL/Model-UD-Q4_K_XL-00003-of-00004.gguf',
-        'UD-Q4_K_XL/Model-UD-Q4_K_XL-00004-of-00004.gguf',
-      ] }],
+      layout: 'quantization directory with four shards',
+      repository: 'unsloth/Model-GGUF',
+      groups: [{
+        variant: 'UD-Q4_K_XL',
+        paths: [
+          'UD-Q4_K_XL/Model-UD-Q4_K_XL-00001-of-00004.gguf',
+          'UD-Q4_K_XL/Model-UD-Q4_K_XL-00002-of-00004.gguf',
+          'UD-Q4_K_XL/Model-UD-Q4_K_XL-00003-of-00004.gguf',
+          'UD-Q4_K_XL/Model-UD-Q4_K_XL-00004-of-00004.gguf',
+        ],
+      }],
     },
     {
-      layout: 'model and quantization repeated in the directory', repository: 'bartowski/Model-GGUF',
+      layout: 'model and quantization repeated in the directory',
+      repository: 'bartowski/Model-GGUF',
       groups: [{ variant: 'Q8_0', paths: ['Model-Q8_0/Model-Q8_0-00001-of-00002.gguf', 'Model-Q8_0/Model-Q8_0-00002-of-00002.gguf'] }],
     },
     {
-      layout: 'lowercase root filenames with both single and split models', repository: 'Qwen/Model-GGUF',
+      layout: 'lowercase root filenames with both single and split models',
+      repository: 'Qwen/Model-GGUF',
       groups: [
         { variant: 'q2_k', paths: ['model-q2_k.gguf'] },
         { variant: 'q4_k_m', paths: ['model-q4_k_m-00001-of-00002.gguf', 'model-q4_k_m-00002-of-00002.gguf'] },
       ],
     },
     {
-      layout: 'dot separator after a dotted model version', repository: 'TheBloke/Model-v0.2-GGUF',
+      layout: 'dot separator after a dotted model version',
+      repository: 'TheBloke/Model-v0.2-GGUF',
       groups: [{ variant: 'Q4_K_M', paths: ['model-v0.2.Q4_K_M.gguf'] }],
     },
     {
-      layout: 'meaningful ancestors above repeated quantization directories', repository: 'owner/Model-GGUF',
+      layout: 'meaningful ancestors above repeated quantization directories',
+      repository: 'owner/Model-GGUF',
       groups: [
         { variant: 'imatrix/Q4_K_M', paths: ['imatrix/Q4_K_M/Model-Q4_K_M.gguf'] },
         { variant: 'plain/Q4_K_M', paths: ['plain/Q4_K_M/Model-Q4_K_M.gguf'] },
       ],
     },
     {
-      layout: 'different model families in one repository', repository: 'owner/various-2bit-sota-gguf',
+      layout: 'different model families in one repository',
+      repository: 'owner/various-2bit-sota-gguf',
       groups: [
         { variant: 'llama-v2-13b-2.17bpw', paths: ['llama-v2-13b-2.17bpw.gguf'] },
         { variant: 'mistral-7b-2.20bpw', paths: ['mistral-7b-2.20bpw.gguf'] },
       ],
     },
     {
-      layout: 'unknown modifiers and model sizes outside the repository prefix', repository: 'owner/Model-GGUF',
+      layout: 'unknown modifiers and model sizes outside the repository prefix',
+      repository: 'owner/Model-GGUF',
       groups: [
         { variant: 'i1-MXFP4', paths: ['Model-i1-MXFP4.gguf'] },
         { variant: '35B-FutureMethod-q4_Custom', paths: ['Model-35B-FutureMethod-q4_Custom.gguf'] },
