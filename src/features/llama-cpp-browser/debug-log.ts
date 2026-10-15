@@ -205,6 +205,7 @@ export const diagnosticSchema = z.object({
   reasoning: z.boolean().optional(),
   pointerBytes: z.union([z.literal(4), z.literal(8)]).optional(),
   contextTokens: z.number().int().positive().optional(),
+  requestedContextTokens: z.number().int().positive().max(1048576).optional(),
   reusedTokens: z.number().int().nonnegative().optional(),
   evaluatedTokens: z.number().int().nonnegative().optional(),
   cachedTokens: z.number().int().nonnegative().optional(),

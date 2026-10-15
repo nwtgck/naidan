@@ -6,15 +6,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LlamaCppWorkerClient } from './worker/types';
 import { LlamaCppBrowserError, type GenerationResult } from './types';
 import type { LlamaCppPerformanceScope, LlamaCppBrowserService } from './service-contract';
+import { DEFAULT_SETTINGS } from '@/01-models/types';
+import type { storageService } from '@/00-storage/service';
 import type { ProfileCapabilities } from './runtime/profile-capabilities';
 const worker = vi.hoisted(() => ({ releaseRuntime: vi.fn<LlamaCppWorkerClient['releaseRuntime']>(), prepareModel: vi.fn<LlamaCppWorkerClient['prepareModel']>(), generateAudio: vi.fn<LlamaCppWorkerClient['generateAudio']>(), subscribeDisposed: vi.fn<LlamaCppWorkerClient['subscribeDisposed']>(), probeProfiles: vi.fn<LlamaCppWorkerClient['probeProfiles']>(), listModels: vi.fn<LlamaCppWorkerClient['listModels']>(), importModel: vi.fn<LlamaCppWorkerClient['importModel']>(), removeModel: vi.fn<LlamaCppWorkerClient['removeModel']>(), generate: vi.fn<LlamaCppWorkerClient['generate']>(), canReuse: vi.fn(() => true), dispose: vi.fn() }));
 const factory = vi.hoisted(() => vi.fn(() => ({ ...worker })));
 vi.mock('@/features/llama-cpp-browser/worker/client', () => ({ createLlamaCppWorkerClient: factory }));
 vi.mock('./runtime/model-store', () => ({ listStoredModels: vi.fn(), removeStoredModel: vi.fn(), withModelMutationLock: ({ operation }: { operation: () => Promise<unknown> }) => operation() }));
 let service: LlamaCppBrowserService;
+let storage: typeof storageService;
 
 beforeEach(async () => {
   vi.resetModules(); vi.resetAllMocks();
+  storage = (await import('@/00-storage/service')).storageService;
+  vi.spyOn(storage, 'loadSettings').mockResolvedValue(null);
   worker.subscribeDisposed.mockReturnValue(() => {});
   worker.probeProfiles.mockResolvedValue({
     recommended: 'cpu-wasm32',
@@ -772,5 +777,55 @@ describe('investigation and read-only cache ownership', () => {
     expect(worker.releaseRuntime).toHaveBeenCalledOnce();
     await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
     expect(worker.generate.mock.calls.map(([call]) => call.request.measurement?.sequence)).toEqual([undefined, 'fresh', undefined]);
+  });
+});
+
+describe('stored chat allocation targets', () => {
+  it('uses the saved target for warmup and the next generation', async () => {
+    vi.mocked(storage.loadSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, endpoint: { type: 'llama_cpp_browser' }, storageType: 'local', experimental: { llamaCppBrowser: { contextTokens: 65536 } } });
+    await service.prepareModel({ model: 'local.gguf', signal: undefined });
+    await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    expect(worker.prepareModel.mock.calls[0]?.[0].request.options.contextTokens).toBe(65536);
+    expect(worker.generate.mock.calls[0]?.[0].request.options.contextTokens).toBe(65536);
+    expect(service.getOptions()).toEqual({ profile: 'auto' });
+  });
+
+  it('keeps one accepted target across tool continuations while applying later settings to later operations', async () => {
+    vi.mocked(storage.loadSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, endpoint: { type: 'llama_cpp_browser' }, storageType: 'local', experimental: { llamaCppBrowser: { contextTokens: 65536 } } });
+    await service.runGenerationOperation({
+      signal: new AbortController().signal,
+      operation: async ({ scope }) => {
+        await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
+        vi.mocked(storage.loadSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, endpoint: { type: 'llama_cpp_browser' }, storageType: 'local', experimental: { llamaCppBrowser: { contextTokens: 131072 } } });
+        await scope.generate({ input: input(), onEvent: () => {}, signal: undefined });
+      },
+    });
+    expect(storage.loadSettings).toHaveBeenCalledOnce();
+    await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    expect(worker.generate.mock.calls.map(([call]) => call.request.options.contextTokens)).toEqual([65536, 65536, 131072]);
+  });
+
+  it('passes an explicitly selected capacity through the worker boundary without loading preferences', async () => {
+    service.setOptions({ options: { profile: 'auto', contextTokens: 131072 } });
+    await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    expect(worker.generate.mock.calls[0]?.[0].request.options.contextTokens).toBe(131072);
+    expect(storage.loadSettings).not.toHaveBeenCalled();
+  });
+
+  it('keeps audio context allocation independent of the saved chat capacity', async () => {
+    vi.mocked(storage.loadSettings).mockRejectedValue(new Error('audio must not read chat preferences'));
+    await service.generateAudio({ input: audioInput(), cancellationSignal: undefined });
+    expect(storage.loadSettings).not.toHaveBeenCalled();
+    expect(worker.generateAudio.mock.calls[0]?.[0].request.contextTokens).toBe(audioInput().contextTokens);
+    expect(worker.generateAudio.mock.calls[0]?.[0].request.options.contextTokens).toBeUndefined();
+  });
+
+  it('rejects invalid saved targets before acquiring a worker and permits a corrected request', async () => {
+    vi.mocked(storage.loadSettings).mockResolvedValue({ ...DEFAULT_SETTINGS, endpoint: { type: 'llama_cpp_browser' }, storageType: 'local', experimental: { llamaCppBrowser: { contextTokens: -1 } } });
+    await expect(service.generate({ input: input(), onEvent: () => {}, signal: undefined })).rejects.toThrow();
+    expect(factory).not.toHaveBeenCalled();
+    vi.mocked(storage.loadSettings).mockResolvedValue(null);
+    await service.generate({ input: input(), onEvent: () => {}, signal: undefined });
+    expect(worker.generate).toHaveBeenCalledOnce();
   });
 });

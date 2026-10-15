@@ -17,12 +17,12 @@ describe('llama.cpp browser model download destination settings', () => {
   });
 
   it('materializes a missing nested destination as undefined without selecting a default', () => {
-    expect(ExperimentalLlamaCppBrowserSettingsSchemaDto.parse({})).toStrictEqual({ modelDownloadDestination: undefined });
+    expect(ExperimentalLlamaCppBrowserSettingsSchemaDto.parse({})).toStrictEqual({ modelDownloadDestination: undefined, contextTokens: undefined });
     const dto = SettingsSchemaDto.parse({ ...settingsToDto({ domain: base }), experimental: { llamaCppBrowser: {} } });
     const read = settingsToDomain({ dto });
 
-    expect(read.experimental?.llamaCppBrowser).toStrictEqual({ modelDownloadDestination: undefined });
-    expect(settingsToDto({ domain: read }).experimental?.llamaCppBrowser).toStrictEqual({ modelDownloadDestination: undefined });
+    expect(read.experimental?.llamaCppBrowser).toStrictEqual({ modelDownloadDestination: undefined, contextTokens: undefined });
+    expect(settingsToDto({ domain: read }).experimental?.llamaCppBrowser).toStrictEqual({ modelDownloadDestination: undefined, contextTokens: undefined });
   });
 
   it.each<LlamaCppBrowserSettings['modelDownloadDestination']>([
@@ -47,8 +47,8 @@ describe('llama.cpp browser model download destination settings', () => {
     const parsed = SettingsSchemaDto.parse(JSON.parse(JSON.stringify(saved)));
     const restored = settingsToDomain({ dto: parsed });
 
-    expect(saved.experimental?.llamaCppBrowser).toStrictEqual({ modelDownloadDestination });
-    expect(restored.experimental?.llamaCppBrowser).toStrictEqual({ modelDownloadDestination });
+    expect(saved.experimental?.llamaCppBrowser).toStrictEqual({ modelDownloadDestination, contextTokens: undefined });
+    expect(restored.experimental?.llamaCppBrowser).toStrictEqual({ modelDownloadDestination, contextTokens: undefined });
     expect(restored.experimental?.browserImageGeneration?.modelDownloadDestination).toStrictEqual({ kind: 'host', directoryId: imageDirectoryId });
     expect(restored.experimental?.browserImageGeneration?.width).toBe(512);
     expect(restored.experimental?.locale).toBe('ja');
@@ -67,6 +67,7 @@ describe('llama.cpp browser model download destination settings', () => {
 
     expect(saved.experimental?.llamaCppBrowser).toStrictEqual({
       modelDownloadDestination: { kind: 'host', directoryId: 'stable-registration-id' },
+      contextTokens: undefined,
     });
     expect(JSON.stringify(saved)).not.toContain('private folder');
     expect(JSON.stringify(saved)).not.toContain('handle');
@@ -85,6 +86,7 @@ describe('llama.cpp browser model download destination settings', () => {
 
     expect(read.experimental?.llamaCppBrowser).toStrictEqual({
       modelDownloadDestination: { kind: 'host', directoryId: toHostModelDirectoryId({ raw: 'linked-models' }) },
+      contextTokens: undefined,
     });
     expect(read.experimental?.unreadable).toBeUndefined();
   });
@@ -117,5 +119,23 @@ describe('llama.cpp browser model download destination settings', () => {
     expect(restored.experimental?.browserImageGeneration?.modelDownloadDestination).toStrictEqual({ kind: 'opfs' });
     expect(restored.experimental?.browserImageGeneration?.width).toBe(512);
     expect(restored.experimental?.hostModelDirectories).toStrictEqual([{ id: toHostModelDirectoryId({ raw: 'linked-models' }), name: 'models' }]);
+  });
+});
+
+describe('experimental chat context persistence', () => {
+  it.each([65536, 131072, 0, -1, 1.5])('roundtrips numeric target %s structurally, independently from runtime validation', contextTokens => {
+    const saved = settingsToDto({ domain: { ...base, experimental: { llamaCppBrowser: { contextTokens, modelDownloadDestination: { kind: 'opfs' } }, locale: 'ja' } } });
+    const restored = settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(JSON.stringify(saved))) });
+    expect(restored.experimental?.llamaCppBrowser).toStrictEqual({ contextTokens, modelDownloadDestination: { kind: 'opfs' } });
+    expect(restored.experimental?.locale).toBe('ja');
+    expect(settingsToDto({ domain: restored })).toStrictEqual(saved);
+  });
+
+  it('isolates an unreadable context field without discarding unrelated preferences', () => {
+    const invalid = { contextTokens: '65536', modelDownloadDestination: { kind: 'opfs' } };
+    const restored = settingsToDomain({ dto: SettingsSchemaDto.parse({ ...settingsToDto({ domain: base }), experimental: { llamaCppBrowser: invalid, locale: 'ja' } }) });
+    expect(restored.experimental?.llamaCppBrowser).toBeUndefined();
+    expect(restored.experimental?.unreadable).toStrictEqual({ llamaCppBrowser: invalid });
+    expect(restored.experimental?.locale).toBe('ja');
   });
 });

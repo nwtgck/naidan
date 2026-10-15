@@ -529,3 +529,14 @@ describe('sanitized model-load and file-backed read failures', () => {
     expect(debug).not.toHaveBeenCalled();
   });
 });
+
+describe('requested and effective chat context diagnostics', () => {
+  it('keeps allocation target and native capacity distinct and rejects unbounded values', () => {
+    const diagnostic = { event: 'context-ready', requestedContextTokens: 131072, contextTokens: 65536 } as const;
+    expect(diagnosticSchema.parse(diagnostic)).toMatchObject(diagnostic);
+    for (const requestedContextTokens of [0, -1, 1.5, Infinity, NaN, 1048577]) {
+      expect(diagnosticSchema.safeParse({ ...diagnostic, requestedContextTokens }).success).toBe(false);
+    }
+    expect(diagnosticSchema.safeParse({ ...diagnostic, modelName: 'private' }).success).toBe(false);
+  });
+});
