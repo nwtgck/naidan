@@ -1003,6 +1003,11 @@ import { LlamaCppBrowserModelRecovery__keep_your_draft_while_preparing } from '@
 import { LlamaCppBrowserModelRecovery__manage_models } from '@/strings/messages/LlamaCppBrowserModelRecovery__manage_models/pt-BR';
 import { LlamaCppBrowserModelRecovery__model_not_in_this_browser } from '@/strings/messages/LlamaCppBrowserModelRecovery__model_not_in_this_browser/pt-BR';
 import { LlamaCppBrowserModelRecovery__review_download } from '@/strings/messages/LlamaCppBrowserModelRecovery__review_download/pt-BR';
+import { LlamaCppBrowserRuntimeSettings__context_size_applies_to_all_chats } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__context_size_applies_to_all_chats/pt-BR';
+import { LlamaCppBrowserRuntimeSettings__context_size_tokens } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__context_size_tokens/pt-BR';
+import { LlamaCppBrowserRuntimeSettings__could_not_save_context_size } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__could_not_save_context_size/pt-BR';
+import { LlamaCppBrowserRuntimeSettings__enter_a_whole_number_from_minimum_to_maximum } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__enter_a_whole_number_from_minimum_to_maximum/pt-BR';
+import { LlamaCppBrowserRuntimeSettings__reset_to_default } from '@/strings/messages/LlamaCppBrowserRuntimeSettings__reset_to_default/pt-BR';
 import { LlamaCppMemoryPanel__active_history } from '@/strings/messages/LlamaCppMemoryPanel__active_history/pt-BR';
 import { LlamaCppMemoryPanel__change_since_latest_load_started } from '@/strings/messages/LlamaCppMemoryPanel__change_since_latest_load_started/pt-BR';
 import { LlamaCppMemoryPanel__ended_history } from '@/strings/messages/LlamaCppMemoryPanel__ended_history/pt-BR';
@@ -3731,6 +3736,11 @@ export const catalog = {
   LlamaCppBrowserModelRecovery__manage_models,
   LlamaCppBrowserModelRecovery__model_not_in_this_browser,
   LlamaCppBrowserModelRecovery__review_download,
+  LlamaCppBrowserRuntimeSettings__context_size_applies_to_all_chats,
+  LlamaCppBrowserRuntimeSettings__context_size_tokens,
+  LlamaCppBrowserRuntimeSettings__could_not_save_context_size,
+  LlamaCppBrowserRuntimeSettings__enter_a_whole_number_from_minimum_to_maximum,
+  LlamaCppBrowserRuntimeSettings__reset_to_default,
   LlamaCppMemoryPanel__active_history,
   LlamaCppMemoryPanel__change_since_latest_load_started,
   LlamaCppMemoryPanel__ended_history,

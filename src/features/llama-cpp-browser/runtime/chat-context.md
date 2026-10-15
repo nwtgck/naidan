@@ -12,12 +12,15 @@ The persisted settings DTO (Data Transfer Object) accepts an optional target:
 }
 ```
 
-This is a fragment to merge into the existing settings record, not a replacement
-for the whole record. There is no new graphical control. A localStorage-backed
-installation stores that record at `naidan:lsp:settings`; other storage providers
-have their own settings record. Direct storage editing must preserve unrelated
-fields and respect the selected provider. The normal settings import/persistence
-path also accepts this DTO field. Removing it restores the 32,768-token target.
+Change the target in Settings → llama.cpp browser → Inference settings → Context
+size (tokens). The input saves on change; Reset to default removes the saved
+override and restores the 32,768-token target. Changes apply to the next independent
+chat operation, including model preparation, and do not resize an ongoing generation.
+
+The JSON above is a fragment to merge into the existing settings record, not a
+replacement for the whole record. The normal settings import/persistence path
+also accepts this DTO field for the selected storage provider. Removing it
+restores the 32,768-token target.
 
 At the runtime boundary a target must be an integer from 512 to 1,048,576.
 The DTO describes the stored number structurally; malformed/unsafe values are

@@ -18,7 +18,9 @@ export function usesWebGpu({ profile }: { profile: LlamaCppProfile }): boolean {
   }
 }
 
-export const chatContextTokensSchema = z.number().int().min(512).max(1048576);
+export const minimumChatContextTokens = 512;
+export const maximumChatContextTokens = 1048576;
+export const chatContextTokensSchema = z.number().int().min(minimumChatContextTokens).max(maximumChatContextTokens);
 export const defaultChatContextTokens = 32768;
 
 export const runtimeOptionsSchema = z.object({
