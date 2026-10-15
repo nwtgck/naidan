@@ -61,7 +61,7 @@ export async function generate({ request, onEvent, onProgress, signal, onSummary
       case 'prefill-decode': session.census.setPhase({ value: 'prefill' }); break;
       case 'generation-decode': case 'generation-overlap': session.census.setPhase({ value: 'decode' }); break;
       case 'audio-info': case 'audio-reference': case 'audio-input': case 'audio-prompt': case 'audio-frame': case 'audio-output':
-      case 'media-encode': case 'media-decode': case 'model-resolve': case 'projector-trace': case 'projector-load':
+      case 'media-encode': case 'media-decode': case 'model-resolve': case 'model-load': case 'projector-trace': case 'projector-load':
       case 'image-decode': case 'image-tokenize': case 'image-evaluate': case 'session': case 'cache-prepare': case 'cache-probe':
       case 'cache-checkpoint': case 'prefill': case 'template': case 'tokenize': case 'sampler-create': case 'reasoning-state':
       case 'grammar-switch': case 'native-sample': case 'reasoning-accept': case 'reasoning-replay': case 'token-render':
